@@ -11,7 +11,8 @@ final class SourceManager {
 	func start() {
 		let activeAppSource = ActiveAppSource(onEvent: emit)
 		let windowTitleSource = WindowTitleSource(onEvent: emit)
-		sources = [activeAppSource, windowTitleSource]
+		let clipboardSource = ClipboardSource(onEvent: emit)
+		sources = [activeAppSource, windowTitleSource, clipboardSource]
 		sources.forEach { $0.start() }
 	}
 

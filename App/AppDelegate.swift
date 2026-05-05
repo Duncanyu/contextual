@@ -11,7 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		menuBarController = MenuBarController(appState: appState)
 
 		let manager = SourceManager { event in
-			print("[SourceEvent]", event)
+			switch event {
+			case .sourceChanged(.clipboardTextChanged(let text)):
+				let length = text?.count ?? 0
+				let exists = (text?.isEmpty == false)
+				print("[SourceEvent] clipboardTextChanged exists=\(exists) length=\(length)")
+			default:
+				print("[SourceEvent]", event)
+			}
 		}
 		self.sourceManager = manager
 		manager.start()

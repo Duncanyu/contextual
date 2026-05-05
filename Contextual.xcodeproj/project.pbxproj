@@ -17,6 +17,7 @@
 		AA0001080000000000000008 /* SourceEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002080000000000000012 /* SourceEvent.swift */; };
 		AA0001090000000000000009 /* SourceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002090000000000000013 /* SourceManager.swift */; };
 		AA00010A000000000000000A /* WindowTitleSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020A0000000000000014 /* WindowTitleSource.swift */; };
+		AA00010B000000000000000B /* ClipboardSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020B0000000000000015 /* ClipboardSource.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		AA0002080000000000000012 /* SourceEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceEvent.swift; sourceTree = "<group>"; };
 		AA0002090000000000000013 /* SourceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceManager.swift; sourceTree = "<group>"; };
 		AA00020A0000000000000014 /* WindowTitleSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowTitleSource.swift; sourceTree = "<group>"; };
+		AA00020B0000000000000015 /* ClipboardSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardSource.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +84,7 @@
 				AA0002060000000000000010 /* SystemSource.swift */,
 				AA0002070000000000000011 /* ActiveAppSource.swift */,
 				AA00020A0000000000000014 /* WindowTitleSource.swift */,
+				AA00020B0000000000000015 /* ClipboardSource.swift */,
 			);
 			path = SystemSources;
 			sourceTree = "<group>";
@@ -179,6 +182,7 @@
 				AA0001060000000000000006 /* SystemSource.swift in Sources */,
 				AA0001070000000000000007 /* ActiveAppSource.swift in Sources */,
 				AA00010A000000000000000A /* WindowTitleSource.swift in Sources */,
+				AA00010B000000000000000B /* ClipboardSource.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);
