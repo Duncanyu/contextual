@@ -22,6 +22,9 @@
 		AA00010D000000000000000D /* ContextModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020D0000000000000017 /* ContextModel.swift */; };
 		AA00010E000000000000000E /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020E0000000000000018 /* ContextBuilder.swift */; };
 		AA00010F000000000000000F /* SessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020F0000000000000019 /* SessionState.swift */; };
+		AA0001100000000000000010 /* TriggerPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000210000000000000001A /* TriggerPacket.swift */; };
+		AA0001110000000000000011 /* CooldownManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000211000000000000001B /* CooldownManager.swift */; };
+		AA0001120000000000000012 /* TriggerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000212000000000000001C /* TriggerEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +45,9 @@
 		AA00020D0000000000000017 /* ContextModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextModel.swift; sourceTree = "<group>"; };
 		AA00020E0000000000000018 /* ContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBuilder.swift; sourceTree = "<group>"; };
 		AA00020F0000000000000019 /* SessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionState.swift; sourceTree = "<group>"; };
+		AA000210000000000000001A /* TriggerPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerPacket.swift; sourceTree = "<group>"; };
+		AA000211000000000000001B /* CooldownManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CooldownManager.swift; sourceTree = "<group>"; };
+		AA000212000000000000001C /* TriggerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +69,7 @@
 				AA0004300000000000000000 /* SystemSources */,
 				AA0004400000000000000000 /* SourceManager */,
 				AA0004500000000000000000 /* Context */,
+				AA0004600000000000000000 /* Triggers */,
 				AA0005000000000000000000 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -116,6 +123,16 @@
 				AA00020F0000000000000019 /* SessionState.swift */,
 			);
 			path = Context;
+			sourceTree = "<group>";
+		};
+		AA0004600000000000000000 /* Triggers */ = {
+			isa = PBXGroup;
+			children = (
+				AA000210000000000000001A /* TriggerPacket.swift */,
+				AA000211000000000000001B /* CooldownManager.swift */,
+				AA000212000000000000001C /* TriggerEngine.swift */,
+			);
+			path = Triggers;
 			sourceTree = "<group>";
 		};
 		AA0005000000000000000000 /* Products */ = {
@@ -207,6 +224,9 @@
 				AA00010D000000000000000D /* ContextModel.swift in Sources */,
 				AA00010E000000000000000E /* ContextBuilder.swift in Sources */,
 				AA00010F000000000000000F /* SessionState.swift in Sources */,
+				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
+				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
+				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);

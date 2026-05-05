@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var menuBarController: MenuBarController?
 	private var sourceManager: SourceManager?
 	private let contextBuilder = ContextBuilder()
+	private let triggerEngine = TriggerEngine()
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
@@ -15,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			self.contextBuilder.handle(event)
 			self.appState.debugContext = self.contextBuilder.model
 			self.logContextModel(self.contextBuilder.model)
+
+			let context = self.contextBuilder.model
+			if let packet = self.triggerEngine.evaluate(context) {
+				self.logTriggerPacket(packet, contextClipboardLength: context.clipboardTextLength)
+			}
 
 			switch event {
 			case .sourceChanged(.clipboardTextChanged(let text)):
@@ -32,6 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		self.sourceManager = manager
 		manager.start()
 		appState.debugContext = contextBuilder.model
+		if let packet = triggerEngine.evaluate(contextBuilder.model) {
+			logTriggerPacket(packet, contextClipboardLength: contextBuilder.model.clipboardTextLength)
+		}
 	}
 
 	func applicationWillTerminate(_ notification: Notification) {
@@ -49,6 +58,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			"lastTrigger=\(model.lastSourceTrigger?.rawValue ?? "nil")",
 			"recentApps=\(model.recentAppNames)",
 			"recentTriggers=\(model.recentTriggers)"
+		)
+	}
+
+	private func logTriggerPacket(_ packet: TriggerPacket, contextClipboardLength: Int) {
+		print(
+			"[TriggerPacket]",
+			"type=\(packet.triggerType.rawValue)",
+			"reason=\(packet.reason)",
+			"actions=\(packet.candidateActions)",
+			"clipboardLength=\(contextClipboardLength)",
+			"createdAt=\(packet.createdAt)"
 		)
 	}
 }
