@@ -21,6 +21,7 @@
 		AA00010C000000000000000C /* SelectionSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020C0000000000000016 /* SelectionSource.swift */; };
 		AA00010D000000000000000D /* ContextModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020D0000000000000017 /* ContextModel.swift */; };
 		AA00010E000000000000000E /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020E0000000000000018 /* ContextBuilder.swift */; };
+		AA00010F000000000000000F /* SessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020F0000000000000019 /* SessionState.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		AA00020C0000000000000016 /* SelectionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionSource.swift; sourceTree = "<group>"; };
 		AA00020D0000000000000017 /* ContextModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextModel.swift; sourceTree = "<group>"; };
 		AA00020E0000000000000018 /* ContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBuilder.swift; sourceTree = "<group>"; };
+		AA00020F0000000000000019 /* SessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +113,7 @@
 			children = (
 				AA00020D0000000000000017 /* ContextModel.swift */,
 				AA00020E0000000000000018 /* ContextBuilder.swift */,
+				AA00020F0000000000000019 /* SessionState.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -203,6 +206,7 @@
 				AA00010C000000000000000C /* SelectionSource.swift in Sources */,
 				AA00010D000000000000000D /* ContextModel.swift in Sources */,
 				AA00010E000000000000000E /* ContextBuilder.swift in Sources */,
+				AA00010F000000000000000F /* SessionState.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);

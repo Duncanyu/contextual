@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		let manager = SourceManager { event in
 			self.contextBuilder.handle(event)
+			self.appState.debugContext = self.contextBuilder.model
 			self.logContextModel(self.contextBuilder.model)
 
 			switch event {
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 		self.sourceManager = manager
 		manager.start()
+		appState.debugContext = contextBuilder.model
 	}
 
 	func applicationWillTerminate(_ notification: Notification) {
@@ -44,7 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			"windowTitle=\(model.activeWindowTitle != nil)",
 			"clipboard=(available:\(model.clipboardTextAvailable) length:\(model.clipboardTextLength))",
 			"selection=(available:\(model.selectedTextAvailable) length:\(model.selectedTextLength))",
-			"lastTrigger=\(model.lastSourceTrigger?.rawValue ?? "nil")"
+			"lastTrigger=\(model.lastSourceTrigger?.rawValue ?? "nil")",
+			"recentApps=\(model.recentAppNames)",
+			"recentTriggers=\(model.recentTriggers)"
 		)
 	}
 }

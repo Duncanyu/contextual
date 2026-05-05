@@ -14,6 +14,11 @@ struct ContextModel: Equatable {
 	var lastSourceTrigger: LastSourceTrigger?
 	var updatedAt: Date
 
+	/// Rolling session history (most recent last), max 5.
+	var recentAppNames: [String]
+	/// Rolling source trigger ids (most recent last), max 5.
+	var recentTriggers: [String]
+
 	init() {
 		self.activeAppName = nil
 		self.activeAppBundleIdentifier = nil
@@ -27,6 +32,9 @@ struct ContextModel: Equatable {
 
 		self.lastSourceTrigger = nil
 		self.updatedAt = Date()
+
+		self.recentAppNames = []
+		self.recentTriggers = []
 	}
 }
 
