@@ -10,7 +10,8 @@ final class SourceManager {
 
 	func start() {
 		let activeAppSource = ActiveAppSource(onEvent: emit)
-		sources = [activeAppSource]
+		let windowTitleSource = WindowTitleSource(onEvent: emit)
+		sources = [activeAppSource, windowTitleSource]
 		sources.forEach { $0.start() }
 	}
 
