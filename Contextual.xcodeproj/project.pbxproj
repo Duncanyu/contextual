@@ -19,6 +19,8 @@
 		AA00010A000000000000000A /* WindowTitleSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020A0000000000000014 /* WindowTitleSource.swift */; };
 		AA00010B000000000000000B /* ClipboardSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020B0000000000000015 /* ClipboardSource.swift */; };
 		AA00010C000000000000000C /* SelectionSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020C0000000000000016 /* SelectionSource.swift */; };
+		AA00010D000000000000000D /* ContextModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020D0000000000000017 /* ContextModel.swift */; };
+		AA00010E000000000000000E /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020E0000000000000018 /* ContextBuilder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +38,8 @@
 		AA00020A0000000000000014 /* WindowTitleSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowTitleSource.swift; sourceTree = "<group>"; };
 		AA00020B0000000000000015 /* ClipboardSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardSource.swift; sourceTree = "<group>"; };
 		AA00020C0000000000000016 /* SelectionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionSource.swift; sourceTree = "<group>"; };
+		AA00020D0000000000000017 /* ContextModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextModel.swift; sourceTree = "<group>"; };
+		AA00020E0000000000000018 /* ContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBuilder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +60,7 @@
 				AA0004200000000000000000 /* UI */,
 				AA0004300000000000000000 /* SystemSources */,
 				AA0004400000000000000000 /* SourceManager */,
+				AA0004500000000000000000 /* Context */,
 				AA0005000000000000000000 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -99,6 +104,15 @@
 				AA0002090000000000000013 /* SourceManager.swift */,
 			);
 			path = SourceManager;
+			sourceTree = "<group>";
+		};
+		AA0004500000000000000000 /* Context */ = {
+			isa = PBXGroup;
+			children = (
+				AA00020D0000000000000017 /* ContextModel.swift */,
+				AA00020E0000000000000018 /* ContextBuilder.swift */,
+			);
+			path = Context;
 			sourceTree = "<group>";
 		};
 		AA0005000000000000000000 /* Products */ = {
@@ -187,6 +201,8 @@
 				AA00010A000000000000000A /* WindowTitleSource.swift in Sources */,
 				AA00010B000000000000000B /* ClipboardSource.swift in Sources */,
 				AA00010C000000000000000C /* SelectionSource.swift in Sources */,
+				AA00010D000000000000000D /* ContextModel.swift in Sources */,
+				AA00010E000000000000000E /* ContextBuilder.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);
