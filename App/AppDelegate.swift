@@ -16,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				let length = text?.count ?? 0
 				let exists = (text?.isEmpty == false)
 				print("[SourceEvent] clipboardTextChanged exists=\(exists) length=\(length)")
+			case .sourceChanged(.selectedTextChanged(let text)):
+				let length = text?.count ?? 0
+				let exists = (text?.isEmpty == false)
+				print("[SourceEvent] selectedTextChanged exists=\(exists) length=\(length)")
 			default:
 				print("[SourceEvent]", event)
 			}

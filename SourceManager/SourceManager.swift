@@ -12,7 +12,8 @@ final class SourceManager {
 		let activeAppSource = ActiveAppSource(onEvent: emit)
 		let windowTitleSource = WindowTitleSource(onEvent: emit)
 		let clipboardSource = ClipboardSource(onEvent: emit)
-		sources = [activeAppSource, windowTitleSource, clipboardSource]
+		let selectionSource = SelectionSource(onEvent: emit)
+		sources = [activeAppSource, windowTitleSource, clipboardSource, selectionSource]
 		sources.forEach { $0.start() }
 	}
 
