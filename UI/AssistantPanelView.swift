@@ -18,6 +18,10 @@ struct AssistantPanelView: View {
 				Toggle(appState.isPaused ? "Resume" : "Pause", isOn: $appState.isPaused)
 					.toggleStyle(.switch)
 
+				Button("Invoke assistant") {
+					appState.requestManualInvocation?()
+				}
+
 				Divider()
 
 				Text("Debug context")

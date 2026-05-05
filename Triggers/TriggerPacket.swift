@@ -5,6 +5,8 @@ enum TriggerType: String, Equatable {
 	case clipboardTextEligible = "clipboard_text_eligible"
 	/// Focused UI reports selected text metadata meeting length rules (contents not inspected here).
 	case selectedTextEligible = "selected_text_eligible"
+	/// User invoked the assistant explicitly (shortcut or UI).
+	case manualInvocation = "manual_invocation"
 }
 
 struct TriggerPacket: Equatable {

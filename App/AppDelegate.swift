@@ -1,5 +1,9 @@
 import AppKit
 
+extension Notification.Name {
+	static let contextualManualTrigger = Notification.Name("com.contextual.manualTrigger")
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let appState = AppState()
@@ -7,44 +11,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var sourceManager: SourceManager?
 	private let contextBuilder = ContextBuilder()
 	private let triggerEngine = TriggerEngine()
+	private var manualTriggerObserver: NSObjectProtocol?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
 		menuBarController = MenuBarController(appState: appState)
 
+		appState.requestManualInvocation = { [weak self] in
+			self?.dispatchManualTriggerEvent()
+		}
+
+		manualTriggerObserver = NotificationCenter.default.addObserver(
+			forName: .contextualManualTrigger,
+			object: nil,
+			queue: .main
+		) { [weak self] _ in
+			self?.dispatchManualTriggerEvent()
+		}
+
 		let manager = SourceManager { event in
-			self.contextBuilder.handle(event)
-			self.appState.debugContext = self.contextBuilder.model
-			self.logContextModel(self.contextBuilder.model)
-
-			let context = self.contextBuilder.model
-			if let packet = self.triggerEngine.evaluate(context) {
-				self.logTriggerPacket(packet, context: context)
-			}
-
-			switch event {
-			case .sourceChanged(.clipboardTextChanged(let text)):
-				let length = text?.count ?? 0
-				let exists = (text?.isEmpty == false)
-				print("[SourceEvent] clipboardTextChanged exists=\(exists) length=\(length)")
-			case .sourceChanged(.selectedTextChanged(let text)):
-				let length = text?.count ?? 0
-				let exists = (text?.isEmpty == false)
-				print("[SourceEvent] selectedTextChanged exists=\(exists) length=\(length)")
-			default:
-				print("[SourceEvent]", event)
-			}
+			self.processSourceEvent(event)
 		}
 		self.sourceManager = manager
 		manager.start()
-		appState.debugContext = contextBuilder.model
-		if let packet = triggerEngine.evaluate(contextBuilder.model) {
-			logTriggerPacket(packet, context: contextBuilder.model)
-		}
+		processUpdatedContextAfterPipeline()
 	}
 
 	func applicationWillTerminate(_ notification: Notification) {
+		if let manualTriggerObserver {
+			NotificationCenter.default.removeObserver(manualTriggerObserver)
+		}
 		sourceManager?.stop()
+	}
+
+	private func dispatchManualTriggerEvent() {
+		processSourceEvent(.sourceChanged(.manualTriggerRequested))
+	}
+
+	private func processSourceEvent(_ event: SourceEvent) {
+		contextBuilder.handle(event)
+		processUpdatedContextAfterPipeline()
+		switch event {
+		case .sourceChanged(.clipboardTextChanged(let text)):
+			let length = text?.count ?? 0
+			let exists = (text?.isEmpty == false)
+			print("[SourceEvent] clipboardTextChanged exists=\(exists) length=\(length)")
+		case .sourceChanged(.selectedTextChanged(let text)):
+			let length = text?.count ?? 0
+			let exists = (text?.isEmpty == false)
+			print("[SourceEvent] selectedTextChanged exists=\(exists) length=\(length)")
+		case .sourceChanged(.manualTriggerRequested):
+			print("[SourceEvent] manualTriggerRequested")
+		default:
+			print("[SourceEvent]", event)
+		}
+	}
+
+	private func processUpdatedContextAfterPipeline() {
+		appState.debugContext = contextBuilder.model
+		logContextModel(contextBuilder.model)
+
+		let context = contextBuilder.model
+		if let packet = triggerEngine.evaluate(context) {
+			logTriggerPacket(packet, context: context)
+		}
 	}
 
 	private func logContextModel(_ model: ContextModel) {

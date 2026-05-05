@@ -9,5 +9,6 @@ enum SourceChange: Equatable {
 	case windowTitleChanged(bundleIdentifier: String, appName: String?, title: String?)
 	case clipboardTextChanged(text: String?)
 	case selectedTextChanged(text: String?)
+	case manualTriggerRequested
 }
 

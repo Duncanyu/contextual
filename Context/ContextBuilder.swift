@@ -45,6 +45,11 @@ final class ContextBuilder {
 			model.lastSourceTrigger = .selectedTextChanged
 			model.updatedAt = Date()
 			session.recordTrigger(.selectedTextChanged)
+
+		case .manualTriggerRequested:
+			model.lastSourceTrigger = .manualTriggerRequested
+			model.updatedAt = Date()
+			session.recordTrigger(.manualTriggerRequested)
 		}
 
 		model.recentAppNames = session.recentAppLabels

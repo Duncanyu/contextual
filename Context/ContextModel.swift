@@ -43,5 +43,6 @@ enum LastSourceTrigger: String, Equatable {
 	case windowTitleChanged
 	case clipboardTextChanged
 	case selectedTextChanged
+	case manualTriggerRequested
 }
 

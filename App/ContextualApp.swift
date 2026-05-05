@@ -8,6 +8,14 @@ struct ContextualApp: App {
 		Settings {
 			EmptyView()
 		}
+		.commands {
+			CommandMenu("Assistant") {
+				Button("Invoke Assistant") {
+					NotificationCenter.default.post(name: .contextualManualTrigger, object: nil)
+				}
+				.keyboardShortcut("a", modifiers: [.command, .shift])
+			}
+		}
 	}
 }
 
