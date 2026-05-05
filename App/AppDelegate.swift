@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 			let context = self.contextBuilder.model
 			if let packet = self.triggerEngine.evaluate(context) {
-				self.logTriggerPacket(packet, contextClipboardLength: context.clipboardTextLength)
+				self.logTriggerPacket(packet, context: context)
 			}
 
 			switch event {
@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		manager.start()
 		appState.debugContext = contextBuilder.model
 		if let packet = triggerEngine.evaluate(contextBuilder.model) {
-			logTriggerPacket(packet, contextClipboardLength: contextBuilder.model.clipboardTextLength)
+			logTriggerPacket(packet, context: contextBuilder.model)
 		}
 	}
 
@@ -61,13 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		)
 	}
 
-	private func logTriggerPacket(_ packet: TriggerPacket, contextClipboardLength: Int) {
+	private func logTriggerPacket(_ packet: TriggerPacket, context: ContextModel) {
 		print(
 			"[TriggerPacket]",
 			"type=\(packet.triggerType.rawValue)",
 			"reason=\(packet.reason)",
 			"actions=\(packet.candidateActions)",
-			"clipboardLength=\(contextClipboardLength)",
+			"clipboardLength=\(context.clipboardTextLength)",
+			"selectionLength=\(context.selectedTextLength)",
 			"createdAt=\(packet.createdAt)"
 		)
 	}

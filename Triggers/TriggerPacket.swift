@@ -3,6 +3,8 @@ import Foundation
 enum TriggerType: String, Equatable {
 	/// Clipboard has plain-text metadata meeting length rules (contents not inspected here).
 	case clipboardTextEligible = "clipboard_text_eligible"
+	/// Focused UI reports selected text metadata meeting length rules (contents not inspected here).
+	case selectedTextEligible = "selected_text_eligible"
 }
 
 struct TriggerPacket: Equatable {
