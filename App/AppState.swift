@@ -6,7 +6,17 @@ final class AppState: ObservableObject {
 	/// Latest context for UI (updated by app lifecycle; not built in UI).
 	@Published var debugContext: ContextModel = ContextModel()
 
+	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
+	@Published var availableActions: [any ActionProtocol] = []
+
 	/// Wired by app lifecycle to enqueue a manual trigger through the normal source pipeline.
 	var requestManualInvocation: (() -> Void)?
+
+	/// UI forwards user taps here; app lifecycle resolves execution with current context (UI never reads context).
+	var onInvokeActionById: ((String) -> Void)?
+
+	func invokeAction(id: String) {
+		onInvokeActionById?(id)
+	}
 }
 

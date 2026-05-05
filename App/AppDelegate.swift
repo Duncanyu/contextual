@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var sourceManager: SourceManager?
 	private let contextBuilder = ContextBuilder()
 	private let triggerEngine = TriggerEngine()
+	private let actionRouter = ActionRouter()
 	private var manualTriggerObserver: NSObjectProtocol?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
@@ -19,6 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		appState.requestManualInvocation = { [weak self] in
 			self?.dispatchManualTriggerEvent()
+		}
+
+		appState.onInvokeActionById = { [weak self] actionId in
+			self?.invokeStoredAction(actionId: actionId)
 		}
 
 		manualTriggerObserver = NotificationCenter.default.addObserver(
@@ -35,6 +40,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		self.sourceManager = manager
 		manager.start()
 		processUpdatedContextAfterPipeline()
+
+		Task.detached(priority: .utility) {
+			let mm = ModelManager.shared
+			if mm.isRuntimeAvailable() {
+				print("[ModelManager] Runtime detected")
+				await mm.ensureModelAvailable()
+			} else {
+				print("[ModelManager] Ollama not installed")
+			}
+		}
 	}
 
 	func applicationWillTerminate(_ notification: Notification) {
@@ -74,7 +89,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let context = contextBuilder.model
 		if let packet = triggerEngine.evaluate(context) {
 			logTriggerPacket(packet, context: context)
+			updateAvailableActions(from: packet, context: context)
+		} else {
+			appState.availableActions = []
 		}
+	}
+
+	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel) {
+		let mapped = actionRouter.matchingActions(for: packet)
+		appState.availableActions = mapped.filter { $0.canExecute(context: context) }
+	}
+
+	private func invokeStoredAction(actionId: String) {
+		let context = contextBuilder.model
+		guard let action = appState.availableActions.first(where: { $0.id == actionId }) else { return }
+		guard action.canExecute(context: context) else {
+			print("[ActionResult] No valid actions")
+			return
+		}
+		let result = action.execute(context: context)
+		print("[ActionResult]", result.outputText)
 	}
 
 	private func logContextModel(_ model: ContextModel) {

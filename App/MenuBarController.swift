@@ -22,7 +22,7 @@ final class MenuBarController {
 		statusItem.button?.target = self
 
 		popover.behavior = .transient
-		popover.contentSize = NSSize(width: 300, height: 420)
+		popover.contentSize = NSSize(width: 300, height: 520)
 		popover.contentViewController = NSHostingController(
 			rootView: AssistantPanelView()
 				.environmentObject(appState)

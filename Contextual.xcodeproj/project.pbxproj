@@ -25,6 +25,13 @@
 		AA0001100000000000000010 /* TriggerPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000210000000000000001A /* TriggerPacket.swift */; };
 		AA0001110000000000000011 /* CooldownManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000211000000000000001B /* CooldownManager.swift */; };
 		AA0001120000000000000012 /* TriggerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000212000000000000001C /* TriggerEngine.swift */; };
+		AA0001130000000000000013 /* ActionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000213000000000000001D /* ActionProtocol.swift */; };
+		AA0001140000000000000014 /* ActionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000214000000000000001E /* ActionResult.swift */; };
+		AA0001150000000000000015 /* SummarizeAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000215000000000000001F /* SummarizeAction.swift */; };
+		AA0001160000000000000016 /* ActionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002160000000000000020 /* ActionRouter.swift */; };
+		AA0001170000000000000017 /* ExplainAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002170000000000000021 /* ExplainAction.swift */; };
+		AA0001180000000000000018 /* RewriteAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002180000000000000022 /* RewriteAction.swift */; };
+		AA0001190000000000000019 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002190000000000000023 /* ModelManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +55,13 @@
 		AA000210000000000000001A /* TriggerPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerPacket.swift; sourceTree = "<group>"; };
 		AA000211000000000000001B /* CooldownManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CooldownManager.swift; sourceTree = "<group>"; };
 		AA000212000000000000001C /* TriggerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerEngine.swift; sourceTree = "<group>"; };
+		AA000213000000000000001D /* ActionProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionProtocol.swift; sourceTree = "<group>"; };
+		AA000214000000000000001E /* ActionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionResult.swift; sourceTree = "<group>"; };
+		AA000215000000000000001F /* SummarizeAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizeAction.swift; sourceTree = "<group>"; };
+		AA0002160000000000000020 /* ActionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRouter.swift; sourceTree = "<group>"; };
+		AA0002170000000000000021 /* ExplainAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplainAction.swift; sourceTree = "<group>"; };
+		AA0002180000000000000022 /* RewriteAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RewriteAction.swift; sourceTree = "<group>"; };
+		AA0002190000000000000023 /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +84,8 @@
 				AA0004400000000000000000 /* SourceManager */,
 				AA0004500000000000000000 /* Context */,
 				AA0004600000000000000000 /* Triggers */,
+				AA0004700000000000000000 /* Actions */,
+				AA0004800000000000000000 /* Intelligence */,
 				AA0005000000000000000000 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -133,6 +149,27 @@
 				AA000212000000000000001C /* TriggerEngine.swift */,
 			);
 			path = Triggers;
+			sourceTree = "<group>";
+		};
+		AA0004700000000000000000 /* Actions */ = {
+			isa = PBXGroup;
+			children = (
+				AA000213000000000000001D /* ActionProtocol.swift */,
+				AA000214000000000000001E /* ActionResult.swift */,
+				AA000215000000000000001F /* SummarizeAction.swift */,
+				AA0002170000000000000021 /* ExplainAction.swift */,
+				AA0002180000000000000022 /* RewriteAction.swift */,
+				AA0002160000000000000020 /* ActionRouter.swift */,
+			);
+			path = Actions;
+			sourceTree = "<group>";
+		};
+		AA0004800000000000000000 /* Intelligence */ = {
+			isa = PBXGroup;
+			children = (
+				AA0002190000000000000023 /* ModelManager.swift */,
+			);
+			path = Intelligence;
 			sourceTree = "<group>";
 		};
 		AA0005000000000000000000 /* Products */ = {
@@ -227,6 +264,13 @@
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,
+				AA0001130000000000000013 /* ActionProtocol.swift in Sources */,
+				AA0001140000000000000014 /* ActionResult.swift in Sources */,
+				AA0001150000000000000015 /* SummarizeAction.swift in Sources */,
+				AA0001160000000000000016 /* ActionRouter.swift in Sources */,
+				AA0001170000000000000017 /* ExplainAction.swift in Sources */,
+				AA0001180000000000000018 /* RewriteAction.swift in Sources */,
+				AA0001190000000000000019 /* ModelManager.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);

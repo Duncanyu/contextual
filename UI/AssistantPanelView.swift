@@ -24,6 +24,24 @@ struct AssistantPanelView: View {
 
 				Divider()
 
+				Text("Available Actions")
+					.font(.subheadline)
+					.fontWeight(.semibold)
+
+				if appState.availableActions.isEmpty {
+					Text("No actions available")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				} else {
+					ForEach(Array(appState.availableActions.enumerated()), id: \.element.id) { _, action in
+						Button(action.name) {
+							appState.invokeAction(id: action.id)
+						}
+					}
+				}
+
+				Divider()
+
 				Text("Debug context")
 					.font(.subheadline)
 					.fontWeight(.semibold)
@@ -43,7 +61,7 @@ struct AssistantPanelView: View {
 			.padding(16)
 			.frame(maxWidth: .infinity, alignment: .leading)
 		}
-		.frame(width: 300, height: 420)
+		.frame(width: 300, height: 520)
 	}
 
 	@ViewBuilder
