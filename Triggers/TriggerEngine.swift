@@ -24,10 +24,34 @@ final class TriggerEngine {
 		if let packet = evaluateManual(context) {
 			return packet
 		}
+		if let packet = evaluateScreenOCRReady(context) {
+			return packet
+		}
 		if let packet = evaluateClipboard(context) {
 			return packet
 		}
 		return evaluateSelectedText(context)
+	}
+
+	private func evaluateScreenOCRReady(_ context: ContextModel) -> TriggerPacket? {
+		guard context.lastSourceTrigger == .screenOCRCompleted else { return nil }
+		guard context.screenCaptureAvailable,
+			  context.screenOCRAvailable,
+			  (context.screenOCRText?.count ?? 0) > 30 else { return nil }
+
+		var candidateActions: [String] = []
+		if context.clipboardTextAvailable || context.selectedTextAvailable {
+			candidateActions.append("summarize_text")
+		}
+		candidateActions.append("analyze_screen")
+		candidateActions.append(contentsOf: ["explain_text", "rewrite_text"])
+
+		return TriggerPacket(
+			triggerType: .manualInvocation,
+			reason: "Screen OCR updated after manual capture.",
+			candidateActions: candidateActions,
+			createdAt: Date()
+		)
 	}
 
 	private func evaluateManual(_ context: ContextModel) -> TriggerPacket? {
@@ -37,6 +61,11 @@ final class TriggerEngine {
 		var candidateActions: [String] = []
 		if context.clipboardTextAvailable || context.selectedTextAvailable {
 			candidateActions.append("summarize_text")
+		}
+		if context.screenCaptureAvailable,
+		   context.screenOCRAvailable,
+		   (context.screenOCRText?.count ?? 0) > 30 {
+			candidateActions.append("analyze_screen")
 		}
 		candidateActions.append(contentsOf: ["explain_text", "rewrite_text"])
 

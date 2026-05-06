@@ -13,6 +13,18 @@ final class ContextBuilder {
 		switch event {
 		case .sourceChanged(let change):
 			apply(change)
+		case .screenCaptured(let payload):
+			model.screenCaptureAvailable = true
+			model.screenCaptureType = "manual"
+			model.screenCaptureImage = payload.image
+			model.screenCaptureCapturedAt = payload.timestamp
+			model.screenOCRAvailable = false
+			model.screenOCRText = nil
+			model.screenOCRLineCount = 0
+			model.screenOCRCapturedAt = nil
+			model.lastSourceTrigger = .screenCaptured
+			model.updatedAt = Date()
+			session.recordTrigger(.screenCaptured)
 		}
 	}
 
@@ -50,6 +62,19 @@ final class ContextBuilder {
 			model.lastSourceTrigger = .manualTriggerRequested
 			model.updatedAt = Date()
 			session.recordTrigger(.manualTriggerRequested)
+
+		case .screenOCRCompleted(let text, let lineCount, let capturedAt):
+			let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+			let hasText = !trimmed.isEmpty
+			model.screenOCRAvailable = hasText
+			model.screenOCRText = hasText ? trimmed : nil
+			model.screenOCRLineCount = hasText ? lineCount : 0
+			model.screenOCRCapturedAt = capturedAt
+			model.lastSourceTrigger = .screenOCRCompleted
+			model.updatedAt = Date()
+			let chars = trimmed.utf8.count
+			print("[OCR] context updated chars=\(chars) lines=\(lineCount)")
+			session.recordTrigger(.screenOCRCompleted)
 		}
 
 		model.recentAppNames = session.recentAppLabels

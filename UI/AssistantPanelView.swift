@@ -37,6 +37,28 @@ struct AssistantPanelView: View {
 					)
 				}
 
+				if !ScreenCaptureSource.isScreenRecordingAuthorized() {
+					VStack(alignment: .leading, spacing: 8) {
+						Text("Screen Recording access is needed to capture the screen.")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+
+						Button("Open Screen Recording Settings") {
+							ScreenCaptureSource.openScreenRecordingSettings()
+						}
+						.font(.caption)
+					}
+					.padding(10)
+					.background(
+						RoundedRectangle(cornerRadius: 10, style: .continuous)
+							.fill(Color(nsColor: .controlBackgroundColor))
+					)
+					.overlay(
+						RoundedRectangle(cornerRadius: 10, style: .continuous)
+							.stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+					)
+				}
+
 				if let proposal = appState.currentProposal {
 					let key = appState.suggestionKey(for: proposal, context: appState.debugContext)
 					if dismissedProposalKey != key, !appState.isSuggestionOnCooldown(proposal, context: appState.debugContext) {
@@ -152,6 +174,8 @@ struct AssistantPanelView: View {
 					windowTitleDebugLine(title: debugCtx.activeWindowTitle)
 					Text("Clipboard: available=\(debugCtx.clipboardTextAvailable) length=\(debugCtx.clipboardTextLength)")
 					Text("Selection: available=\(debugCtx.selectedTextAvailable) length=\(debugCtx.selectedTextLength)")
+					Text("Screen capture: available=\(debugCtx.screenCaptureAvailable)")
+					Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRText?.count ?? 0) lines=\(debugCtx.screenOCRLineCount)")
 					Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
 					Text("Recent apps (max 5): \(recentList(debugCtx.recentAppNames))")
 					Text("Recent triggers (max 5): \(recentList(debugCtx.recentTriggers))")

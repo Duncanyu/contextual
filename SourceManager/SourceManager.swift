@@ -4,6 +4,7 @@ final class SourceManager {
 	private let emit: (SourceEvent) -> Void
 	private var sources: [SystemSource] = []
 	private var selectionSource: SelectionSource?
+	private var screenCaptureSource: ScreenCaptureSource?
 
 	init(emit: @escaping (SourceEvent) -> Void) {
 		self.emit = emit
@@ -14,8 +15,10 @@ final class SourceManager {
 		let windowTitleSource = WindowTitleSource(onEvent: emit)
 		let clipboardSource = ClipboardSource(onEvent: emit)
 		let selectionSource = SelectionSource(onEvent: emit)
+		let screenCaptureSource = ScreenCaptureSource(onEvent: emit)
 		self.selectionSource = selectionSource
-		sources = [activeAppSource, windowTitleSource, clipboardSource, selectionSource]
+		self.screenCaptureSource = screenCaptureSource
+		sources = [activeAppSource, windowTitleSource, clipboardSource, selectionSource, screenCaptureSource]
 		sources.forEach { $0.start() }
 	}
 
@@ -23,10 +26,15 @@ final class SourceManager {
 		sources.forEach { $0.stop() }
 		sources.removeAll()
 		selectionSource = nil
+		screenCaptureSource = nil
 	}
 
 	func refreshSelectionNow() {
 		selectionSource?.refreshOnce()
+	}
+
+	func captureScreenNow() {
+		screenCaptureSource?.captureNow()
 	}
 }
 

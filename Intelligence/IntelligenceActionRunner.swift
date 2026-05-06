@@ -4,6 +4,7 @@ enum ActionPromptKind {
 	case summarize
 	case explain
 	case rewrite
+	case analyzeScreen
 }
 
 enum IntelligenceActionRunner {
@@ -51,6 +52,13 @@ enum IntelligenceActionRunner {
 			Text:
 			\(input)
 			"""
+		case .analyzeScreen:
+			return """
+			Based only on the text visible in the OCR below (not the image), explain what appears to be on screen. Summarize the key points and what the user is likely looking at. If the OCR is noisy, say so and focus on the clearest lines. Do not claim you can see visual details beyond the OCR. Reply with only the analysis, no title.
+
+			OCR context:
+			\(input)
+			"""
 		}
 	}
 
@@ -60,6 +68,7 @@ enum IntelligenceActionRunner {
 		case .summarize: label = "Summary unavailable"
 		case .explain: label = "Explanation unavailable"
 		case .rewrite: label = "Rewrite unavailable"
+		case .analyzeScreen: label = "Screen analysis unavailable"
 		}
 		return "\(label): \(detail)"
 	}

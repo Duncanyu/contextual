@@ -12,6 +12,8 @@ struct ActionRouter {
 				result.append(ExplainAction())
 			case RewriteAction.rewriteTextId:
 				result.append(RewriteAction())
+			case ScreenAnalyzeAction.analyzeScreenId:
+				result.append(ScreenAnalyzeAction())
 			default:
 				break
 			}

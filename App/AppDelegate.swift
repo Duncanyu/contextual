@@ -173,8 +173,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		didLogManualGuard = false
 		lastManualInvocationAt = now
 
+		sourceManager?.captureScreenNow()
 		sourceManager?.refreshSelectionNow()
 		processSourceEvent(.sourceChanged(.manualTriggerRequested))
+
+		if let image = contextBuilder.model.screenCaptureImage {
+			Task.detached(priority: .utility) { [weak self] in
+				guard let self else { return }
+				let result = await OCRProcessor.shared.recognizeText(from: image)
+				await MainActor.run {
+					self.processSourceEvent(
+					.sourceChanged(.screenOCRCompleted(text: result.text, lineCount: result.lineCount, capturedAt: result.timestamp))
+					)
+				}
+			}
+		}
 	}
 
 	private func processSourceEvent(_ event: SourceEvent) {
@@ -191,6 +204,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[SourceEvent] selectedTextChanged exists=\(exists) length=\(length)")
 		case .sourceChanged(.manualTriggerRequested):
 			print("[SourceEvent] manualTriggerRequested")
+		case .sourceChanged(.screenOCRCompleted(let text, let lineCount, _)):
+			print("[SourceEvent] screenOCRCompleted chars=\(text.utf8.count) lines=\(lineCount)")
+		case .screenCaptured:
+			print("[SourceEvent] screenCaptured")
 		default:
 			print("[SourceEvent]", event)
 		}
@@ -249,6 +266,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			let ib = indexById[b.id] ?? Int.max
 			if ia != ib { return ia < ib }
 			return a.id < b.id
+		}
+
+		let didHaveAnalyze = lastReasonedActions.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
+		let hasAnalyzeNow = ordered.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
+		if hasAnalyzeNow && !didHaveAnalyze {
+			print("[AvailableActions] added analyze_screen from OCR")
 		}
 
 		var finalProposal: ActionProposal? = proposal
