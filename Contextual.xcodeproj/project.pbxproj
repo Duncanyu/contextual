@@ -42,6 +42,7 @@
 		AA0001230000000000000023 /* ProposalGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022E000000000000002C /* ProposalGenerator.swift */; };
 		AA0001260000000000000026 /* OCRProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000231000000000000002F /* OCRProcessor.swift */; };
 		AA0001240000000000000024 /* SuggestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022F000000000000002D /* SuggestionCard.swift */; };
+		AA0001280000000000000028 /* ResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002330000000000000031 /* ResultView.swift */; };
 		AA0001250000000000000025 /* ScreenCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000230000000000000002E /* ScreenCaptureSource.swift */; };
 /* End PBXBuildFile section */
 
@@ -83,6 +84,7 @@
 		AA00022E000000000000002C /* ProposalGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalGenerator.swift; sourceTree = "<group>"; };
 		AA000231000000000000002F /* OCRProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRProcessor.swift; sourceTree = "<group>"; };
 		AA00022F000000000000002D /* SuggestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionCard.swift; sourceTree = "<group>"; };
+		AA0002330000000000000031 /* ResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultView.swift; sourceTree = "<group>"; };
 		AA000230000000000000002E /* ScreenCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureSource.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -130,6 +132,7 @@
 			children = (
 				AA0002050000000000000005 /* AssistantPanelView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
+				AA0002330000000000000031 /* ResultView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -316,6 +319,7 @@
 				AA0001040000000000000004 /* MenuBarController.swift in Sources */,
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
 				AA0001240000000000000024 /* SuggestionCard.swift in Sources */,
+				AA0001280000000000000028 /* ResultView.swift in Sources */,
 				AA0001060000000000000006 /* SystemSource.swift in Sources */,
 				AA0001070000000000000007 /* ActiveAppSource.swift in Sources */,
 				AA00010A000000000000000A /* WindowTitleSource.swift in Sources */,

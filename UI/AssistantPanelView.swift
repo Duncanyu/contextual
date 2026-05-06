@@ -165,6 +165,17 @@ struct AssistantPanelView: View {
 
 				Divider()
 
+				if let text = appState.latestActionResult, !text.isEmpty {
+					ResultView(
+						resultText: text,
+						actionId: appState.latestActionId,
+						timestamp: appState.latestActionTimestamp,
+						onClear: { appState.clearResult() }
+					)
+
+					Divider()
+				}
+
 				Text("Debug context")
 					.font(.subheadline)
 					.fontWeight(.semibold)

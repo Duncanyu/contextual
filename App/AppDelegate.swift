@@ -375,6 +375,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		isActionExecuting = true
 		print("[ActionExecution] Starting action \(actionId)")
 		Task { @MainActor in
+			appState.latestActionId = actionId
+			appState.latestActionTimestamp = Date()
+			appState.latestActionResult = nil
+
 			defer {
 				self.isActionExecuting = false
 				self.lastFinishedActionKey = invocationKey
@@ -387,6 +391,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			switch outcome {
 			case .completed(let result):
 				print("[ActionResult]", result.outputText)
+				appState.latestActionResult = result.outputText
+				appState.latestActionTimestamp = Date()
 				print("[ActionExecution] Finished action \(actionId)")
 			case .timedOut:
 				print("[ActionExecution] Action timed out")

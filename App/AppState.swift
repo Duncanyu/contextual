@@ -30,6 +30,10 @@ final class AppState: ObservableObject {
 	@Published var localAIEnabled: Bool = false
 	@Published var autoStartOllama: Bool = false
 
+	@Published var latestActionResult: String?
+	@Published var latestActionId: String?
+	@Published var latestActionTimestamp: Date?
+
 	/// Wired by app lifecycle to enqueue a manual trigger through the normal source pipeline.
 	var requestManualInvocation: (() -> Void)?
 
@@ -157,5 +161,11 @@ final class AppState: ObservableObject {
 
 	func openOllamaDownloadPage() {
 		onOpenOllamaDownload?()
+	}
+
+	func clearResult() {
+		latestActionResult = nil
+		latestActionId = nil
+		latestActionTimestamp = nil
 	}
 }
