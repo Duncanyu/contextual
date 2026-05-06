@@ -34,6 +34,11 @@ final class AppState: ObservableObject {
 	@Published var latestActionId: String?
 	@Published var latestActionTimestamp: Date?
 
+	/// Mirrors in-flight action execution for UI (updated only by app lifecycle).
+	@Published var isActionExecuting: Bool = false
+	@Published var executingActionId: String?
+	@Published var executingActionTitle: String?
+
 	/// Wired by app lifecycle to enqueue a manual trigger through the normal source pipeline.
 	var requestManualInvocation: (() -> Void)?
 

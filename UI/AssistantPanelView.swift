@@ -66,6 +66,7 @@ struct AssistantPanelView: View {
 							title: proposal.title,
 							primaryActionTitle: primaryActionTitle(for: proposal.primaryActionId),
 							dismissTitle: "Dismiss",
+							primaryDisabled: appState.isActionExecuting,
 							onPrimary: {
 								appState.acceptCurrentProposal()
 								dismissedProposalKey = key
@@ -160,17 +161,40 @@ struct AssistantPanelView: View {
 						Button(action.name) {
 							appState.invokeAction(id: action.id)
 						}
+						.disabled(appState.isActionExecuting)
+					}
+					if appState.isActionExecuting {
+						Text(processingLabel)
+							.font(.caption2)
+							.foregroundStyle(.secondary)
 					}
 				}
 
 				Divider()
 
+				InputPreviewView(context: debugCtx)
+
+				Divider()
+
 				if let text = appState.latestActionResult, !text.isEmpty {
 					ResultView(
+						isLoading: false,
+						loadingTitle: "",
 						resultText: text,
 						actionId: appState.latestActionId,
 						timestamp: appState.latestActionTimestamp,
 						onClear: { appState.clearResult() }
+					)
+
+					Divider()
+				} else if appState.isActionExecuting {
+					ResultView(
+						isLoading: true,
+						loadingTitle: processingLabel,
+						resultText: "",
+						actionId: appState.executingActionId,
+						timestamp: nil,
+						onClear: {}
 					)
 
 					Divider()
@@ -186,7 +210,7 @@ struct AssistantPanelView: View {
 					Text("Clipboard: available=\(debugCtx.clipboardTextAvailable) length=\(debugCtx.clipboardTextLength)")
 					Text("Selection: available=\(debugCtx.selectedTextAvailable) length=\(debugCtx.selectedTextLength)")
 					Text("Screen capture: available=\(debugCtx.screenCaptureAvailable)")
-					Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRText?.count ?? 0) lines=\(debugCtx.screenOCRLineCount)")
+					Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRTextLength) lines=\(debugCtx.screenOCRLineCount)")
 					Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
 					Text("Recent apps (max 5): \(recentList(debugCtx.recentAppNames))")
 					Text("Recent triggers (max 5): \(recentList(debugCtx.recentTriggers))")
@@ -212,6 +236,13 @@ struct AssistantPanelView: View {
 	private func recentList(_ items: [String]) -> String {
 		if items.isEmpty { return "—" }
 		return items.joined(separator: " → ")
+	}
+
+	private var processingLabel: String {
+		if let t = appState.executingActionTitle, !t.isEmpty {
+			return "Processing \(t)…"
+		}
+		return "Processing…"
 	}
 
 	private func primaryActionTitle(for actionId: String) -> String {

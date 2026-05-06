@@ -20,6 +20,7 @@ final class ContextBuilder {
 			model.screenCaptureCapturedAt = payload.timestamp
 			model.screenOCRAvailable = false
 			model.screenOCRText = nil
+			model.screenOCRTextLength = 0
 			model.screenOCRLineCount = 0
 			model.screenOCRCapturedAt = nil
 			model.lastSourceTrigger = .screenCaptured
@@ -68,6 +69,7 @@ final class ContextBuilder {
 			let hasText = !trimmed.isEmpty
 			model.screenOCRAvailable = hasText
 			model.screenOCRText = hasText ? trimmed : nil
+			model.screenOCRTextLength = hasText ? trimmed.count : 0
 			model.screenOCRLineCount = hasText ? lineCount : 0
 			model.screenOCRCapturedAt = capturedAt
 			model.lastSourceTrigger = .screenOCRCompleted

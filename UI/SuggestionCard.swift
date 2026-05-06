@@ -4,6 +4,8 @@ struct SuggestionCard: View {
 	let title: String
 	let primaryActionTitle: String
 	let dismissTitle: String?
+	/// When true, primary action is disabled (dismiss stays enabled).
+	var primaryDisabled: Bool = false
 	let onPrimary: () -> Void
 	let onDismiss: () -> Void
 
@@ -31,6 +33,7 @@ struct SuggestionCard: View {
 					onPrimary()
 				}
 				.buttonStyle(.borderedProminent)
+				.disabled(primaryDisabled)
 			}
 		}
 		.padding(12)
@@ -52,6 +55,7 @@ struct SuggestionCard_Previews: PreviewProvider {
 			title: "Want me to help with the current context?",
 			primaryActionTitle: "Open Actions",
 			dismissTitle: "Dismiss",
+			primaryDisabled: false,
 			onPrimary: {},
 			onDismiss: {}
 		)

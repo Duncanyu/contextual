@@ -19,6 +19,8 @@ struct ContextModel {
 
 	var screenOCRAvailable: Bool
 	var screenOCRText: String?
+	/// Character count for OCR text (kept in sync in ContextBuilder; use for metadata without reading `screenOCRText`).
+	var screenOCRTextLength: Int
 	var screenOCRLineCount: Int
 	var screenOCRCapturedAt: Date?
 
@@ -48,6 +50,7 @@ struct ContextModel {
 
 		self.screenOCRAvailable = false
 		self.screenOCRText = nil
+		self.screenOCRTextLength = 0
 		self.screenOCRLineCount = 0
 		self.screenOCRCapturedAt = nil
 

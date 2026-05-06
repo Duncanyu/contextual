@@ -14,7 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let actionRouter = ActionRouter()
 	private var manualTriggerObserver: NSObjectProtocol?
 
-	private var isActionExecuting = false
 	private var lastFinishedActionKey: String?
 	private var lastFinishedAt: Date?
 
@@ -303,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func preserveOrClearAvailableActions(reason: String) {
-		if isActionExecuting {
+		if appState.isActionExecuting {
 			print("[AvailableActions] preserving actions during execution")
 			return
 		}
@@ -358,7 +357,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
-		if isActionExecuting {
+		if appState.isActionExecuting {
 			print("[ActionExecution] Ignored duplicate action while execution is in progress")
 			return
 		}
@@ -372,15 +371,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
-		isActionExecuting = true
+		appState.isActionExecuting = true
+		appState.executingActionId = actionId
+		appState.executingActionTitle = action.name
+		appState.latestActionResult = nil
+		appState.latestActionId = actionId
+		appState.latestActionTimestamp = Date()
+		print("[AppState] executing action=\(actionId)")
 		print("[ActionExecution] Starting action \(actionId)")
 		Task { @MainActor in
-			appState.latestActionId = actionId
-			appState.latestActionTimestamp = Date()
-			appState.latestActionResult = nil
-
 			defer {
-				self.isActionExecuting = false
+				appState.isActionExecuting = false
+				appState.executingActionId = nil
+				appState.executingActionTitle = nil
+				print("[AppState] execution finished action=\(actionId)")
 				self.lastFinishedActionKey = invocationKey
 				self.lastFinishedAt = Date()
 				print("[ActionExecution] Cleared in-flight state")
@@ -397,6 +401,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			case .timedOut:
 				print("[ActionExecution] Action timed out")
 				print("[ActionExecution] Failed action \(actionId): timed out")
+				appState.latestActionResult = "This action timed out. Try again with less text or check that local AI is responding."
+				appState.latestActionTimestamp = Date()
 			}
 		}
 	}
