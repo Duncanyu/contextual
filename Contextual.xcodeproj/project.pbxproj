@@ -37,6 +37,7 @@
 		AA00011F000000000000001F /* LocalAIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022A0000000000000028 /* LocalAIClient.swift */; };
 		AA0001200000000000000020 /* ActionInputCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022B0000000000000029 /* ActionInputCapture.swift */; };
 		AA0001210000000000000021 /* IntelligenceActionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022C000000000000002A /* IntelligenceActionRunner.swift */; };
+		AA0001220000000000000022 /* ReasoningEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022D000000000000002B /* ReasoningEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +73,7 @@
 		AA00022A0000000000000028 /* LocalAIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAIClient.swift; sourceTree = "<group>"; };
 		AA00022B0000000000000029 /* ActionInputCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionInputCapture.swift; sourceTree = "<group>"; };
 		AA00022C000000000000002A /* IntelligenceActionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceActionRunner.swift; sourceTree = "<group>"; };
+		AA00022D000000000000002B /* ReasoningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -183,6 +185,7 @@
 				AA00022A0000000000000028 /* LocalAIClient.swift */,
 				AA00022B0000000000000029 /* ActionInputCapture.swift */,
 				AA00022C000000000000002A /* IntelligenceActionRunner.swift */,
+				AA00022D000000000000002B /* ReasoningEngine.swift */,
 			);
 			path = Intelligence;
 			sourceTree = "<group>";
@@ -213,6 +216,7 @@
 				AA0006100000000000000000 /* Sources */,
 				AA0003000000000000000000 /* Frameworks */,
 				AA0006200000000000000000 /* Resources */,
+				086025312FAB6A050025ADB8 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -266,6 +270,26 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		086025312FAB6A050025ADB8 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "APP_NAME=\"${PRODUCT_NAME}.app\"\nDEST=\"/Applications/$APP_NAME\"\n\nrm -rf \"$DEST\"\nditto \"$BUILT_PRODUCTS_DIR/$APP_NAME\" \"$DEST\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		AA0006100000000000000000 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -299,6 +323,7 @@
 				AA00011F000000000000001F /* LocalAIClient.swift in Sources */,
 				AA0001200000000000000020 /* ActionInputCapture.swift in Sources */,
 				AA0001210000000000000021 /* IntelligenceActionRunner.swift in Sources */,
+				AA0001220000000000000022 /* ReasoningEngine.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);
@@ -310,8 +335,10 @@
 		AA000A000000000000000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = V7UZHDC54J;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -329,8 +356,10 @@
 		AA000A100000000000000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = V7UZHDC54J;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -412,4 +441,3 @@
 	};
 	rootObject = AA0008000000000000000000 /* Project object */;
 }
-

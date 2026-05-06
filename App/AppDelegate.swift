@@ -18,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastFinishedActionKey: String?
 	private var lastFinishedAt: Date?
 
+	private var lastReasonedActions: [any ActionProtocol] = []
+	private var lastReasonedActionsAt: Date?
+	private var lastReasonedTriggerType: TriggerType?
+	private let availableActionsCacheTTLSeconds: TimeInterval = 10
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
 		syncLocalAIFromStorage()
@@ -180,13 +185,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			logTriggerPacket(packet, context: context)
 			updateAvailableActions(from: packet, context: context)
 		} else {
-			appState.availableActions = []
+			preserveOrClearAvailableActions(reason: "no trigger packet")
 		}
 	}
 
 	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel) {
-		let mapped = actionRouter.matchingActions(for: packet)
-		appState.availableActions = mapped.filter { $0.canExecute(context: context) }
+		let decision = ReasoningEngine.shared.evaluate(context: context, triggerPacket: packet)
+		let primary = decision.primaryActionId ?? "none"
+		print("[ReasoningEngine] decision surface=\(decision.shouldSurface) primary=\(primary) confidence=\(decision.confidence) reason=\(decision.reason)")
+
+		guard decision.shouldSurface else {
+			preserveOrClearAvailableActions(reason: "reasoning shouldSurface=false")
+			return
+		}
+
+		let mapped = actionRouter.matchingActions(for: packet).filter { $0.canExecute(context: context) }
+		let orderedIds = decision.rankedActionIds
+		let indexById = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($0.element, $0.offset) })
+		let ordered = mapped.sorted { a, b in
+			let ia = indexById[a.id] ?? Int.max
+			let ib = indexById[b.id] ?? Int.max
+			if ia != ib { return ia < ib }
+			return a.id < b.id
+		}
+
+		appState.availableActions = ordered
+		lastReasonedActions = ordered
+		lastReasonedActionsAt = Date()
+		lastReasonedTriggerType = packet.triggerType
+		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
+	}
+
+	private func preserveOrClearAvailableActions(reason: String) {
+		if isActionExecuting {
+			print("[AvailableActions] preserving actions during execution")
+			return
+		}
+
+		guard let cachedAt = lastReasonedActionsAt else {
+			if !appState.availableActions.isEmpty {
+				appState.availableActions = []
+				print("[AvailableActions] cleared cached actions reason=\(reason)")
+			}
+			return
+		}
+
+		let age = Date().timeIntervalSince(cachedAt)
+		if age < availableActionsCacheTTLSeconds, !lastReasonedActions.isEmpty {
+			appState.availableActions = lastReasonedActions
+			let rounded = String(format: "%.1f", age)
+			print("[AvailableActions] preserving cached actions age=\(rounded)s")
+			return
+		}
+
+		appState.availableActions = []
+		lastReasonedActions = []
+		lastReasonedActionsAt = nil
+		lastReasonedTriggerType = nil
+		print("[AvailableActions] cleared cached actions reason=\(reason)")
 	}
 
 	private func invokeStoredAction(actionId: String) {
