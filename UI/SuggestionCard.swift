@@ -38,12 +38,12 @@ struct SuggestionCard: View {
 		}
 		.padding(12)
 		.background(
-			RoundedRectangle(cornerRadius: 10, style: .continuous)
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
 				.fill(Color(nsColor: .controlBackgroundColor))
 		)
 		.overlay(
-			RoundedRectangle(cornerRadius: 10, style: .continuous)
-				.stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.stroke(Color(nsColor: .separatorColor).opacity(0.65), lineWidth: 1)
 		)
 	}
 }

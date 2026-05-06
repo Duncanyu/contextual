@@ -5,163 +5,81 @@ struct AssistantPanelView: View {
 
 	private var debugCtx: ContextModel { appState.debugContext }
 	@State private var dismissedProposalKey: String?
+	@State private var debugExpanded: Bool = false
 
 	var body: some View {
 		ScrollView {
-			VStack(alignment: .leading, spacing: 12) {
-				Text("Context Assistant")
-					.font(.headline)
+			VStack(alignment: .leading, spacing: 16) {
+				PanelHeaderBar()
+					.environmentObject(appState)
 
-				if !SelectionSource.isAccessibilityTrusted() {
-					VStack(alignment: .leading, spacing: 8) {
-						Text("Accessibility access is needed to read selected text.")
-							.font(.caption)
-							.foregroundStyle(.secondary)
+				suggestionSection
 
-						Button("Open Accessibility Settings") {
-							SelectionSource.requestAccessibilityPermissionIfNeeded()
-							if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-								NSWorkspace.shared.open(url)
-							}
-						}
-						.font(.caption)
+				availableActionsSection
+
+				InputPreviewView(context: debugCtx)
+
+				resultSection
+
+				SystemStatusView()
+					.environmentObject(appState)
+
+				assistantControlsSection
+
+				debugSection
+			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 14)
+			.frame(maxWidth: .infinity, alignment: .leading)
+		}
+		.frame(width: 300, height: 620)
+	}
+
+	// MARK: - Suggestion
+
+	@ViewBuilder private var suggestionSection: some View {
+		if let proposal = appState.currentProposal {
+			let key = appState.suggestionKey(for: proposal, context: appState.debugContext)
+			if dismissedProposalKey != key, !appState.isSuggestionOnCooldown(proposal, context: appState.debugContext) {
+				SuggestionCard(
+					title: proposal.title,
+					primaryActionTitle: primaryActionTitle(for: proposal.primaryActionId),
+					dismissTitle: "Dismiss",
+					primaryDisabled: appState.isActionExecuting,
+					onPrimary: {
+						appState.acceptCurrentProposal()
+						dismissedProposalKey = key
+					},
+					onDismiss: {
+						appState.dismissCurrentProposal()
+						dismissedProposalKey = key
 					}
-					.padding(10)
-					.background(
-						RoundedRectangle(cornerRadius: 10, style: .continuous)
-							.fill(Color(nsColor: .controlBackgroundColor))
-					)
-					.overlay(
-						RoundedRectangle(cornerRadius: 10, style: .continuous)
-							.stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-					)
-				}
+				)
+			}
+		}
+	}
 
-				if !ScreenCaptureSource.isScreenRecordingAuthorized() {
-					VStack(alignment: .leading, spacing: 8) {
-						Text("Screen Recording access is needed to capture the screen.")
-							.font(.caption)
-							.foregroundStyle(.secondary)
+	// MARK: - Actions
 
-						Button("Open Screen Recording Settings") {
-							ScreenCaptureSource.openScreenRecordingSettings()
-						}
-						.font(.caption)
-					}
-					.padding(10)
-					.background(
-						RoundedRectangle(cornerRadius: 10, style: .continuous)
-							.fill(Color(nsColor: .controlBackgroundColor))
-					)
-					.overlay(
-						RoundedRectangle(cornerRadius: 10, style: .continuous)
-							.stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-					)
-				}
-
-				if let proposal = appState.currentProposal {
-					let key = appState.suggestionKey(for: proposal, context: appState.debugContext)
-					if dismissedProposalKey != key, !appState.isSuggestionOnCooldown(proposal, context: appState.debugContext) {
-						SuggestionCard(
-							title: proposal.title,
-							primaryActionTitle: primaryActionTitle(for: proposal.primaryActionId),
-							dismissTitle: "Dismiss",
-							primaryDisabled: appState.isActionExecuting,
-							onPrimary: {
-								appState.acceptCurrentProposal()
-								dismissedProposalKey = key
-							},
-							onDismiss: {
-								appState.dismissCurrentProposal()
-								dismissedProposalKey = key
-							}
-						)
-					}
-				}
-
-				Text("Assistant Running")
-					.font(.subheadline)
-					.foregroundStyle(.secondary)
-
-				Toggle(appState.isPaused ? "Resume" : "Pause", isOn: $appState.isPaused)
-					.toggleStyle(.switch)
-
-				Button("Invoke assistant") {
-					appState.requestManualInvocation?()
-				}
-
-				Divider()
-
-				Text("AI Setup")
-					.font(.subheadline)
-					.fontWeight(.semibold)
-
-				Group {
-					if !appState.localAIEnabled {
-						Text("Local AI is disabled")
-							.font(.caption)
-							.foregroundStyle(.secondary)
-						Button("Enable Local AI") {
-							appState.enableLocalAI()
-						}
-					} else {
-						switch appState.modelRuntimeState {
-						case .notInstalled:
-							Text("Ollama is not installed")
-								.font(.caption)
-								.foregroundStyle(.secondary)
-							Button("Open Ollama Download") {
-								appState.openOllamaDownloadPage()
-							}
-						case .notRunning:
-							Text("Ollama is installed but not running")
-								.font(.caption)
-								.foregroundStyle(.secondary)
-							HStack(spacing: 8) {
-								Button("Start Ollama") {
-									appState.startOllamaNow()
-								}
-								Button("Start automatically in the future") {
-									appState.enableAutoStartOllama()
-								}
-							}
-						case .installing:
-							Text("Setting up local AI...")
-								.font(.caption)
-								.foregroundStyle(.secondary)
-						case .ready:
-							Text("Local AI ready")
-								.font(.caption)
-								.foregroundStyle(.secondary)
-						case .error(let message):
-							Text("Local AI setup error: \(message)")
-								.font(.caption)
-								.foregroundStyle(.secondary)
-						}
-
-						Button("Disable Local AI") {
-							appState.disableLocalAI()
-						}
-						.font(.caption)
-					}
-				}
-
-				Divider()
-
-				Text("Available Actions")
-					.font(.subheadline)
-					.fontWeight(.semibold)
-
+	private var availableActionsSection: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			SectionHeader(title: "Available Actions")
+			VStack(alignment: .leading, spacing: 10) {
 				if appState.availableActions.isEmpty {
 					Text("No actions available")
 						.font(.caption)
 						.foregroundStyle(.secondary)
+						.frame(maxWidth: .infinity, alignment: .leading)
 				} else {
-					ForEach(Array(appState.availableActions.enumerated()), id: \.element.id) { _, action in
-						Button(action.name) {
-							appState.invokeAction(id: action.id)
+					VStack(spacing: 8) {
+						ForEach(Array(appState.availableActions.enumerated()), id: \.element.id) { _, action in
+							Button(action.name) {
+								appState.invokeAction(id: action.id)
+							}
+							.buttonStyle(.bordered)
+							.frame(maxWidth: .infinity, alignment: .leading)
+							.disabled(appState.isActionExecuting)
 						}
-						.disabled(appState.isActionExecuting)
 					}
 					if appState.isActionExecuting {
 						Text(processingLabel)
@@ -169,59 +87,87 @@ struct AssistantPanelView: View {
 							.foregroundStyle(.secondary)
 					}
 				}
-
-				Divider()
-
-				InputPreviewView(context: debugCtx)
-
-				Divider()
-
-				if let text = appState.latestActionResult, !text.isEmpty {
-					ResultView(
-						isLoading: false,
-						loadingTitle: "",
-						resultText: text,
-						actionId: appState.latestActionId,
-						timestamp: appState.latestActionTimestamp,
-						onClear: { appState.clearResult() }
-					)
-
-					Divider()
-				} else if appState.isActionExecuting {
-					ResultView(
-						isLoading: true,
-						loadingTitle: processingLabel,
-						resultText: "",
-						actionId: appState.executingActionId,
-						timestamp: nil,
-						onClear: {}
-					)
-
-					Divider()
-				}
-
-				Text("Debug context")
-					.font(.subheadline)
-					.fontWeight(.semibold)
-
-				Group {
-					Text("Active app: \(debugCtx.activeAppName ?? "—")")
-					windowTitleDebugLine(title: debugCtx.activeWindowTitle)
-					Text("Clipboard: available=\(debugCtx.clipboardTextAvailable) length=\(debugCtx.clipboardTextLength)")
-					Text("Selection: available=\(debugCtx.selectedTextAvailable) length=\(debugCtx.selectedTextLength)")
-					Text("Screen capture: available=\(debugCtx.screenCaptureAvailable)")
-					Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRTextLength) lines=\(debugCtx.screenOCRLineCount)")
-					Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
-					Text("Recent apps (max 5): \(recentList(debugCtx.recentAppNames))")
-					Text("Recent triggers (max 5): \(recentList(debugCtx.recentTriggers))")
-				}
-				.font(.caption)
-				.foregroundStyle(.secondary)
 			}
-			.padding(16)
-			.frame(maxWidth: .infinity, alignment: .leading)
+			.contextualPanelCard()
 		}
-		.frame(width: 300, height: 620)
+	}
+
+	// MARK: - Result / loading
+
+	@ViewBuilder private var resultSection: some View {
+		if let text = appState.latestActionResult, !text.isEmpty {
+			ResultView(
+				isLoading: false,
+				loadingTitle: "",
+				resultText: text,
+				actionId: appState.latestActionId,
+				timestamp: appState.latestActionTimestamp,
+				onClear: { appState.clearResult() }
+			)
+		} else if appState.isActionExecuting {
+			ResultView(
+				isLoading: true,
+				loadingTitle: processingLabel,
+				resultText: "",
+				actionId: appState.executingActionId,
+				timestamp: nil,
+				onClear: {}
+			)
+		}
+	}
+
+	// MARK: - Controls
+
+	private var assistantControlsSection: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			SectionHeader(title: "Assistant")
+			VStack(alignment: .leading, spacing: 14) {
+				Toggle(appState.isPaused ? "Resume" : "Pause", isOn: $appState.isPaused)
+					.toggleStyle(.switch)
+
+				Button("Invoke assistant") {
+					appState.requestManualInvocation?()
+				}
+				.buttonStyle(.borderedProminent)
+				.frame(maxWidth: .infinity)
+			}
+			.contextualPanelCard()
+		}
+	}
+
+	// MARK: - Debug
+
+	private var debugSection: some View {
+		DisclosureGroup(isExpanded: $debugExpanded) {
+			VStack(alignment: .leading, spacing: 8) {
+				Text("Active app: \(debugCtx.activeAppName ?? "—")")
+				windowTitleDebugLine(title: debugCtx.activeWindowTitle)
+				Text("Clipboard: available=\(debugCtx.clipboardTextAvailable) length=\(debugCtx.clipboardTextLength)")
+				Text("Selection: available=\(debugCtx.selectedTextAvailable) length=\(debugCtx.selectedTextLength)")
+				Text("Screen capture: available=\(debugCtx.screenCaptureAvailable)")
+				Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRTextLength) lines=\(debugCtx.screenOCRLineCount)")
+				Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
+				Text("Recent apps (max 5): \(recentList(debugCtx.recentAppNames))")
+				Text("Recent triggers (max 5): \(recentList(debugCtx.recentTriggers))")
+			}
+			.font(.caption)
+			.foregroundStyle(.secondary)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.padding(.top, 6)
+		} label: {
+			Text("Debug Context")
+				.font(.subheadline)
+				.fontWeight(.semibold)
+		}
+		.padding(12)
+		.background(
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.fill(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+		)
+		.overlay(
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+		)
 	}
 
 	@ViewBuilder
@@ -261,4 +207,3 @@ struct AssistantPanelView: View {
 		}
 	}
 }
-

@@ -190,6 +190,23 @@ Requirements:
 - Visible but non-intrusive
 - Helps user understand why something may not work
 
+#### T9.6 — Input Source Selection
+
+Allow the user to choose which available input source an action should use.
+
+Requirements:
+- User can choose between available sources:
+  - Selected text
+  - Clipboard
+  - Screen OCR
+- The selected input source is shown clearly in the panel
+- Suggestion cards indicate which source they will use
+- Actions execute using the chosen source when possible
+- No raw text is displayed
+- No persistence or history
+- Default behavior remains automatic priority:
+  Selected text → Clipboard → Screen OCR
+
 ---
 
 ### Success Criteria
