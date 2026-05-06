@@ -13,18 +13,11 @@ struct ExplainAction: ActionProtocol {
 		return selectionUseful || clipboardUseful
 	}
 
-	func execute(context: ContextModel) -> ActionResult {
-		let selectionUseful = context.selectedTextAvailable && context.selectedTextLength >= Self.minUsefulLength
-		let clipboardUseful = context.clipboardTextAvailable && context.clipboardTextLength >= Self.minUsefulLength
-
-		let output: String
-		if selectionUseful {
-			output = "Explain (mock): selected text available"
-		} else if clipboardUseful {
-			output = "Explain (mock): clipboard text available"
-		} else {
-			output = "Explain (mock): nothing to explain"
+	func execute(context: ContextModel) async -> ActionResult {
+		guard let input = ActionInputCapture.primaryText(for: context, minimumLength: Self.minUsefulLength) else {
+			return ActionResult(actionId: id, outputText: "No usable text found")
 		}
+		let output = await IntelligenceActionRunner.runActionPrompt(actionType: .explain, input: input)
 		return ActionResult(actionId: id, outputText: output)
 	}
 }

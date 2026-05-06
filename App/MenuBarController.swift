@@ -22,11 +22,17 @@ final class MenuBarController {
 		statusItem.button?.target = self
 
 		popover.behavior = .transient
-		popover.contentSize = NSSize(width: 300, height: 520)
+		popover.contentSize = NSSize(width: 300, height: 620)
 		popover.contentViewController = NSHostingController(
 			rootView: AssistantPanelView()
 				.environmentObject(appState)
 		)
+	}
+
+	func revealPopoverIfNeeded() {
+		guard !popover.isShown else { return }
+		guard let button = statusItem.button else { return }
+		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 	}
 
 	@objc private func togglePopover(_ sender: AnyObject?) {

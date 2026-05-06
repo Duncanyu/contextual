@@ -14,12 +14,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let actionRouter = ActionRouter()
 	private var manualTriggerObserver: NSObjectProtocol?
 
+	private var isActionExecuting = false
+	private var lastFinishedActionKey: String?
+	private var lastFinishedAt: Date?
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
+		syncLocalAIFromStorage()
+		wireLocalAIHandlers()
 		menuBarController = MenuBarController(appState: appState)
 
 		appState.requestManualInvocation = { [weak self] in
 			self?.dispatchManualTriggerEvent()
+			self?.menuBarController?.revealPopoverIfNeeded()
 		}
 
 		appState.onInvokeActionById = { [weak self] actionId in
@@ -32,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			queue: .main
 		) { [weak self] _ in
 			self?.dispatchManualTriggerEvent()
+			self?.menuBarController?.revealPopoverIfNeeded()
 		}
 
 		let manager = SourceManager { event in
@@ -41,14 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		manager.start()
 		processUpdatedContextAfterPipeline()
 
-		Task.detached(priority: .utility) {
-			let mm = ModelManager.shared
-			if mm.isRuntimeAvailable() {
-				print("[ModelManager] Runtime detected")
-				await mm.ensureModelAvailable()
-			} else {
-				print("[ModelManager] Ollama not installed")
-			}
+		if LocalAISettings.shared.localAIEnabled {
+			scheduleLocalAIPrepare()
 		}
 	}
 
@@ -57,6 +59,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			NotificationCenter.default.removeObserver(manualTriggerObserver)
 		}
 		sourceManager?.stop()
+	}
+
+	private func syncLocalAIFromStorage() {
+		let s = LocalAISettings.shared
+		appState.localAIEnabled = s.localAIEnabled
+		appState.autoStartOllama = s.autoStartOllama
+	}
+
+	private func wireLocalAIHandlers() {
+		appState.onEnableLocalAI = { [weak self] in
+			guard let self else { return }
+			LocalAISettings.shared.localAIEnabled = true
+			self.appState.localAIEnabled = true
+			self.scheduleLocalAIPrepare()
+		}
+
+		appState.onDisableLocalAI = { [weak self] in
+			guard let self else { return }
+			LocalAISettings.shared.localAIEnabled = false
+			self.appState.localAIEnabled = false
+			self.appState.modelRuntimeState = .notRunning
+		}
+
+		appState.onEnableAutoStartOllama = { [weak self] in
+			guard let self else { return }
+			LocalAISettings.shared.autoStartOllama = true
+			self.appState.autoStartOllama = true
+			let uiState = self.appState
+			Task.detached(priority: .utility) {
+				do {
+					try await ModelManager.shared.startOllamaServer()
+				} catch {
+					await MainActor.run {
+						uiState.modelRuntimeState = .error(error.localizedDescription)
+					}
+					return
+				}
+				await ModelManager.shared.prepareLocalAIIfEnabled(settings: LocalAISettings.shared) { runtimeState in
+					DispatchQueue.main.async {
+						uiState.modelRuntimeState = runtimeState
+					}
+				}
+			}
+		}
+
+		appState.onDisableAutoStartOllama = { [weak self] in
+			guard let self else { return }
+			LocalAISettings.shared.autoStartOllama = false
+			self.appState.autoStartOllama = false
+		}
+
+		appState.onStartOllamaNow = { [weak self] in
+			guard let self else { return }
+			let uiState = self.appState
+			Task.detached(priority: .utility) {
+				do {
+					try await ModelManager.shared.startOllamaServer()
+				} catch {
+					await MainActor.run {
+						uiState.modelRuntimeState = .error(error.localizedDescription)
+					}
+					return
+				}
+				await ModelManager.shared.prepareLocalAIIfEnabled(settings: LocalAISettings.shared) { runtimeState in
+					DispatchQueue.main.async {
+						uiState.modelRuntimeState = runtimeState
+					}
+				}
+			}
+		}
+
+		appState.onOpenOllamaDownload = {
+			if let url = URL(string: "https://ollama.com/download") {
+				NSWorkspace.shared.open(url)
+			}
+		}
+	}
+
+	private func scheduleLocalAIPrepare() {
+		let uiState = appState
+		Task.detached(priority: .utility) {
+			await ModelManager.shared.prepareLocalAIIfEnabled(settings: LocalAISettings.shared) { runtimeState in
+				DispatchQueue.main.async {
+					uiState.modelRuntimeState = runtimeState
+				}
+			}
+		}
 	}
 
 	private func dispatchManualTriggerEvent() {
@@ -107,8 +196,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[ActionResult] No valid actions")
 			return
 		}
-		let result = action.execute(context: context)
-		print("[ActionResult]", result.outputText)
+
+		if isActionExecuting {
+			print("[ActionExecution] Ignored duplicate action while execution is in progress")
+			return
+		}
+
+		let inputFingerprint = Self.stableInputFingerprint(for: context)
+		let invocationKey = "\(actionId)|\(inputFingerprint)"
+		if let finishedAt = lastFinishedAt,
+		   lastFinishedActionKey == invocationKey,
+		   Date().timeIntervalSince(finishedAt) < 2 {
+			print("[ActionExecution] Ignored duplicate action invocation within cooldown")
+			return
+		}
+
+		isActionExecuting = true
+		print("[ActionExecution] Starting action \(actionId)")
+		Task { @MainActor in
+			defer {
+				self.isActionExecuting = false
+				self.lastFinishedActionKey = invocationKey
+				self.lastFinishedAt = Date()
+				print("[ActionExecution] Cleared in-flight state")
+			}
+			let outcome = await Self.runActionWithSecondsTimeout(seconds: 45) {
+				await action.execute(context: context)
+			}
+			switch outcome {
+			case .completed(let result):
+				print("[ActionResult]", result.outputText)
+				print("[ActionExecution] Finished action \(actionId)")
+			case .timedOut:
+				print("[ActionExecution] Action timed out")
+				print("[ActionExecution] Failed action \(actionId): timed out")
+			}
+		}
+	}
+
+	private enum ActionTimedOutcome<T> {
+		case completed(T)
+		case timedOut
+	}
+
+	private static func runActionWithSecondsTimeout<T>(seconds: TimeInterval, operation: @escaping () async -> T) async -> ActionTimedOutcome<T> {
+		await withTaskGroup(of: ActionTimedOutcome<T>.self) { group in
+			group.addTask {
+				let value = await operation()
+				return .completed(value)
+			}
+			group.addTask {
+				let nanos = UInt64(seconds * 1_000_000_000)
+				try? await Task.sleep(nanoseconds: nanos)
+				return .timedOut
+			}
+			let first = await group.next()!
+			group.cancelAll()
+			return first
+		}
+	}
+
+	private static func stableInputFingerprint(for context: ContextModel) -> UInt64 {
+		if let text = ActionInputCapture.primaryText(for: context, minimumLength: 30) {
+			var hash: UInt64 = 14_695_981_039_346_656_037
+			for byte in text.utf8 {
+				hash ^= UInt64(byte)
+				hash &*= 1_099_511_628_211
+			}
+			return hash
+		}
+		return UInt64(context.clipboardTextLength) ^ (UInt64(context.selectedTextLength) &<< 32)
 	}
 
 	private func logContextModel(_ model: ContextModel) {
@@ -137,4 +294,3 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		)
 	}
 }
-

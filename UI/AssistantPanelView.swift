@@ -24,6 +24,62 @@ struct AssistantPanelView: View {
 
 				Divider()
 
+				Text("AI Setup")
+					.font(.subheadline)
+					.fontWeight(.semibold)
+
+				Group {
+					if !appState.localAIEnabled {
+						Text("Local AI is disabled")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+						Button("Enable Local AI") {
+							appState.enableLocalAI()
+						}
+					} else {
+						switch appState.modelRuntimeState {
+						case .notInstalled:
+							Text("Ollama is not installed")
+								.font(.caption)
+								.foregroundStyle(.secondary)
+							Button("Open Ollama Download") {
+								appState.openOllamaDownloadPage()
+							}
+						case .notRunning:
+							Text("Ollama is installed but not running")
+								.font(.caption)
+								.foregroundStyle(.secondary)
+							HStack(spacing: 8) {
+								Button("Start Ollama") {
+									appState.startOllamaNow()
+								}
+								Button("Start automatically in the future") {
+									appState.enableAutoStartOllama()
+								}
+							}
+						case .installing:
+							Text("Setting up local AI...")
+								.font(.caption)
+								.foregroundStyle(.secondary)
+						case .ready:
+							Text("Local AI ready")
+								.font(.caption)
+								.foregroundStyle(.secondary)
+						case .error(let message):
+							Text("Local AI setup error: \(message)")
+								.font(.caption)
+								.foregroundStyle(.secondary)
+						}
+
+						Button("Disable Local AI") {
+							appState.disableLocalAI()
+						}
+						.font(.caption)
+					}
+				}
+
+				Divider()
+
 				Text("Available Actions")
 					.font(.subheadline)
 					.fontWeight(.semibold)
@@ -61,7 +117,7 @@ struct AssistantPanelView: View {
 			.padding(16)
 			.frame(maxWidth: .infinity, alignment: .leading)
 		}
-		.frame(width: 300, height: 520)
+		.frame(width: 300, height: 620)
 	}
 
 	@ViewBuilder

@@ -6,5 +6,5 @@ protocol ActionProtocol {
 	var name: String { get }
 
 	func canExecute(context: ContextModel) -> Bool
-	func execute(context: ContextModel) -> ActionResult
+	func execute(context: ContextModel) async -> ActionResult
 }

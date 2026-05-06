@@ -13,16 +13,11 @@ struct SummarizeAction: ActionProtocol {
 		return selectionUseful || clipboardUseful
 	}
 
-	func execute(context: ContextModel) -> ActionResult {
-		let output: String
-		// Prefer selection by length first; only if selection is too short, fall back to clipboard length.
-		if context.selectedTextLength >= Self.minUsefulLength {
-			output = "Summary (mock): selected text available"
-		} else if context.clipboardTextLength >= Self.minUsefulLength {
-			output = "Summary (mock): clipboard text available"
-		} else {
-			output = "Nothing to summarize"
+	func execute(context: ContextModel) async -> ActionResult {
+		guard let input = ActionInputCapture.primaryText(for: context, minimumLength: Self.minUsefulLength) else {
+			return ActionResult(actionId: id, outputText: "No usable text found")
 		}
+		let output = await IntelligenceActionRunner.runActionPrompt(actionType: .summarize, input: input)
 		return ActionResult(actionId: id, outputText: output)
 	}
 }

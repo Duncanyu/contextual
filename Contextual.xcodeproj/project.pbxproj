@@ -32,6 +32,11 @@
 		AA0001170000000000000017 /* ExplainAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002170000000000000021 /* ExplainAction.swift */; };
 		AA0001180000000000000018 /* RewriteAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002180000000000000022 /* RewriteAction.swift */; };
 		AA0001190000000000000019 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002190000000000000023 /* ModelManager.swift */; };
+		AA00011D000000000000001D /* ModelRuntimeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00021D0000000000000026 /* ModelRuntimeState.swift */; };
+		AA00011E000000000000001E /* LocalAISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00021E0000000000000027 /* LocalAISettings.swift */; };
+		AA00011F000000000000001F /* LocalAIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022A0000000000000028 /* LocalAIClient.swift */; };
+		AA0001200000000000000020 /* ActionInputCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022B0000000000000029 /* ActionInputCapture.swift */; };
+		AA0001210000000000000021 /* IntelligenceActionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022C000000000000002A /* IntelligenceActionRunner.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,6 +67,11 @@
 		AA0002170000000000000021 /* ExplainAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplainAction.swift; sourceTree = "<group>"; };
 		AA0002180000000000000022 /* RewriteAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RewriteAction.swift; sourceTree = "<group>"; };
 		AA0002190000000000000023 /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManager.swift; sourceTree = "<group>"; };
+		AA00021D0000000000000026 /* ModelRuntimeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRuntimeState.swift; sourceTree = "<group>"; };
+		AA00021E0000000000000027 /* LocalAISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAISettings.swift; sourceTree = "<group>"; };
+		AA00022A0000000000000028 /* LocalAIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAIClient.swift; sourceTree = "<group>"; };
+		AA00022B0000000000000029 /* ActionInputCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionInputCapture.swift; sourceTree = "<group>"; };
+		AA00022C000000000000002A /* IntelligenceActionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceActionRunner.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +96,7 @@
 				AA0004600000000000000000 /* Triggers */,
 				AA0004700000000000000000 /* Actions */,
 				AA0004800000000000000000 /* Intelligence */,
+				AA0004A0000000000000000 /* Storage */,
 				AA0005000000000000000000 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -167,9 +178,21 @@
 		AA0004800000000000000000 /* Intelligence */ = {
 			isa = PBXGroup;
 			children = (
+				AA00021D0000000000000026 /* ModelRuntimeState.swift */,
 				AA0002190000000000000023 /* ModelManager.swift */,
+				AA00022A0000000000000028 /* LocalAIClient.swift */,
+				AA00022B0000000000000029 /* ActionInputCapture.swift */,
+				AA00022C000000000000002A /* IntelligenceActionRunner.swift */,
 			);
 			path = Intelligence;
+			sourceTree = "<group>";
+		};
+		AA0004A0000000000000000 /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				AA00021E0000000000000027 /* LocalAISettings.swift */,
+			);
+			path = Storage;
 			sourceTree = "<group>";
 		};
 		AA0005000000000000000000 /* Products */ = {
@@ -271,6 +294,11 @@
 				AA0001170000000000000017 /* ExplainAction.swift in Sources */,
 				AA0001180000000000000018 /* RewriteAction.swift in Sources */,
 				AA0001190000000000000019 /* ModelManager.swift in Sources */,
+				AA00011D000000000000001D /* ModelRuntimeState.swift in Sources */,
+				AA00011E000000000000001E /* LocalAISettings.swift in Sources */,
+				AA00011F000000000000001F /* LocalAIClient.swift in Sources */,
+				AA0001200000000000000020 /* ActionInputCapture.swift in Sources */,
+				AA0001210000000000000021 /* IntelligenceActionRunner.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);

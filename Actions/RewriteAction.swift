@@ -13,18 +13,11 @@ struct RewriteAction: ActionProtocol {
 		return selectionUseful || clipboardUseful
 	}
 
-	func execute(context: ContextModel) -> ActionResult {
-		let selectionUseful = context.selectedTextAvailable && context.selectedTextLength >= Self.minUsefulLength
-		let clipboardUseful = context.clipboardTextAvailable && context.clipboardTextLength >= Self.minUsefulLength
-
-		let output: String
-		if selectionUseful {
-			output = "Rewrite (mock): selected text available"
-		} else if clipboardUseful {
-			output = "Rewrite (mock): clipboard text available"
-		} else {
-			output = "Rewrite (mock): nothing to rewrite"
+	func execute(context: ContextModel) async -> ActionResult {
+		guard let input = ActionInputCapture.primaryText(for: context, minimumLength: Self.minUsefulLength) else {
+			return ActionResult(actionId: id, outputText: "No usable text found")
 		}
+		let output = await IntelligenceActionRunner.runActionPrompt(actionType: .rewrite, input: input)
 		return ActionResult(actionId: id, outputText: output)
 	}
 }

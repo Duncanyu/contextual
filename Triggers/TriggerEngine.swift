@@ -12,13 +12,9 @@ final class TriggerEngine {
 
 	private let clipboardCooldownInterval: TimeInterval = 6
 	private let selectedTextCooldownInterval: TimeInterval = 6
-	/// Minimum time between **emitted** manual `TriggerPacket`s (not between `SourceEvent`s).
-	private let manualInvocationPacketCooldownInterval: TimeInterval = 4
 
 	private static let clipboardCandidateActions = ["summarize_text", "explain_text", "rewrite_text"]
 	private static let selectedTextCandidateActions = ["summarize_text", "explain_text", "rewrite_text"]
-
-	private var lastManualInvocationPacketEmittedAt: Date?
 
 	init(cooldownManager: CooldownManager = CooldownManager()) {
 		self.cooldownManager = cooldownManager
@@ -38,11 +34,6 @@ final class TriggerEngine {
 		guard context.lastSourceTrigger == .manualTriggerRequested else { return nil }
 
 		let now = Date()
-		if let lastPacketAt = lastManualInvocationPacketEmittedAt,
-		   now.timeIntervalSince(lastPacketAt) < manualInvocationPacketCooldownInterval {
-			return nil
-		}
-
 		var candidateActions: [String] = []
 		if context.clipboardTextAvailable || context.selectedTextAvailable {
 			candidateActions.append("summarize_text")
@@ -54,14 +45,12 @@ final class TriggerEngine {
 			? "User manually invoked assistant (clipboard or selection metadata available)."
 			: "User manually invoked assistant."
 
-		let packet = TriggerPacket(
+		return TriggerPacket(
 			triggerType: .manualInvocation,
 			reason: reason,
 			candidateActions: candidateActions,
 			createdAt: now
 		)
-		lastManualInvocationPacketEmittedAt = now
-		return packet
 	}
 
 	private func evaluateClipboard(_ context: ContextModel) -> TriggerPacket? {
