@@ -26,6 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastReasonedProposal: ActionProposal?
 	private var lastReasonedProposalKey: String?
 
+	private var lastContextLogSignature: String?
+	private var lastPreserveLogAt: Date?
+	private var lastManualInvocationAt: Date?
+	private var didLogManualGuard: Bool = false
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
 		syncLocalAIFromStorage()
@@ -157,6 +162,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func dispatchManualTriggerEvent() {
+		let now = Date()
+		if let last = lastManualInvocationAt, now.timeIntervalSince(last) < 0.75 {
+			if !didLogManualGuard {
+				didLogManualGuard = true
+				print("[ManualTrigger] ignored duplicate within guard window")
+			}
+			return
+		}
+		didLogManualGuard = false
+		lastManualInvocationAt = now
+
+		sourceManager?.refreshSelectionNow()
 		processSourceEvent(.sourceChanged(.manualTriggerRequested))
 	}
 
@@ -234,14 +251,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return a.id < b.id
 		}
 
+		var finalProposal: ActionProposal? = proposal
+		var finalProposalKey: String? = proposalKey
+
+		if ordered.isEmpty {
+			finalProposal = nil
+			finalProposalKey = nil
+		} else if let p = finalProposal {
+			let primaryInActions = ordered.contains(where: { $0.id == p.primaryActionId })
+			if !primaryInActions {
+				finalProposal = nil
+				finalProposalKey = nil
+			} else if appState.isSuggestionOnCooldown(p, context: context) {
+				finalProposal = nil
+				finalProposalKey = nil
+			}
+		}
+
 		appState.availableActions = ordered
-		appState.currentProposal = proposal
-		appState.currentProposalKey = proposalKey
+		appState.currentProposal = finalProposal
+		appState.currentProposalKey = finalProposalKey
 		lastReasonedActions = ordered
 		lastReasonedActionsAt = Date()
 		lastReasonedTriggerType = packet.triggerType
-		lastReasonedProposal = proposal
-		lastReasonedProposalKey = proposalKey
+		lastReasonedProposal = finalProposal
+		lastReasonedProposalKey = finalProposalKey
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
 	}
 
@@ -264,10 +298,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let age = Date().timeIntervalSince(cachedAt)
 		if age < availableActionsCacheTTLSeconds, !lastReasonedActions.isEmpty {
 			appState.availableActions = lastReasonedActions
-			appState.currentProposal = lastReasonedProposal
-			appState.currentProposalKey = lastReasonedProposalKey
-			let rounded = String(format: "%.1f", age)
-			print("[AvailableActions] preserving cached actions age=\(rounded)s")
+			if let p = lastReasonedProposal,
+			   lastReasonedActions.contains(where: { $0.id == p.primaryActionId }),
+			   !appState.isSuggestionOnCooldown(p, context: appState.debugContext) {
+				appState.currentProposal = p
+				appState.currentProposalKey = lastReasonedProposalKey
+			} else {
+				appState.currentProposal = nil
+				appState.currentProposalKey = nil
+			}
+			let now = Date()
+			if lastPreserveLogAt == nil || now.timeIntervalSince(lastPreserveLogAt!) > 2 {
+				lastPreserveLogAt = now
+				let rounded = String(format: "%.1f", age)
+				print("[AvailableActions] preserving cached actions age=\(rounded)s")
+			}
 			return
 		}
 
@@ -362,6 +407,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func logContextModel(_ model: ContextModel) {
+		let sig = [
+			model.activeAppName ?? "nil",
+			model.activeAppBundleIdentifier ?? "nil",
+			model.activeWindowTitle ?? "nil",
+			"c:\(model.clipboardTextAvailable):\(model.clipboardTextLength)",
+			"s:\(model.selectedTextAvailable):\(model.selectedTextLength)",
+			model.lastSourceTrigger?.rawValue ?? "nil"
+		].joined(separator: "|")
+
+		if sig == lastContextLogSignature { return }
+		lastContextLogSignature = sig
+
 		print(
 			"[ContextModel]",
 			"app=\(model.activeAppName ?? "nil")",
@@ -369,9 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			"windowTitle=\(model.activeWindowTitle != nil)",
 			"clipboard=(available:\(model.clipboardTextAvailable) length:\(model.clipboardTextLength))",
 			"selection=(available:\(model.selectedTextAvailable) length:\(model.selectedTextLength))",
-			"lastTrigger=\(model.lastSourceTrigger?.rawValue ?? "nil")",
-			"recentApps=\(model.recentAppNames)",
-			"recentTriggers=\(model.recentTriggers)"
+			"lastTrigger=\(model.lastSourceTrigger?.rawValue ?? "nil")"
 		)
 	}
 

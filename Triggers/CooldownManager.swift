@@ -12,4 +12,15 @@ final class CooldownManager {
 		lastFiredAt[key] = now
 		return true
 	}
+
+	func markFired(key: String, now: Date = Date()) {
+		lastFiredAt[key] = now
+	}
+
+	func isCoolingDown(key: String, interval: TimeInterval, now: Date = Date()) -> Bool {
+		if let last = lastFiredAt[key], now.timeIntervalSince(last) < interval {
+			return true
+		}
+		return false
+	}
 }

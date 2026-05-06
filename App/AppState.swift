@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -17,6 +18,11 @@ final class AppState: ObservableObject {
 	var lastDismissedProposalAt: Date?
 	var lastAcceptedProposalKey: String?
 	var lastAcceptedProposalAt: Date?
+
+	private let dismissedSuggestionCooldown = CooldownManager()
+	private let acceptedSuggestionCooldown = CooldownManager()
+	private let dismissedSuggestionCooldownSeconds: TimeInterval = 120
+	private let acceptedSuggestionCooldownSeconds: TimeInterval = 60
 
 	// MARK: - Local AI (delegates persistence + orchestration to app lifecycle)
 
@@ -41,11 +47,43 @@ final class AppState: ObservableObject {
 		onInvokeActionById?(id)
 	}
 
+	func suggestionKey(for proposal: ActionProposal, context: ContextModel) -> String {
+		let triggerPrefix = currentProposalKey ?? "unknown_trigger|\(proposal.primaryActionId)"
+		let selectionLen = context.selectedTextLength
+		let clipboardLen = context.clipboardTextLength
+
+		let selectionHash = selectionFingerprint(context: context)
+		let clipboardHash = clipboardFingerprint()
+
+		return [
+			triggerPrefix,
+			proposal.title,
+			"selLen=\(selectionLen)",
+			"clipLen=\(clipboardLen)",
+			selectionHash.map { "selHash=\($0)" } ?? "selHash=nil",
+			clipboardHash.map { "clipHash=\($0)" } ?? "clipHash=nil"
+		].joined(separator: "|")
+	}
+
+	func isSuggestionOnCooldown(_ proposal: ActionProposal, context: ContextModel, now: Date = Date()) -> Bool {
+		let key = suggestionKey(for: proposal, context: context)
+		if dismissedSuggestionCooldown.isCoolingDown(key: key, interval: dismissedSuggestionCooldownSeconds, now: now) {
+			return true
+		}
+		if acceptedSuggestionCooldown.isCoolingDown(key: key, interval: acceptedSuggestionCooldownSeconds, now: now) {
+			return true
+		}
+		return false
+	}
+
 	func acceptCurrentProposal() {
 		guard let proposal = currentProposal else { return }
+		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		let id = proposal.primaryActionId
 		print("[SuggestionCard] accepted proposal primary=\(id)")
 		lastAcceptedProposalActionId = id
+
+		acceptedSuggestionCooldown.markFired(key: suggestionKey)
 
 		if let key = currentProposalKey {
 			lastAcceptedProposalKey = key
@@ -60,9 +98,12 @@ final class AppState: ObservableObject {
 
 	func dismissCurrentProposal() {
 		guard let proposal = currentProposal else { return }
+		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		let id = proposal.primaryActionId
 		print("[SuggestionCard] dismissed proposal primary=\(id)")
 		lastDismissedProposalActionId = id
+
+		dismissedSuggestionCooldown.markFired(key: suggestionKey)
 
 		if let key = currentProposalKey {
 			lastDismissedProposalKey = key
@@ -72,6 +113,26 @@ final class AppState: ObservableObject {
 
 		currentProposal = nil
 		currentProposalKey = nil
+	}
+
+	private func selectionFingerprint(context: ContextModel) -> String? {
+		guard context.selectedTextAvailable else { return nil }
+		guard let text = ActionInputCapture.primaryText(for: context, minimumLength: 0), !text.isEmpty else { return nil }
+		return String(fnv1a64(text: String(text.prefix(2000))), radix: 16)
+	}
+
+	private func clipboardFingerprint() -> String? {
+		guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return nil }
+		return String(fnv1a64(text: String(text.prefix(2000))), radix: 16)
+	}
+
+	private func fnv1a64(text: String) -> UInt64 {
+		var hash: UInt64 = 14_695_981_039_346_656_037
+		for b in text.utf8 {
+			hash ^= UInt64(b)
+			hash &*= 1_099_511_628_211
+		}
+		return hash
 	}
 
 	func enableLocalAI() {

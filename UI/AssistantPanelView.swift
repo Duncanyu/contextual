@@ -4,6 +4,7 @@ struct AssistantPanelView: View {
 	@EnvironmentObject private var appState: AppState
 
 	private var debugCtx: ContextModel { appState.debugContext }
+	@State private var dismissedProposalKey: String?
 
 	var body: some View {
 		ScrollView {
@@ -11,16 +12,47 @@ struct AssistantPanelView: View {
 				Text("Context Assistant")
 					.font(.headline)
 
-				if let proposal = appState.currentProposal {
-					let primaryId = proposal.primaryActionId
-					let primaryName = appState.availableActions.first(where: { $0.id == primaryId })?.name ?? "Run"
+				if !SelectionSource.isAccessibilityTrusted() {
+					VStack(alignment: .leading, spacing: 8) {
+						Text("Accessibility access is needed to read selected text.")
+							.font(.caption)
+							.foregroundStyle(.secondary)
 
-					SuggestionCard(
-						proposal: proposal,
-						primaryButtonTitle: primaryName
+						Button("Open Accessibility Settings") {
+							SelectionSource.requestAccessibilityPermissionIfNeeded()
+							if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+								NSWorkspace.shared.open(url)
+							}
+						}
+						.font(.caption)
+					}
+					.padding(10)
+					.background(
+						RoundedRectangle(cornerRadius: 10, style: .continuous)
+							.fill(Color(nsColor: .controlBackgroundColor))
 					)
-					.onAppear {
-						print("[SuggestionCard] rendering proposal primary=\(primaryId)")
+					.overlay(
+						RoundedRectangle(cornerRadius: 10, style: .continuous)
+							.stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+					)
+				}
+
+				if let proposal = appState.currentProposal {
+					let key = appState.suggestionKey(for: proposal, context: appState.debugContext)
+					if dismissedProposalKey != key, !appState.isSuggestionOnCooldown(proposal, context: appState.debugContext) {
+						SuggestionCard(
+							title: proposal.title,
+							primaryActionTitle: primaryActionTitle(for: proposal.primaryActionId),
+							dismissTitle: "Dismiss",
+							onPrimary: {
+								appState.acceptCurrentProposal()
+								dismissedProposalKey = key
+							},
+							onDismiss: {
+								appState.dismissCurrentProposal()
+								dismissedProposalKey = key
+							}
+						)
 					}
 				}
 
@@ -145,6 +177,22 @@ struct AssistantPanelView: View {
 	private func recentList(_ items: [String]) -> String {
 		if items.isEmpty { return "—" }
 		return items.joined(separator: " → ")
+	}
+
+	private func primaryActionTitle(for actionId: String) -> String {
+		if let action = appState.availableActions.first(where: { $0.id == actionId }) {
+			return action.name
+		}
+		switch actionId {
+		case "summarize_text":
+			return "Summarize"
+		case "explain_text":
+			return "Explain"
+		case "rewrite_text":
+			return "Rewrite"
+		default:
+			return "Open"
+		}
 	}
 }
 
