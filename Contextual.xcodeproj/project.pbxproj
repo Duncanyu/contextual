@@ -38,6 +38,7 @@
 		AA0001200000000000000020 /* ActionInputCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022B0000000000000029 /* ActionInputCapture.swift */; };
 		AA0001210000000000000021 /* IntelligenceActionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022C000000000000002A /* IntelligenceActionRunner.swift */; };
 		AA0001220000000000000022 /* ReasoningEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022D000000000000002B /* ReasoningEngine.swift */; };
+		AA0001230000000000000023 /* ProposalGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022E000000000000002C /* ProposalGenerator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -74,6 +75,7 @@
 		AA00022B0000000000000029 /* ActionInputCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionInputCapture.swift; sourceTree = "<group>"; };
 		AA00022C000000000000002A /* IntelligenceActionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceActionRunner.swift; sourceTree = "<group>"; };
 		AA00022D000000000000002B /* ReasoningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningEngine.swift; sourceTree = "<group>"; };
+		AA00022E000000000000002C /* ProposalGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalGenerator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -186,6 +188,7 @@
 				AA00022B0000000000000029 /* ActionInputCapture.swift */,
 				AA00022C000000000000002A /* IntelligenceActionRunner.swift */,
 				AA00022D000000000000002B /* ReasoningEngine.swift */,
+				AA00022E000000000000002C /* ProposalGenerator.swift */,
 			);
 			path = Intelligence;
 			sourceTree = "<group>";
@@ -324,6 +327,7 @@
 				AA0001200000000000000020 /* ActionInputCapture.swift in Sources */,
 				AA0001210000000000000021 /* IntelligenceActionRunner.swift in Sources */,
 				AA0001220000000000000022 /* ReasoningEngine.swift in Sources */,
+				AA0001230000000000000023 /* ProposalGenerator.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);

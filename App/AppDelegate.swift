@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastReasonedTriggerType: TriggerType?
 	private let availableActionsCacheTTLSeconds: TimeInterval = 10
 
+	private var lastReasonedProposal: ActionProposal?
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
 		syncLocalAIFromStorage()
@@ -199,6 +201,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
+		let proposal = ProposalGenerator.shared.generate(context: context, triggerPacket: packet, decision: decision)
+
 		let mapped = actionRouter.matchingActions(for: packet).filter { $0.canExecute(context: context) }
 		let orderedIds = decision.rankedActionIds
 		let indexById = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($0.element, $0.offset) })
@@ -210,9 +214,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 
 		appState.availableActions = ordered
+		appState.currentProposal = proposal
 		lastReasonedActions = ordered
 		lastReasonedActionsAt = Date()
 		lastReasonedTriggerType = packet.triggerType
+		lastReasonedProposal = proposal
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
 	}
 
@@ -225,6 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		guard let cachedAt = lastReasonedActionsAt else {
 			if !appState.availableActions.isEmpty {
 				appState.availableActions = []
+				appState.currentProposal = nil
 				print("[AvailableActions] cleared cached actions reason=\(reason)")
 			}
 			return
@@ -233,15 +240,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let age = Date().timeIntervalSince(cachedAt)
 		if age < availableActionsCacheTTLSeconds, !lastReasonedActions.isEmpty {
 			appState.availableActions = lastReasonedActions
+			appState.currentProposal = lastReasonedProposal
 			let rounded = String(format: "%.1f", age)
 			print("[AvailableActions] preserving cached actions age=\(rounded)s")
 			return
 		}
 
 		appState.availableActions = []
+		appState.currentProposal = nil
 		lastReasonedActions = []
 		lastReasonedActionsAt = nil
 		lastReasonedTriggerType = nil
+		lastReasonedProposal = nil
 		print("[AvailableActions] cleared cached actions reason=\(reason)")
 	}
 

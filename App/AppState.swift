@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
+	@Published var currentProposal: ActionProposal?
 
 	// MARK: - Local AI (delegates persistence + orchestration to app lifecycle)
 
