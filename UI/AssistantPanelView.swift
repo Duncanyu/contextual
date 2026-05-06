@@ -11,6 +11,19 @@ struct AssistantPanelView: View {
 				Text("Context Assistant")
 					.font(.headline)
 
+				if let proposal = appState.currentProposal {
+					let primaryId = proposal.primaryActionId
+					let primaryName = appState.availableActions.first(where: { $0.id == primaryId })?.name ?? "Run"
+
+					SuggestionCard(
+						proposal: proposal,
+						primaryButtonTitle: primaryName
+					)
+					.onAppear {
+						print("[SuggestionCard] rendering proposal primary=\(primaryId)")
+					}
+				}
+
 				Text("Assistant Running")
 					.font(.subheadline)
 					.foregroundStyle(.secondary)

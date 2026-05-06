@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let availableActionsCacheTTLSeconds: TimeInterval = 10
 
 	private var lastReasonedProposal: ActionProposal?
+	private var lastReasonedProposalKey: String?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
@@ -201,7 +202,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
-		let proposal = ProposalGenerator.shared.generate(context: context, triggerPacket: packet, decision: decision)
+		var proposal = ProposalGenerator.shared.generate(context: context, triggerPacket: packet, decision: decision)
+		var proposalKey: String?
+		if let p = proposal {
+			proposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+		}
+
+		if packet.triggerType != .manualInvocation, let key = proposalKey {
+			if let dismissedAt = appState.lastDismissedProposalAt,
+			   appState.lastDismissedProposalKey == key,
+			   Date().timeIntervalSince(dismissedAt) < 60 {
+				print("[ProposalCooldown] suppressed proposal key=\(key) reason=dismissed")
+				proposal = nil
+				proposalKey = nil
+			} else if let acceptedAt = appState.lastAcceptedProposalAt,
+					  appState.lastAcceptedProposalKey == key,
+					  Date().timeIntervalSince(acceptedAt) < 10 {
+				print("[ProposalCooldown] suppressed proposal key=\(key) reason=accepted")
+				proposal = nil
+				proposalKey = nil
+			}
+		}
 
 		let mapped = actionRouter.matchingActions(for: packet).filter { $0.canExecute(context: context) }
 		let orderedIds = decision.rankedActionIds
@@ -215,10 +236,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		appState.availableActions = ordered
 		appState.currentProposal = proposal
+		appState.currentProposalKey = proposalKey
 		lastReasonedActions = ordered
 		lastReasonedActionsAt = Date()
 		lastReasonedTriggerType = packet.triggerType
 		lastReasonedProposal = proposal
+		lastReasonedProposalKey = proposalKey
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
 	}
 
@@ -232,6 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			if !appState.availableActions.isEmpty {
 				appState.availableActions = []
 				appState.currentProposal = nil
+				appState.currentProposalKey = nil
 				print("[AvailableActions] cleared cached actions reason=\(reason)")
 			}
 			return
@@ -241,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if age < availableActionsCacheTTLSeconds, !lastReasonedActions.isEmpty {
 			appState.availableActions = lastReasonedActions
 			appState.currentProposal = lastReasonedProposal
+			appState.currentProposalKey = lastReasonedProposalKey
 			let rounded = String(format: "%.1f", age)
 			print("[AvailableActions] preserving cached actions age=\(rounded)s")
 			return
@@ -248,10 +273,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		appState.availableActions = []
 		appState.currentProposal = nil
+		appState.currentProposalKey = nil
 		lastReasonedActions = []
 		lastReasonedActionsAt = nil
 		lastReasonedTriggerType = nil
 		lastReasonedProposal = nil
+		lastReasonedProposalKey = nil
 		print("[AvailableActions] cleared cached actions reason=\(reason)")
 	}
 

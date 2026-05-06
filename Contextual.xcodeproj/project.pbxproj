@@ -12,6 +12,7 @@
 		AA0001030000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030000000000000003 /* AppState.swift */; };
 		AA0001040000000000000004 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040000000000000004 /* MenuBarController.swift */; };
 		AA0001050000000000000005 /* AssistantPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050000000000000005 /* AssistantPanelView.swift */; };
+		AA0001240000000000000024 /* SuggestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022F000000000000002D /* SuggestionCard.swift */; };
 		AA0001060000000000000006 /* SystemSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002060000000000000010 /* SystemSource.swift */; };
 		AA0001070000000000000007 /* ActiveAppSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002070000000000000011 /* ActiveAppSource.swift */; };
 		AA0001080000000000000008 /* SourceEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002080000000000000012 /* SourceEvent.swift */; };
@@ -48,6 +49,7 @@
 		AA0002030000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		AA0002050000000000000005 /* AssistantPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantPanelView.swift; sourceTree = "<group>"; };
+		AA00022F000000000000002D /* SuggestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionCard.swift; sourceTree = "<group>"; };
 		AA0002060000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0002060000000000000010 /* SystemSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSource.swift; sourceTree = "<group>"; };
 		AA0002070000000000000011 /* ActiveAppSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveAppSource.swift; sourceTree = "<group>"; };
@@ -121,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0002050000000000000005 /* AssistantPanelView.swift */,
+				AA00022F000000000000002D /* SuggestionCard.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -303,6 +306,7 @@
 				AA0001030000000000000003 /* AppState.swift in Sources */,
 				AA0001040000000000000004 /* MenuBarController.swift in Sources */,
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
+				AA0001240000000000000024 /* SuggestionCard.swift in Sources */,
 				AA0001060000000000000006 /* SystemSource.swift in Sources */,
 				AA0001070000000000000007 /* ActiveAppSource.swift in Sources */,
 				AA00010A000000000000000A /* WindowTitleSource.swift in Sources */,

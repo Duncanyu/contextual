@@ -9,6 +9,14 @@ final class AppState: ObservableObject {
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
 	@Published var currentProposal: ActionProposal?
+	@Published var currentProposalKey: String?
+	@Published var lastAcceptedProposalActionId: String?
+	@Published var lastDismissedProposalActionId: String?
+
+	var lastDismissedProposalKey: String?
+	var lastDismissedProposalAt: Date?
+	var lastAcceptedProposalKey: String?
+	var lastAcceptedProposalAt: Date?
 
 	// MARK: - Local AI (delegates persistence + orchestration to app lifecycle)
 
@@ -31,6 +39,39 @@ final class AppState: ObservableObject {
 
 	func invokeAction(id: String) {
 		onInvokeActionById?(id)
+	}
+
+	func acceptCurrentProposal() {
+		guard let proposal = currentProposal else { return }
+		let id = proposal.primaryActionId
+		print("[SuggestionCard] accepted proposal primary=\(id)")
+		lastAcceptedProposalActionId = id
+
+		if let key = currentProposalKey {
+			lastAcceptedProposalKey = key
+			lastAcceptedProposalAt = Date()
+			print("[ProposalCooldown] recorded accept key=\(key)")
+		}
+
+		invokeAction(id: id)
+		currentProposal = nil
+		currentProposalKey = nil
+	}
+
+	func dismissCurrentProposal() {
+		guard let proposal = currentProposal else { return }
+		let id = proposal.primaryActionId
+		print("[SuggestionCard] dismissed proposal primary=\(id)")
+		lastDismissedProposalActionId = id
+
+		if let key = currentProposalKey {
+			lastDismissedProposalKey = key
+			lastDismissedProposalAt = Date()
+			print("[ProposalCooldown] recorded dismiss key=\(key)")
+		}
+
+		currentProposal = nil
+		currentProposalKey = nil
 	}
 
 	func enableLocalAI() {
