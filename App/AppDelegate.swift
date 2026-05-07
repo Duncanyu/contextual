@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastProposalGateLogAt: Date?
 	private var lastActionRelevanceLogSignature: String?
 	private var lastActionRelevanceLogAt: Date?
+	private var lastProposalRankingLogSignature: String?
+	private var lastProposalRankingLogAt: Date?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
@@ -268,12 +270,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let rankedIds = relevance.map(\.actionId)
 		logActionRelevanceIfNeeded(ranked: relevance, topId: rankedIds.first)
 
-		let top = relevance.first
-		let shouldOverridePrimary = (top?.score ?? 0) >= 0.75
-		let overriddenPrimary = shouldOverridePrimary ? top?.actionId : decision.primaryActionId
+		guard let ranking = ProposalRanker.rank(relevance: relevance, reasoningPrimary: decision.primaryActionId) else {
+			preserveOrClearAvailableActions(reason: "proposal ranking unavailable")
+			return
+		}
+		logProposalRankingIfNeeded(ranking)
+
+		if ranking.tieResolved {
+			print("[ProposalRanking] tie resolved primary=\(ranking.primaryActionId)")
+		}
+
+		// If everything is weak, avoid creating a proposal (Available Actions still show).
+		let shouldGenerateProposalByRelevance = ranking.topScore >= 0.50
+
 		let overriddenDecision = ReasoningDecision(
 			shouldSurface: decision.shouldSurface,
-			primaryActionId: overriddenPrimary,
+			primaryActionId: ranking.primaryActionId,
 			rankedActionIds: rankedIds.isEmpty ? decision.rankedActionIds : rankedIds,
 			reason: decision.reason,
 			confidence: decision.confidence
@@ -290,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		} else {
 			let gate = ProposalGenerationGate.evaluate(context: context)
 			logProposalGateIfNeeded(allowed: gate.shouldGenerate, reason: gate.reason)
-			if gate.shouldGenerate {
+			if gate.shouldGenerate, shouldGenerateProposalByRelevance {
 				proposal = ProposalGenerator.shared.generate(
 					context: context,
 					triggerPacket: packet,
@@ -401,6 +413,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		lastActionRelevanceLogSignature = sig
 		lastActionRelevanceLogAt = now
 		print("[ActionRelevance] ranked \(parts.joined(separator: " ")) top=\(top)")
+	}
+
+	private func logProposalRankingIfNeeded(_ ranking: RankedProposalDecision) {
+		let top = String(format: "%.2f", ranking.topScore)
+		let secondary = ranking.secondaryActionIds.prefix(4).joined(separator: ",")
+		let sig = "\(ranking.primaryActionId)|\(secondary)|\(top)|\(ranking.reason)"
+		let now = Date()
+		if let prev = lastProposalRankingLogSignature, prev == sig, let t = lastProposalRankingLogAt, now.timeIntervalSince(t) < 2.0 {
+			return
+		}
+		lastProposalRankingLogSignature = sig
+		lastProposalRankingLogAt = now
+		print("[ProposalRanking] primary=\(ranking.primaryActionId) secondary=[\(secondary)] topScore=\(top) reason=\(ranking.reason)")
 	}
 
 	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context: ContextModel, packet: TriggerPacket) {
