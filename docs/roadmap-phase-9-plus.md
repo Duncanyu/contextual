@@ -833,7 +833,262 @@ Rather than:
 
 ---
 
+## Phase 12 — Liquid Intelligence Layer
 
+### Goal
+
+Introduce selective local LLM-assisted judgment so the assistant can make more thoughtful, fluid suggestions without running constantly.
+
+The assistant should feel:
+- present
+- intentional
+- adaptive
+- lightweight
+- quiet unless useful
+
+It should not feel:
+- spammy
+- rigid
+- overly scheduled
+- constantly thinking
+- performance-heavy
+
+---
+
+### Core Principle
+
+The assistant should not run intelligence all the time.
+
+It should run intelligence when the situation deserves judgment.
+
+Heuristics remain the fast first-pass filter.
+
+The local LLM becomes the second-pass judge.
+
+Flow:
+
+Context  
+→ lightweight heuristics  
+→ if meaningful/ambiguous  
+→ local intelligence decision  
+→ proposal  
+→ TES safety fallback  
+→ UI
+
+---
+
+### Design Philosophy
+
+The assistant should behave less like:
+
+“Every 20 seconds, maybe suggest something.”
+
+And more like:
+
+“This moment looks worth thinking about.”
+
+No rigid global cooldowns unless used as emergency safety.
+
+Timing should come from:
+- context changes
+- user behavior
+- input stability
+- recent interaction history
+- confidence
+- intelligence budget
+
+---
+
+### Performance Rules
+
+- No constant LLM loop
+- No LLM call on every selection change
+- No full-text LLM calls by default
+- No background model spam
+- No cloud dependency
+- No autonomous execution
+
+LLM calls must be:
+- local
+- capped
+- event-driven
+- cancelable or timeout-safe
+- based on compressed context
+- skipped when unnecessary
+
+---
+
+### Tickets
+
+### T12.1 — Intelligence Decision Request Model
+
+Create a structured request/response format for local intelligence decisions.
+
+The model should decide:
+- shouldSuggest
+- bestActionId
+- confidence
+- short reason
+- suggested title
+
+No execution. Decision only.
+
+---
+
+### T12.2 — Context Compression Layer
+
+Before local intelligence runs, compress context into a small safe packet.
+
+Include:
+- app name
+- window title metadata
+- source type
+- context type
+- feature summary
+- short text excerpt
+
+Do not send huge raw content.
+
+---
+
+### T12.3 — Local Intelligence Decision Engine
+
+Add a lightweight local LLM decision step.
+
+It should run only when:
+- ProposalGate allows
+- SuggestionStrength is medium/strong
+- context is meaningful
+- no recent similar decision exists
+
+It should not run for obvious garbage.
+
+---
+
+### T12.4 — Intelligence Budget Manager
+
+Prevent the model from running too often.
+
+Budget should consider:
+- current execution state
+- recent LLM calls
+- repeated similar context
+- model availability
+- system responsiveness
+
+This is not a rigid cooldown.
+It is a resource-aware permission check.
+
+---
+
+### T12.5 — Decision Cache
+
+Cache intelligence decisions by privacy-safe content fingerprint.
+
+If the same or very similar context appears again:
+- reuse decision
+- avoid another model call
+- decay cache over time
+
+No raw text persistence.
+
+---
+
+### T12.6 — LLM-Assisted Proposal Selection
+
+Use the intelligence decision to override heuristic proposal choice when confidence is high.
+
+Examples:
+- error/log → explain/debug-style proposal
+- confusing paragraph → explain
+- notes/article → summarize
+- ordinary text → no suggestion
+
+---
+
+### T12.7 — Natural Proposal Titles
+
+Allow the local intelligence layer to generate short, natural proposal titles.
+
+Examples:
+- “Want help understanding this error?”
+- “Want a quick summary of these notes?”
+- “Want me to explain this code?”
+
+Titles must be short and safe.
+No raw private text in title.
+
+---
+
+### T12.8 — Fallback and Timeout Behavior
+
+If local intelligence:
+- fails
+- times out
+- model unavailable
+- returns invalid output
+
+Then:
+- fall back to heuristic pipeline
+- never block actions
+- never freeze UI
+- log safely
+
+---
+
+### T12.9 — Intelligence Debug Logging
+
+Add clear metadata-only logs:
+
+- when intelligence was skipped
+- when it ran
+- why it ran
+- what decision it returned
+- whether fallback was used
+
+No raw text.
+
+---
+
+### T12.10 — Phase 12 Tuning Pass
+
+Tune the full intelligence loop.
+
+Goal:
+- fewer bad proposals
+- more useful proposals
+- no performance hit
+- no spam
+- no constant LLM calls
+
+---
+
+### Out of Scope
+
+Do NOT implement yet:
+- autonomous agents
+- generated action execution
+- computer control
+- multi-step workflows
+- persistent personalization
+- continuous screen watching
+- cursor tracking
+- selection anchoring
+- multimodal reasoning beyond existing OCR
+
+---
+
+### Success Criteria
+
+After Phase 12:
+
+- proposals feel more thoughtful
+- bad suggestions decrease
+- local LLM runs selectively
+- performance remains acceptable
+- assistant feels more liquid
+- TES becomes fallback, not the main brain
+- no autonomous behavior is introduced
 
 ---
 

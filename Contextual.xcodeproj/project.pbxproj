@@ -49,6 +49,7 @@
 		AA0001450000000000000046 /* ProposalRanking.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002490000000000000047 /* ProposalRanking.swift */; };
 		AA0001460000000000000048 /* SuggestionStrength.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002500000000000000049 /* SuggestionStrength.swift */; };
 		AA000147000000000000004A /* RedundancyMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000251000000000000004B /* RedundancyMemory.swift */; };
+		AA0001510000000000000052 /* IntelligenceDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002550000000000000053 /* IntelligenceDecision.swift */; };
 		AA0001260000000000000026 /* OCRProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000231000000000000002F /* OCRProcessor.swift */; };
 		AA0001240000000000000024 /* SuggestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022F000000000000002D /* SuggestionCard.swift */; };
 		AA0001280000000000000028 /* ResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002330000000000000031 /* ResultView.swift */; };
@@ -114,6 +115,7 @@
 		AA0002490000000000000047 /* ProposalRanking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalRanking.swift; sourceTree = "<group>"; };
 		AA0002500000000000000049 /* SuggestionStrength.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionStrength.swift; sourceTree = "<group>"; };
 		AA000251000000000000004B /* RedundancyMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedundancyMemory.swift; sourceTree = "<group>"; };
+		AA0002550000000000000053 /* IntelligenceDecision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceDecision.swift; sourceTree = "<group>"; };
 		AA000231000000000000002F /* OCRProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRProcessor.swift; sourceTree = "<group>"; };
 		AA00022F000000000000002D /* SuggestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionCard.swift; sourceTree = "<group>"; };
 		AA0002330000000000000031 /* ResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultView.swift; sourceTree = "<group>"; };
@@ -257,6 +259,7 @@
 				AA0002490000000000000047 /* ProposalRanking.swift */,
 				AA0002500000000000000049 /* SuggestionStrength.swift */,
 				AA000251000000000000004B /* RedundancyMemory.swift */,
+				AA0002550000000000000053 /* IntelligenceDecision.swift */,
 				AA000231000000000000002F /* OCRProcessor.swift */,
 			);
 			path = Intelligence;
@@ -419,6 +422,7 @@
 				AA0001450000000000000046 /* ProposalRanking.swift in Sources */,
 				AA0001460000000000000048 /* SuggestionStrength.swift in Sources */,
 				AA000147000000000000004A /* RedundancyMemory.swift in Sources */,
+				AA0001510000000000000052 /* IntelligenceDecision.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
