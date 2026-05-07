@@ -53,6 +53,11 @@ final class AppState: ObservableObject {
 	private var floatingAutoDismissWorkItem: DispatchWorkItem?
 	private let floatingAutoDismissSeconds: TimeInterval = 7
 
+	/// Floating-only repeat suppression (not full TES); avoids rapid re-show after dismiss/auto-dismiss/accept.
+	private var lastFloatingSuppressKey: String?
+	private var lastFloatingSuppressAt: Date?
+	private let floatingRepeatSuppressSeconds: TimeInterval = 30
+
 	/// Wired by app lifecycle to enqueue a manual trigger through the normal source pipeline.
 	var requestManualInvocation: (() -> Void)?
 
@@ -107,6 +112,37 @@ final class AppState: ObservableObject {
 		case .screenOCR:
 			return context.screenOCRAvailable && context.screenOCRTextLength > 0
 		}
+	}
+
+	/// Stable identity for floating repeat suppression (includes trigger key, action id, title, input choice, existing suggestion fingerprint).
+	func floatingRepeatSuppressionKey(for proposal: ActionProposal, context: ContextModel) -> String {
+		[
+			currentProposalKey ?? "",
+			proposal.primaryActionId,
+			proposal.title,
+			selectedInputSourceChoice.rawValue,
+			suggestionKey(for: proposal, context: context)
+		].joined(separator: "\u{1e}")
+	}
+
+	/// Log-safe key (hashes text-bearing segments; never logs raw selection or titles).
+	func floatingSuggestionLogKey(for proposal: ActionProposal, context: ContextModel) -> String {
+		let trigH = currentProposalKey.map { String(fnv1a64(text: $0), radix: 16) } ?? "nil"
+		let titleH = String(fnv1a64(text: proposal.title), radix: 16)
+		let sk = suggestionKey(for: proposal, context: context)
+		let skH = String(fnv1a64(text: sk), radix: 16)
+		return "trigHash=\(trigH)|primary=\(proposal.primaryActionId)|titleHash=\(titleH)|src=\(selectedInputSourceChoice.rawValue)|skHash=\(skH)"
+	}
+
+	func shouldSuppressFloatingRepeat(for proposal: ActionProposal, context: ContextModel, now: Date = Date()) -> Bool {
+		let key = floatingRepeatSuppressionKey(for: proposal, context: context)
+		guard let lk = lastFloatingSuppressKey, lk == key, let t = lastFloatingSuppressAt else { return false }
+		return now.timeIntervalSince(t) < floatingRepeatSuppressSeconds
+	}
+
+	private func recordFloatingRepeatSuppress(for proposal: ActionProposal, context: ContextModel) {
+		lastFloatingSuppressKey = floatingRepeatSuppressionKey(for: proposal, context: context)
+		lastFloatingSuppressAt = Date()
 	}
 
 	func suggestionKey(for proposal: ActionProposal, context: ContextModel) -> String {
@@ -233,26 +269,47 @@ final class AppState: ObservableObject {
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
 
+		let logKey = floatingSuggestionLogKey(for: suggestion, context: debugContext)
+		print("[FloatingSuggestion] show key=\(logKey)")
+
 		floatingSuggestion = suggestion
 		isFloatingSuggestionVisible = true
 
 		let work = DispatchWorkItem { [weak self] in
 			Task { @MainActor in
-				self?.dismissFloatingSuggestion()
+				self?.dismissFloatingSuggestion(reason: .auto)
 			}
 		}
 		floatingAutoDismissWorkItem = work
 		DispatchQueue.main.asyncAfter(deadline: .now() + floatingAutoDismissSeconds, execute: work)
 	}
 
-	func dismissFloatingSuggestion() {
+	enum FloatingSuggestionDismissReason: String {
+		case manual
+		case auto
+		case panelOpen = "panel_open"
+		case accepted
+	}
+
+	func dismissFloatingSuggestion(reason: FloatingSuggestionDismissReason = .manual) {
+		let proposalSnapshot = floatingSuggestion
+		let ctx = debugContext
+		if let p = proposalSnapshot {
+			recordFloatingRepeatSuppress(for: p, context: ctx)
+		}
+
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
 		floatingSuggestion = nil
 		isFloatingSuggestionVisible = false
+
+		if reason != .accepted, let p = proposalSnapshot {
+			let logKey = floatingSuggestionLogKey(for: p, context: ctx)
+			print("[FloatingSuggestion] dismissed key=\(logKey) reason=\(reason.rawValue)")
+		}
 	}
 
-	/// Primary action on floating card: reveal panel and invoke (same outcome as accepting in-panel).
+	/// Primary action on floating card: hide float, open panel, preserve proposal/context, run action via existing execution path.
 	func acceptFloatingProposal() {
 		guard let proposal = floatingSuggestion else { return }
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
@@ -265,9 +322,7 @@ final class AppState: ObservableObject {
 			lastAcceptedProposalAt = Date()
 		}
 
-		dismissFloatingSuggestion()
-		currentProposal = nil
-		currentProposalKey = nil
+		dismissFloatingSuggestion(reason: .accepted)
 
 		onRevealAssistantPanel?()
 		invokeAction(id: id)

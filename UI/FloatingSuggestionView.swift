@@ -22,7 +22,7 @@ struct FloatingSuggestionView: View {
 						.controlSize(.small)
 
 						Button {
-							appState.dismissFloatingSuggestion()
+							appState.dismissFloatingSuggestion(reason: .manual)
 						} label: {
 							Image(systemName: "xmark.circle.fill")
 								.symbolRenderingMode(.hierarchical)
@@ -35,6 +35,7 @@ struct FloatingSuggestionView: View {
 				.padding(14)
 				.frame(width: 300)
 				.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+				.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 				.overlay(
 					RoundedRectangle(cornerRadius: 14, style: .continuous)
 						.stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)

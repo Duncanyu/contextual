@@ -33,6 +33,8 @@ final class FloatingSuggestionWindowController {
 				.environmentObject(appState)
 		)
 		host.view.wantsLayer = true
+		host.view.layer?.backgroundColor = NSColor.clear.cgColor
+		host.view.layer?.isOpaque = false
 		panel.contentViewController = host
 
 		appState.$isFloatingSuggestionVisible

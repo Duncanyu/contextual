@@ -45,6 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			self?.menuBarController?.revealPopoverIfNeeded()
 		}
 
+		menuBarController?.onPopoverDidShow = { [weak self] in
+			self?.appState.dismissFloatingSuggestion(reason: .panelOpen)
+		}
+
 		appState.requestManualInvocation = { [weak self] in
 			self?.dispatchManualTriggerEvent()
 			self?.menuBarController?.revealPopoverIfNeeded()
@@ -316,9 +320,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 	}
 
-	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context _: ContextModel) {
+	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context: ContextModel) {
 		guard proposal.confidence >= floatingSuggestionMinConfidence else { return }
 		guard menuBarController?.isPopoverShown != true else { return }
+		if appState.shouldSuppressFloatingRepeat(for: proposal, context: context) {
+			let logKey = appState.floatingSuggestionLogKey(for: proposal, context: context)
+			print("[FloatingSuggestion] suppressed duplicate key=\(logKey)")
+			return
+		}
 		if let existing = appState.floatingSuggestion, existing == proposal, appState.isFloatingSuggestionVisible {
 			return
 		}

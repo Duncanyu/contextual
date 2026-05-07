@@ -8,6 +8,9 @@ final class MenuBarController {
 
 	var isPopoverShown: Bool { popover.isShown }
 
+	/// Called after the popover is shown (manual toggle or programmatic reveal).
+	var onPopoverDidShow: (() -> Void)?
+
 	init(appState: AppState) {
 		let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 		let popover = NSPopover()
@@ -35,6 +38,7 @@ final class MenuBarController {
 		guard !popover.isShown else { return }
 		guard let button = statusItem.button else { return }
 		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+		onPopoverDidShow?()
 	}
 
 	@objc private func togglePopover(_ sender: AnyObject?) {
@@ -45,6 +49,7 @@ final class MenuBarController {
 
 		guard let button = statusItem.button else { return }
 		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+		onPopoverDidShow?()
 	}
 }
 
