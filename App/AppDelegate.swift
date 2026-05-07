@@ -249,7 +249,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
-		var proposal = ProposalGenerator.shared.generate(context: context, triggerPacket: packet, decision: decision)
+		var proposal = ProposalGenerator.shared.generate(
+			context: context,
+			triggerPacket: packet,
+			decision: decision,
+			inputSourcePreference: appState.selectedInputSourceChoice
+		)
 		var proposalKey: String?
 		if let p = proposal {
 			proposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
@@ -322,7 +327,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context: ContextModel, packet: TriggerPacket) {
-		let repeatSuppressed = appState.shouldSuppressFloatingRepeat(for: proposal, context: context)
+		let rawSimilarity = FloatingSimilarityText.material(
+			for: context,
+			triggerType: packet.triggerType,
+			inputPreference: appState.selectedInputSourceChoice
+		)
+		let profile = ContentSimilarityProfile.make(from: rawSimilarity)
+		let life = appState.floatingSuggestionLifecycle.shouldSuppressNewFloating(
+			triggerType: packet.triggerType,
+			primaryActionId: proposal.primaryActionId,
+			profile: profile
+		)
+		if life.suppressed, let r = life.reason {
+			appState.floatingSuggestionLifecycle.logSuppressedIfNeeded(state: r, safeKey: life.safeKey)
+			return
+		}
+
 		let tes = TriggerEligibilityEvaluator.evaluate(
 			proposal: proposal,
 			context: context,
@@ -331,7 +351,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			isPopoverOpen: menuBarController?.isPopoverShown ?? false,
 			isFloatingVisible: appState.isFloatingSuggestionVisible,
 			isActionExecuting: appState.isActionExecuting,
-			floatingRepeatSuppressed: repeatSuppressed,
 			inputSourceChoice: appState.selectedInputSourceChoice
 		)
 
@@ -354,7 +373,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			if let existing = appState.floatingSuggestion, existing == proposal, appState.isFloatingSuggestionVisible {
 				return
 			}
-			appState.showFloatingSuggestion(proposal)
+			let exactKey = appState.floatingSuggestionLifecycle.exactKey(
+				triggerType: packet.triggerType,
+				primaryActionId: proposal.primaryActionId,
+				profile: profile
+			)
+			let safeKey = appState.floatingSuggestionLifecycle.safeLogKey(
+				triggerType: packet.triggerType,
+				primaryActionId: proposal.primaryActionId,
+				profile: profile
+			)
+			let bind = ActiveFloatingLifecycleBinding(
+				exactKey: exactKey,
+				safeKey: safeKey,
+				profile: profile,
+				primaryActionId: proposal.primaryActionId
+			)
+			appState.showFloatingSuggestion(proposal, lifecycle: bind)
 		} else if shouldLogTES {
 			print("[TES] suppressed reason=\(tes.reason) score=\(scoreLabel)")
 		}

@@ -16,8 +16,6 @@ enum TriggerEligibilityEvaluator {
 	private static let clipboardStrongMin = 100
 	private static let clipboardErrorLikeMin = 400
 
-	/// - Parameters:
-	///   - floatingRepeatSuppressed: True when the same floating repeat key was shown/dismissed recently (T10.2).
 	static func evaluate(
 		proposal: ActionProposal,
 		context: ContextModel,
@@ -26,7 +24,6 @@ enum TriggerEligibilityEvaluator {
 		isPopoverOpen: Bool,
 		isFloatingVisible: Bool,
 		isActionExecuting: Bool,
-		floatingRepeatSuppressed: Bool,
 		inputSourceChoice: InputSourceChoice
 	) -> TriggerEligibilityResult {
 		if isPaused {
@@ -43,9 +40,6 @@ enum TriggerEligibilityEvaluator {
 		}
 		if proposal.confidence < minimumProposalConfidence {
 			return TriggerEligibilityResult(shouldShow: false, score: proposal.confidence, reason: "low_confidence")
-		}
-		if floatingRepeatSuppressed {
-			return TriggerEligibilityResult(shouldShow: false, score: 0, reason: "same_context_recently_shown")
 		}
 		if triggerType == .manualInvocation {
 			return TriggerEligibilityResult(shouldShow: false, score: 0, reason: "manual_invocation")

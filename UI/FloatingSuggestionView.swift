@@ -14,6 +14,13 @@ struct FloatingSuggestionView: View {
 						.foregroundStyle(.primary)
 						.fixedSize(horizontal: false, vertical: true)
 
+					if !vm.sourceCaption.isEmpty {
+						Text(vm.sourceCaption)
+							.font(.caption2)
+							.foregroundStyle(.tertiary)
+							.fixedSize(horizontal: false, vertical: true)
+					}
+
 					HStack(spacing: 10) {
 						Button(appState.floatingPrimaryButtonTitle(for: vm)) {
 							appState.acceptFloatingProposal()

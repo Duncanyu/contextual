@@ -194,6 +194,9 @@ struct AssistantPanelView: View {
 	}
 
 	private func suggestionInputSourceLine(for proposal: ActionProposal) -> String? {
+		if !proposal.sourceCaption.isEmpty {
+			return proposal.sourceCaption
+		}
 		if proposal.primaryActionId == ScreenAnalyzeAction.analyzeScreenId {
 			return "Using screen text"
 		}

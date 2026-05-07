@@ -4,6 +4,14 @@ import Foundation
 /// Proposal payload for panel and floating suggestion UI (same struct from `ProposalGenerator`).
 typealias SuggestionViewModel = ActionProposal
 
+/// Binds the visible floating card to lifecycle keys (T10.4).
+struct ActiveFloatingLifecycleBinding: Equatable {
+	let exactKey: String
+	let safeKey: String
+	let profile: ContentSimilarityProfile
+	let primaryActionId: String
+}
+
 @MainActor
 final class AppState: ObservableObject {
 	@Published var isPaused: Bool = false
@@ -50,13 +58,11 @@ final class AppState: ObservableObject {
 	@Published var floatingSuggestion: SuggestionViewModel?
 	@Published var isFloatingSuggestionVisible: Bool = false
 
+	let floatingSuggestionLifecycle = FloatingSuggestionLifecycle()
+	private var activeFloatingLifecycleBinding: ActiveFloatingLifecycleBinding?
+
 	private var floatingAutoDismissWorkItem: DispatchWorkItem?
 	private let floatingAutoDismissSeconds: TimeInterval = 7
-
-	/// Floating-only repeat suppression (not full TES); avoids rapid re-show after dismiss/auto-dismiss/accept.
-	private var lastFloatingSuppressKey: String?
-	private var lastFloatingSuppressAt: Date?
-	private let floatingRepeatSuppressSeconds: TimeInterval = 30
 
 	/// Wired by app lifecycle to enqueue a manual trigger through the normal source pipeline.
 	var requestManualInvocation: (() -> Void)?
@@ -114,17 +120,6 @@ final class AppState: ObservableObject {
 		}
 	}
 
-	/// Stable identity for floating repeat suppression (includes trigger key, action id, title, input choice, existing suggestion fingerprint).
-	func floatingRepeatSuppressionKey(for proposal: ActionProposal, context: ContextModel) -> String {
-		[
-			currentProposalKey ?? "",
-			proposal.primaryActionId,
-			proposal.title,
-			selectedInputSourceChoice.rawValue,
-			suggestionKey(for: proposal, context: context)
-		].joined(separator: "\u{1e}")
-	}
-
 	/// Log-safe key (hashes text-bearing segments; never logs raw selection or titles).
 	func floatingSuggestionLogKey(for proposal: ActionProposal, context: ContextModel) -> String {
 		let trigH = currentProposalKey.map { String(fnv1a64(text: $0), radix: 16) } ?? "nil"
@@ -132,17 +127,6 @@ final class AppState: ObservableObject {
 		let sk = suggestionKey(for: proposal, context: context)
 		let skH = String(fnv1a64(text: sk), radix: 16)
 		return "trigHash=\(trigH)|primary=\(proposal.primaryActionId)|titleHash=\(titleH)|src=\(selectedInputSourceChoice.rawValue)|skHash=\(skH)"
-	}
-
-	func shouldSuppressFloatingRepeat(for proposal: ActionProposal, context: ContextModel, now: Date = Date()) -> Bool {
-		let key = floatingRepeatSuppressionKey(for: proposal, context: context)
-		guard let lk = lastFloatingSuppressKey, lk == key, let t = lastFloatingSuppressAt else { return false }
-		return now.timeIntervalSince(t) < floatingRepeatSuppressSeconds
-	}
-
-	private func recordFloatingRepeatSuppress(for proposal: ActionProposal, context: ContextModel) {
-		lastFloatingSuppressKey = floatingRepeatSuppressionKey(for: proposal, context: context)
-		lastFloatingSuppressAt = Date()
 	}
 
 	func suggestionKey(for proposal: ActionProposal, context: ContextModel) -> String {
@@ -265,12 +249,21 @@ final class AppState: ObservableObject {
 
 	// MARK: - Floating suggestion controls
 
-	func showFloatingSuggestion(_ suggestion: SuggestionViewModel) {
+	func showFloatingSuggestion(_ suggestion: SuggestionViewModel, lifecycle: ActiveFloatingLifecycleBinding) {
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
 
 		let logKey = floatingSuggestionLogKey(for: suggestion, context: debugContext)
 		print("[FloatingSuggestion] show key=\(logKey)")
+
+		floatingSuggestionLifecycle.record(
+			.shown,
+			exactKey: lifecycle.exactKey,
+			primaryActionId: lifecycle.primaryActionId,
+			profile: lifecycle.profile
+		)
+		floatingSuggestionLifecycle.logRecorded(state: .shown, safeKey: lifecycle.safeKey)
+		activeFloatingLifecycleBinding = lifecycle
 
 		floatingSuggestion = suggestion
 		isFloatingSuggestionVisible = true
@@ -294,9 +287,31 @@ final class AppState: ObservableObject {
 	func dismissFloatingSuggestion(reason: FloatingSuggestionDismissReason = .manual) {
 		let proposalSnapshot = floatingSuggestion
 		let ctx = debugContext
-		if let p = proposalSnapshot {
-			recordFloatingRepeatSuppress(for: p, context: ctx)
+
+		if let bind = activeFloatingLifecycleBinding, reason != .accepted {
+			switch reason {
+			case .auto, .panelOpen:
+				floatingSuggestionLifecycle.record(
+					.autoDismissed,
+					exactKey: bind.exactKey,
+					primaryActionId: bind.primaryActionId,
+					profile: bind.profile
+				)
+				floatingSuggestionLifecycle.logRecorded(state: .autoDismissed, safeKey: bind.safeKey)
+			case .manual:
+				floatingSuggestionLifecycle.record(
+					.manuallyDismissed,
+					exactKey: bind.exactKey,
+					primaryActionId: bind.primaryActionId,
+					profile: bind.profile
+				)
+				floatingSuggestionLifecycle.logRecorded(state: .manuallyDismissed, safeKey: bind.safeKey)
+			case .accepted:
+				break
+			}
 		}
+
+		activeFloatingLifecycleBinding = nil
 
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
@@ -315,6 +330,16 @@ final class AppState: ObservableObject {
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		let id = proposal.primaryActionId
 		print("[FloatingSuggestion] accepted primary=\(id)")
+
+		if let bind = activeFloatingLifecycleBinding {
+			floatingSuggestionLifecycle.record(
+				.accepted,
+				exactKey: bind.exactKey,
+				primaryActionId: bind.primaryActionId,
+				profile: bind.profile
+			)
+			floatingSuggestionLifecycle.logRecorded(state: .accepted, safeKey: bind.safeKey)
+		}
 
 		acceptedSuggestionCooldown.markFired(key: suggestionKey)
 		if let key = currentProposalKey {
