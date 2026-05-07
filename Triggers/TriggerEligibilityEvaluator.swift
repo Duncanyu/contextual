@@ -18,6 +18,7 @@ enum TriggerEligibilityEvaluator {
 
 	static func evaluate(
 		proposal: ActionProposal,
+		suggestionStrength: SuggestionStrength?,
 		context: ContextModel,
 		triggerType: TriggerType,
 		isPaused: Bool,
@@ -37,6 +38,9 @@ enum TriggerEligibilityEvaluator {
 		}
 		if isActionExecuting {
 			return TriggerEligibilityResult(shouldShow: false, score: 0, reason: "executing_action")
+		}
+		if let strength = suggestionStrength, strength != .strong {
+			return TriggerEligibilityResult(shouldShow: false, score: 0, reason: "not_strong strength=\(strength.rawValue)")
 		}
 		if proposal.confidence < minimumProposalConfidence {
 			return TriggerEligibilityResult(shouldShow: false, score: proposal.confidence, reason: "low_confidence")

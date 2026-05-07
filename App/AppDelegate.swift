@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastActionRelevanceLogAt: Date?
 	private var lastProposalRankingLogSignature: String?
 	private var lastProposalRankingLogAt: Date?
+	private var lastSuggestionStrengthLogSignature: String?
+	private var lastSuggestionStrengthLogAt: Date?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
@@ -292,6 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		)
 
 		var proposal: ActionProposal?
+		var strength: SuggestionStrengthResult?
 		if packet.triggerType == .manualInvocation {
 			proposal = ProposalGenerator.shared.generate(
 				context: context,
@@ -309,6 +312,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 					decision: overriddenDecision,
 					inputSourcePreference: appState.selectedInputSourceChoice
 				)
+			}
+		}
+
+		if let p = proposal {
+			let s = SuggestionStrengthEvaluator.evaluate(
+				proposal: p,
+				ranking: ranking,
+				contextType: contextType,
+				features: features
+			)
+			strength = s
+			logSuggestionStrengthIfNeeded(s)
+			if s.strength == .weak {
+				proposal = nil
 			}
 		}
 
@@ -378,8 +395,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		lastReasonedProposalKey = finalProposalKey
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
 
-		if let p = finalProposal {
-			maybeShowFloatingSuggestion(proposal: p, context: context, packet: packet)
+		if let p = finalProposal, let s = strength, s.strength == .strong {
+			maybeShowFloatingSuggestion(proposal: p, suggestionStrength: s.strength, context: context, packet: packet)
 		}
 	}
 
@@ -428,7 +445,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		print("[ProposalRanking] primary=\(ranking.primaryActionId) secondary=[\(secondary)] topScore=\(top) reason=\(ranking.reason)")
 	}
 
-	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context: ContextModel, packet: TriggerPacket) {
+	private func logSuggestionStrengthIfNeeded(_ s: SuggestionStrengthResult) {
+		let score = String(format: "%.2f", s.score)
+		let sig = "\(s.strength.rawValue)|\(score)|\(s.reason)"
+		let now = Date()
+		if let prev = lastSuggestionStrengthLogSignature, prev == sig, let t = lastSuggestionStrengthLogAt, now.timeIntervalSince(t) < 2.0 {
+			return
+		}
+		lastSuggestionStrengthLogSignature = sig
+		lastSuggestionStrengthLogAt = now
+		print("[SuggestionStrength] strength=\(s.strength.rawValue) score=\(score) reason=\(s.reason)")
+	}
+
+	private func maybeShowFloatingSuggestion(proposal: ActionProposal, suggestionStrength: SuggestionStrength, context: ContextModel, packet: TriggerPacket) {
 		let rawSimilarity = FloatingSimilarityText.material(
 			for: context,
 			triggerType: packet.triggerType,
@@ -447,6 +476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		let tes = TriggerEligibilityEvaluator.evaluate(
 			proposal: proposal,
+			suggestionStrength: suggestionStrength,
 			context: context,
 			triggerType: packet.triggerType,
 			isPaused: appState.isPaused,
