@@ -31,8 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastManualInvocationAt: Date?
 	private var didLogManualGuard: Bool = false
 
-	/// Minimum confidence to show the non-panel floating suggestion (T10.1).
-	private let floatingSuggestionMinConfidence: Double = 0.75
+	/// Dedupes identical `[TES]` suppression/allow logs during rapid context polling.
+	private var lastTESLogSignature: String?
+	private var lastTESLogAt: Date?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
@@ -316,22 +317,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
 
 		if let p = finalProposal {
-			maybeShowFloatingSuggestion(proposal: p, context: context)
+			maybeShowFloatingSuggestion(proposal: p, context: context, packet: packet)
 		}
 	}
 
-	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context: ContextModel) {
-		guard proposal.confidence >= floatingSuggestionMinConfidence else { return }
-		guard menuBarController?.isPopoverShown != true else { return }
-		if appState.shouldSuppressFloatingRepeat(for: proposal, context: context) {
-			let logKey = appState.floatingSuggestionLogKey(for: proposal, context: context)
-			print("[FloatingSuggestion] suppressed duplicate key=\(logKey)")
-			return
+	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context: ContextModel, packet: TriggerPacket) {
+		let repeatSuppressed = appState.shouldSuppressFloatingRepeat(for: proposal, context: context)
+		let tes = TriggerEligibilityEvaluator.evaluate(
+			proposal: proposal,
+			context: context,
+			triggerType: packet.triggerType,
+			isPaused: appState.isPaused,
+			isPopoverOpen: menuBarController?.isPopoverShown ?? false,
+			isFloatingVisible: appState.isFloatingSuggestionVisible,
+			isActionExecuting: appState.isActionExecuting,
+			floatingRepeatSuppressed: repeatSuppressed,
+			inputSourceChoice: appState.selectedInputSourceChoice
+		)
+
+		let scoreLabel = String(format: "%.2f", tes.score)
+		let sig = "\(tes.shouldShow)|\(tes.reason)|\(scoreLabel)|\(packet.triggerType.rawValue)|\(proposal.primaryActionId)"
+		let now = Date()
+		let shouldLogTES: Bool
+		if let prev = lastTESLogSignature, prev == sig, let t = lastTESLogAt, now.timeIntervalSince(t) < 2.5 {
+			shouldLogTES = false
+		} else {
+			shouldLogTES = true
+			lastTESLogSignature = sig
+			lastTESLogAt = now
 		}
-		if let existing = appState.floatingSuggestion, existing == proposal, appState.isFloatingSuggestionVisible {
-			return
+
+		if tes.shouldShow {
+			if shouldLogTES {
+				print("[TES] allow reason=\(tes.reason) score=\(scoreLabel)")
+			}
+			if let existing = appState.floatingSuggestion, existing == proposal, appState.isFloatingSuggestionVisible {
+				return
+			}
+			appState.showFloatingSuggestion(proposal)
+		} else if shouldLogTES {
+			print("[TES] suppressed reason=\(tes.reason) score=\(scoreLabel)")
 		}
-		appState.showFloatingSuggestion(proposal)
 	}
 
 	private func preserveOrClearAvailableActions(reason: String) {

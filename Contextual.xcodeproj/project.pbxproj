@@ -48,6 +48,7 @@
 		AA0001310000000000000031 /* SystemStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002370000000000000034 /* SystemStatusView.swift */; };
 		AA0001350000000000000035 /* FloatingSuggestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002390000000000000036 /* FloatingSuggestionView.swift */; };
 		AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */; };
+		AA0001370000000000000038 /* TriggerEligibilityEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002410000000000000039 /* TriggerEligibilityEvaluator.swift */; };
 		AA0001250000000000000025 /* ScreenCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000230000000000000002E /* ScreenCaptureSource.swift */; };
 /* End PBXBuildFile section */
 
@@ -58,6 +59,7 @@
 		AA0002030000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSuggestionWindowController.swift; sourceTree = "<group>"; };
+		AA0002410000000000000039 /* TriggerEligibilityEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerEligibilityEvaluator.swift; sourceTree = "<group>"; };
 		AA0002050000000000000005 /* AssistantPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantPanelView.swift; sourceTree = "<group>"; };
 		AA0002060000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0002060000000000000010 /* SystemSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSource.swift; sourceTree = "<group>"; };
@@ -190,6 +192,7 @@
 				AA000210000000000000001A /* TriggerPacket.swift */,
 				AA000211000000000000001B /* CooldownManager.swift */,
 				AA000212000000000000001C /* TriggerEngine.swift */,
+				AA0002410000000000000039 /* TriggerEligibilityEvaluator.swift */,
 			);
 			path = Triggers;
 			sourceTree = "<group>";
@@ -352,6 +355,7 @@
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,
+				AA0001370000000000000038 /* TriggerEligibilityEvaluator.swift in Sources */,
 				AA0001130000000000000013 /* ActionProtocol.swift in Sources */,
 				AA0001140000000000000014 /* ActionResult.swift in Sources */,
 				AA0001150000000000000015 /* SummarizeAction.swift in Sources */,
