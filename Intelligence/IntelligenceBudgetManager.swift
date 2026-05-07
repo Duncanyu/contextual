@@ -167,5 +167,73 @@ final class IntelligenceBudgetManager {
 		}
 		return hash
 	}
+
+	#if DEBUG
+	/// Debug-only verification helper (not called from runtime).
+	static func _selfTest() -> Bool {
+		let mgr = IntelligenceBudgetManager()
+		let f = ContextFeatures(
+			textLength: 150,
+			wordCount: 25,
+			sentenceCount: 3,
+			punctuationDensity: 0.03,
+			hasQuestion: true,
+			isLikelyCode: false,
+			isLikelyLog: false,
+			lineCount: 3,
+			averageLineLength: 50,
+			repetitionScore: 0.0
+		)
+		let req = IntelligenceDecisionRequest(
+			contextType: .question,
+			features: f,
+			availableActions: ["explain_text", "summarize_text"],
+			sourceType: "selected_text",
+			appName: "X",
+			windowTitle: "Y",
+			textLength: 150,
+			lineCount: 3,
+			compressedText: "What is recursion?"
+		)
+
+		if mgr.evaluate(request: req, suggestionStrength: .medium, isActionExecuting: true, isModelAvailable: true, contextFingerprint: "a").allowed { return false }
+		if mgr.evaluate(request: req, suggestionStrength: .medium, isActionExecuting: false, isModelAvailable: false, contextFingerprint: "a").allowed { return false }
+
+		let emptyTextReq = IntelligenceDecisionRequest(
+			contextType: .question,
+			features: f,
+			availableActions: ["explain_text"],
+			sourceType: "selected_text",
+			appName: nil,
+			windowTitle: nil,
+			textLength: 150,
+			lineCount: 1,
+			compressedText: ""
+		)
+		if mgr.evaluate(request: emptyTextReq, suggestionStrength: .medium, isActionExecuting: false, isModelAvailable: true, contextFingerprint: "b").allowed { return false }
+
+		let noActionsReq = IntelligenceDecisionRequest(
+			contextType: .question,
+			features: f,
+			availableActions: [],
+			sourceType: "selected_text",
+			appName: nil,
+			windowTitle: nil,
+			textLength: 150,
+			lineCount: 1,
+			compressedText: "hi"
+		)
+		if mgr.evaluate(request: noActionsReq, suggestionStrength: .medium, isActionExecuting: false, isModelAvailable: true, contextFingerprint: "c").allowed { return false }
+
+		if mgr.evaluate(request: req, suggestionStrength: .weak, isActionExecuting: false, isModelAvailable: true, contextFingerprint: "d").allowed { return false }
+
+		let first = mgr.evaluate(request: req, suggestionStrength: .strong, isActionExecuting: false, isModelAvailable: true, contextFingerprint: "same")
+		if !first.allowed { return false }
+		let second = mgr.evaluate(request: req, suggestionStrength: .strong, isActionExecuting: false, isModelAvailable: true, contextFingerprint: "same")
+		if second.allowed { return false }
+
+		return true
+	}
+	#endif
 }
 
