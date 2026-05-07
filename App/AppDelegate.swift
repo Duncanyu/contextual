@@ -44,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastSuggestionStrengthLogSignature: String?
 	private var lastSuggestionStrengthLogAt: Date?
 
+	/// Invalidates in-flight async `updateAvailableActions` when newer context arrives (T12.6).
+	private var contextPipelineGeneration: UInt64 = 0
+	private let intelligenceProposalSelector = IntelligenceProposalSelector()
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
 		syncLocalAIFromStorage()
@@ -240,15 +244,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		logContextModel(contextBuilder.model)
 
 		let context = contextBuilder.model
+		contextPipelineGeneration += 1
+		let generation = contextPipelineGeneration
 		if let packet = triggerEngine.evaluate(context) {
 			logTriggerPacket(packet, context: context)
-			updateAvailableActions(from: packet, context: context)
+			Task { await self.updateAvailableActions(from: packet, context: context, generation: generation) }
 		} else {
 			preserveOrClearAvailableActions(reason: "no trigger packet")
 		}
 	}
 
-	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel) {
+	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel, generation: UInt64) async {
 		let decision = ReasoningEngine.shared.evaluate(context: context, triggerPacket: packet)
 		let primary = decision.primaryActionId ?? "none"
 		print("[ReasoningEngine] decision surface=\(decision.shouldSurface) primary=\(primary) confidence=\(decision.confidence) reason=\(decision.reason)")
@@ -257,6 +263,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			preserveOrClearAvailableActions(reason: "reasoning shouldSurface=false")
 			return
 		}
+
+		let proposalGateResult = ProposalGenerationGate.evaluate(context: context)
 
 		// Compute features + type once for relevance scoring (no AI, metadata only).
 		let sourceText = ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .automatic) ?? ""
@@ -322,9 +330,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				inputSourcePreference: appState.selectedInputSourceChoice
 			)
 		} else {
-			let gate = ProposalGenerationGate.evaluate(context: context)
-			logProposalGateIfNeeded(allowed: gate.shouldGenerate, reason: gate.reason)
-			if gate.shouldGenerate, shouldGenerateProposalByRelevance {
+			logProposalGateIfNeeded(allowed: proposalGateResult.shouldGenerate, reason: proposalGateResult.reason)
+			if proposalGateResult.shouldGenerate, shouldGenerateProposalByRelevance {
 				proposal = ProposalGenerator.shared.generate(
 					context: context,
 					triggerPacket: packet,
@@ -353,28 +360,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			proposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
 		}
 
-		if packet.triggerType != .manualInvocation, let key = proposalKey {
-			if let dismissedAt = appState.lastDismissedProposalAt,
-			   appState.lastDismissedProposalKey == key,
-			   Date().timeIntervalSince(dismissedAt) < 60 {
-				print("[ProposalCooldown] suppressed proposal key=\(key) reason=dismissed")
-				proposal = nil
-				proposalKey = nil
-			} else if let acceptedAt = appState.lastAcceptedProposalAt,
-					  appState.lastAcceptedProposalKey == key,
-					  Date().timeIntervalSince(acceptedAt) < 10 {
-				print("[ProposalCooldown] suppressed proposal key=\(key) reason=accepted")
-				proposal = nil
-				proposalKey = nil
-			}
-		}
-
 		var evalContext = context
 		evalContext.actionInputSourcePreference = appState.selectedInputSourceChoice
 		let mapped = actionRouter.matchingActions(for: packet).filter { $0.canExecute(context: evalContext) }
 		let orderedIds = overriddenDecision.rankedActionIds.isEmpty ? decision.rankedActionIds : overriddenDecision.rankedActionIds
 		let indexById = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($0.element, $0.offset) })
-		let ordered = mapped.sorted { a, b in
+		var ordered = mapped.sorted { a, b in
 			let ia = indexById[a.id] ?? Int.max
 			let ib = indexById[b.id] ?? Int.max
 			if ia != ib { return ia < ib }
@@ -404,6 +395,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
+		// T12.6: LLM-assisted primary selection / suppress (Intelligence layer only; heuristic fallback on failure).
+		if let fp = finalProposal,
+		   let st = strength,
+		   st.strength == .medium || st.strength == .strong,
+		   proposalGateResult.shouldGenerate,
+		   !ordered.isEmpty,
+		   generation == contextPipelineGeneration
+		{
+			let llmIds = Self.llmCandidateActionIds(from: ordered)
+			if !llmIds.isEmpty {
+				let primaryBefore = fp.primaryActionId
+				let intel = await intelligenceProposalSelector.run(
+					context: context,
+					triggerPacket: packet,
+					sourceText: sourceText,
+					contextType: contextType,
+					features: features,
+					suggestionStrength: st.strength,
+					candidateLLMActionIds: llmIds,
+					heuristicPrimaryActionId: primaryBefore,
+					inputPreference: appState.selectedInputSourceChoice,
+					isActionExecuting: appState.isActionExecuting
+				)
+				guard generation == contextPipelineGeneration else { return }
+				switch intel.outcome {
+				case .unchanged:
+					break
+				case .suppressProposal:
+					finalProposal = nil
+					finalProposalKey = nil
+				case .overridePrimary(let newId):
+					let fullRanked = Self.rankedIdsPlacingPrimary(newId, orderedIds: ordered.map(\.id), textPool: llmIds)
+					let regenDecision = ReasoningDecision(
+						shouldSurface: overriddenDecision.shouldSurface,
+						primaryActionId: newId,
+						rankedActionIds: fullRanked,
+						reason: overriddenDecision.reason,
+						confidence: overriddenDecision.confidence
+					)
+					finalProposal = ProposalGenerator.shared.generate(
+						context: context,
+						triggerPacket: packet,
+						decision: regenDecision,
+						inputSourcePreference: appState.selectedInputSourceChoice
+					)
+					if let p = finalProposal {
+						finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+					} else {
+						finalProposalKey = nil
+					}
+					ordered = Self.resortActions(ordered, rankedIds: fullRanked)
+					print("[IntelligenceSelection] proposal overridden primary=\(newId)")
+				}
+			}
+		}
+
+		if ordered.isEmpty {
+			finalProposal = nil
+			finalProposalKey = nil
+		} else if let p = finalProposal {
+			let primaryInActions = ordered.contains(where: { $0.id == p.primaryActionId })
+			if !primaryInActions {
+				finalProposal = nil
+				finalProposalKey = nil
+			} else if appState.isSuggestionOnCooldown(p, context: context) {
+				finalProposal = nil
+				finalProposalKey = nil
+			}
+		}
+
+		if packet.triggerType != .manualInvocation, let key = finalProposalKey {
+			if let dismissedAt = appState.lastDismissedProposalAt,
+			   appState.lastDismissedProposalKey == key,
+			   Date().timeIntervalSince(dismissedAt) < 60 {
+				print("[ProposalCooldown] suppressed proposal key=\(key) reason=dismissed")
+				finalProposal = nil
+				finalProposalKey = nil
+			} else if let acceptedAt = appState.lastAcceptedProposalAt,
+					  appState.lastAcceptedProposalKey == key,
+					  Date().timeIntervalSince(acceptedAt) < 10 {
+				print("[ProposalCooldown] suppressed proposal key=\(key) reason=accepted")
+				finalProposal = nil
+				finalProposalKey = nil
+			}
+		}
+
+		guard generation == contextPipelineGeneration else { return }
+
 		appState.availableActions = ordered
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
@@ -417,6 +496,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if let p = finalProposal, let s = strength, s.strength == .strong {
 			maybeShowFloatingSuggestion(proposal: p, suggestionStrength: s.strength, context: context, packet: packet)
 		}
+	}
+
+	private static let intelligenceTextActionIds: Set<String> = ["summarize_text", "explain_text", "rewrite_text"]
+
+	private static func llmCandidateActionIds(from ordered: [any ActionProtocol]) -> [String] {
+		ordered.map(\.id).filter { intelligenceTextActionIds.contains($0) }
+	}
+
+	private static func resortActions(_ actions: [any ActionProtocol], rankedIds: [String]) -> [any ActionProtocol] {
+		let indexById = Dictionary(uniqueKeysWithValues: rankedIds.enumerated().map { ($0.element, $0.offset) })
+		return actions.sorted { a, b in
+			let ia = indexById[a.id] ?? Int.max
+			let ib = indexById[b.id] ?? Int.max
+			if ia != ib { return ia < ib }
+			return a.id < b.id
+		}
+	}
+
+	private static func rankedIdsPlacingPrimary(_ primary: String, orderedIds: [String], textPool: [String]) -> [String] {
+		var reordered: [String] = []
+		if textPool.contains(primary) {
+			reordered.append(primary)
+			reordered.append(contentsOf: textPool.filter { $0 != primary })
+		} else {
+			reordered.append(primary)
+			reordered.append(contentsOf: textPool.filter { $0 != primary })
+		}
+		let extras = orderedIds.filter { !intelligenceTextActionIds.contains($0) }
+		return reordered + extras
 	}
 
 	private func logProposalGateIfNeeded(allowed: Bool, reason: String) {
