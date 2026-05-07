@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 	private var lastProposalGateLogSignature: String?
 	private var lastProposalGateLogAt: Date?
+	private var lastActionRelevanceLogSignature: String?
+	private var lastActionRelevanceLogAt: Date?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
@@ -252,12 +254,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
+		// Compute features + type once for relevance scoring (no AI, metadata only).
+		let sourceText = ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .automatic) ?? ""
+		let features = FeatureExtractor.extract(from: sourceText)
+		let contextType = ContextClassifier.classify(features: features, text: sourceText)
+
+		let relevance = ActionRelevanceScorer.scoreActions(
+			candidateActionIds: decision.rankedActionIds,
+			contextType: contextType,
+			features: features
+		)
+
+		let rankedIds = relevance.map(\.actionId)
+		logActionRelevanceIfNeeded(ranked: relevance, topId: rankedIds.first)
+
+		let top = relevance.first
+		let shouldOverridePrimary = (top?.score ?? 0) >= 0.75
+		let overriddenPrimary = shouldOverridePrimary ? top?.actionId : decision.primaryActionId
+		let overriddenDecision = ReasoningDecision(
+			shouldSurface: decision.shouldSurface,
+			primaryActionId: overriddenPrimary,
+			rankedActionIds: rankedIds.isEmpty ? decision.rankedActionIds : rankedIds,
+			reason: decision.reason,
+			confidence: decision.confidence
+		)
+
 		var proposal: ActionProposal?
 		if packet.triggerType == .manualInvocation {
 			proposal = ProposalGenerator.shared.generate(
 				context: context,
 				triggerPacket: packet,
-				decision: decision,
+				decision: overriddenDecision,
 				inputSourcePreference: appState.selectedInputSourceChoice
 			)
 		} else {
@@ -267,7 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				proposal = ProposalGenerator.shared.generate(
 					context: context,
 					triggerPacket: packet,
-					decision: decision,
+					decision: overriddenDecision,
 					inputSourcePreference: appState.selectedInputSourceChoice
 				)
 			}
@@ -297,7 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		var evalContext = context
 		evalContext.actionInputSourcePreference = appState.selectedInputSourceChoice
 		let mapped = actionRouter.matchingActions(for: packet).filter { $0.canExecute(context: evalContext) }
-		let orderedIds = decision.rankedActionIds
+		let orderedIds = overriddenDecision.rankedActionIds.isEmpty ? decision.rankedActionIds : overriddenDecision.rankedActionIds
 		let indexById = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($0.element, $0.offset) })
 		let ordered = mapped.sorted { a, b in
 			let ia = indexById[a.id] ?? Int.max
@@ -357,6 +384,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		} else {
 			print("[ProposalGate] blocked reason=\(reason)")
 		}
+	}
+
+	private func logActionRelevanceIfNeeded(ranked: [ActionRelevanceScore], topId: String?) {
+		guard !ranked.isEmpty else { return }
+		let parts = ranked.prefix(6).map { r in
+			let s = String(format: "%.2f", r.score)
+			return "\(r.actionId)=\(s)"
+		}
+		let top = topId ?? "none"
+		let sig = parts.joined(separator: "|") + "|top=\(top)"
+		let now = Date()
+		if let prev = lastActionRelevanceLogSignature, prev == sig, let t = lastActionRelevanceLogAt, now.timeIntervalSince(t) < 2.0 {
+			return
+		}
+		lastActionRelevanceLogSignature = sig
+		lastActionRelevanceLogAt = now
+		print("[ActionRelevance] ranked \(parts.joined(separator: " ")) top=\(top)")
 	}
 
 	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context: ContextModel, packet: TriggerPacket) {

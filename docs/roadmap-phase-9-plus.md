@@ -412,28 +412,6 @@ The assistant must remain conservative.
 
 Silence is always preferred over a low-quality suggestion.
 
-
-### Resulting UX
-
-After Phase 9:
-
-[Suggestion]  
-"Want help understanding this?"  
-
-[Actions]  
-Explain | Summarize | Rewrite | Analyze Screen  
-
-[Input]  
-Using: Screen (OCR, 2327 chars)  
-
-[Result]  
-<clean readable output>  
-
-[Controls]  
-Invoke | Status  
-
-[Debug ▼] (optional)
-
 ---
 
 ## Phase 11 — Intelligence Layer
@@ -852,6 +830,31 @@ Rather than:
 - noisy
 - repetitive
 - rigid
+
+---
+
+### Resulting UX
+
+After Phase 9:
+
+[Suggestion]  
+"Want help understanding this?"  
+
+[Actions]  
+Explain | Summarize | Rewrite | Analyze Screen  
+
+[Input]  
+Using: Screen (OCR, 2327 chars)  
+
+[Result]  
+<clean readable output>  
+
+[Controls]  
+Invoke | Status  
+
+[Debug ▼] (optional)
+
+---
 
 ## Notes
 
