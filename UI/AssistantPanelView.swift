@@ -207,15 +207,9 @@ struct AssistantPanelView: View {
 		if let action = appState.availableActions.first(where: { $0.id == actionId }) {
 			return action.name
 		}
-		switch actionId {
-		case "summarize_text":
-			return "Summarize"
-		case "explain_text":
-			return "Explain"
-		case "rewrite_text":
-			return "Rewrite"
-		default:
-			return "Open"
+		if let title = ActionIntentRegistry.title(for: actionId) {
+			return title
 		}
+		return "Open"
 	}
 }

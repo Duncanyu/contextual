@@ -371,17 +371,9 @@ final class AppState: ObservableObject {
 		if let action = availableActions.first(where: { $0.id == proposal.primaryActionId }) {
 			return action.name
 		}
-		switch proposal.primaryActionId {
-		case "summarize_text":
-			return "Summarize"
-		case "explain_text":
-			return "Explain"
-		case "rewrite_text":
-			return "Rewrite"
-		case ScreenAnalyzeAction.analyzeScreenId:
-			return "Analyze Screen"
-		default:
-			return "Open"
+		if let title = ActionIntentRegistry.title(for: proposal.primaryActionId) {
+			return title
 		}
+		return "Open"
 	}
 }

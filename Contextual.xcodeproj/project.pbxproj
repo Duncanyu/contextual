@@ -28,6 +28,9 @@
 		AA0001130000000000000013 /* ActionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000213000000000000001D /* ActionProtocol.swift */; };
 		AA0001140000000000000014 /* ActionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000214000000000000001E /* ActionResult.swift */; };
 		AA0001150000000000000015 /* SummarizeAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000215000000000000001F /* SummarizeAction.swift */; };
+		AA000148000000000000004C /* ActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000252000000000000004D /* ActionIntent.swift */; };
+		AA000149000000000000004E /* TemporaryWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000253000000000000004F /* TemporaryWorkflow.swift */; };
+		AA0001500000000000000050 /* GeneratedActionDescriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002540000000000000051 /* GeneratedActionDescriptor.swift */; };
 		AA0001160000000000000016 /* ActionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002160000000000000020 /* ActionRouter.swift */; };
 		AA0001170000000000000017 /* ExplainAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002170000000000000021 /* ExplainAction.swift */; };
 		AA0001180000000000000018 /* RewriteAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002180000000000000022 /* RewriteAction.swift */; };
@@ -90,6 +93,9 @@
 		AA000213000000000000001D /* ActionProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionProtocol.swift; sourceTree = "<group>"; };
 		AA000214000000000000001E /* ActionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionResult.swift; sourceTree = "<group>"; };
 		AA000215000000000000001F /* SummarizeAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizeAction.swift; sourceTree = "<group>"; };
+		AA000252000000000000004D /* ActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionIntent.swift; sourceTree = "<group>"; };
+		AA000253000000000000004F /* TemporaryWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryWorkflow.swift; sourceTree = "<group>"; };
+		AA0002540000000000000051 /* GeneratedActionDescriptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionDescriptor.swift; sourceTree = "<group>"; };
 		AA0002160000000000000020 /* ActionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRouter.swift; sourceTree = "<group>"; };
 		AA0002170000000000000021 /* ExplainAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplainAction.swift; sourceTree = "<group>"; };
 		AA0002180000000000000022 /* RewriteAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RewriteAction.swift; sourceTree = "<group>"; };
@@ -223,6 +229,9 @@
 			children = (
 				AA000213000000000000001D /* ActionProtocol.swift */,
 				AA000214000000000000001E /* ActionResult.swift */,
+				AA000252000000000000004D /* ActionIntent.swift */,
+				AA000253000000000000004F /* TemporaryWorkflow.swift */,
+				AA0002540000000000000051 /* GeneratedActionDescriptor.swift */,
 				AA000215000000000000001F /* SummarizeAction.swift */,
 				AA0002170000000000000021 /* ExplainAction.swift */,
 				AA0002180000000000000022 /* RewriteAction.swift */,
@@ -389,6 +398,9 @@
 				AA0001130000000000000013 /* ActionProtocol.swift in Sources */,
 				AA0001140000000000000014 /* ActionResult.swift in Sources */,
 				AA0001150000000000000015 /* SummarizeAction.swift in Sources */,
+				AA000148000000000000004C /* ActionIntent.swift in Sources */,
+				AA000149000000000000004E /* TemporaryWorkflow.swift in Sources */,
+				AA0001500000000000000050 /* GeneratedActionDescriptor.swift in Sources */,
 				AA0001160000000000000016 /* ActionRouter.swift in Sources */,
 				AA0001170000000000000017 /* ExplainAction.swift in Sources */,
 				AA0001180000000000000018 /* RewriteAction.swift in Sources */,
