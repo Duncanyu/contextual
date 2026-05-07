@@ -12,6 +12,7 @@ final class IntelligenceProposalSelector {
 
 	private static let overrideConfidenceThreshold: Double = 0.78
 	private static let suppressConfidenceThreshold: Double = 0.85
+	private static let titleConfidenceThreshold: Double = 0.80
 
 	enum Outcome: Equatable {
 		case unchanged
@@ -21,6 +22,8 @@ final class IntelligenceProposalSelector {
 
 	struct Result: Equatable {
 		let outcome: Outcome
+		/// Safe natural-language title from local intelligence (T12.7); never applied without validator + confidence gate.
+		let intelligenceTitle: String?
 	}
 
 	/// - Parameter candidateLLMActionIds: Executable text actions (summarize / explain / rewrite) for the model to choose from.
@@ -36,10 +39,10 @@ final class IntelligenceProposalSelector {
 		inputPreference: InputSourceChoice,
 		isActionExecuting: Bool
 	) async -> Result {
-		guard !candidateLLMActionIds.isEmpty else { return Result(outcome: .unchanged) }
+		guard !candidateLLMActionIds.isEmpty else { return Result(outcome: .unchanged, intelligenceTitle: nil) }
 
 		let trimmed = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !trimmed.isEmpty else { return Result(outcome: .unchanged) }
+		guard !trimmed.isEmpty else { return Result(outcome: .unchanged, intelligenceTitle: nil) }
 
 		let sourceType = Self.intelligenceSourceType(triggerType: triggerPacket.triggerType, inputPreference: inputPreference)
 
@@ -54,7 +57,7 @@ final class IntelligenceProposalSelector {
 		)
 
 		guard !packet.textExcerpt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-			return Result(outcome: .unchanged)
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
 		}
 
 		let request = IntelligenceDecisionRequest(
@@ -96,7 +99,7 @@ final class IntelligenceProposalSelector {
 
 		if !budgetDecision.allowed {
 			logHeuristicKept(reason: "budget_denied")
-			return Result(outcome: .unchanged)
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
 		}
 
 		let decision = await engine.decide(request: request, suggestionStrength: suggestionStrength)
@@ -119,7 +122,7 @@ final class IntelligenceProposalSelector {
 		guard decision.isValid(for: request) else {
 			print("[IntelligenceSelection] decision rejected reason=invalid fromCache=\(fromCache)")
 			logHeuristicKept(reason: "invalid")
-			return Result(outcome: .unchanged)
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
 		}
 
 		let c = min(1.0, max(0.0, decision.confidence))
@@ -129,29 +132,54 @@ final class IntelligenceProposalSelector {
 				let cs = String(format: "%.2f", c)
 				print("[IntelligenceSelection] decision accepted apply=suppress conf=\(cs) fromCache=\(fromCache)")
 				print("[IntelligenceSelection] proposal suppressed")
-				return Result(outcome: .suppressProposal)
+				return Result(outcome: .suppressProposal, intelligenceTitle: nil)
 			}
 			print("[IntelligenceSelection] decision rejected reason=low_conf_suggest_false fromCache=\(fromCache)")
 			logHeuristicKept(reason: "low_conf")
-			return Result(outcome: .unchanged)
+			print("[IntelligenceTitle] title_kept_heuristic reason=low_conf_decision fromCache=\(fromCache)")
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
 		}
 
 		guard let best = decision.bestActionId, c >= Self.overrideConfidenceThreshold else {
 			print("[IntelligenceSelection] decision rejected reason=low_conf fromCache=\(fromCache)")
 			logHeuristicKept(reason: "low_conf")
-			return Result(outcome: .unchanged)
+			print("[IntelligenceTitle] title_kept_heuristic reason=low_conf_decision fromCache=\(fromCache)")
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
 		}
+
+		let intelTitle = resolveIntelligenceTitle(decision: decision, confidence: c, request: request, fromCache: fromCache)
 
 		if best == heuristicPrimary {
 			let cs = String(format: "%.2f", c)
 			print("[IntelligenceSelection] decision accepted apply=keep conf=\(cs) fromCache=\(fromCache)")
 			logHeuristicKept(reason: "same_primary")
-			return Result(outcome: .unchanged)
+			return Result(outcome: .unchanged, intelligenceTitle: intelTitle)
 		}
 
 		let cs = String(format: "%.2f", c)
 		print("[IntelligenceSelection] decision accepted apply=override conf=\(cs) fromCache=\(fromCache)")
-		return Result(outcome: .overridePrimary(best))
+		return Result(outcome: .overridePrimary(best), intelligenceTitle: intelTitle)
+	}
+
+	private func resolveIntelligenceTitle(
+		decision: IntelligenceDecisionResponse,
+		confidence: Double,
+		request: IntelligenceDecisionRequest,
+		fromCache: Bool
+	) -> String? {
+		guard confidence >= Self.titleConfidenceThreshold else {
+			print("[IntelligenceTitle] title_kept_heuristic reason=below_title_threshold fromCache=\(fromCache)")
+			return nil
+		}
+		switch IntelligenceProposalTitleValidator.evaluate(decision.suggestedTitle, request: request) {
+		case .accepted(let title):
+			let cs = String(format: "%.2f", confidence)
+			print("[IntelligenceTitle] title_applied fromCache=\(fromCache) conf=\(cs)")
+			return title
+		case .rejected(let reason):
+			print("[IntelligenceTitle] title_rejected reason=\(reason) fromCache=\(fromCache)")
+			return nil
+		}
 	}
 
 	// MARK: - Logging

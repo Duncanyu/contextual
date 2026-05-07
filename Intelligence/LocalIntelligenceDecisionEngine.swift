@@ -98,7 +98,7 @@ final class LocalIntelligenceDecisionEngine {
 
 		return """
 Return STRICT JSON only with keys: shouldSuggest (bool), bestActionId (string|null), confidence (number 0..1), reason (string), suggestedTitle (string|null).
-Rules: bestActionId must be one of [\(actions)] when shouldSuggest=true. suggestedTitle must be short (<120 chars), generic, and must NOT quote or include user text.
+Rules: bestActionId must be one of [\(actions)] when shouldSuggest=true. suggestedTitle must be <=60 chars, end with ?, start with natural phrasing like "Want…", "Need…", "Want me…", "Want help…", or "Want a quick…", and must NOT quote or include user text.
 
 Context:
 type=\(type)
@@ -171,12 +171,7 @@ compressedText:
 			title = nil
 		}
 
-		// Title safety: require question-style and avoid echoing user text.
-		if let t = title {
-			if !isSafeSuggestedTitle(t, request: request) {
-				title = nil
-			}
-		}
+		// Strict title validation for display happens in `IntelligenceProposalTitleValidator` (T12.7).
 
 		return IntelligenceDecisionResponse(
 			shouldSuggest: should,
@@ -185,23 +180,6 @@ compressedText:
 			reason: reason,
 			suggestedTitle: title
 		)
-	}
-
-	private func isSafeSuggestedTitle(_ title: String, request: IntelligenceDecisionRequest) -> Bool {
-		let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard trimmed.count < 120 else { return false }
-		guard trimmed.hasSuffix("?") else { return false }
-		guard !trimmed.contains("\n") else { return false }
-
-		// Avoid the model copying text from the excerpt: reject if any token >= 8 chars appears in compressedText.
-		let excerptLower = request.compressedText.lowercased()
-		let tokens = trimmed.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
-		for tok in tokens where tok.count >= 8 {
-			if excerptLower.contains(tok) {
-				return false
-			}
-		}
-		return true
 	}
 
 	private static func compactOneLine(_ s: String) -> String {

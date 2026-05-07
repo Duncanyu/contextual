@@ -421,7 +421,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				guard generation == contextPipelineGeneration else { return }
 				switch intel.outcome {
 				case .unchanged:
-					break
+					if let t = intel.intelligenceTitle {
+						finalProposal = ProposalGenerator.shared.generate(
+							context: context,
+							triggerPacket: packet,
+							decision: overriddenDecision,
+							inputSourcePreference: appState.selectedInputSourceChoice,
+							intelligenceTitleOverride: t
+						)
+						if let p = finalProposal {
+							finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+						} else {
+							finalProposalKey = nil
+						}
+					}
 				case .suppressProposal:
 					finalProposal = nil
 					finalProposalKey = nil
@@ -438,7 +451,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 						context: context,
 						triggerPacket: packet,
 						decision: regenDecision,
-						inputSourcePreference: appState.selectedInputSourceChoice
+						inputSourcePreference: appState.selectedInputSourceChoice,
+						intelligenceTitleOverride: intel.intelligenceTitle
 					)
 					if let p = finalProposal {
 						finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"

@@ -833,103 +833,141 @@ Rather than:
 
 ---
 
-## Phase 12 — Liquid Intelligence Layer
+## Phase 12 — Liquid Intelligence Layer (v2)
 
 ### Goal
 
-Introduce selective local LLM-assisted judgment so the assistant can make more thoughtful, fluid suggestions without running constantly.
+Introduce **multi-layer local intelligence** so the assistant can make:
+
+- fast decisions  
+- thoughtful decisions  
+- minimal interruptions  
 
 The assistant should feel:
-- present
-- intentional
-- adaptive
-- lightweight
-- quiet unless useful
+
+- instant  
+- intentional  
+- adaptive  
+- lightweight  
+- quiet unless useful  
 
 It should not feel:
-- spammy
-- rigid
-- overly scheduled
-- constantly thinking
-- performance-heavy
+
+- slow  
+- blocked on thinking  
+- fake or rule-based  
+- spammy  
+- constantly running  
 
 ---
 
 ### Core Principle
 
-The assistant should not run intelligence all the time.
+The assistant should not rely on a single intelligence mechanism.
 
-It should run intelligence when the situation deserves judgment.
+It should use **layered intelligence**:
 
-Heuristics remain the fast first-pass filter.
-
-The local LLM becomes the second-pass judge.
-
-Flow:
-
-Context  
-→ lightweight heuristics  
-→ if meaningful/ambiguous  
-→ local intelligence decision  
-→ proposal  
-→ TES safety fallback  
-→ UI
+> fast → selective → deeper only when needed
 
 ---
 
-### Design Philosophy
+### Updated Intelligence Flow
 
-The assistant should behave less like:
+Context  
+↓  
+Heuristics (fast filter)  
+↓  
+Micro Intelligence (tiny local model — classification)  
+↓  
+IF confident → decision  
+ELSE  
+↓  
+Local LLM (phi3) — deeper judgment  
+↓  
+Proposal  
+↓  
+TES safety fallback  
+↓  
+UI  
 
-“Every 20 seconds, maybe suggest something.”
+---
 
-And more like:
+### Key Design Shift
 
-“This moment looks worth thinking about.”
+Move from:
 
-No rigid global cooldowns unless used as emergency safety.
+“LLM decides when needed”
 
-Timing should come from:
-- context changes
-- user behavior
-- input stability
-- recent interaction history
-- confidence
-- intelligence budget
+to:
+
+“A fast intelligence layer handles most decisions,  
+LLM handles only ambiguity.”
+
+---
+
+### Performance Philosophy
+
+All intelligence must be:
+
+- event-driven  
+- low-latency  
+- cancelable  
+- minimal input size  
+- cached aggressively  
 
 ---
 
 ### Performance Rules
 
-- No constant LLM loop
-- No LLM call on every selection change
-- No full-text LLM calls by default
-- No background model spam
-- No cloud dependency
-- No autonomous execution
-
-LLM calls must be:
-- local
-- capped
-- event-driven
-- cancelable or timeout-safe
-- based on compressed context
-- skipped when unnecessary
+- No constant LLM loop  
+- No LLM call on every selection change  
+- No blocking UI on LLM  
+- No full-text LLM calls by default  
+- No background model spam  
+- No cloud dependency  
 
 ---
 
-### Tickets
+### Micro Intelligence Rules
+
+- Must run in milliseconds  
+- Must be real model-based (not heuristics)  
+- Must operate on compressed context only  
+- Must output:
+  - bestActionId
+  - confidence
+  - shouldSuggest  
+
+---
+
+### LLM Rules
+
+LLM is:
+
+- second-pass only  
+- used only when:
+  - micro decision confidence is low
+  - context is ambiguous
+- never blocks UI  
+- always fails safely  
+
+---
+
+## Tickets
+
+---
 
 ### T12.1 — Intelligence Decision Request Model
 
 Create a structured request/response format for local intelligence decisions.
 
 The model should decide:
-- shouldSuggest
-- bestActionId
-- confidence
-- short reason
-- suggested title
+
+- shouldSuggest  
+- bestActionId  
+- confidence  
+- short reason  
+- suggested title  
 
 No execution. Decision only.
 
@@ -937,46 +975,78 @@ No execution. Decision only.
 
 ### T12.2 — Context Compression Layer
 
-Before local intelligence runs, compress context into a small safe packet.
+Before intelligence runs, compress context into a small safe packet.
 
 Include:
-- app name
-- window title metadata
-- source type
-- context type
-- feature summary
-- short text excerpt
+
+- app name  
+- window title metadata  
+- source type  
+- context type  
+- feature summary  
+- short text excerpt  
 
 Do not send huge raw content.
 
 ---
 
-### T12.3 — Local Intelligence Decision Engine
+### T12.3.5 — Micro Decision Engine (NEW)
 
-Add a lightweight local LLM decision step.
+Introduce a tiny local classification model for fast decision-making.
 
-It should run only when:
-- ProposalGate allows
-- SuggestionStrength is medium/strong
-- context is meaningful
-- no recent similar decision exists
+Responsibilities:
 
-It should not run for obvious garbage.
+- take compressed context  
+- output:
+  - shouldSuggest  
+  - bestActionId  
+  - confidence  
+- run in sub-20ms target  
+
+Constraints:
+
+- local only  
+- no raw text storage  
+- no large models  
+- no generation (classification only)  
+
+Notes:
+
+- model may be ONNX / CoreML / similar  
+- initial implementation may stub model loading  
+- must be pluggable  
+
+---
+
+### T12.3 — Local Intelligence Decision Engine (UPDATED)
+
+Acts as fallback intelligence layer.
+
+Runs only when:
+
+- micro decision confidence is below threshold  
+- context is ambiguous  
+- ProposalGate allows  
+- SuggestionStrength is medium/strong  
+- budget allows  
+
+No longer primary decision-maker.
 
 ---
 
 ### T12.4 — Intelligence Budget Manager
 
-Prevent the model from running too often.
+Prevent intelligence from running too often.
 
 Budget should consider:
-- current execution state
-- recent LLM calls
-- repeated similar context
-- model availability
-- system responsiveness
 
-This is not a rigid cooldown.
+- current execution state  
+- recent calls  
+- repeated similar context  
+- model availability  
+- system responsiveness  
+
+This is not a rigid cooldown.  
 It is a resource-aware permission check.
 
 ---
@@ -986,65 +1056,80 @@ It is a resource-aware permission check.
 Cache intelligence decisions by privacy-safe content fingerprint.
 
 If the same or very similar context appears again:
-- reuse decision
-- avoid another model call
-- decay cache over time
+
+- reuse decision  
+- avoid another model call  
+- decay cache over time  
 
 No raw text persistence.
 
 ---
 
-### T12.6 — LLM-Assisted Proposal Selection
+### T12.6 — Multi-Layer Proposal Selection (UPDATED)
 
-Use the intelligence decision to override heuristic proposal choice when confidence is high.
+Selection logic:
 
-Examples:
-- error/log → explain/debug-style proposal
-- confusing paragraph → explain
-- notes/article → summarize
-- ordinary text → no suggestion
+1. Check cache  
+2. Run MicroDecisionEngine  
+3. If confident → use micro decision  
+4. Else → run LocalIntelligenceDecisionEngine  
+5. Apply decision  
+
+Rules:
+
+- Micro decision has priority when confident  
+- LLM is fallback only  
+- Heuristics remain safety fallback  
+- Never block UI  
 
 ---
 
 ### T12.7 — Natural Proposal Titles
 
-Allow the local intelligence layer to generate short, natural proposal titles.
+Allow intelligence layer to generate short, natural proposal titles.
 
 Examples:
-- “Want help understanding this error?”
-- “Want a quick summary of these notes?”
-- “Want me to explain this code?”
 
-Titles must be short and safe.
-No raw private text in title.
+- “Want help understanding this error?”  
+- “Want a quick summary of these notes?”  
+- “Want me to explain this code?”  
+
+Titles must be:
+
+- short  
+- safe  
+- not include raw private text  
 
 ---
 
 ### T12.8 — Fallback and Timeout Behavior
 
-If local intelligence:
-- fails
-- times out
-- model unavailable
-- returns invalid output
+If intelligence:
+
+- fails  
+- times out  
+- model unavailable  
+- returns invalid output  
 
 Then:
-- fall back to heuristic pipeline
-- never block actions
-- never freeze UI
-- log safely
+
+- fall back to lower layer  
+- never block UI  
+- never freeze UI  
+- log safely  
 
 ---
 
 ### T12.9 — Intelligence Debug Logging
 
-Add clear metadata-only logs:
+Add metadata-only logs:
 
-- when intelligence was skipped
-- when it ran
-- why it ran
-- what decision it returned
-- whether fallback was used
+- when intelligence was skipped  
+- when micro ran  
+- when LLM ran  
+- why each ran  
+- what decision was returned  
+- whether fallback was used  
 
 No raw text.
 
@@ -1054,27 +1139,30 @@ No raw text.
 
 Tune the full intelligence loop.
 
-Goal:
-- fewer bad proposals
-- more useful proposals
-- no performance hit
-- no spam
-- no constant LLM calls
+Goals:
+
+- fewer bad proposals  
+- more useful proposals  
+- no performance hit  
+- no spam  
+- minimal LLM usage  
+- instant responsiveness  
 
 ---
 
 ### Out of Scope
 
-Do NOT implement yet:
-- autonomous agents
-- generated action execution
-- computer control
-- multi-step workflows
-- persistent personalization
-- continuous screen watching
-- cursor tracking
-- selection anchoring
-- multimodal reasoning beyond existing OCR
+Do NOT implement:
+
+- autonomous agents  
+- generated action execution  
+- computer control  
+- multi-step workflows  
+- persistent personalization  
+- continuous screen watching  
+- cursor tracking  
+- selection anchoring  
+- multimodal reasoning beyond OCR  
 
 ---
 
@@ -1082,13 +1170,15 @@ Do NOT implement yet:
 
 After Phase 12:
 
-- proposals feel more thoughtful
-- bad suggestions decrease
-- local LLM runs selectively
-- performance remains acceptable
-- assistant feels more liquid
-- TES becomes fallback, not the main brain
-- no autonomous behavior is introduced
+- decisions feel instant  
+- proposals feel more thoughtful  
+- bad suggestions decrease  
+- micro model handles most decisions  
+- LLM runs rarely and selectively  
+- no noticeable performance hit  
+- assistant feels fluid and adaptive  
+- TES becomes fallback, not the main brain  
+- no autonomous behavior introduced  
 
 ---
 

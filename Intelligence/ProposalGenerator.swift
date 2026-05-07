@@ -18,14 +18,20 @@ final class ProposalGenerator {
 		context: ContextModel,
 		triggerPacket: TriggerPacket,
 		decision: ReasoningDecision,
-		inputSourcePreference: InputSourceChoice
+		inputSourcePreference: InputSourceChoice,
+		intelligenceTitleOverride: String? = nil
 	) -> ActionProposal? {
 		guard decision.shouldSurface else { return nil }
 		guard let primary = decision.primaryActionId, !primary.isEmpty else { return nil }
 
 		let secondary = decision.rankedActionIds.filter { $0 != primary }
 		let channel = resolveCopyChannel(triggerPacket: triggerPacket, inputSourcePreference: inputSourcePreference, context: context)
-		let title = titleFor(primaryActionId: primary, channel: channel, triggerType: triggerPacket.triggerType)
+		let title: String
+		if let override = intelligenceTitleOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
+			title = override
+		} else {
+			title = titleFor(primaryActionId: primary, channel: channel, triggerType: triggerPacket.triggerType)
+		}
 		let caption = sourceCaption(for: channel, primaryActionId: primary)
 
 		let proposal = ActionProposal(
