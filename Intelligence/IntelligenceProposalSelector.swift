@@ -89,7 +89,7 @@ final class IntelligenceProposalSelector {
 
 		if let cached = cache.lookup(fingerprint: fingerprint, request: request) {
 			print("[IntelligenceSelection] cache_hit")
-			let r = applyInterpretation(decision: cached, heuristicPrimary: heuristicPrimaryActionId, request: request, fromCache: true)
+			let r = applyInterpretation(decision: cached, heuristicPrimary: heuristicPrimaryActionId, request: request, fromCache: true, llmTier: false)
 			if commitsWithoutLLM(decision: cached, result: r, heuristicPrimary: heuristicPrimaryActionId) {
 				print("[IntelligenceSelection] heuristic_kept reason=tier_resolved_cache")
 				return r
@@ -113,7 +113,7 @@ final class IntelligenceProposalSelector {
 			let microRaw = MicroDecisionEngine().decide(request: microReq)
 			let microIntel = Self.intelligenceResponse(fromMicro: microRaw)
 			if microIntel.isValid(for: request) {
-				let r = applyInterpretation(decision: microIntel, heuristicPrimary: heuristicPrimaryActionId, request: request, fromCache: false)
+				let r = applyInterpretation(decision: microIntel, heuristicPrimary: heuristicPrimaryActionId, request: request, fromCache: false, llmTier: false)
 				if commitsWithoutLLM(decision: microIntel, result: r, heuristicPrimary: heuristicPrimaryActionId) {
 					if microIntel.confidence > 0.02 {
 						cache.store(decision: microIntel, fingerprint: fingerprint, request: request)
@@ -149,13 +149,18 @@ final class IntelligenceProposalSelector {
 
 		print("[IntelligenceSelection] llm_fallback_started")
 
-		let decision = await engine.decide(request: request, suggestionStrength: suggestionStrength)
+		let decision = await engine.decideWithProposalSelectionDeadline(request: request, suggestionStrength: suggestionStrength)
+
+		if decision.reason == "proposal_llm_timeout" {
+			print("[IntelligenceSelection] heuristic_kept reason=timeout")
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
+		}
 
 		if decision.isValid(for: request), decision.confidence > 0.02 {
 			cache.store(decision: decision, fingerprint: fingerprint, request: request)
 		}
 
-		return applyInterpretation(decision: decision, heuristicPrimary: heuristicPrimaryActionId, request: request, fromCache: false)
+		return applyInterpretation(decision: decision, heuristicPrimary: heuristicPrimaryActionId, request: request, fromCache: false, llmTier: true)
 	}
 
 	// MARK: - Tier resolution
@@ -195,12 +200,18 @@ final class IntelligenceProposalSelector {
 		decision: IntelligenceDecisionResponse,
 		heuristicPrimary: String,
 		request: IntelligenceDecisionRequest,
-		fromCache: Bool
+		fromCache: Bool,
+		llmTier: Bool = false
 	) -> Result {
 		guard decision.isValid(for: request) else {
 			print("[IntelligenceSelection] decision rejected reason=invalid fromCache=\(fromCache)")
 			logHeuristicKept(reason: "invalid")
-			print("[IntelligenceSelection] heuristic_kept reason=invalid_decision")
+			if llmTier {
+				print("[IntelligenceFallback] reason=invalid_output layer=llm")
+				print("[IntelligenceSelection] heuristic_kept reason=invalid_output")
+			} else {
+				print("[IntelligenceSelection] heuristic_kept reason=invalid_decision")
+			}
 			return Result(outcome: .unchanged, intelligenceTitle: nil)
 		}
 
@@ -284,6 +295,7 @@ final class IntelligenceProposalSelector {
 		lastMicroSkipSig = sig
 		lastMicroSkipAt = now
 		print("[MicroDecisionIntegration] skipped reason=model_not_loaded")
+		print("[IntelligenceFallback] reason=micro_unavailable layer=micro")
 	}
 
 	private func logHeuristicKept(reason: String) {

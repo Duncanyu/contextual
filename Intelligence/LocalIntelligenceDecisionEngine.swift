@@ -1,13 +1,39 @@
 import Foundation
 
-/// Local-only LLM decision step (T12.3). Infrastructure only; not wired into the live pipeline.
+/// Local-only LLM decision step (T12.3). Never throws to callers; always returns a safe response.
 final class LocalIntelligenceDecisionEngine {
 	private let modelManager: ModelManager
 	private let client: LocalAIClient
 
+	/// Proposal-selection race deadline (not used by Summarize/Explain/Rewrite execution paths).
+	private static let proposalSelectionNanos: UInt64 = 1_500_000_000
+
 	init(modelManager: ModelManager = .shared, client: LocalAIClient = .shared) {
 		self.modelManager = modelManager
 		self.client = client
+	}
+
+	/// LLM proposal intelligence with ~1.5s ceiling; late completions may be discarded by the caller via generation guards.
+	func decideWithProposalSelectionDeadline(
+		request: IntelligenceDecisionRequest,
+		suggestionStrength: SuggestionStrength? = nil,
+		nanoseconds: UInt64 = proposalSelectionNanos
+	) async -> IntelligenceDecisionResponse {
+		await withTaskGroup(of: IntelligenceDecisionResponse.self) { group in
+			group.addTask {
+				await self.decide(request: request, suggestionStrength: suggestionStrength)
+			}
+			group.addTask {
+				try? await Task.sleep(nanoseconds: nanoseconds)
+				return Self.proposalTimeoutResponse()
+			}
+			let first = await group.next() ?? Self.fallback(reason: "Local intelligence unavailable or skipped")
+			group.cancelAll()
+			if first.reason == "proposal_llm_timeout" {
+				print("[IntelligenceFallback] reason=timeout layer=llm")
+			}
+			return first
+		}
 	}
 
 	func decide(
@@ -43,6 +69,7 @@ final class LocalIntelligenceDecisionEngine {
 		}
 
 		guard await modelManager.isGenerationAvailable() else {
+			print("[IntelligenceFallback] reason=model_unavailable layer=llm")
 			return Self.fallback(reason: "Local intelligence unavailable or skipped")
 		}
 
@@ -61,12 +88,14 @@ final class LocalIntelligenceDecisionEngine {
 
 		guard let decoded = parseJSONDecision(from: raw) else {
 			print("[LocalIntelligence] fallback reason=parse_failed")
+			print("[IntelligenceFallback] reason=invalid_output layer=llm")
 			return Self.fallback(reason: "Local intelligence unavailable or skipped")
 		}
 
 		let sanitized = sanitize(response: decoded, for: request)
 		guard sanitized.isValid(for: request) else {
 			print("[LocalIntelligence] fallback reason=invalid_response")
+			print("[IntelligenceFallback] reason=invalid_output layer=llm")
 			return Self.fallback(reason: "Local intelligence unavailable or skipped")
 		}
 
@@ -185,6 +214,16 @@ compressedText:
 	private static func compactOneLine(_ s: String) -> String {
 		s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
 			.trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+
+	private static func proposalTimeoutResponse() -> IntelligenceDecisionResponse {
+		IntelligenceDecisionResponse(
+			shouldSuggest: false,
+			bestActionId: nil,
+			confidence: 0,
+			reason: "proposal_llm_timeout",
+			suggestedTitle: nil
+		)
 	}
 
 	private static func fallback(reason: String) -> IntelligenceDecisionResponse {
