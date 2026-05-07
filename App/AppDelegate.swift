@@ -248,13 +248,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let generation = contextPipelineGeneration
 		if let packet = triggerEngine.evaluate(context) {
 			logTriggerPacket(packet, context: context)
-			Task { await self.updateAvailableActions(from: packet, context: context, generation: generation) }
+			Task { self.updateAvailableActions(from: packet, context: context, generation: generation) }
 		} else {
 			preserveOrClearAvailableActions(reason: "no trigger packet")
 		}
 	}
 
-	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel, generation: UInt64) async {
+	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel, generation: UInt64) {
 		let decision = ReasoningEngine.shared.evaluate(context: context, triggerPacket: packet)
 		let primary = decision.primaryActionId ?? "none"
 		print("[ReasoningEngine] decision surface=\(decision.shouldSurface) primary=\(primary) confidence=\(decision.confidence) reason=\(decision.reason)")
@@ -395,76 +395,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
-		// T12.6: LLM-assisted primary selection / suppress (Intelligence layer only; heuristic fallback on failure).
-		if let fp = finalProposal,
-		   let st = strength,
-		   st.strength == .medium || st.strength == .strong,
-		   proposalGateResult.shouldGenerate,
-		   !ordered.isEmpty,
-		   generation == contextPipelineGeneration
-		{
-			let llmIds = Self.llmCandidateActionIds(from: ordered)
-			if !llmIds.isEmpty {
-				let primaryBefore = fp.primaryActionId
-				let intel = await intelligenceProposalSelector.run(
-					context: context,
-					triggerPacket: packet,
-					sourceText: sourceText,
-					contextType: contextType,
-					features: features,
-					suggestionStrength: st.strength,
-					candidateLLMActionIds: llmIds,
-					heuristicPrimaryActionId: primaryBefore,
-					inputPreference: appState.selectedInputSourceChoice,
-					isActionExecuting: appState.isActionExecuting
-				)
-				guard generation == contextPipelineGeneration else { return }
-				switch intel.outcome {
-				case .unchanged:
-					if let t = intel.intelligenceTitle {
-						finalProposal = ProposalGenerator.shared.generate(
-							context: context,
-							triggerPacket: packet,
-							decision: overriddenDecision,
-							inputSourcePreference: appState.selectedInputSourceChoice,
-							intelligenceTitleOverride: t
-						)
-						if let p = finalProposal {
-							finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
-						} else {
-							finalProposalKey = nil
-						}
-					}
-				case .suppressProposal:
-					finalProposal = nil
-					finalProposalKey = nil
-				case .overridePrimary(let newId):
-					let fullRanked = Self.rankedIdsPlacingPrimary(newId, orderedIds: ordered.map(\.id), textPool: llmIds)
-					let regenDecision = ReasoningDecision(
-						shouldSurface: overriddenDecision.shouldSurface,
-						primaryActionId: newId,
-						rankedActionIds: fullRanked,
-						reason: overriddenDecision.reason,
-						confidence: overriddenDecision.confidence
-					)
-					finalProposal = ProposalGenerator.shared.generate(
-						context: context,
-						triggerPacket: packet,
-						decision: regenDecision,
-						inputSourcePreference: appState.selectedInputSourceChoice,
-						intelligenceTitleOverride: intel.intelligenceTitle
-					)
-					if let p = finalProposal {
-						finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
-					} else {
-						finalProposalKey = nil
-					}
-					ordered = Self.resortActions(ordered, rankedIds: fullRanked)
-					print("[IntelligenceSelection] proposal overridden primary=\(newId)")
-				}
-			}
-		}
-
 		if ordered.isEmpty {
 			finalProposal = nil
 			finalProposalKey = nil
@@ -497,6 +427,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		guard generation == contextPipelineGeneration else { return }
 
+		publishReasonedActions(
+			ordered: ordered,
+			finalProposal: finalProposal,
+			finalProposalKey: finalProposalKey,
+			strength: strength,
+			packet: packet,
+			context: context,
+			generation: generation
+		)
+
+		// T12.6 / T12.6.5: async refinement (cache → micro → LLM) must not block heuristic publish above.
+		if let fp = finalProposal,
+		   let st = strength,
+		   st.strength == .medium || st.strength == .strong,
+		   proposalGateResult.shouldGenerate,
+		   !ordered.isEmpty,
+		   generation == contextPipelineGeneration
+		{
+			let llmIds = Self.llmCandidateActionIds(from: ordered)
+			if !llmIds.isEmpty {
+				let gen = generation
+				let snapOrdered = ordered
+				let snapProposalKey = finalProposalKey
+				Task { @MainActor in
+					await self.applyIntelligenceRefinement(
+						generation: gen,
+						packet: packet,
+						context: context,
+						sourceText: sourceText,
+						contextType: contextType,
+						features: features,
+						strengthResult: st,
+						overriddenDecision: overriddenDecision,
+						proposalGateAllowed: proposalGateResult.shouldGenerate,
+						orderedSnapshot: snapOrdered,
+						heuristicProposal: fp,
+						heuristicProposalKey: snapProposalKey,
+						llmIds: llmIds
+					)
+				}
+			}
+		}
+	}
+
+	private func publishReasonedActions(
+		ordered: [any ActionProtocol],
+		finalProposal: ActionProposal?,
+		finalProposalKey: String?,
+		strength: SuggestionStrengthResult?,
+		packet: TriggerPacket,
+		context: ContextModel,
+		generation: UInt64
+	) {
+		guard generation == contextPipelineGeneration else { return }
+
 		appState.availableActions = ordered
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
@@ -510,6 +495,142 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if let p = finalProposal, let s = strength, s.strength == .strong {
 			maybeShowFloatingSuggestion(proposal: p, suggestionStrength: s.strength, context: context, packet: packet)
 		}
+	}
+
+	private func applyIntelligenceRefinement(
+		generation: UInt64,
+		packet: TriggerPacket,
+		context: ContextModel,
+		sourceText: String,
+		contextType: ContextType,
+		features: ContextFeatures,
+		strengthResult: SuggestionStrengthResult,
+		overriddenDecision: ReasoningDecision,
+		proposalGateAllowed: Bool,
+		orderedSnapshot: [any ActionProtocol],
+		heuristicProposal: ActionProposal,
+		heuristicProposalKey: String?,
+		llmIds: [String]
+	) async {
+		guard proposalGateAllowed else { return }
+		guard generation == contextPipelineGeneration else {
+			print("[IntelligenceSelection] stale_result_discarded")
+			return
+		}
+
+		let primaryBefore = heuristicProposal.primaryActionId
+		let intel = await intelligenceProposalSelector.run(
+			context: context,
+			triggerPacket: packet,
+			sourceText: sourceText,
+			contextType: contextType,
+			features: features,
+			suggestionStrength: strengthResult.strength,
+			candidateLLMActionIds: llmIds,
+			heuristicPrimaryActionId: primaryBefore,
+			inputPreference: appState.selectedInputSourceChoice,
+			isActionExecuting: appState.isActionExecuting
+		)
+
+		guard generation == contextPipelineGeneration else {
+			print("[IntelligenceSelection] stale_result_discarded")
+			return
+		}
+
+		if case .unchanged = intel.outcome, intel.intelligenceTitle == nil {
+			return
+		}
+
+		var ordered = orderedSnapshot
+		var finalProposal: ActionProposal? = heuristicProposal
+		var finalProposalKey: String? = heuristicProposalKey
+
+		switch intel.outcome {
+		case .unchanged:
+			if let t = intel.intelligenceTitle {
+				finalProposal = ProposalGenerator.shared.generate(
+					context: context,
+					triggerPacket: packet,
+					decision: overriddenDecision,
+					inputSourcePreference: appState.selectedInputSourceChoice,
+					intelligenceTitleOverride: t
+				)
+				if let p = finalProposal {
+					finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+				} else {
+					finalProposalKey = nil
+				}
+			}
+		case .suppressProposal:
+			finalProposal = nil
+			finalProposalKey = nil
+		case .overridePrimary(let newId):
+			let fullRanked = Self.rankedIdsPlacingPrimary(newId, orderedIds: ordered.map(\.id), textPool: llmIds)
+			let regenDecision = ReasoningDecision(
+				shouldSurface: overriddenDecision.shouldSurface,
+				primaryActionId: newId,
+				rankedActionIds: fullRanked,
+				reason: overriddenDecision.reason,
+				confidence: overriddenDecision.confidence
+			)
+			finalProposal = ProposalGenerator.shared.generate(
+				context: context,
+				triggerPacket: packet,
+				decision: regenDecision,
+				inputSourcePreference: appState.selectedInputSourceChoice,
+				intelligenceTitleOverride: intel.intelligenceTitle
+			)
+			if let p = finalProposal {
+				finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+			} else {
+				finalProposalKey = nil
+			}
+			ordered = Self.resortActions(ordered, rankedIds: fullRanked)
+			print("[IntelligenceSelection] proposal overridden primary=\(newId)")
+		}
+
+		if ordered.isEmpty {
+			finalProposal = nil
+			finalProposalKey = nil
+		} else if let p = finalProposal {
+			let primaryInActions = ordered.contains(where: { $0.id == p.primaryActionId })
+			if !primaryInActions {
+				finalProposal = nil
+				finalProposalKey = nil
+			} else if appState.isSuggestionOnCooldown(p, context: context) {
+				finalProposal = nil
+				finalProposalKey = nil
+			}
+		}
+
+		if packet.triggerType != .manualInvocation, let key = finalProposalKey {
+			if let dismissedAt = appState.lastDismissedProposalAt,
+			   appState.lastDismissedProposalKey == key,
+			   Date().timeIntervalSince(dismissedAt) < 60 {
+				finalProposal = nil
+				finalProposalKey = nil
+			} else if let acceptedAt = appState.lastAcceptedProposalAt,
+					  appState.lastAcceptedProposalKey == key,
+					  Date().timeIntervalSince(acceptedAt) < 10 {
+				finalProposal = nil
+				finalProposalKey = nil
+			}
+		}
+
+		guard generation == contextPipelineGeneration else {
+			print("[IntelligenceSelection] stale_result_discarded")
+			return
+		}
+
+		publishReasonedActions(
+			ordered: ordered,
+			finalProposal: finalProposal,
+			finalProposalKey: finalProposalKey,
+			strength: strengthResult,
+			packet: packet,
+			context: context,
+			generation: generation
+		)
 	}
 
 	private static let intelligenceTextActionIds: Set<String> = ["summarize_text", "explain_text", "rewrite_text"]
