@@ -8,6 +8,12 @@ final class FloatingSuggestionWindowController {
 	private let appState: AppState
 	private let panel: NSPanel
 	private var cancellables = Set<AnyCancellable>()
+	private var screenParamsObserver: NSObjectProtocol?
+
+	/// Inset from `visibleFrame` edges (menu bar, Dock, screen margins). Within 16–24 pt (T10.5).
+	private let safeEdgeMargin: CGFloat = 20
+	private let desiredPanelWidth: CGFloat = 320
+	private let desiredPanelHeight: CGFloat = 200
 
 	init(appState: AppState) {
 		self.appState = appState
@@ -42,25 +48,57 @@ final class FloatingSuggestionWindowController {
 			.sink { [weak self] visible in
 				guard let self else { return }
 				if visible {
-					self.positionPanel()
+					self.positionPanelFixedSafe()
 					self.panel.orderFrontRegardless()
 				} else {
 					self.panel.orderOut(nil)
 				}
 			}
 			.store(in: &cancellables)
+
+		screenParamsObserver = NotificationCenter.default.addObserver(
+			forName: NSApplication.didChangeScreenParametersNotification,
+			object: nil,
+			queue: .main
+		) { [weak self] _ in
+			guard let self, self.appState.isFloatingSuggestionVisible else { return }
+			self.positionPanelFixedSafe()
+		}
 	}
 
-	private func positionPanel() {
-		guard let screen = NSScreen.main else { return }
+	deinit {
+		if let screenParamsObserver {
+			NotificationCenter.default.removeObserver(screenParamsObserver)
+		}
+	}
+
+	/// Fixed top-right placement on the menu-bar screen using `visibleFrame` only (no selection/cursor anchoring).
+	private func positionPanelFixedSafe() {
+		guard let screen = preferredMenuBarScreen() else { return }
 		let vf = screen.visibleFrame
-		let margin: CGFloat = 20
-		let width: CGFloat = 320
-		let height: CGFloat = 200
-		let origin = NSPoint(
-			x: vf.maxX - width - margin,
-			y: vf.maxY - height - margin
-		)
-		panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
+		let m = safeEdgeMargin
+
+		let maxContentW = vf.width - 2 * m
+		let maxContentH = vf.height - 2 * m
+		guard maxContentW > 0, maxContentH > 0 else { return }
+
+		let width = min(desiredPanelWidth, maxContentW)
+		let height = min(desiredPanelHeight, maxContentH)
+
+		var originX = vf.maxX - width - m
+		var originY = vf.maxY - height - m
+
+		originX = min(max(originX, vf.minX + m), vf.maxX - width - m)
+		originY = min(max(originY, vf.minY + m), vf.maxY - height - m)
+
+		panel.setFrame(NSRect(x: originX, y: originY, width: width, height: height), display: true)
+	}
+
+	/// Screen that owns the menu bar (respects notch/safe area via `visibleFrame`). Falls back if needed.
+	private func preferredMenuBarScreen() -> NSScreen? {
+		if let main = NSScreen.main {
+			return main
+		}
+		return NSScreen.screens.first
 	}
 }

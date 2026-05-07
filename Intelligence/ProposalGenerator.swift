@@ -156,3 +156,102 @@ final class ProposalGenerator {
 	}
 }
 
+// MARK: - ProposalGenerationGate (T11.1)
+
+/// Result of pre-proposal quality gate (no AI; metadata-only heuristics).
+struct ProposalGateResult {
+	let shouldGenerate: Bool
+	let reason: String
+}
+
+/// Conservative gate **before** `ProposalGenerator.generate` runs. Prefers silence over weak proposals.
+final class ProposalGenerationGate {
+	private init() {}
+
+	private static var lastFeaturesLogSig: String?
+	private static var lastFeaturesLogAt: Date?
+
+	/// Evaluates automatic-style primary text (selection → clipboard → OCR). No raw text logging.
+	static func evaluate(context: ContextModel) -> ProposalGateResult {
+		guard let raw = ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .automatic)?
+			.trimmingCharacters(in: .whitespacesAndNewlines),
+			!raw.isEmpty
+		else {
+			return ProposalGateResult(shouldGenerate: false, reason: "no_input")
+		}
+
+		let text = raw
+		let f = FeatureExtractor.extract(from: text)
+		logContextFeaturesIfNeeded(f)
+
+		if isStrongSignal(f) {
+			return ProposalGateResult(shouldGenerate: true, reason: "strong_signal")
+		}
+
+		if f.textLength < 30 {
+			return ProposalGateResult(shouldGenerate: false, reason: "too_short")
+		}
+
+		if isNonActionable(text: text, length: f.textLength) {
+			return ProposalGateResult(shouldGenerate: false, reason: "non_actionable")
+		}
+
+		if f.repetitionScore > 0.6 || (f.punctuationDensity < 0.01 && f.sentenceCount <= 1) {
+			return ProposalGateResult(shouldGenerate: false, reason: "low_signal")
+		}
+
+		if f.sentenceCount < 2 && f.punctuationDensity < 0.02 {
+			return ProposalGateResult(shouldGenerate: false, reason: "weak_context")
+		}
+
+		return ProposalGateResult(shouldGenerate: false, reason: "uncertain")
+	}
+
+	private static func isStrongSignal(_ f: ContextFeatures) -> Bool {
+		if f.textLength >= 120 { return true }
+		if f.hasQuestion { return true }
+		if f.isLikelyLog { return true }
+		if f.lineCount > 3 { return true }
+		return false
+	}
+
+	private static func logContextFeaturesIfNeeded(_ f: ContextFeatures) {
+		let punct = String(format: "%.4f", f.punctuationDensity)
+		let rep = String(format: "%.3f", f.repetitionScore)
+		let sig = "\(f.textLength)|\(f.wordCount)|\(f.sentenceCount)|\(punct)|\(f.lineCount)|\(rep)"
+		let now = Date()
+		if let p = lastFeaturesLogSig, p == sig, let t = lastFeaturesLogAt, now.timeIntervalSince(t) < 2.0 {
+			return
+		}
+		lastFeaturesLogSig = sig
+		lastFeaturesLogAt = now
+		print(
+			"[ContextFeatures] len=\(f.textLength) words=\(f.wordCount) sentences=\(f.sentenceCount) punct=\(punct) question=\(f.hasQuestion) code=\(f.isLikelyCode) log=\(f.isLikelyLog) lines=\(f.lineCount) rep=\(rep)"
+		)
+	}
+
+	private static func isNonActionable(text: String, length len: Int) -> Bool {
+		let compact = text.lowercased()
+			.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+			.trimmingCharacters(in: .whitespaces)
+		let tokens = compact.split(separator: " ").map(String.init)
+		let ack = Set(["hi", "hello", "hey", "ok", "okay", "thanks", "thank", "yo", "sup", "bye", "lol"])
+
+		if tokens.count <= 2 {
+			let stripped = tokens.map { $0.trimmingCharacters(in: .punctuationCharacters) }
+			if stripped.allSatisfy({ ack.contains($0) }) {
+				return true
+			}
+		}
+
+		if tokens.count <= 4, len < 48 {
+			let prefixes = ["hi ", "hey ", "hello", "thanks", "thank you", "ok ", "okay", "yo "]
+			for p in prefixes where compact.hasPrefix(p) {
+				return true
+			}
+		}
+
+		return false
+	}
+}
+

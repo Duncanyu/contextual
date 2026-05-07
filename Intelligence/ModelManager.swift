@@ -204,6 +204,15 @@ final class ModelManager: @unchecked Sendable {
 			return .failed("Ollama executable not found")
 		}
 
+		// Safety: model pulls can consume multiple GB; avoid running the machine out of disk.
+		// This does not delete anything; it only blocks the pull when space is critically low.
+		if let bytes = Self.availableDiskBytesForImportantUsage(), bytes < Self.minimumDiskBytesForModelPull {
+			let gb = Double(bytes) / 1_073_741_824.0
+			let label = String(format: "%.1fGB", gb)
+			print("[ModelManager] \(modelName) pull blocked: low disk space available=\(label)")
+			return .failed("Insufficient disk space to pull model")
+		}
+
 		let pullOutcome = await Self.runOllama(
 			binary: ollamaPath,
 			arguments: ["pull", modelName],
@@ -230,6 +239,15 @@ final class ModelManager: @unchecked Sendable {
 	}
 
 	// MARK: - Server probe
+
+	private static let minimumDiskBytesForModelPull: Int64 = 8 * 1_073_741_824 // 8 GiB
+
+	private static func availableDiskBytesForImportantUsage() -> Int64? {
+		let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+		let keys: Set<URLResourceKey> = [.volumeAvailableCapacityForImportantUsageKey]
+		guard let values = try? home.resourceValues(forKeys: keys) else { return nil }
+		return values.volumeAvailableCapacityForImportantUsage
+	}
 
 	private static func detectOllamaServerRunningImpl() async -> Bool {
 		switch await Self.fetchTagsViaHTTP() {

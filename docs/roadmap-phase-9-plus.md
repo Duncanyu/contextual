@@ -436,6 +436,423 @@ Invoke | Status
 
 ---
 
+## Phase 11 — Intelligence Layer
+
+### Goal
+
+Transform the assistant from a reactive utility into an intentional, context-aware intelligence system.
+
+The assistant should:
+- understand context
+- determine usefulness
+- react selectively
+- remain mostly silent
+- surface only high-value suggestions
+
+This phase introduces the foundation for future agentic behavior while remaining:
+- local-first
+- lightweight
+- performance-conscious
+- modular
+
+---
+
+## Core Philosophy
+
+The assistant should not feel like:
+- a menu of hardcoded actions
+- a notification system
+- a reactive macro tool
+- a spammy assistant waiting for one suggestion to stick
+
+It should feel like:
+- a quiet intelligent helper
+- something that understands intent
+- something that only interrupts when it is confident
+- something that feels fluid and adaptive
+
+The long-term vision is:
+- dynamic behavior
+- adaptive actions
+- context-driven reasoning
+- eventually agentic assistance
+
+The system should eventually evolve toward:
+- generating its own action plans
+- constructing temporary workflows
+- adapting behavior based on context
+- intelligently deciding when silence is better
+
+However:
+
+This phase does NOT implement:
+- autonomous agents
+- unrestricted computer control
+- continuous AI loops
+- heavy inference systems
+- expensive background reasoning
+
+Instead, this phase builds the architecture and intelligence foundations required for those future capabilities.
+
+---
+
+## Core Principle
+
+The assistant should rarely speak.
+
+Suggestions should be:
+- high confidence
+- contextually meaningful
+- intentional
+- useful
+
+Silence is preferred over low-quality suggestions.
+
+---
+
+## Key Design Shift
+
+Move from:
+
+Trigger → Proposal → TES → UI
+
+to:
+
+Context → Intelligence → Proposal → TES → UI
+
+TES becomes:
+- a final safety layer
+- a fallback suppression system
+
+The Intelligence Layer becomes:
+- the primary decision-maker
+
+---
+
+## Performance Philosophy
+
+The assistant must remain lightweight.
+
+No continuous heavy inference.
+
+No constant LLM polling.
+
+No expensive background loops.
+
+All intelligence should be:
+- event-driven
+- incremental
+- lightweight
+- cached when possible
+- heuristic-first unless escalation is justified
+
+The system should:
+- wake intelligently
+- process quickly
+- sleep aggressively
+
+---
+
+## Long-Term Intelligence Direction
+
+The assistant should eventually evolve toward:
+
+### Dynamic Action Systems
+
+Instead of:
+- fixed actions
+- hardcoded proposal lists
+
+The assistant should eventually support:
+- generated intents
+- adaptive actions
+- temporary context-specific workflows
+- composable behaviors
+
+Future examples:
+- “summarize this”
+- “compare this to earlier notes”
+- “rewrite this professionally”
+- “extract todos”
+- “explain this error”
+- “prepare response draft”
+
+Without requiring every action to be permanently hardcoded.
+
+---
+
+### Agentic Foundations
+
+Future phases may introduce:
+- task planning
+- multi-step execution
+- contextual workflows
+- intent decomposition
+- self-generated action chains
+
+But only when:
+- performance constraints are solved
+- safety constraints are solved
+- architecture is stable
+- intelligence quality is high enough
+
+This phase only prepares the infrastructure.
+
+---
+
+## Architecture Additions
+
+Introduce:
+
+### ContextFeatureExtractor
+Computes lightweight structured features from context.
+
+### ContextClassifier
+Determines what type of content the user is interacting with.
+
+### ProposalGenerationGate
+Determines whether proposals should exist at all.
+
+### ProposalScorer
+Scores proposal usefulness and relevance.
+
+### IntelligenceEngine
+Central intelligence coordinator.
+
+### SuggestionStrength
+Weak / Medium / Strong suggestion categories.
+
+---
+
+## Intelligence Flow
+
+Future architecture becomes:
+
+Sources
+↓
+Context
+↓
+Context Features
+↓
+Context Classification
+↓
+Proposal Generation Gate
+↓
+Proposal Scoring
+↓
+TES Safety Layer
+↓
+UI Surface
+
+---
+
+## Intelligence Priorities
+
+The assistant should prioritize:
+
+1. usefulness
+2. intentionality
+3. low interruption frequency
+4. context quality
+5. confidence
+6. performance efficiency
+
+NOT:
+- engagement
+- suggestion frequency
+- constant interaction
+
+---
+
+## Tickets
+
+---
+
+### T11.1 — Proposal Generation Gate
+
+Prevent low-value proposals from being generated.
+
+Requirements:
+- Do not generate proposals for meaningless or low-signal contexts
+- Suppress random short text
+- Suppress obvious low-value situations
+- Prefer no proposal over weak proposal
+
+Examples:
+- random word → no proposal
+- short greeting → no proposal
+- long paragraph → maybe proposal
+- error log → strong proposal
+
+This becomes the first true intelligence gate.
+
+---
+
+### T11.2 — Context Feature Extraction
+
+Introduce lightweight feature extraction.
+
+Compute:
+- text length
+- sentence count
+- punctuation density
+- question detection
+- code-like patterns
+- error/log patterns
+- structural complexity
+- formatting density
+
+Requirements:
+- local only
+- fast
+- no AI calls
+- reusable by all future intelligence systems
+
+---
+
+### T11.3 — Context Classification
+
+Classify context into categories.
+
+Examples:
+- question
+- notes
+- code
+- error/log
+- article
+- random text
+- command/instruction
+- conversation
+
+Requirements:
+- lightweight
+- heuristic-first
+- modular
+- extensible for future AI classifiers
+
+---
+
+### T11.4 — Action Relevance Scoring
+
+Instead of always suggesting summarize/explain/rewrite:
+
+Score action usefulness based on:
+- context type
+- feature set
+- historical usefulness
+- context complexity
+
+Example:
+- error log → explain/debug
+- long article → summarize
+- short message → no action
+
+---
+
+### T11.5 — Proposal Ranking
+
+Rank proposals internally.
+
+Requirements:
+- best proposal only for floating UI
+- secondary proposals remain panel-only
+- prevent multiple equal-quality suggestions
+- prioritize clarity over quantity
+
+---
+
+### T11.6 — Suggestion Strength Levels
+
+Introduce:
+
+- weak
+- medium
+- strong
+
+Behavior:
+- weak → suppressed entirely
+- medium → panel-only
+- strong → floating suggestion eligible
+
+TES consumes suggestion strength instead of raw heuristic confidence.
+
+---
+
+### T11.7 — Redundancy Memory
+
+Track lightweight interaction history.
+
+Examples:
+- repeated dismissals lower future priority
+- repeated accepts slightly boost relevance
+- ignored suggestions decay over time
+
+Requirements:
+- local only
+- lightweight
+- no persistent profiling yet
+- no invasive tracking
+
+---
+
+### T11.8 — Dynamic Behavior Hooks
+
+Prepare architecture for future adaptive behavior.
+
+Introduce abstractions for:
+- ActionIntent
+- generated actions
+- temporary workflows
+- future agentic execution
+
+Requirements:
+- no autonomous execution yet
+- no unrestricted computer control
+- no self-modifying runtime logic
+
+This is infrastructure only.
+
+---
+
+## Out of Scope
+
+Do NOT implement yet:
+- autonomous agents
+- unrestricted desktop control
+- background reasoning loops
+- persistent memory systems
+- cloud intelligence dependence
+- heavy local LLM loops
+- multi-agent systems
+- continuous screen understanding
+
+---
+
+## Success Criteria
+
+The assistant should:
+- produce fewer suggestions
+- produce better suggestions
+- feel more intentional
+- feel more context-aware
+- remain lightweight
+- avoid spam naturally
+- rely less on hardcoded heuristics
+- begin feeling adaptive and intelligent
+
+The assistant should begin feeling:
+- fluid
+- selective
+- aware
+- quiet
+- useful
+
+Rather than:
+- reactive
+- noisy
+- repetitive
+- rigid
+
 ## Notes
 
 This roadmap is a living document.

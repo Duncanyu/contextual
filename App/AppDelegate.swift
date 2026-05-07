@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastTESLogSignature: String?
 	private var lastTESLogAt: Date?
 
+	private var lastProposalGateLogSignature: String?
+	private var lastProposalGateLogAt: Date?
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
 		syncLocalAIFromStorage()
@@ -249,12 +252,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
-		var proposal = ProposalGenerator.shared.generate(
-			context: context,
-			triggerPacket: packet,
-			decision: decision,
-			inputSourcePreference: appState.selectedInputSourceChoice
-		)
+		var proposal: ActionProposal?
+		if packet.triggerType == .manualInvocation {
+			proposal = ProposalGenerator.shared.generate(
+				context: context,
+				triggerPacket: packet,
+				decision: decision,
+				inputSourcePreference: appState.selectedInputSourceChoice
+			)
+		} else {
+			let gate = ProposalGenerationGate.evaluate(context: context)
+			logProposalGateIfNeeded(allowed: gate.shouldGenerate, reason: gate.reason)
+			if gate.shouldGenerate {
+				proposal = ProposalGenerator.shared.generate(
+					context: context,
+					triggerPacket: packet,
+					decision: decision,
+					inputSourcePreference: appState.selectedInputSourceChoice
+				)
+			}
+		}
+
 		var proposalKey: String?
 		if let p = proposal {
 			proposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
@@ -323,6 +341,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		if let p = finalProposal {
 			maybeShowFloatingSuggestion(proposal: p, context: context, packet: packet)
+		}
+	}
+
+	private func logProposalGateIfNeeded(allowed: Bool, reason: String) {
+		let sig = "\(allowed)|\(reason)"
+		let now = Date()
+		if let prev = lastProposalGateLogSignature, prev == sig, let t = lastProposalGateLogAt, now.timeIntervalSince(t) < 2.0 {
+			return
+		}
+		lastProposalGateLogSignature = sig
+		lastProposalGateLogAt = now
+		if allowed {
+			print("[ProposalGate] allowed reason=\(reason)")
+		} else {
+			print("[ProposalGate] blocked reason=\(reason)")
 		}
 	}
 
