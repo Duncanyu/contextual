@@ -170,6 +170,8 @@ final class ProposalGenerationGate {
 
 	private static var lastFeaturesLogSig: String?
 	private static var lastFeaturesLogAt: Date?
+	private static var lastClassLogSig: String?
+	private static var lastClassLogAt: Date?
 
 	/// Evaluates automatic-style primary text (selection → clipboard → OCR). No raw text logging.
 	static func evaluate(context: ContextModel) -> ProposalGateResult {
@@ -194,6 +196,25 @@ final class ProposalGenerationGate {
 
 		if isNonActionable(text: text, length: f.textLength) {
 			return ProposalGateResult(shouldGenerate: false, reason: "non_actionable")
+		}
+
+		let type = ContextClassifier.classify(features: f, text: text)
+		logContextTypeIfNeeded(type)
+
+		// If type is random and we didn't already detect a strong signal, prefer silence.
+		if type == .random {
+			return ProposalGateResult(shouldGenerate: false, reason: "random")
+		}
+
+		// Bias allow list: question, logs, and code are generally actionable.
+		if type == .question || type == .errorLog || type == .code {
+			return ProposalGateResult(shouldGenerate: true, reason: "classified_\(type.rawValue)")
+		}
+
+		// Notes/articles: allow only when medium strength (we already checked strong above).
+		let medium = f.textLength >= 80 && f.sentenceCount >= 2
+		if (type == .notes || type == .article), medium {
+			return ProposalGateResult(shouldGenerate: true, reason: "classified_\(type.rawValue)")
 		}
 
 		if f.repetitionScore > 0.6 || (f.punctuationDensity < 0.01 && f.sentenceCount <= 1) {
@@ -228,6 +249,17 @@ final class ProposalGenerationGate {
 		print(
 			"[ContextFeatures] len=\(f.textLength) words=\(f.wordCount) sentences=\(f.sentenceCount) punct=\(punct) question=\(f.hasQuestion) code=\(f.isLikelyCode) log=\(f.isLikelyLog) lines=\(f.lineCount) rep=\(rep)"
 		)
+	}
+
+	private static func logContextTypeIfNeeded(_ type: ContextType) {
+		let sig = type.rawValue
+		let now = Date()
+		if let p = lastClassLogSig, p == sig, let t = lastClassLogAt, now.timeIntervalSince(t) < 2.0 {
+			return
+		}
+		lastClassLogSig = sig
+		lastClassLogAt = now
+		print("[ContextClassifier] type=\(type.rawValue)")
 	}
 
 	private static func isNonActionable(text: String, length len: Int) -> Bool {
