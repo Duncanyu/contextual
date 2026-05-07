@@ -263,11 +263,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let features = FeatureExtractor.extract(from: sourceText)
 		let contextType = ContextClassifier.classify(features: features, text: sourceText)
 
-		let relevance = ActionRelevanceScorer.scoreActions(
+		let relevanceBase = ActionRelevanceScorer.scoreActions(
 			candidateActionIds: decision.rankedActionIds,
 			contextType: contextType,
 			features: features
 		)
+
+		// Apply session-only redundancy tuning (T11.7) using the existing privacy-safe lifecycle key.
+		let rawSimilarity = FloatingSimilarityText.material(
+			for: context,
+			triggerType: packet.triggerType,
+			inputPreference: appState.selectedInputSourceChoice
+		)
+		let profile = ContentSimilarityProfile.make(from: rawSimilarity)
+		let relevance = relevanceBase.map { r -> ActionRelevanceScore in
+			let key = appState.floatingSuggestionLifecycle.exactKey(
+				triggerType: packet.triggerType,
+				primaryActionId: r.actionId,
+				profile: profile
+			)
+			let adj = appState.redundancyMemory.adjustment(for: key, actionId: r.actionId)
+			let adjusted = min(1.0, max(0.0, r.score + adj.scoreDelta))
+			let reason = adj.scoreDelta == 0 ? r.reason : "\(r.reason)+mem(\(adj.reason))"
+			return ActionRelevanceScore(actionId: r.actionId, score: adjusted, reason: reason)
+		}
 
 		let rankedIds = relevance.map(\.actionId)
 		logActionRelevanceIfNeeded(ranked: relevance, topId: rankedIds.first)

@@ -53,6 +53,9 @@ final class AppState: ObservableObject {
 	/// Session-only preference for which input feed text actions use (`automatic` = selection → clipboard → screen OCR).
 	@Published var selectedInputSourceChoice: InputSourceChoice = .automatic
 
+	/// Session-only redundancy tuning (T11.7). Never stores raw text.
+	let redundancyMemory = RedundancyMemory()
+
 	// MARK: - Floating suggestion (T10.1)
 
 	@Published var floatingSuggestion: SuggestionViewModel?
@@ -161,9 +164,12 @@ final class AppState: ObservableObject {
 	func acceptCurrentProposal() {
 		guard let proposal = currentProposal else { return }
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
+		let redundancyKey = String(fnv1a64(text: suggestionKey), radix: 16)
 		let id = proposal.primaryActionId
 		print("[SuggestionCard] accepted proposal primary=\(id)")
 		lastAcceptedProposalActionId = id
+
+		redundancyMemory.record(event: .accepted, key: redundancyKey, actionId: id)
 
 		acceptedSuggestionCooldown.markFired(key: suggestionKey)
 
@@ -181,9 +187,12 @@ final class AppState: ObservableObject {
 	func dismissCurrentProposal() {
 		guard let proposal = currentProposal else { return }
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
+		let redundancyKey = String(fnv1a64(text: suggestionKey), radix: 16)
 		let id = proposal.primaryActionId
 		print("[SuggestionCard] dismissed proposal primary=\(id)")
 		lastDismissedProposalActionId = id
+
+		redundancyMemory.record(event: .manuallyDismissed, key: redundancyKey, actionId: id)
 
 		dismissedSuggestionCooldown.markFired(key: suggestionKey)
 
@@ -265,6 +274,8 @@ final class AppState: ObservableObject {
 		floatingSuggestionLifecycle.logRecorded(state: .shown, safeKey: lifecycle.safeKey)
 		activeFloatingLifecycleBinding = lifecycle
 
+		redundancyMemory.record(event: .shown, key: lifecycle.exactKey, actionId: lifecycle.primaryActionId)
+
 		floatingSuggestion = suggestion
 		isFloatingSuggestionVisible = true
 
@@ -298,6 +309,7 @@ final class AppState: ObservableObject {
 					profile: bind.profile
 				)
 				floatingSuggestionLifecycle.logRecorded(state: .autoDismissed, safeKey: bind.safeKey)
+				redundancyMemory.record(event: .autoDismissed, key: bind.exactKey, actionId: bind.primaryActionId)
 			case .manual:
 				floatingSuggestionLifecycle.record(
 					.manuallyDismissed,
@@ -306,6 +318,7 @@ final class AppState: ObservableObject {
 					profile: bind.profile
 				)
 				floatingSuggestionLifecycle.logRecorded(state: .manuallyDismissed, safeKey: bind.safeKey)
+				redundancyMemory.record(event: .manuallyDismissed, key: bind.exactKey, actionId: bind.primaryActionId)
 			case .accepted:
 				break
 			}
@@ -339,6 +352,7 @@ final class AppState: ObservableObject {
 				profile: bind.profile
 			)
 			floatingSuggestionLifecycle.logRecorded(state: .accepted, safeKey: bind.safeKey)
+			redundancyMemory.record(event: .accepted, key: bind.exactKey, actionId: bind.primaryActionId)
 		}
 
 		acceptedSuggestionCooldown.markFired(key: suggestionKey)
