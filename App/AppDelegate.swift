@@ -8,6 +8,7 @@ extension Notification.Name {
 final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let appState = AppState()
 	private var menuBarController: MenuBarController?
+	private var floatingSuggestionController: FloatingSuggestionWindowController?
 	private var sourceManager: SourceManager?
 	private let contextBuilder = ContextBuilder()
 	private let triggerEngine = TriggerEngine()
@@ -30,11 +31,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastManualInvocationAt: Date?
 	private var didLogManualGuard: Bool = false
 
+	/// Minimum confidence to show the non-panel floating suggestion (T10.1).
+	private let floatingSuggestionMinConfidence: Double = 0.75
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
 		menuBarController = MenuBarController(appState: appState)
+		floatingSuggestionController = FloatingSuggestionWindowController(appState: appState)
+
+		appState.onRevealAssistantPanel = { [weak self] in
+			self?.menuBarController?.revealPopoverIfNeeded()
+		}
 
 		appState.requestManualInvocation = { [weak self] in
 			self?.dispatchManualTriggerEvent()
@@ -257,7 +266,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
-		let mapped = actionRouter.matchingActions(for: packet).filter { $0.canExecute(context: context) }
+		var evalContext = context
+		evalContext.actionInputSourcePreference = appState.selectedInputSourceChoice
+		let mapped = actionRouter.matchingActions(for: packet).filter { $0.canExecute(context: evalContext) }
 		let orderedIds = decision.rankedActionIds
 		let indexById = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($0.element, $0.offset) })
 		let ordered = mapped.sorted { a, b in
@@ -299,6 +310,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		lastReasonedProposal = finalProposal
 		lastReasonedProposalKey = finalProposalKey
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
+
+		if let p = finalProposal {
+			maybeShowFloatingSuggestion(proposal: p, context: context)
+		}
+	}
+
+	private func maybeShowFloatingSuggestion(proposal: ActionProposal, context _: ContextModel) {
+		guard proposal.confidence >= floatingSuggestionMinConfidence else { return }
+		guard menuBarController?.isPopoverShown != true else { return }
+		if let existing = appState.floatingSuggestion, existing == proposal, appState.isFloatingSuggestionVisible {
+			return
+		}
+		appState.showFloatingSuggestion(proposal)
 	}
 
 	private func preserveOrClearAvailableActions(reason: String) {
@@ -350,9 +374,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func invokeStoredAction(actionId: String) {
-		let context = contextBuilder.model
+		var execContext = contextBuilder.model
+		execContext.actionInputSourcePreference = appState.selectedInputSourceChoice
 		guard let action = appState.availableActions.first(where: { $0.id == actionId }) else { return }
-		guard action.canExecute(context: context) else {
+		guard action.canExecute(context: execContext) else {
 			print("[ActionResult] No valid actions")
 			return
 		}
@@ -362,7 +387,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
-		let inputFingerprint = Self.stableInputFingerprint(for: context)
+		let inputFingerprint = Self.stableInputFingerprint(for: execContext)
 		let invocationKey = "\(actionId)|\(inputFingerprint)"
 		if let finishedAt = lastFinishedAt,
 		   lastFinishedActionKey == invocationKey,
@@ -390,7 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				print("[ActionExecution] Cleared in-flight state")
 			}
 			let outcome = await Self.runActionWithSecondsTimeout(seconds: 45) {
-				await action.execute(context: context)
+				await action.execute(context: execContext)
 			}
 			switch outcome {
 			case .completed(let result):
@@ -430,7 +455,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private static func stableInputFingerprint(for context: ContextModel) -> UInt64 {
-		if let text = ActionInputCapture.primaryText(for: context, minimumLength: 30) {
+		if let text = ActionInputCapture.primaryText(for: context, minimumLength: 30, preference: context.actionInputSourcePreference) {
 			var hash: UInt64 = 14_695_981_039_346_656_037
 			for byte in text.utf8 {
 				hash ^= UInt64(byte)
@@ -438,7 +463,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 			return hash
 		}
-		return UInt64(context.clipboardTextLength) ^ (UInt64(context.selectedTextLength) &<< 32)
+		return UInt64(context.clipboardTextLength)
+			^ (UInt64(context.selectedTextLength) &<< 32)
+			^ (UInt64(context.screenOCRTextLength) &<< 48)
 	}
 
 	private func logContextModel(_ model: ContextModel) {

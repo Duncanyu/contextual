@@ -6,6 +6,8 @@ final class MenuBarController {
 	private let statusItem: NSStatusItem
 	private let popover: NSPopover
 
+	var isPopoverShown: Bool { popover.isShown }
+
 	init(appState: AppState) {
 		let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 		let popover = NSPopover()

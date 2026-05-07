@@ -18,6 +18,7 @@ struct AssistantPanelView: View {
 				availableActionsSection
 
 				InputPreviewView(context: debugCtx)
+					.environmentObject(appState)
 
 				resultSection
 
@@ -46,6 +47,7 @@ struct AssistantPanelView: View {
 					primaryActionTitle: primaryActionTitle(for: proposal.primaryActionId),
 					dismissTitle: "Dismiss",
 					primaryDisabled: appState.isActionExecuting,
+					inputSourceLine: suggestionInputSourceLine(for: proposal),
 					onPrimary: {
 						appState.acceptCurrentProposal()
 						dismissedProposalKey = key
@@ -189,6 +191,13 @@ struct AssistantPanelView: View {
 			return "Processing \(t)…"
 		}
 		return "Processing…"
+	}
+
+	private func suggestionInputSourceLine(for proposal: ActionProposal) -> String? {
+		if proposal.primaryActionId == ScreenAnalyzeAction.analyzeScreenId {
+			return "Using screen text"
+		}
+		return appState.inputSourceUsageDescription(for: appState.debugContext)
 	}
 
 	private func primaryActionTitle(for actionId: String) -> String {

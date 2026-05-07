@@ -1,6 +1,43 @@
 import CoreGraphics
 import Foundation
 
+/// User-selected input channel for text-based actions (`automatic` follows selection → clipboard → screen OCR).
+enum InputSourceChoice: String, CaseIterable, Identifiable, Sendable, Equatable {
+	case automatic
+	case selectedText
+	case clipboard
+	case screenOCR
+
+	var id: String { rawValue }
+
+	var pickerTitle: String {
+		switch self {
+		case .automatic:
+			return "Automatic"
+		case .selectedText:
+			return "Selected text"
+		case .clipboard:
+			return "Clipboard"
+		case .screenOCR:
+			return "Screen text"
+		}
+	}
+
+	/// Short label for “Using: …” copy (matches panel wording).
+	var usingLabel: String {
+		switch self {
+		case .automatic:
+			return "Automatic"
+		case .selectedText:
+			return "Selected text"
+		case .clipboard:
+			return "Clipboard"
+		case .screenOCR:
+			return "Screen text"
+		}
+	}
+}
+
 struct ContextModel {
 	var activeAppName: String?
 	var activeAppBundleIdentifier: String?
@@ -32,6 +69,9 @@ struct ContextModel {
 	/// Rolling source trigger ids (most recent last), max 5.
 	var recentTriggers: [String]
 
+	/// Snapshot of user input preference for action execution (set by app lifecycle per invocation; not sourced from SystemSources).
+	var actionInputSourcePreference: InputSourceChoice = .automatic
+
 	init() {
 		self.activeAppName = nil
 		self.activeAppBundleIdentifier = nil
@@ -59,6 +99,8 @@ struct ContextModel {
 
 		self.recentAppNames = []
 		self.recentTriggers = []
+
+		self.actionInputSourcePreference = .automatic
 	}
 }
 

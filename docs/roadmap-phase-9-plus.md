@@ -220,6 +220,199 @@ Requirements:
 
 ---
 
+## Phase 10 — Proactive Suggestion Layer
+
+### Goal
+
+Introduce a non-intrusive, proactive suggestion system that surfaces high-value actions without requiring manual interaction.
+
+Transform the system from:
+
+User opens assistant → sees suggestions
+
+into:
+
+System detects opportunity → surfaces suggestion → user optionally engages
+
+---
+
+### Core Principle
+
+The assistant must feel:
+
+- reactive, not scheduled  
+- intentional, not repetitive  
+- helpful, not intrusive  
+
+The system should not rely on rigid cooldown timers.
+
+Instead, it should determine whether to act based on current context quality and user state.
+
+---
+
+### Problems Being Solved
+
+- Assistant is fully passive
+- Suggestions are hidden inside panel
+- User must manually open assistant
+- Cooldown system is rigid and non-adaptive
+- System lacks real-time responsiveness
+
+---
+
+### Key Design Shift
+
+Replace time-based cooldowns with:
+
+**Context-aware suggestion gating**
+
+The system should evaluate:
+
+> “Is this suggestion worth showing right now?”
+
+instead of:
+
+> “Has enough time passed?”
+
+---
+
+### Trigger Eligibility Model (TES)
+
+Each potential suggestion must pass a multi-factor evaluation:
+
+- Signal strength (selection, clipboard, passive pattern)
+- Context stability (has input changed?)
+- User activity (typing, switching, idle)
+- Recent suggestion history (accepted, dismissed)
+- UI state (panel open, suggestion already visible)
+
+Only high-confidence situations should surface UI.
+
+Low-confidence situations must remain silent.
+
+---
+
+### Scope
+
+This phase introduces:
+
+- Floating suggestion UI
+- Context-aware trigger gating (heuristic-based)
+- Basic positioning
+- Integration with existing suggestion system
+
+No major AI upgrades are introduced.
+
+---
+
+### Out of Scope
+
+Do NOT implement in this phase:
+
+- Selection-anchored positioning
+- Multi-step agent behavior
+- Advanced reasoning models
+- Memory or personalization
+- UI redesign beyond minimal floating card
+
+---
+
+### Tickets
+
+#### T10.1 — Floating Suggestion Card (MVP)
+
+Introduce a lightweight floating suggestion UI.
+
+Requirements:
+- Displays a single high-confidence proposal
+- Includes primary action + dismiss
+- Only one card visible at a time
+- Automatically disappears after short duration
+- Accepting opens assistant panel
+
+---
+
+#### T10.2 — Panel Integration
+
+When user accepts a floating suggestion:
+
+- Assistant panel opens
+- Context is preserved
+- Action flow continues normally
+
+---
+
+#### T10.3 — Context-Aware Gating (TES v1)
+
+Implement heuristic-based trigger gating.
+
+Requirements:
+- Suppress suggestions during active typing
+- Suppress repeated suggestions for same context
+- Prevent suggestions when panel is open
+- Prevent stacking or rapid re-triggering
+- Only allow high-signal contexts (selection, clipboard)
+
+---
+
+#### T10.4 — Suggestion Lifecycle Control
+
+Improve suggestion lifecycle behavior.
+
+Requirements:
+- Suggestions auto-dismiss after timeout
+- Dismissed suggestions are suppressed for current context
+- Accepted suggestions suppress immediate follow-ups
+- No duplicate suggestions for identical inputs
+
+---
+
+#### T10.5 — Safe Positioning (Fixed)
+
+Render floating suggestion in a fixed, safe position.
+
+Requirements:
+- Positioned near top-right (menu bar area)
+- Does not overlap critical UI
+- No anchoring to selection yet
+
+---
+
+### Success Criteria
+
+- Suggestions appear without manual invocation
+- Suggestions feel relevant and timely
+- No visible spam or rapid repetition
+- User can ignore suggestions without friction
+- Assistant feels more “alive” but not intrusive
+
+---
+
+### Resulting UX
+
+User copies text  
+↓  
+Suggestion appears (top-right)  
+↓  
+User clicks action  
+↓  
+Assistant panel opens with result  
+
+---
+
+### Notes
+
+This phase establishes the foundation for:
+
+- advanced context awareness  
+- smarter confidence modeling  
+- future AI-based gating  
+
+The assistant must remain conservative.
+
+Silence is always preferred over a low-quality suggestion.
+
+
 ### Resulting UX
 
 After Phase 9:

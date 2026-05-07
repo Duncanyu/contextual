@@ -6,6 +6,8 @@ struct SuggestionCard: View {
 	let dismissTitle: String?
 	/// When true, primary action is disabled (dismiss stays enabled).
 	var primaryDisabled: Bool = false
+	/// Optional one-line hint for which input source the primary action will use (metadata only).
+	var inputSourceLine: String? = nil
 	let onPrimary: () -> Void
 	let onDismiss: () -> Void
 
@@ -26,6 +28,13 @@ struct SuggestionCard: View {
 					.buttonStyle(.borderless)
 					.font(.caption)
 				}
+			}
+
+			if let inputSourceLine, !inputSourceLine.isEmpty {
+				Text(inputSourceLine)
+					.font(.caption2)
+					.foregroundStyle(.tertiary)
+					.fixedSize(horizontal: false, vertical: true)
 			}
 
 			HStack(spacing: 8) {
@@ -56,6 +65,7 @@ struct SuggestionCard_Previews: PreviewProvider {
 			primaryActionTitle: "Open Actions",
 			dismissTitle: "Dismiss",
 			primaryDisabled: false,
+			inputSourceLine: "Using: Clipboard",
 			onPrimary: {},
 			onDismiss: {}
 		)

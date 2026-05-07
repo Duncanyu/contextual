@@ -1,22 +1,31 @@
 import SwiftUI
 
-/// Metadata-only summary of input sources from `ContextModel`. Does not render clipboard, selection, or OCR body text.
+/// Metadata-only input summary and session input-source picker (no raw text).
 struct InputPreviewView: View {
+	@EnvironmentObject private var appState: AppState
 	let context: ContextModel
 
 	private static let largeInputThreshold = 10_000
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 8) {
+		VStack(alignment: .leading, spacing: 10) {
 			Text("Input")
 				.font(.subheadline)
 				.fontWeight(.semibold)
 
-			ForEach(displayLines, id: \.self) { line in
-				Text(line)
-					.font(.caption)
-					.foregroundStyle(.secondary)
-					.fixedSize(horizontal: false, vertical: true)
+			VStack(alignment: .leading, spacing: 6) {
+				ForEach(InputSourceChoice.allCases, id: \.self) { choice in
+					sourceRow(choice)
+				}
+			}
+
+			Text(appState.inputSourceUsageDescription(for: context))
+				.font(.caption2)
+				.foregroundStyle(.secondary)
+				.fixedSize(horizontal: false, vertical: true)
+
+			if !hasAnyTextInput {
+				emptyStateLines
 			}
 
 			if showsLargeInputWarning {
@@ -36,10 +45,8 @@ struct InputPreviewView: View {
 		)
 	}
 
-	private var showsLargeInputWarning: Bool {
-		context.selectedTextLength > Self.largeInputThreshold
-			|| context.clipboardTextLength > Self.largeInputThreshold
-			|| context.screenOCRTextLength > Self.largeInputThreshold
+	private var hasAnyTextInput: Bool {
+		hasSelection || hasClipboard || hasOCR
 	}
 
 	private var hasSelection: Bool {
@@ -54,45 +61,69 @@ struct InputPreviewView: View {
 		context.screenOCRAvailable && context.screenOCRTextLength > 0
 	}
 
-	private var hasAnyTextInput: Bool {
-		hasSelection || hasClipboard || hasOCR
+	private var showsLargeInputWarning: Bool {
+		context.selectedTextLength > Self.largeInputThreshold
+			|| context.clipboardTextLength > Self.largeInputThreshold
+			|| context.screenOCRTextLength > Self.largeInputThreshold
 	}
 
-	/// Display order matches `ActionInputCapture` for text actions: selection, then clipboard; screen OCR is shown in addition when present.
-	private var displayLines: [String] {
-		if !hasAnyTextInput {
-			let appLabel: String
-			if let name = context.activeAppName, !name.isEmpty {
-				appLabel = name
-			} else {
-				appLabel = "—"
+	private var emptyAppLabel: String {
+		if let name = context.activeAppName, !name.isEmpty { return name }
+		return "—"
+	}
+
+	@ViewBuilder private var emptyStateLines: some View {
+		Text("No text input detected. Manual screen analysis may still be available after capture.")
+			.font(.caption2)
+			.foregroundStyle(.tertiary)
+			.fixedSize(horizontal: false, vertical: true)
+		Text("Current app · \(emptyAppLabel)")
+			.font(.caption2)
+			.foregroundStyle(.tertiary)
+	}
+
+	private func sourceRow(_ choice: InputSourceChoice) -> some View {
+		let available = appState.isInputSourceChoiceAvailable(choice, context: context)
+		let selected = appState.selectedInputSourceChoice == choice
+		return Button {
+			if available {
+				appState.selectedInputSourceChoice = choice
 			}
-			return [
-				"No text input detected. Manual screen analysis may still be available after capture.",
-				"Current app · \(appLabel)"
-			]
+		} label: {
+			HStack(alignment: .firstTextBaseline, spacing: 8) {
+				Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+					.font(.caption)
+					.foregroundStyle(selected ? Color.accentColor : .secondary)
+				Text(rowTitle(for: choice))
+					.font(.caption)
+					.multilineTextAlignment(.leading)
+				Spacer(minLength: 4)
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.contentShape(Rectangle())
 		}
+		.buttonStyle(.plain)
+		.disabled(!available)
+		.opacity(available ? 1 : 0.45)
+	}
 
-		var lines: [String] = []
-
-		if hasSelection {
-			lines.append("Primary: Selected text · \(context.selectedTextLength) chars")
-			if hasClipboard {
-				lines.append("Also available: Clipboard · \(context.clipboardTextLength) chars")
-			}
-			if hasOCR {
-				lines.append("Also available: Screen text · \(context.screenOCRTextLength) chars · \(context.screenOCRLineCount) lines")
-			}
-		} else if hasClipboard {
-			lines.append("Primary: Clipboard · \(context.clipboardTextLength) chars")
-			if hasOCR {
-				lines.append("Also available: Screen text · \(context.screenOCRTextLength) chars · \(context.screenOCRLineCount) lines")
-			}
-		} else if hasOCR {
-			lines.append("Primary: Screen text · \(context.screenOCRTextLength) chars · \(context.screenOCRLineCount) lines")
+	private func rowTitle(for choice: InputSourceChoice) -> String {
+		switch choice {
+		case .automatic:
+			return "Automatic"
+		case .selectedText:
+			return hasSelection
+				? "Selected text · \(context.selectedTextLength) chars"
+				: "Selected text · 0 chars"
+		case .clipboard:
+			return hasClipboard
+				? "Clipboard · \(context.clipboardTextLength) chars"
+				: "Clipboard · 0 chars"
+		case .screenOCR:
+			return hasOCR
+				? "Screen text · \(context.screenOCRTextLength) chars · \(context.screenOCRLineCount) lines"
+				: "Screen text · 0 chars · 0 lines"
 		}
-
-		return lines
 	}
 }
 
@@ -108,6 +139,7 @@ struct InputPreviewView_Previews: PreviewProvider {
 		m.screenOCRTextLength = 2452
 		m.screenOCRLineCount = 98
 		return InputPreviewView(context: m)
+			.environmentObject(AppState())
 			.padding()
 			.frame(width: 320)
 	}

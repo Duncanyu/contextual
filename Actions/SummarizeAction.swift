@@ -8,14 +8,14 @@ struct SummarizeAction: ActionProtocol {
 	var name: String { "Summarize" }
 
 	func canExecute(context: ContextModel) -> Bool {
-		let selectionUseful = context.selectedTextAvailable && context.selectedTextLength >= Self.minUsefulLength
-		let clipboardUseful = context.clipboardTextAvailable && context.clipboardTextLength >= Self.minUsefulLength
-		return selectionUseful || clipboardUseful
+		ActionInputCapture.primaryText(for: context, minimumLength: Self.minUsefulLength, preference: context.actionInputSourcePreference) != nil
 	}
 
 	func execute(context: ContextModel) async -> ActionResult {
-		guard let input = ActionInputCapture.primaryText(for: context, minimumLength: Self.minUsefulLength) else {
-			return ActionResult(actionId: id, outputText: "No usable text found")
+		let pref = context.actionInputSourcePreference
+		guard let input = ActionInputCapture.primaryText(for: context, minimumLength: Self.minUsefulLength, preference: pref) else {
+			let msg = pref == .automatic ? "No usable text found" : "That input source is not available right now."
+			return ActionResult(actionId: id, outputText: msg)
 		}
 		let output = await IntelligenceActionRunner.runActionPrompt(actionType: .summarize, input: input)
 		return ActionResult(actionId: id, outputText: output)

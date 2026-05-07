@@ -1,6 +1,9 @@
 import AppKit
 import Foundation
 
+/// Proposal payload for panel and floating suggestion UI (same struct from `ProposalGenerator`).
+typealias SuggestionViewModel = ActionProposal
+
 @MainActor
 final class AppState: ObservableObject {
 	@Published var isPaused: Bool = false
@@ -39,6 +42,17 @@ final class AppState: ObservableObject {
 	@Published var executingActionId: String?
 	@Published var executingActionTitle: String?
 
+	/// Session-only preference for which input feed text actions use (`automatic` = selection → clipboard → screen OCR).
+	@Published var selectedInputSourceChoice: InputSourceChoice = .automatic
+
+	// MARK: - Floating suggestion (T10.1)
+
+	@Published var floatingSuggestion: SuggestionViewModel?
+	@Published var isFloatingSuggestionVisible: Bool = false
+
+	private var floatingAutoDismissWorkItem: DispatchWorkItem?
+	private let floatingAutoDismissSeconds: TimeInterval = 7
+
 	/// Wired by app lifecycle to enqueue a manual trigger through the normal source pipeline.
 	var requestManualInvocation: (() -> Void)?
 
@@ -51,9 +65,48 @@ final class AppState: ObservableObject {
 	var onDisableAutoStartOllama: (() -> Void)?
 	var onStartOllamaNow: (() -> Void)?
 	var onOpenOllamaDownload: (() -> Void)?
+	/// Opens the assistant popover (menu bar); wired by app lifecycle.
+	var onRevealAssistantPanel: (() -> Void)?
 
 	func invokeAction(id: String) {
 		onInvokeActionById?(id)
+	}
+
+	/// Resolves `automatic` using the same minimum-length gates as text actions; otherwise returns the user’s explicit choice.
+	func effectiveInputSource(for context: ContextModel, minimumUsefulLength: Int = 30) -> InputSourceChoice {
+		switch selectedInputSourceChoice {
+		case .automatic:
+			if context.selectedTextAvailable && context.selectedTextLength >= minimumUsefulLength { return .selectedText }
+			if context.clipboardTextAvailable && context.clipboardTextLength >= minimumUsefulLength { return .clipboard }
+			if context.screenOCRAvailable && context.screenOCRTextLength >= minimumUsefulLength { return .screenOCR }
+			return .automatic
+		case .selectedText, .clipboard, .screenOCR:
+			return selectedInputSourceChoice
+		}
+	}
+
+	func inputSourceUsageDescription(for context: ContextModel) -> String {
+		let resolved = effectiveInputSource(for: context)
+		if selectedInputSourceChoice == .automatic {
+			if resolved == .automatic {
+				return "Using: Automatic (no text input)"
+			}
+			return "Using: Automatic → \(resolved.usingLabel)"
+		}
+		return "Using: \(resolved.usingLabel)"
+	}
+
+	func isInputSourceChoiceAvailable(_ choice: InputSourceChoice, context: ContextModel) -> Bool {
+		switch choice {
+		case .automatic:
+			return true
+		case .selectedText:
+			return context.selectedTextAvailable && context.selectedTextLength > 0
+		case .clipboard:
+			return context.clipboardTextAvailable && context.clipboardTextLength > 0
+		case .screenOCR:
+			return context.screenOCRAvailable && context.screenOCRTextLength > 0
+		}
 	}
 
 	func suggestionKey(for proposal: ActionProposal, context: ContextModel) -> String {
@@ -126,7 +179,7 @@ final class AppState: ObservableObject {
 
 	private func selectionFingerprint(context: ContextModel) -> String? {
 		guard context.selectedTextAvailable else { return nil }
-		guard let text = ActionInputCapture.primaryText(for: context, minimumLength: 0), !text.isEmpty else { return nil }
+		guard let text = ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: selectedInputSourceChoice), !text.isEmpty else { return nil }
 		return String(fnv1a64(text: String(text.prefix(2000))), radix: 16)
 	}
 
@@ -172,5 +225,69 @@ final class AppState: ObservableObject {
 		latestActionResult = nil
 		latestActionId = nil
 		latestActionTimestamp = nil
+	}
+
+	// MARK: - Floating suggestion controls
+
+	func showFloatingSuggestion(_ suggestion: SuggestionViewModel) {
+		floatingAutoDismissWorkItem?.cancel()
+		floatingAutoDismissWorkItem = nil
+
+		floatingSuggestion = suggestion
+		isFloatingSuggestionVisible = true
+
+		let work = DispatchWorkItem { [weak self] in
+			Task { @MainActor in
+				self?.dismissFloatingSuggestion()
+			}
+		}
+		floatingAutoDismissWorkItem = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + floatingAutoDismissSeconds, execute: work)
+	}
+
+	func dismissFloatingSuggestion() {
+		floatingAutoDismissWorkItem?.cancel()
+		floatingAutoDismissWorkItem = nil
+		floatingSuggestion = nil
+		isFloatingSuggestionVisible = false
+	}
+
+	/// Primary action on floating card: reveal panel and invoke (same outcome as accepting in-panel).
+	func acceptFloatingProposal() {
+		guard let proposal = floatingSuggestion else { return }
+		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
+		let id = proposal.primaryActionId
+		print("[FloatingSuggestion] accepted primary=\(id)")
+
+		acceptedSuggestionCooldown.markFired(key: suggestionKey)
+		if let key = currentProposalKey {
+			lastAcceptedProposalKey = key
+			lastAcceptedProposalAt = Date()
+		}
+
+		dismissFloatingSuggestion()
+		currentProposal = nil
+		currentProposalKey = nil
+
+		onRevealAssistantPanel?()
+		invokeAction(id: id)
+	}
+
+	func floatingPrimaryButtonTitle(for proposal: ActionProposal) -> String {
+		if let action = availableActions.first(where: { $0.id == proposal.primaryActionId }) {
+			return action.name
+		}
+		switch proposal.primaryActionId {
+		case "summarize_text":
+			return "Summarize"
+		case "explain_text":
+			return "Explain"
+		case "rewrite_text":
+			return "Rewrite"
+		case ScreenAnalyzeAction.analyzeScreenId:
+			return "Analyze Screen"
+		default:
+			return "Open"
+		}
 	}
 }
