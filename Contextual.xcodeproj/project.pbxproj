@@ -99,6 +99,7 @@
 		AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027D00000000000000A4 /* ProposalTimingGate.swift */; };
 		AA00017C00000000000000A5 /* RichContextProposalAdjuster.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */; };
 		AA00017D00000000000000A7 /* RichContextProposalSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */; };
+		AA00017E00000000000000A9 /* ContextAwareActionEligibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028000000000000000AA /* ContextAwareActionEligibility.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -196,6 +197,7 @@
 		AA00027D00000000000000A4 /* ProposalTimingGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalTimingGate.swift; sourceTree = "<group>"; };
 		AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextProposalAdjuster.swift; sourceTree = "<group>"; };
 		AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextProposalSelfTest.swift; sourceTree = "<group>"; };
+		AA00028000000000000000AA /* ContextAwareActionEligibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwareActionEligibility.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -332,6 +334,7 @@
 				AA0002170000000000000021 /* ExplainAction.swift */,
 				AA0002180000000000000022 /* RewriteAction.swift */,
 				AA0002320000000000000030 /* ScreenAnalyzeAction.swift */,
+				AA00028000000000000000AA /* ContextAwareActionEligibility.swift */,
 				AA0002160000000000000020 /* ActionRouter.swift */,
 			);
 			path = Actions;
@@ -525,6 +528,7 @@
 				AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */,
 				AA00017C00000000000000A5 /* RichContextProposalAdjuster.swift in Sources */,
 				AA00017D00000000000000A7 /* RichContextProposalSelfTest.swift in Sources */,
+				AA00017E00000000000000A9 /* ContextAwareActionEligibility.swift in Sources */,
 				AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,

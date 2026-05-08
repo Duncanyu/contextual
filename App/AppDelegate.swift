@@ -495,6 +495,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return a.id < b.id
 		}
 
+		// Phase 14.5: context-aware action eligibility (metadata-only; no new collection).
+		let eligibility = ContextAwareActionEligibility.evaluate(
+			currentCandidateActionIds: ordered.map(\.id),
+			triggerType: packet.triggerType,
+			context: context,
+			contextType: contextType,
+			features: features,
+			fused: CanonicalContextState.shared.current()
+		)
+		if eligibility.reasonCodes.contains("no_rich_context") {
+			print("[ActionEligibility] kept reason=no_rich_context")
+		} else if eligibility.reasonCodes.contains("rich_context_ignored_stale") {
+			print("[ActionEligibility] ignored reason=rich_context_ignored_stale")
+		} else if eligibility.reasonCodes.contains("form_actions_limited") {
+			print("[ActionEligibility] limited reason=form_actions_limited")
+		} else if let r = eligibility.reasonCodes.first, r != "no_rich_adjustment" {
+			let actionsLabel = eligibility.eligibleActionIds.joined(separator: ",")
+			print("[ActionEligibility] adjusted reason=\(r) actions=\(actionsLabel)")
+		}
+
+		let eligibleSet = Set(eligibility.eligibleActionIds)
+		ordered = ordered.filter { eligibleSet.contains($0.id) }
+		let indexByEligible = Dictionary(uniqueKeysWithValues: eligibility.eligibleActionIds.enumerated().map { ($0.element, $0.offset) })
+		ordered.sort { a, b in
+			let ia = indexByEligible[a.id] ?? Int.max
+			let ib = indexByEligible[b.id] ?? Int.max
+			if ia != ib { return ia < ib }
+			return a.id < b.id
+		}
+
 		let didHaveAnalyze = lastReasonedActions.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
 		let hasAnalyzeNow = ordered.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
 		if hasAnalyzeNow && !didHaveAnalyze {
@@ -1252,6 +1282,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_RICH_PROPOSAL_SELFTEST"] == "1" {
 			let ok = RichContextProposalSelfTest.run()
 			print("[RichProposal] selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Action eligibility self-test (synthetic metadata-only; no collection).
+		// Run the app with `CONTEXTUAL_RUN_ACTION_ELIGIBILITY_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_ACTION_ELIGIBILITY_SELFTEST"] == "1" {
+			let ok = ContextAwareActionEligibility.selfTest()
+			print("[ActionEligibility] selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
