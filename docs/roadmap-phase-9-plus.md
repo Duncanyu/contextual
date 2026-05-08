@@ -1466,9 +1466,6 @@ This is not a rigid cooldown system.
 
 ---
 
-
----
-
 ### T13.4 — Visual Context Descriptor
 
 Expand beyond OCR into lightweight visual understanding.

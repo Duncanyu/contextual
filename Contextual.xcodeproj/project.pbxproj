@@ -81,6 +81,8 @@
 		AA000169000000000000007F /* ContextBudgetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026B0000000000000080 /* ContextBudgetManager.swift */; };
 		AA00016A0000000000000081 /* WindowSnapshotContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026C0000000000000082 /* WindowSnapshotContext.swift */; };
 		AA00016B0000000000000083 /* WindowSnapshotSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026D0000000000000084 /* WindowSnapshotSource.swift */; };
+		AA00016C0000000000000085 /* VisualContextDescriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026E0000000000000086 /* VisualContextDescriptor.swift */; };
+		AA00016D0000000000000087 /* VisualContextAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026F0000000000000088 /* VisualContextAnalyzer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -160,6 +162,8 @@
 		AA00026B0000000000000080 /* ContextBudgetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBudgetManager.swift; sourceTree = "<group>"; };
 		AA00026C0000000000000082 /* WindowSnapshotContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSnapshotContext.swift; sourceTree = "<group>"; };
 		AA00026D0000000000000084 /* WindowSnapshotSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSnapshotSource.swift; sourceTree = "<group>"; };
+		AA00026E0000000000000086 /* VisualContextDescriptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextDescriptor.swift; sourceTree = "<group>"; };
+		AA00026F0000000000000088 /* VisualContextAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextAnalyzer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -226,6 +230,7 @@
 				AA00020C0000000000000016 /* SelectionSource.swift */,
 				AA000230000000000000002E /* ScreenCaptureSource.swift */,
 				AA00026D0000000000000084 /* WindowSnapshotSource.swift */,
+				AA00026F0000000000000088 /* VisualContextAnalyzer.swift */,
 			);
 			path = SystemSources;
 			sourceTree = "<group>";
@@ -252,6 +257,7 @@
 				AA00026A000000000000007E /* ContextBudgetTypes.swift */,
 				AA00026B0000000000000080 /* ContextBudgetManager.swift */,
 				AA00026C0000000000000082 /* WindowSnapshotContext.swift */,
+				AA00026E0000000000000086 /* VisualContextDescriptor.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -452,6 +458,10 @@
 				AA0001650000000000000077 /* ContextCapabilityRegistry.swift in Sources */,
 				AA000168000000000000007D /* ContextBudgetTypes.swift in Sources */,
 				AA000169000000000000007F /* ContextBudgetManager.swift in Sources */,
+				AA00016A0000000000000081 /* WindowSnapshotContext.swift in Sources */,
+				AA00016B0000000000000083 /* WindowSnapshotSource.swift in Sources */,
+				AA00016C0000000000000085 /* VisualContextDescriptor.swift in Sources */,
+				AA00016D0000000000000087 /* VisualContextAnalyzer.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,
