@@ -94,6 +94,8 @@
 		AA0001760000000000000099 /* ContextFreshnessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000278000000000000009A /* ContextFreshnessPolicy.swift */; };
 		AA000177000000000000009B /* ContextDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000279000000000000009C /* ContextDebugLogger.swift */; };
 		AA000178000000000000009D /* CanonicalContextState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027A000000000000009E /* CanonicalContextState.swift */; };
+		AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */; };
+		AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -186,6 +188,8 @@
 		AA000278000000000000009A /* ContextFreshnessPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextFreshnessPolicy.swift; sourceTree = "<group>"; };
 		AA000279000000000000009C /* ContextDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextDebugLogger.swift; sourceTree = "<group>"; };
 		AA00027A000000000000009E /* CanonicalContextState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalContextState.swift; sourceTree = "<group>"; };
+		AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextRefreshPipeline.swift; sourceTree = "<group>"; };
+		AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextRefreshTypes.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -291,6 +295,8 @@
 				AA000278000000000000009A /* ContextFreshnessPolicy.swift */,
 				AA000279000000000000009C /* ContextDebugLogger.swift */,
 				AA00027A000000000000009E /* CanonicalContextState.swift */,
+				AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */,
+				AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -506,6 +512,8 @@
 				AA0001760000000000000099 /* ContextFreshnessPolicy.swift in Sources */,
 				AA000177000000000000009B /* ContextDebugLogger.swift in Sources */,
 				AA000178000000000000009D /* CanonicalContextState.swift in Sources */,
+				AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */,
+				AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,

@@ -1090,6 +1090,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Rich context refresh pipeline self-test (synthetic/current metadata-only).
+		// Run the app with `CONTEXTUAL_RUN_RICH_REFRESH_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_RICH_REFRESH_SELFTEST"] == "1" {
+			Task {
+				print("[RichContextRefresh] selftest starting")
+				let model = ContextModel()
+				let req = RichContextRefreshRequest(
+					trigger: .debugSelfTest,
+					reason: "selftest",
+					includeWindowSnapshot: true,
+					includeVisualDescriptor: true,
+					includeAXContent: true,
+					includeTypingActivity: true,
+					includePointerActivity: true,
+					allowExpensiveSources: true,
+					currentContextModel: model,
+					isActionExecuting: false,
+					currentIntelligenceConfidence: 0.30
+				)
+
+				// Start one refresh and cancel it immediately to validate cancellation/stale protection.
+				let pipeline = RichContextRefreshPipeline.shared
+				let t = Task { await pipeline.refresh(req) }
+				try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+				pipeline.cancelCurrent(reason: "selftest_cancel")
+				let cancelledResult = await t.value
+				print("[RichContextRefresh] selftest cancel wasCancelled=\(cancelledResult.wasCancelled)")
+
+				// Now run a real refresh.
+				let result = await pipeline.refresh(req)
+				let collected = result.collectedSources.map(\.rawValue).joined(separator: ",")
+				let skipped = result.skippedSources.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ",")
+				print("[RichContextRefresh] selftest result ok=true cancelled=\(result.wasCancelled) collected=\(collected) skipped=\(skipped) updatedCanonical=\(result.updatedCanonicalState) primary=\(result.fusedPacket?.primarySource.rawValue ?? "nil")")
+				NSApp.terminate(nil)
+			}
+			return true
+		}
+
 		// Self-test hook (no UI, no continuous polling).
 		// Run the app with `CONTEXTUAL_RUN_AX_SELFTEST=1` to execute once and exit.
 		if env["CONTEXTUAL_RUN_AX_SELFTEST"] == "1" {
