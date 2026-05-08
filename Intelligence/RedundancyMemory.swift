@@ -26,7 +26,12 @@ final class RedundancyMemory {
 
 	private var entries: [String: Entry] = [:]
 	private let maxEntries = 220
-	private let pruneAfter: TimeInterval = 12 * 60
+	private let pruneAfter: TimeInterval = 15 * 60
+
+	/// Drop stale redundancy entries (e.g. after app switch) without wiping fresh dismissals (T12.10).
+	func pruneEntriesOlderThan(seconds: TimeInterval, now: Date = Date()) {
+		entries = entries.filter { now.timeIntervalSince($0.value.lastTouched) < seconds }
+	}
 
 	private var lastAdjustmentLogSig: String?
 	private var lastAdjustmentLogAt: Date?
@@ -90,10 +95,10 @@ final class RedundancyMemory {
 
 		if manualCount > 0 {
 			if manualCount >= 2 {
-				delta -= 0.25
+				delta -= 0.28
 				reasonParts.append("manual_x\(manualCount)")
 			} else {
-				delta -= 0.15
+				delta -= 0.18
 				reasonParts.append("manual")
 			}
 		}

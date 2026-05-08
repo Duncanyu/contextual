@@ -25,7 +25,8 @@ enum TriggerEligibilityEvaluator {
 		isPopoverOpen: Bool,
 		isFloatingVisible: Bool,
 		isActionExecuting: Bool,
-		inputSourceChoice: InputSourceChoice
+		inputSourceChoice: InputSourceChoice,
+		proposalGateAllows: Bool = true
 	) -> TriggerEligibilityResult {
 		if isPaused {
 			return TriggerEligibilityResult(shouldShow: false, score: 0, reason: "assistant_paused")
@@ -49,7 +50,11 @@ enum TriggerEligibilityEvaluator {
 			return TriggerEligibilityResult(shouldShow: false, score: 0, reason: "manual_invocation")
 		}
 
-		let dominant = dominantFloatingInput(context: context, preference: inputSourceChoice)
+		let dominant = dominantFloatingInput(
+			context: context,
+			preference: inputSourceChoice,
+			proposalGateAllows: proposalGateAllows
+		)
 		guard let dominant else {
 			return TriggerEligibilityResult(shouldShow: false, score: 0, reason: "no_meaningful_input")
 		}
@@ -86,10 +91,13 @@ enum TriggerEligibilityEvaluator {
 		let length: Int
 	}
 
-	/// Resolves which channel drives floating eligibility (selection preferred under `.automatic` when eligible).
-	private static func dominantFloatingInput(context: ContextModel, preference: InputSourceChoice) -> DominantInput? {
-		let selOK = context.selectedTextAvailable && context.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount
-		let clipOK = context.clipboardTextAvailable && context.clipboardTextLength >= TriggerEngine.clipboardMinCharacterCount
+	private static func dominantFloatingInput(
+		context: ContextModel,
+		preference: InputSourceChoice,
+		proposalGateAllows: Bool
+	) -> DominantInput? {
+		let selOK = context.selectedTextAvailable && context.selectedTextLength > TriggerEngine.selectedTextMinCharacterCount
+		let clipOK = context.clipboardTextAvailable && context.clipboardTextLength > TriggerEngine.clipboardMinCharacterCount
 
 		switch preference {
 		case .automatic:
@@ -107,7 +115,10 @@ enum TriggerEligibilityEvaluator {
 			guard clipOK else { return nil }
 			return DominantInput(kind: .clipboard, length: context.clipboardTextLength)
 		case .screenOCR:
-			// Floating suggestions must not activate on OCR-only input for TES v1.
+			// T12.10: explicit screen channel must not hide a fresh eligible selection when proposals are allowed.
+			if proposalGateAllows, selOK {
+				return DominantInput(kind: .selection, length: context.selectedTextLength)
+			}
 			return nil
 		}
 	}

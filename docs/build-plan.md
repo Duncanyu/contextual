@@ -350,3 +350,5 @@ Every phase should make the next phase easier, not harder.
 ## Phase 12 — Micro classifier asset (T12.3.7)
 
 Bundled `MicroDecisionClassifier.mlmodel` is produced by `Scripts/build_micro_classifier.py` (Python venv with `scikit-learn==1.5.1` + `coremltools`). Feature layout is duplicated in `Intelligence/MicroDecisionFeatureEncoder.swift`. Xcode compiles the `.mlmodel` to `.mlmodelc` in the app bundle.
+
+T12.10 — Phase 12 tuning pass: thresholds and gates in `IntelligenceProposalSelector`, `IntelligenceBudgetManager`, `IntelligenceDecisionCache`, micro skip length, redundancy/floating cooldowns; no architecture change. Follow-up: classifier + `ContextClassifier` + relevance keys for notes/prose; content-stamped proposal cooldown; quiet Ollama tag probes. **Final blockers:** OCR async must not override `lastSourceTrigger` when selection dominates; notes/article rewrite guard + phi3 guard; TES `proposalGateAllows` + effective input; floating lifecycle 12m prune + channel reset; serve-spawn tags settle delay.

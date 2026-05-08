@@ -30,8 +30,17 @@ final class FloatingSuggestionLifecycle {
 	private let shownWindow: TimeInterval = 30
 	private let autoDismissWindow: TimeInterval = 30
 	private let acceptedWindow: TimeInterval = 60
-	private let manualWindow: TimeInterval = 120
-	private let pruneAge: TimeInterval = 150
+	private let manualWindow: TimeInterval = 180
+	private let pruneAge: TimeInterval = 12 * 60
+
+	/// Clears floating suppression state when leaving screen-OCR input channel (T12.10).
+	func clearAllForInputChannelReset() {
+		let n = entries.count
+		entries.removeAll()
+		if n > 0 {
+			print("[FloatingLifecycle] channel_reset cleared=\(n)")
+		}
+	}
 
 	private var lastSuppressLogSignature: String?
 	private var lastSuppressLogAt: Date?

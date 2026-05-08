@@ -41,11 +41,16 @@ enum ActionRelevanceScorer {
 		var reason = "generic"
 
 		if type == .article {
-			score = 0.90
+			score = 0.92
 			reason = "article"
 		} else if type == .notes {
-			score = 0.85
-			reason = "notes"
+			if f.textLength >= 220 {
+				score = 0.90
+				reason = "notes_long"
+			} else {
+				score = 0.86
+				reason = "notes"
+			}
 		} else if f.textLength >= 200, f.sentenceCount >= 3, f.lineCount >= 3 {
 			score = 0.80
 			reason = "long_structured"
@@ -98,11 +103,15 @@ enum ActionRelevanceScorer {
 		if !proseLike || type == .code || type == .errorLog || type == .random {
 			score = 0.20
 			reason = "not_prose"
+		} else if type == .article || type == .notes, f.textLength >= 320 {
+			// Long notes/articles: prefer summarize over rewrite unless it’s clearly a short draft.
+			score = 0.45
+			reason = "long_prose_draft_unlikely"
 		} else if f.textLength >= 80, f.textLength <= 500, f.sentenceCount >= 1 {
 			score = 0.70
 			reason = "medium_prose"
 		} else if type == .notes || type == .article {
-			score = 0.60
+			score = 0.55
 			reason = "notes_or_article"
 		} else if type == .question {
 			score = 0.55

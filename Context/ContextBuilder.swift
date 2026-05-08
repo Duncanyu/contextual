@@ -72,7 +72,12 @@ final class ContextBuilder {
 			model.screenOCRTextLength = hasText ? trimmed.count : 0
 			model.screenOCRLineCount = hasText ? lineCount : 0
 			model.screenOCRCapturedAt = capturedAt
-			model.lastSourceTrigger = .screenOCRCompleted
+			// Async OCR must not stomp a newer meaningful selection (T12.10): keep trigger so TriggerEngine still emits selected_text.
+			let selectionDominates = model.selectedTextAvailable
+				&& model.selectedTextLength > TriggerEngine.selectedTextMinCharacterCount
+			if !selectionDominates {
+				model.lastSourceTrigger = .screenOCRCompleted
+			}
 			model.updatedAt = Date()
 			let chars = trimmed.utf8.count
 			print("[OCR] context updated chars=\(chars) lines=\(lineCount)")

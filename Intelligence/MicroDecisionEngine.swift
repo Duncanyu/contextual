@@ -75,7 +75,7 @@ final class MicroDecisionEngine {
 		if request.availableActions.isEmpty {
 			return "no_actions"
 		}
-		if request.textLength < 20 {
+		if request.textLength < 30 {
 			return "too_short"
 		}
 		let st = request.sourceType.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -127,7 +127,7 @@ final class MicroDecisionEngine {
 			averageLineLength: 25,
 			repetitionScore: 0
 		)
-		let filler = String(repeating: "a", count: 25)
+		let filler = String(repeating: "a", count: 35)
 		let reqOk = MicroDecisionRequest(
 			contextType: .notes,
 			features: features,

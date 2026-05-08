@@ -13,9 +13,15 @@ final class IntelligenceProposalSelector {
 	private var lastMicroSkipSig: String?
 	private var lastMicroSkipAt: Date?
 
-	private static let overrideConfidenceThreshold: Double = 0.78
-	private static let suppressConfidenceThreshold: Double = 0.85
+	/// T12.10: slightly lower so confident micro agreement keeps heuristic without phi3.
+	private static let overrideConfidenceThreshold: Double = 0.74
+	/// Easier to honor micro/cache “stay quiet” without floating churn.
+	private static let suppressConfidenceThreshold: Double = 0.82
 	private static let titleConfidenceThreshold: Double = 0.80
+	/// When micro says shouldSuggest=false but is confident, skip LLM escalation (noise + cost).
+	private static let microSilentSkipLLMConfidence: Double = 0.72
+	/// When micro/cache picks rewrite for long-form types, require near-certainty (T12.10).
+	private static let notesArticleRewriteMinConfidence: Double = 0.96
 
 	enum Outcome: Equatable {
 		case unchanged
@@ -90,6 +96,15 @@ final class IntelligenceProposalSelector {
 		// MARK: Step 2 — Cache
 
 		if let cached = cache.lookup(fingerprint: fingerprint, request: request) {
+			if Self.blocksWeakRewriteForLongForm(decision: cached, contextType: contextType) {
+				print("[IntelligenceSelection] cache_bypass reason=notes_rewrite_guard")
+				IntelligenceDebugLogger.log(
+					stage: .selection,
+					event: "skipped",
+					meta: dbgBase.with(reason: "notes_rewrite_guard", layer: "selector", detail: "cache"),
+					throttleKey: "cache_rw_guard|\(fingerprint.prefix(12))"
+				)
+			} else {
 			print("[IntelligenceSelection] cache_hit")
 			let r = applyInterpretation(
 				decision: cached,
@@ -115,6 +130,7 @@ final class IntelligenceProposalSelector {
 				meta: dbgBase.with(reason: "low_conf", layer: "selector", detail: "cache"),
 				throttleKey: "rej_cache|\(fingerprint.prefix(12))"
 			)
+			}
 		}
 
 		// MARK: Step 3 — Micro (sync; only when a real CoreML model is loaded)
@@ -135,6 +151,15 @@ final class IntelligenceProposalSelector {
 			let microRaw = MicroDecisionEngine().decide(request: microReq)
 			let microIntel = Self.intelligenceResponse(fromMicro: microRaw)
 			if microIntel.isValid(for: request) {
+				if Self.blocksWeakRewriteForLongForm(decision: microIntel, contextType: contextType) {
+					print("[MicroDecisionIntegration] rejected reason=notes_rewrite_guard")
+					IntelligenceDebugLogger.log(
+						stage: .selection,
+						event: "decision_rejected",
+						meta: dbgBase.with(reason: "notes_rewrite_guard", layer: "selector", detail: "micro"),
+						throttleKey: "micro_rw_guard|\(fingerprint.prefix(12))"
+					)
+				} else {
 				let r = applyInterpretation(
 					decision: microIntel,
 					heuristicPrimary: heuristicPrimaryActionId,
@@ -158,6 +183,19 @@ final class IntelligenceProposalSelector {
 					)
 					return r
 				}
+
+				let mc = min(1.0, max(0.0, microIntel.confidence))
+				if !microIntel.shouldSuggest, mc >= Self.microSilentSkipLLMConfidence {
+					print("[IntelligenceSelection] llm_fallback_skipped reason=micro_silent_high_conf")
+					IntelligenceDebugLogger.log(
+						stage: .selection,
+						event: "skipped",
+						meta: dbgBase.with(reason: "micro_silent_skip_llm", layer: "selector", conf: String(format: "%.2f", mc)),
+						throttleKey: "skip_micro_silent"
+					)
+					logHeuristicKept(reason: "micro_silent_high_conf", dbgBase: dbgBase)
+					return Result(outcome: .unchanged, intelligenceTitle: nil)
+				}
 				print("[MicroDecisionIntegration] rejected reason=low_conf_or_unchanged")
 				IntelligenceDebugLogger.log(
 					stage: .selection,
@@ -165,6 +203,7 @@ final class IntelligenceProposalSelector {
 					meta: dbgBase.with(reason: "low_conf", layer: "selector", detail: "micro"),
 					throttleKey: "rej_micro|\(fingerprint.prefix(12))"
 				)
+				}
 			} else {
 				print("[MicroDecisionIntegration] rejected reason=low_conf_or_unchanged")
 				IntelligenceDebugLogger.log(
@@ -179,16 +218,26 @@ final class IntelligenceProposalSelector {
 		}
 
 		// MARK: Step 4 — Local LLM fallback (phi3 path)
+		// T12.10: cheap budget gates first — only probe Ollama when a real LLM call could be allowed.
 
-		let isModelAvailable = await ModelManager.shared.isGenerationAvailable()
-
-		let budgetDecision = budget.evaluate(
+		let premodel = budget.evaluatePremodel(
 			request: request,
 			suggestionStrength: suggestionStrength,
 			isActionExecuting: isActionExecuting,
-			isModelAvailable: isModelAvailable,
 			contextFingerprint: fingerprint
 		)
+		let budgetDecision: IntelligenceBudgetDecision
+		switch premodel {
+		case .denied(let d):
+			budgetDecision = d
+		case .needsAvailabilityProbe(let score, let fp):
+			let isModelAvailable = await ModelManager.shared.isGenerationAvailable()
+			budgetDecision = budget.completeWithAvailability(
+				score: score,
+				fingerprint: fp,
+				isModelAvailable: isModelAvailable
+			)
+		}
 
 		if !budgetDecision.allowed {
 			print("[IntelligenceSelection] llm_fallback_skipped reason=budget_\(budgetDecision.reason)")
@@ -223,6 +272,18 @@ final class IntelligenceProposalSelector {
 			return Result(outcome: .unchanged, intelligenceTitle: nil)
 		}
 
+		if Self.blocksWeakRewriteForLongForm(decision: decision, contextType: contextType) {
+			print("[IntelligenceSelection] heuristic_kept reason=notes_rewrite_llm_guard")
+			IntelligenceDebugLogger.log(
+				stage: .selection,
+				event: "decision_rejected",
+				meta: dbgBase.with(reason: "notes_rewrite_guard", layer: "selector", detail: "llm"),
+				throttleKey: "llm_rw_guard"
+			)
+			logHeuristicKept(reason: "notes_rewrite_llm_guard", dbgBase: dbgBase)
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
+		}
+
 		if decision.isValid(for: request), decision.confidence > 0.02 {
 			cache.store(decision: decision, fingerprint: fingerprint, request: request)
 		}
@@ -238,6 +299,14 @@ final class IntelligenceProposalSelector {
 	}
 
 	// MARK: - Tier resolution
+
+	/// True when this tier’s rewrite should be ignored for notes/article (keep heuristic / skip phi3).
+	private static func blocksWeakRewriteForLongForm(decision: IntelligenceDecisionResponse, contextType: ContextType) -> Bool {
+		guard contextType == .notes || contextType == .article else { return false }
+		guard decision.bestActionId == "rewrite_text" else { return false }
+		let c = min(1.0, max(0.0, decision.confidence))
+		return c < notesArticleRewriteMinConfidence
+	}
 
 	private func commitsWithoutLLM(decision: IntelligenceDecisionResponse, result: Result, heuristicPrimary: String) -> Bool {
 		switch result.outcome {
@@ -381,7 +450,10 @@ final class IntelligenceProposalSelector {
 			)
 			return nil
 		}
-		switch IntelligenceProposalTitleValidator.evaluate(decision.suggestedTitle, request: request) {
+		guard let trimmedTitle = decision.suggestedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmedTitle.isEmpty else {
+			return nil
+		}
+		switch IntelligenceProposalTitleValidator.evaluate(trimmedTitle, request: request) {
 		case .accepted(let title):
 			let cs = String(format: "%.2f", confidence)
 			print("[IntelligenceTitle] title_applied fromCache=\(fromCache) conf=\(cs)")

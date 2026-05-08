@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var contextPipelineGeneration: UInt64 = 0
 	private let intelligenceProposalSelector = IntelligenceProposalSelector()
 
+	private var lastPipelineActiveAppKey: String?
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
@@ -250,6 +252,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 	private func processSourceEvent(_ event: SourceEvent) {
 		contextBuilder.handle(event)
+
+		if case .sourceChanged(.selectedTextChanged(let text)) = event {
+			let len = text?.count ?? 0
+			if len > TriggerEngine.selectedTextMinCharacterCount {
+				resetStaleInputSourceAfterNewSelection(context: contextBuilder.model)
+			}
+		}
+
 		processUpdatedContextAfterPipeline()
 		switch event {
 		case .sourceChanged(.clipboardTextChanged(let text)):
@@ -271,11 +281,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 	}
 
+	/// T12.10: After manual/OCR, user may leave “Screen text” selected — new real selection should resume automatic resolution.
+	private func resetStaleInputSourceAfterNewSelection(context: ContextModel) {
+		if appState.selectedInputSourceChoice == .screenOCR {
+			appState.selectedInputSourceChoice = .automatic
+			appState.floatingSuggestionLifecycle.clearAllForInputChannelReset()
+			print("[InputSource] reset_stale_source reason=new_selection prev=screen_ocr")
+		}
+	}
+
 	private func processUpdatedContextAfterPipeline() {
 		appState.debugContext = contextBuilder.model
 		logContextModel(contextBuilder.model)
 
 		let context = contextBuilder.model
+		let bid = context.activeAppBundleIdentifier ?? ""
+		if !bid.isEmpty {
+			if let prev = lastPipelineActiveAppKey, prev != bid {
+				appState.redundancyMemory.pruneEntriesOlderThan(seconds: 12 * 60)
+				print("[ContextPipeline] redundancy_prune reason=active_app_change")
+			}
+			lastPipelineActiveAppKey = bid
+		}
+
 		contextPipelineGeneration += 1
 		let generation = contextPipelineGeneration
 		if let packet = triggerEngine.evaluate(context) {
@@ -313,7 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let rawSimilarity = FloatingSimilarityText.material(
 			for: context,
 			triggerType: packet.triggerType,
-			inputPreference: appState.selectedInputSourceChoice
+			inputPreference: appState.effectiveInputSource(for: context)
 		)
 		let profile = ContentSimilarityProfile.make(from: rawSimilarity)
 		let relevance = relevanceBase.map { r -> ActionRelevanceScore in
@@ -389,7 +417,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		var proposalKey: String?
 		if let p = proposal {
-			proposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+			proposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)|\(Self.proposalContentStamp(profile))"
 		}
 
 		var evalContext = context
@@ -444,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if packet.triggerType != .manualInvocation, let key = finalProposalKey {
 			if let dismissedAt = appState.lastDismissedProposalAt,
 			   appState.lastDismissedProposalKey == key,
-			   Date().timeIntervalSince(dismissedAt) < 60 {
+			   Date().timeIntervalSince(dismissedAt) < 120 {
 				print("[ProposalCooldown] suppressed proposal key=\(key) reason=dismissed")
 				finalProposal = nil
 				finalProposalKey = nil
@@ -466,7 +494,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			strength: strength,
 			packet: packet,
 			context: context,
-			generation: generation
+			generation: generation,
+			proposalGateAllows: proposalGateResult.shouldGenerate
 		)
 
 		// T12.6 / T12.6.5: async refinement (cache → micro → LLM) must not block heuristic publish above.
@@ -496,6 +525,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 						orderedSnapshot: snapOrdered,
 						heuristicProposal: fp,
 						heuristicProposalKey: snapProposalKey,
+						contentProfile: profile,
 						llmIds: llmIds
 					)
 				}
@@ -510,7 +540,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		strength: SuggestionStrengthResult?,
 		packet: TriggerPacket,
 		context: ContextModel,
-		generation: UInt64
+		generation: UInt64,
+		proposalGateAllows: Bool
 	) {
 		guard generation == contextPipelineGeneration else { return }
 
@@ -525,7 +556,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
 
 		if let p = finalProposal, let s = strength, s.strength == .strong {
-			maybeShowFloatingSuggestion(proposal: p, suggestionStrength: s.strength, context: context, packet: packet)
+			maybeShowFloatingSuggestion(
+				proposal: p,
+				suggestionStrength: s.strength,
+				context: context,
+				packet: packet,
+				proposalGateAllows: proposalGateAllows
+			)
 		}
 	}
 
@@ -542,6 +579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		orderedSnapshot: [any ActionProtocol],
 		heuristicProposal: ActionProposal,
 		heuristicProposalKey: String?,
+		contentProfile: ContentSimilarityProfile,
 		llmIds: [String]
 	) async {
 		guard proposalGateAllowed else { return }
@@ -600,7 +638,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 					intelligenceTitleOverride: t
 				)
 				if let p = finalProposal {
-					finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+					finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)|\(Self.proposalContentStamp(contentProfile))"
 				} else {
 					finalProposalKey = nil
 				}
@@ -625,7 +663,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				intelligenceTitleOverride: intel.intelligenceTitle
 			)
 			if let p = finalProposal {
-				finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)"
+				finalProposalKey = "\(packet.triggerType.rawValue)|\(p.primaryActionId)|\(Self.proposalContentStamp(contentProfile))"
 			} else {
 				finalProposalKey = nil
 			}
@@ -650,7 +688,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if packet.triggerType != .manualInvocation, let key = finalProposalKey {
 			if let dismissedAt = appState.lastDismissedProposalAt,
 			   appState.lastDismissedProposalKey == key,
-			   Date().timeIntervalSince(dismissedAt) < 60 {
+			   Date().timeIntervalSince(dismissedAt) < 120 {
 				finalProposal = nil
 				finalProposalKey = nil
 			} else if let acceptedAt = appState.lastAcceptedProposalAt,
@@ -679,7 +717,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			strength: strengthResult,
 			packet: packet,
 			context: context,
-			generation: generation
+			generation: generation,
+			proposalGateAllows: proposalGateAllowed
 		)
 	}
 
@@ -697,6 +736,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			if ia != ib { return ia < ib }
 			return a.id < b.id
 		}
+	}
+
+	private static func proposalContentStamp(_ profile: ContentSimilarityProfile) -> String {
+		let ph = String(profile.prefixHash, radix: 16)
+		let sh = String(profile.suffixHash, radix: 16)
+		return "\(profile.lengthBucket)|\(ph)|\(sh)"
 	}
 
 	private static func rankedIdsPlacingPrimary(_ primary: String, orderedIds: [String], textPool: [String]) -> [String] {
@@ -769,11 +814,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		print("[SuggestionStrength] strength=\(s.strength.rawValue) score=\(score) reason=\(s.reason)")
 	}
 
-	private func maybeShowFloatingSuggestion(proposal: ActionProposal, suggestionStrength: SuggestionStrength, context: ContextModel, packet: TriggerPacket) {
+	private func maybeShowFloatingSuggestion(
+		proposal: ActionProposal,
+		suggestionStrength: SuggestionStrength,
+		context: ContextModel,
+		packet: TriggerPacket,
+		proposalGateAllows: Bool
+	) {
+		let resolvedInput = appState.effectiveInputSource(for: context)
 		let rawSimilarity = FloatingSimilarityText.material(
 			for: context,
 			triggerType: packet.triggerType,
-			inputPreference: appState.selectedInputSourceChoice
+			inputPreference: resolvedInput
 		)
 		let profile = ContentSimilarityProfile.make(from: rawSimilarity)
 		let life = appState.floatingSuggestionLifecycle.shouldSuppressNewFloating(
@@ -795,7 +847,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			isPopoverOpen: menuBarController?.isPopoverShown ?? false,
 			isFloatingVisible: appState.isFloatingSuggestionVisible,
 			isActionExecuting: appState.isActionExecuting,
-			inputSourceChoice: appState.selectedInputSourceChoice
+			inputSourceChoice: resolvedInput,
+			proposalGateAllows: proposalGateAllows
 		)
 
 		let scoreLabel = String(format: "%.2f", tes.score)

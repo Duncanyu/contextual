@@ -14,7 +14,7 @@ final class IntelligenceDecisionCache {
 	private var order: [String] = []
 
 	private let maxEntries: Int = 80
-	private let expirySeconds: TimeInterval = 10 * 60
+	private let expirySeconds: TimeInterval = 12 * 60
 
 	private var lastLogSig: String?
 	private var lastLogAt: Date?
@@ -52,7 +52,7 @@ final class IntelligenceDecisionCache {
 		// Confidence decay: reduce slightly as the entry ages.
 		// If confidence becomes too low, treat as miss.
 		let decayed = decayedConfidence(original: e.decision.confidence, age: age)
-		if decayed < 0.35 {
+		if decayed < 0.38 {
 			logIfNeeded("rejected_decayed", fp: fingerprint, now: now)
 			return nil
 		}
@@ -247,7 +247,7 @@ final class IntelligenceDecisionCache {
 		cache.store(decision: badAction, fingerprint: fp + "x", request: req, now: Date())
 		guard cache.lookup(fingerprint: fp + "x", request: req, now: Date()) == nil else { return false }
 
-		let old = Date().addingTimeInterval(-(11 * 60))
+		let old = Date().addingTimeInterval(-(13 * 60))
 		cache.store(decision: ok, fingerprint: fp + "old", request: req, now: old)
 		guard cache.lookup(fingerprint: fp + "old", request: req, now: Date()) == nil else { return false }
 

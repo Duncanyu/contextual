@@ -118,40 +118,72 @@ def rng_vec_explain(rng: random.Random) -> np.ndarray:
 
 
 def rng_vec_summarize(rng: random.Random) -> np.ndarray:
+    ct = rng.choice(["article", "article", "notes", "article", "notes"])
+    text_length = rng.randint(260, 3600)
+    line_count = rng.randint(1, min(110, max(1, text_length // 40)))
+    sentence_count = rng.randint(1, max(2, min(70, text_length // 80)))
     return encode_vector(
-        context_type="article",
+        context_type=ct,
         source_type=rng.choice(["clipboard", "selected_text"]),
-        text_length=rng.randint(400, 3500),
-        line_count=rng.randint(8, 100),
-        word_count=rng.randint(120, 900),
-        sentence_count=rng.randint(5, 60),
-        punctuation_density=rng.uniform(0.025, 0.09),
+        text_length=text_length,
+        line_count=line_count,
+        word_count=rng.randint(max(35, text_length // 6), min(1100, text_length // 2)),
+        sentence_count=sentence_count,
+        punctuation_density=rng.uniform(0.015, 0.11),
         has_question=False,
         is_likely_code=False,
         is_likely_log=False,
-        average_line_length=rng.uniform(35.0, 120.0),
-        repetition_score=rng.uniform(0.1, 0.55),
+        average_line_length=rng.uniform(28.0, 130.0),
+        repetition_score=rng.uniform(0.06, 0.58),
         available_actions=["summarize_text", "explain_text", "rewrite_text"],
-        compressed_text_len=rng.randint(200, 2200),
+        compressed_text_len=rng.randint(160, min(2200, text_length)),
+    )
+
+
+def rng_vec_summarize_dense_notes(rng: random.Random) -> np.ndarray:
+    """Dense paragraphs / Apple Notes style — few newlines, summarize not rewrite."""
+    text_length = rng.randint(280, 2800)
+    line_count = rng.randint(1, 6)
+    return encode_vector(
+        context_type="notes",
+        source_type=rng.choice(["clipboard", "selected_text"]),
+        text_length=text_length,
+        line_count=line_count,
+        word_count=rng.randint(50, min(900, text_length // 3)),
+        sentence_count=rng.randint(1, max(3, line_count + rng.randint(0, 8))),
+        punctuation_density=rng.uniform(0.012, 0.08),
+        has_question=False,
+        is_likely_code=False,
+        is_likely_log=False,
+        average_line_length=rng.uniform(120.0, min(900.0, float(text_length))),
+        repetition_score=rng.uniform(0.05, 0.42),
+        available_actions=["summarize_text", "explain_text", "rewrite_text"],
+        compressed_text_len=rng.randint(180, min(2000, text_length)),
     )
 
 
 def rng_vec_rewrite(rng: random.Random) -> np.ndarray:
+    """Short drafts / polish — avoid notes/article body; question + brief message-like."""
+    ct = rng.choice(["question", "question", "question", "question", "notes"])
+    if ct == "notes":
+        text_length = rng.randint(40, 160)
+    else:
+        text_length = rng.randint(45, 360)
     return encode_vector(
-        context_type=rng.choice(["notes", "question"]),
+        context_type=ct,
         source_type=rng.choice(["clipboard", "selected_text"]),
-        text_length=rng.randint(80, 900),
-        line_count=rng.randint(2, 24),
-        word_count=rng.randint(30, 220),
-        sentence_count=rng.randint(2, 18),
-        punctuation_density=rng.uniform(0.03, 0.11),
-        has_question=rng.random() < 0.5,
+        text_length=text_length,
+        line_count=rng.randint(2, 22),
+        word_count=rng.randint(14, min(210, max(14, text_length // 2))),
+        sentence_count=rng.randint(2, 16),
+        punctuation_density=rng.uniform(0.03, 0.12),
+        has_question=rng.random() < 0.55,
         is_likely_code=False,
         is_likely_log=False,
-        average_line_length=rng.uniform(40.0, 110.0),
-        repetition_score=rng.uniform(0.0, 0.35),
+        average_line_length=rng.uniform(38.0, 105.0),
+        repetition_score=rng.uniform(0.0, 0.33),
         available_actions=["rewrite_text", "summarize_text", "explain_text"],
-        compressed_text_len=rng.randint(60, 800),
+        compressed_text_len=rng.randint(40, 380),
     )
 
 
@@ -174,14 +206,17 @@ def rng_vec_none(rng: random.Random) -> np.ndarray:
     )
 
 
-def build_dataset(rng: random.Random, n_per_class: int = 140):
+def build_dataset(rng: random.Random, n_per_class: int = 170):
     xs: list[np.ndarray] = []
     ys: list[str] = []
     for _ in range(n_per_class):
         xs.append(rng_vec_explain(rng))
         ys.append("explain_text")
-    for _ in range(n_per_class):
-        xs.append(rng_vec_summarize(rng))
+    for i in range(n_per_class):
+        if i % 3 != 0:
+            xs.append(rng_vec_summarize_dense_notes(rng))
+        else:
+            xs.append(rng_vec_summarize(rng))
         ys.append("summarize_text")
     for _ in range(n_per_class):
         xs.append(rng_vec_rewrite(rng))

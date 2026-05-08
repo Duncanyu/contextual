@@ -6,6 +6,13 @@ struct IntelligenceBudgetDecision: Sendable, Equatable {
 	let score: Double
 }
 
+/// Result of cheap synchronous gates before probing local AI availability (T12.10).
+enum IntelligenceBudgetPremodelResult: Sendable, Equatable {
+	case denied(IntelligenceBudgetDecision)
+	/// Cheap gates passed; caller should await `ModelManager.isGenerationAvailable()` once, then `completeWithAvailability`.
+	case needsAvailabilityProbe(score: Double, fingerprint: String)
+}
+
 /// Session-only budget gate for whether local intelligence may run (T12.4). No AI calls.
 @MainActor
 final class IntelligenceBudgetManager {
@@ -17,11 +24,79 @@ final class IntelligenceBudgetManager {
 	private var recentAttempts: [Recent] = []
 	private let maxRecent: Int = 80
 	private let pruneAfterSeconds: TimeInterval = 10 * 60
-	private let similarDenyWindowSeconds: TimeInterval = 25
+	private let similarDenyWindowSeconds: TimeInterval = 30
 
 	private var lastLogSig: String?
 	private var lastLogAt: Date?
 
+	/// Cheap gates + scoring only — does **not** call ModelManager (T12.10).
+	func evaluatePremodel(
+		request: IntelligenceDecisionRequest,
+		suggestionStrength: SuggestionStrength?,
+		isActionExecuting: Bool,
+		contextFingerprint: String?
+	) -> IntelligenceBudgetPremodelResult {
+		let now = Date()
+		prune(now: now)
+
+		if isActionExecuting {
+			return .denied(deny("executing_action", score: 0, now: now))
+		}
+
+		let ct = request.compressedText.trimmingCharacters(in: .whitespacesAndNewlines)
+		if ct.isEmpty {
+			return .denied(deny("empty_compressed_text", score: 0, now: now))
+		}
+		if request.availableActions.isEmpty {
+			return .denied(deny("no_actions", score: 0, now: now))
+		}
+		if request.textLength < 30 {
+			return .denied(deny("too_short", score: 0, now: now))
+		}
+		let st = request.sourceType.trimmingCharacters(in: .whitespacesAndNewlines)
+		if st.isEmpty || st == "unknown" {
+			return .denied(deny("sourceType", score: 0, now: now))
+		}
+		if let strength = suggestionStrength, strength != .medium && strength != .strong {
+			return .denied(deny("strength_not_allowed", score: 0, now: now))
+		}
+		if request.contextType == .random {
+			return .denied(deny("random", score: 0.05, now: now))
+		}
+
+		let fp = (contextFingerprint?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+			?? fallbackFingerprint(for: request)
+
+		if isSimilarRecentlyEvaluated(fingerprint: fp, now: now) {
+			return .denied(deny("similar_recent", score: 0.10, now: now))
+		}
+
+		var score = baseScore(request: request, strength: suggestionStrength)
+		score = min(1.0, max(0.0, score))
+
+		// T12.10: slightly stricter — fewer phi3 proposal calls on marginal contexts.
+		if score < 0.58 {
+			return .denied(deny("low_score", score: score, now: now))
+		}
+		return .needsAvailabilityProbe(score: score, fingerprint: fp)
+	}
+
+	/// After `evaluatePremodel` returns `.needsAvailabilityProbe`, pass `isGenerationAvailable()` result here.
+	func completeWithAvailability(
+		score: Double,
+		fingerprint: String,
+		isModelAvailable: Bool,
+		now: Date = Date()
+	) -> IntelligenceBudgetDecision {
+		prune(now: now)
+		if !isModelAvailable {
+			return deny("model_unavailable", score: score, now: now)
+		}
+		recordAttempt(fingerprint: fingerprint, at: now)
+		return allow("ok", score: score, now: now)
+	}
+
+	/// Full evaluation when availability is already known (tests, rare call sites).
 	func evaluate(
 		request: IntelligenceDecisionRequest,
 		suggestionStrength: SuggestionStrength?,
@@ -29,55 +104,17 @@ final class IntelligenceBudgetManager {
 		isModelAvailable: Bool,
 		contextFingerprint: String?
 	) -> IntelligenceBudgetDecision {
-		let now = Date()
-		prune(now: now)
-
-		if isActionExecuting {
-			return deny("executing_action", score: 0, now: now)
+		switch evaluatePremodel(
+			request: request,
+			suggestionStrength: suggestionStrength,
+			isActionExecuting: isActionExecuting,
+			contextFingerprint: contextFingerprint
+		) {
+		case .denied(let d):
+			return d
+		case .needsAvailabilityProbe(let score, let fp):
+			return completeWithAvailability(score: score, fingerprint: fp, isModelAvailable: isModelAvailable, now: Date())
 		}
-		if !isModelAvailable {
-			return deny("model_unavailable", score: 0, now: now)
-		}
-
-		let ct = request.compressedText.trimmingCharacters(in: .whitespacesAndNewlines)
-		if ct.isEmpty {
-			return deny("empty_compressed_text", score: 0, now: now)
-		}
-		if request.availableActions.isEmpty {
-			return deny("no_actions", score: 0, now: now)
-		}
-		if request.textLength < 30 {
-			return deny("too_short", score: 0, now: now)
-		}
-		let st = request.sourceType.trimmingCharacters(in: .whitespacesAndNewlines)
-		if st.isEmpty || st == "unknown" {
-			return deny("sourceType", score: 0, now: now)
-		}
-		if let strength = suggestionStrength, strength != .medium && strength != .strong {
-			return deny("strength_not_allowed", score: 0, now: now)
-		}
-		if request.contextType == .random {
-			return deny("random", score: 0.05, now: now)
-		}
-
-		let fp = (contextFingerprint?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-			?? fallbackFingerprint(for: request)
-
-		if isSimilarRecentlyEvaluated(fingerprint: fp, now: now) {
-			return deny("similar_recent", score: 0.10, now: now)
-		}
-
-		// Score: “worth spending budget on?” (not a strict cooldown).
-		var score = baseScore(request: request, strength: suggestionStrength)
-		score = min(1.0, max(0.0, score))
-
-		// Allow only when score clears a modest threshold.
-		let allowed = score >= 0.55
-		if allowed {
-			recordAttempt(fingerprint: fp, at: now)
-			return allow("ok", score: score, now: now)
-		}
-		return deny("low_score", score: score, now: now)
 	}
 
 	// MARK: - Internals

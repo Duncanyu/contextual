@@ -7,7 +7,21 @@ final class ModelManager: @unchecked Sendable {
 	private static var serveProcess: Process?
 	private static let serveDrainQueue = DispatchQueue(label: "com.contextual.ollama.serve.drain", qos: .utility)
 
-	private static let startupGraceSeconds: TimeInterval = 4.0
+	/// Isolated session for local probes — avoids `URLSession.shared` noise and matches generate client settings.
+	private static let tagsURLSession: URLSession = {
+		let c = URLSessionConfiguration.ephemeral
+		c.waitsForConnectivity = false
+		c.httpShouldSetCookies = false
+		c.urlCache = nil
+		c.requestCachePolicy = .reloadIgnoringLocalCacheData
+		return URLSession(configuration: c)
+	}()
+
+	private static var serveSpawnCount: UInt64 = 0
+	private static var tagsSettleDoneForSpawn: UInt64 = 0
+	private static let postServeProbeSettleSeconds: TimeInterval = 1.35
+
+	private static let startupGraceSeconds: TimeInterval = 5.5
 	private static let availabilityCacheTTL: TimeInterval = 6.0
 	private static let tagsTimeoutQuick: TimeInterval = 2.0
 	private static let tagsTimeoutProbe: TimeInterval = 4.0
@@ -84,6 +98,14 @@ final class ModelManager: @unchecked Sendable {
 		try Self.spawnOllamaServeProcess()
 	}
 
+	private static func consumeTagsSettleAfterServeSpawnIfNeeded() async {
+		guard tagsSettleDoneForSpawn < serveSpawnCount else { return }
+		tagsSettleDoneForSpawn = serveSpawnCount
+		let wait = postServeProbeSettleSeconds
+		dedupedPrint("probe_settle", "[ModelManager] status=starting detail=tags_wait_s=\(String(format: "%.2f", wait))")
+		try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+	}
+
 	/// Verifies the configured model via HTTP `/api/tags` when reachable; pulls only when allowed (legacy helper).
 	func ensureModelAvailable() async {
 		guard LocalAISettings.shared.localAIEnabled else { return }
@@ -131,7 +153,6 @@ final class ModelManager: @unchecked Sendable {
 				Self.dedupedPrint("status_starting", "[ModelManager] status=starting")
 				do {
 					try await Self.startOllamaServeIfNeeded()
-					try await Task.sleep(nanoseconds: 2_000_000_000)
 				} catch {
 					await MainActor.run {
 						updateState(.unavailable)
@@ -319,7 +340,8 @@ final class ModelManager: @unchecked Sendable {
 	}
 
 	private static func fetchTagsViaHTTP(timeout: TimeInterval) async -> HTTPFetchTagsResult {
-		await Task.detached(priority: .utility) {
+		await consumeTagsSettleAfterServeSpawnIfNeeded()
+		return await Task.detached(priority: .utility) {
 			guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else {
 				return HTTPFetchTagsResult.unreachable
 			}
@@ -327,13 +349,17 @@ final class ModelManager: @unchecked Sendable {
 			request.httpMethod = "GET"
 			request.timeoutInterval = timeout
 			do {
-				let (data, response) = try await URLSession.shared.data(for: request)
+				let (data, response) = try await tagsURLSession.data(for: request)
 				guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
 					return .unreachable
 				}
 				let names = Self.parseTagsJSONModelNames(data)
 				return .reachable(names: names)
 			} catch {
+				// No NSError / URL dump — T12.10; set DEBUG_VERBOSE_LOCAL_AI=1 in environment for diagnosis.
+				if ProcessInfo.processInfo.environment["DEBUG_VERBOSE_LOCAL_AI"] == "1" {
+					print("[ModelManager] tags_probe_failed (verbose only)")
+				}
 				return .unreachable
 			}
 		}.value
@@ -428,6 +454,7 @@ final class ModelManager: @unchecked Sendable {
 		task.standardError = stderrPipe
 
 		try task.run()
+		Self.serveSpawnCount &+= 1
 		Self.serveProcess = task
 
 		let outHandle = stdoutPipe.fileHandleForReading
