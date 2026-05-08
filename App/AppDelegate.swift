@@ -142,6 +142,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
+		// Context fusion DEBUG self-test (synthetic metadata-only).
+		// Run the app with `CONTEXTUAL_RUN_FUSION_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_FUSION_SELFTEST"] == "1" {
+			_ = ContextFusionEngine.shared._selfTest()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+				NSApp.terminate(nil)
+			}
+		}
+
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
 		menuBarController = MenuBarController(appState: appState)
