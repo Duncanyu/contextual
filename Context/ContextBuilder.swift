@@ -5,6 +5,8 @@ final class ContextBuilder {
 	private var session: SessionState
 
 	init(initialModel: ContextModel = ContextModel(), session: SessionState = SessionState()) {
+		// Infrastructure-only: initialize capability registry on app launch (no UI/Intelligence coupling).
+		_ = ContextCapabilityRegistry.shared
 		self.model = initialModel
 		self.session = session
 	}

@@ -75,6 +75,8 @@
 		AA000139000000000000003A /* FloatingSimilarityText.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000243000000000000003B /* FloatingSimilarityText.swift */; };
 		AA000140000000000000003B /* FloatingSuggestionLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000244000000000000003C /* FloatingSuggestionLifecycle.swift */; };
 		AA0001250000000000000025 /* ScreenCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000230000000000000002E /* ScreenCaptureSource.swift */; };
+		AA0001640000000000000075 /* ContextCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002660000000000000076 /* ContextCapability.swift */; };
+		AA0001650000000000000077 /* ContextCapabilityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002670000000000000078 /* ContextCapabilityRegistry.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -148,6 +150,8 @@
 		AA0002370000000000000034 /* SystemStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemStatusView.swift; sourceTree = "<group>"; };
 		AA0002390000000000000036 /* FloatingSuggestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSuggestionView.swift; sourceTree = "<group>"; };
 		AA000230000000000000002E /* ScreenCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureSource.swift; sourceTree = "<group>"; };
+		AA0002660000000000000076 /* ContextCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCapability.swift; sourceTree = "<group>"; };
+		AA0002670000000000000078 /* ContextCapabilityRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCapabilityRegistry.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -234,6 +238,8 @@
 				AA00020F0000000000000019 /* SessionState.swift */,
 				AA000242000000000000003A /* ContentSimilarityProfile.swift */,
 				AA000243000000000000003B /* FloatingSimilarityText.swift */,
+				AA0002660000000000000076 /* ContextCapability.swift */,
+				AA0002670000000000000078 /* ContextCapabilityRegistry.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -430,6 +436,8 @@
 				AA00010F000000000000000F /* SessionState.swift in Sources */,
 				AA0001380000000000000039 /* ContentSimilarityProfile.swift in Sources */,
 				AA000139000000000000003A /* FloatingSimilarityText.swift in Sources */,
+				AA0001640000000000000075 /* ContextCapability.swift in Sources */,
+				AA0001650000000000000077 /* ContextCapabilityRegistry.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,

@@ -1182,6 +1182,509 @@ After Phase 12:
 
 ---
 
+## Phase 13 — Rich Context Layer
+
+### Goal
+
+Expand the assistant’s contextual awareness so intelligence and future dynamic actions can operate on richer, more human-like understanding.
+
+The assistant should understand:
+
+- what the user is doing  
+- what is visible  
+- what kind of workflow is happening  
+- what the user likely needs  
+
+without becoming:
+
+- invasive  
+- always-watching  
+- performance-heavy  
+- hardcoded to specific apps  
+- noisy or creepy  
+
+---
+
+### Core Principle
+
+The assistant should not continuously consume maximum context.
+
+Instead:
+
+> cheap context first  
+> richer context only when justified
+
+Context collection should be:
+
+- layered  
+- adaptive  
+- budgeted  
+- event-driven  
+
+---
+
+### Updated System Flow
+
+Sources  
+↓  
+Cheap Context Signals  
+↓  
+Context Budget Manager  
+↓  
+Rich Context Collection (only if useful)  
+↓  
+Context Fusion  
+↓  
+Compressed Context Packet  
+↓  
+Intelligence Layer  
+↓  
+Actions / Proposals  
+↓  
+UI  
+
+---
+
+### Key Design Shift
+
+Move from:
+
+“React to clipboard and selected text”
+
+to:
+
+“Understand the user’s current situation.”
+
+---
+
+### Rich Context Philosophy
+
+The assistant should become:
+
+- more aware  
+- more grounded  
+- more situationally intelligent  
+
+without becoming:
+
+- surveillance software  
+- a constant recorder  
+- an always-running multimodal model  
+
+---
+
+### Performance Philosophy
+
+Rich context must be:
+
+- selective  
+- scoped  
+- decaying  
+- interruptible  
+- privacy-aware  
+- compressed aggressively  
+
+---
+
+### Performance Rules
+
+- No continuous full-screen AI analysis  
+- No continuous OCR loops  
+- No continuous audio recording  
+- No always-on multimodal LLM inference  
+- No constant screenshot spam  
+- No raw context persistence by default  
+- No cloud dependency  
+
+---
+
+### Context Collection Philosophy
+
+Context sources should exist in tiers.
+
+---
+
+## Tier 1 — Cheap / Always-Available Context
+
+Safe lightweight signals:
+
+- active app  
+- window title  
+- selected text  
+- clipboard text  
+- app switching  
+- focus changes  
+- typing activity metadata  
+- cursor activity metadata  
+
+These may run frequently.
+
+---
+
+## Tier 2 — Medium-Cost Rich Context
+
+Collected selectively:
+
+- active window snapshot  
+- OCR  
+- AX hierarchy extraction  
+- visible UI structure  
+- window content descriptors  
+- local image understanding  
+
+These require:
+- budget approval  
+- freshness checks  
+- usefulness justification  
+
+---
+
+## Tier 3 — Expensive / Sensitive Context
+
+Highly gated:
+
+- audio/transcription  
+- continuous visual understanding  
+- long-lived workflow memory  
+- multimodal temporal reasoning  
+
+These are:
+- opt-in  
+- manual or semi-manual  
+- budget-limited  
+- mostly future-facing infrastructure in Phase 13  
+
+---
+
+### Context Freshness Rules
+
+Context must decay.
+
+Old context should not contaminate:
+
+- new selections  
+- new apps  
+- new workflows  
+- new user intent  
+
+The system should support:
+
+- freshness windows  
+- source expiration  
+- confidence decay  
+- source invalidation  
+- source replacement  
+
+---
+
+### Privacy Philosophy
+
+The assistant should understand context without hoarding it.
+
+Rules:
+
+- minimize raw data retention  
+- compress aggressively  
+- prefer metadata over content  
+- avoid persistent raw recordings  
+- never log raw sensitive context  
+- only collect expensive context when justified  
+
+---
+
+### Multimodal Direction
+
+The system should evolve toward:
+
+- visual understanding  
+- situational awareness  
+- workflow understanding  
+- intent inference  
+
+not:
+
+- chatbot-style interaction only  
+
+---
+
+## Tickets
+
+---
+
+### T13.1 — Context Capability Registry
+
+Create a registry describing all context source capabilities.
+
+Each source should declare:
+
+- source ID  
+- availability  
+- permission state  
+- freshness  
+- collection cost  
+- privacy sensitivity  
+- latency category  
+- manual vs automatic  
+- stale state  
+
+Examples:
+
+- activeApp  
+- windowTitle  
+- selectedText  
+- clipboard  
+- screenOCR  
+- screenVision  
+- typingActivity  
+- cursorActivity  
+- audioInput  
+
+This becomes the foundation for all future context decisions.
+
+---
+
+### T13.2 — Context Budget Manager
+
+Introduce a budget system for context collection.
+
+The manager decides:
+
+- whether richer context is justified  
+- whether collection cost is acceptable  
+- whether enough context already exists  
+
+Budget considerations:
+
+- current system load  
+- active action execution  
+- recent expensive context collection  
+- app responsiveness  
+- user activity intensity  
+- intelligence confidence  
+
+This is not a rigid cooldown system.
+
+---
+
+### T13.3 — Active Window Snapshot Layer
+
+Add active-window-only snapshot support.
+
+Goals:
+
+- avoid full-screen dependence  
+- improve contextual precision  
+- reduce irrelevant visual noise  
+
+Requirements:
+
+- local only  
+- permission-aware  
+- selective capture  
+- freshness-aware  
+- no continuous screenshot loop  
+
+---
+
+### T13.4 — Visual Context Descriptor
+
+Expand beyond OCR into lightweight visual understanding.
+
+Possible outputs:
+
+- editor visible  
+- terminal visible  
+- browser/article visible  
+- chart/graph visible  
+- image/media visible  
+- dialog/error visible  
+- form/input-heavy UI visible  
+
+The system should extract:
+
+- structural understanding  
+- layout hints  
+- UI type hints  
+
+not full semantic reasoning yet.
+
+---
+
+### T13.5 — AX Window Content Extraction
+
+Improve accessible window understanding using AX hierarchy.
+
+Goals:
+
+- better visible text extraction  
+- UI structure understanding  
+- reduced reliance on clipboard  
+- app-agnostic behavior  
+
+Requirements:
+
+- avoid app-specific hardcoding  
+- fail safely when AX is limited  
+- no persistent raw UI dumps  
+
+---
+
+### T13.6 — Typing Activity Signals
+
+Add lightweight typing activity awareness.
+
+Metadata only:
+
+- typing started/stopped  
+- typing burst intensity  
+- editing session activity  
+- idle vs active editing  
+
+Do NOT:
+
+- store keystrokes  
+- log typed content  
+- become a keylogger  
+
+---
+
+### T13.7 — Cursor / Pointer Intent Signals
+
+Add lightweight pointer-awareness.
+
+Possible signals:
+
+- cursor active vs idle  
+- recent click intensity  
+- interaction bursts  
+- hovering patterns  
+- user focus intensity  
+
+Goals:
+
+- understand interaction state  
+- improve proposal timing  
+- reduce interruptions during active work  
+
+Do NOT:
+
+- record detailed cursor history long-term  
+- continuously store movement paths  
+
+---
+
+### T13.8 — Context Fusion Layer
+
+Merge all active context sources into a unified structured context packet.
+
+Responsibilities:
+
+- resolve conflicts  
+- prioritize fresher context  
+- remove stale sources  
+- normalize multimodal context  
+- expose confidence/freshness metadata  
+
+This becomes the canonical intelligence input.
+
+---
+
+### T13.9 — Context Freshness + Decay
+
+Introduce source expiration and decay rules.
+
+Examples:
+
+- stale OCR expires  
+- old clipboard context weakens  
+- inactive typing sessions decay  
+- outdated window snapshots invalidate  
+
+Goals:
+
+- prevent stale context contamination  
+- improve proposal timing  
+- improve situational accuracy  
+
+---
+
+### T13.10 — Rich Context Debug Logging
+
+Add metadata-only logging for:
+
+- source collection  
+- source invalidation  
+- freshness decay  
+- budget approvals/denials  
+- context fusion decisions  
+- expensive context sampling decisions  
+
+No raw context logging.
+
+---
+
+### T13.11 — Phase 13 Tuning Pass
+
+Tune rich context behavior.
+
+Goals:
+
+- improve situational understanding  
+- reduce unnecessary context collection  
+- keep system lightweight  
+- avoid creepy behavior  
+- improve future action quality  
+- maintain responsiveness  
+
+---
+
+### Exploratory / Infrastructure Hooks (NOT full implementation yet)
+
+These are future-facing only:
+
+- audio context  
+- meeting awareness  
+- continuous multimodal understanding  
+- temporal workflow memory  
+- persistent personalization  
+- cross-device context  
+- long-horizon agent planning  
+
+Phase 13 should only prepare safe architectural hooks for these.
+
+---
+
+### Out of Scope
+
+Do NOT implement yet:
+
+- autonomous agents  
+- unrestricted computer control  
+- background recording systems  
+- continuous audio recording  
+- always-on full-screen multimodal inference  
+- persistent raw surveillance memory  
+- app-specific automation hardcoding  
+- hidden data collection  
+
+---
+
+### Success Criteria
+
+After Phase 13:
+
+- the assistant understands richer context  
+- proposals/actions feel more situationally aware  
+- context collection feels adaptive and intentional  
+- expensive context is collected selectively  
+- stale context contamination is reduced  
+- multimodal understanding groundwork exists  
+- performance remains responsive  
+- the assistant feels more “aware” without feeling invasive  
+- the system remains local-first and privacy-first
+
+---
+
 ### Resulting UX
 
 After Phase 9:
