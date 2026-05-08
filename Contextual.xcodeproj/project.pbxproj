@@ -96,6 +96,7 @@
 		AA000178000000000000009D /* CanonicalContextState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027A000000000000009E /* CanonicalContextState.swift */; };
 		AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */; };
 		AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */; };
+		AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027D00000000000000A4 /* ProposalTimingGate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -190,6 +191,7 @@
 		AA00027A000000000000009E /* CanonicalContextState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalContextState.swift; sourceTree = "<group>"; };
 		AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextRefreshPipeline.swift; sourceTree = "<group>"; };
 		AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextRefreshTypes.swift; sourceTree = "<group>"; };
+		AA00027D00000000000000A4 /* ProposalTimingGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalTimingGate.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -309,6 +311,7 @@
 				AA000212000000000000001C /* TriggerEngine.swift */,
 				AA0002410000000000000039 /* TriggerEligibilityEvaluator.swift */,
 				AA000244000000000000003C /* FloatingSuggestionLifecycle.swift */,
+				AA00027D00000000000000A4 /* ProposalTimingGate.swift */,
 			);
 			path = Triggers;
 			sourceTree = "<group>";
@@ -513,6 +516,7 @@
 				AA000177000000000000009B /* ContextDebugLogger.swift in Sources */,
 				AA000178000000000000009D /* CanonicalContextState.swift in Sources */,
 				AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */,
+				AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */,
 				AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,

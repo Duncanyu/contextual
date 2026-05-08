@@ -49,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let intelligenceProposalSelector = IntelligenceProposalSelector()
 
 	private var lastPipelineActiveAppKey: String?
+	private var proposalTimingDeferredWorkItem: DispatchWorkItem?
+	private var lastProposalTimingSignature: String?
+	private var lastProposalTimingLogAt: Date?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		ModelManager.shared.noteAppLaunch()
@@ -58,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if runPhase13SelfTestsIfRequested(environment: env) {
 			return
 		}
+
+		// Phase 14: lightweight activity monitoring for proposal timing (metadata-only).
+		TypingActivitySource.shared.startMonitoring()
+		PointerActivitySource.shared.startMonitoring()
 
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
@@ -375,6 +382,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[ProposalRanking] tie resolved primary=\(ranking.primaryActionId)")
 		}
 
+		// Phase 14: activity-aware proposal timing gate (Triggers layer; metadata-only).
+		let typingCtx = TypingActivitySource.shared.currentContext()
+		let pointerCtx = PointerActivitySource.shared.currentContext()
+		let canonical = CanonicalContextState.shared.current()
+		let timing = ProposalTimingGate.evaluate(
+			isManualInvocation: packet.triggerType == .manualInvocation,
+			isActionExecuting: appState.isActionExecuting,
+			hasStrongSelectedText: context.selectedTextAvailable && context.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount,
+			isSelectedTextPrimary: packet.triggerType == .selectedTextEligible,
+			canonicalFreshness: canonical?.freshnessScore,
+			canonicalConfidence: canonical?.confidence,
+			typing: typingCtx,
+			pointer: pointerCtx,
+			proposalStrengthHint: max(decision.confidence, ranking.topScore)
+		)
+		logProposalTimingIfNeeded(decision: timing, typing: typingCtx, pointer: pointerCtx)
+
 		// If everything is weak, avoid creating a proposal (Available Actions still show).
 		let shouldGenerateProposalByRelevance = ranking.topScore >= 0.50
 
@@ -388,7 +412,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		var proposal: ActionProposal?
 		var strength: SuggestionStrengthResult?
-		if packet.triggerType == .manualInvocation {
+		if timing.outcome == .suppress, packet.triggerType != .manualInvocation {
+			proposal = nil
+		} else if timing.outcome == .deferred, packet.triggerType != .manualInvocation {
+			proposal = nil
+			scheduleDeferredProposalRefreshIfNeeded(
+				retryAfter: timing.suggestedRetryAfter ?? 1.2,
+				originalGeneration: generation
+			)
+		} else if packet.triggerType == .manualInvocation {
 			proposal = ProposalGenerator.shared.generate(
 				context: context,
 				triggerPacket: packet,
@@ -570,6 +602,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				proposalGateAllows: proposalGateAllows
 			)
 		}
+	}
+
+	private func scheduleDeferredProposalRefreshIfNeeded(retryAfter: TimeInterval, originalGeneration: UInt64) {
+		guard retryAfter > 0 else { return }
+		proposalTimingDeferredWorkItem?.cancel()
+		let work = DispatchWorkItem { [weak self] in
+			guard let self else { return }
+			guard originalGeneration == self.contextPipelineGeneration else {
+				print("[ProposalTiming] deferred_cancelled reason=context_changed")
+				return
+			}
+			guard !self.appState.isActionExecuting else { return }
+
+			let ctx = self.contextBuilder.model
+			let stillHasSelection = ctx.selectedTextAvailable && ctx.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount
+			if !stillHasSelection {
+				print("[ProposalTiming] deferred_cancelled reason=context_changed")
+				return
+			}
+
+			self.processUpdatedContextAfterPipeline()
+			print("[ProposalTiming] deferred_shown reason=idle_after_burst")
+		}
+		proposalTimingDeferredWorkItem = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + retryAfter, execute: work)
+		print("[ProposalTiming] deferred_scheduled after=\(String(format: "%.1f", retryAfter))s")
+	}
+
+	private func logProposalTimingIfNeededCore(decision: ProposalTimingDecision, typing: TypingActivityContext, pointer: PointerActivityContext) {
+		let now = Date()
+		let sig = [
+			decision.outcome.rawValue,
+			decision.reason,
+			typing.typingState.rawValue,
+			typing.burstIntensity.rawValue,
+			pointer.pointerState.rawValue,
+			pointer.movementBurstIntensity.rawValue,
+			pointer.clickBurstIntensity.rawValue
+		].joined(separator: "|")
+
+		if sig == lastProposalTimingSignature, let lastProposalTimingLogAt, now.timeIntervalSince(lastProposalTimingLogAt) < 1.5 {
+			return
+		}
+		lastProposalTimingSignature = sig
+		lastProposalTimingLogAt = now
+
+		switch decision.outcome {
+		case .allow:
+			print("[ProposalTiming] allow reason=\(decision.reason) typing=\(typing.typingState.rawValue) pointer=\(pointer.pointerState.rawValue)")
+		case .deferred:
+			print("[ProposalTiming] defer reason=\(decision.reason) typing=\(typing.typingState.rawValue) pointer=\(pointer.pointerState.rawValue)")
+		case .suppress:
+			print("[ProposalTiming] suppress reason=\(decision.reason) typing=\(typing.typingState.rawValue) pointer=\(pointer.pointerState.rawValue)")
+		}
+	}
+
+	private func logProposalTimingIfNeeded(decision: ProposalTimingDecision, typing: TypingActivityContext?, pointer: PointerActivityContext?) {
+		guard let typing, let pointer else {
+			// If monitoring is not running yet, avoid noisy logs.
+			return
+		}
+		logProposalTimingIfNeededCore(decision: decision, typing: typing, pointer: pointer)
 	}
 
 	private func applyIntelligenceRefinement(
@@ -1123,6 +1217,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				let collected = result.collectedSources.map(\.rawValue).joined(separator: ",")
 				let skipped = result.skippedSources.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ",")
 				print("[RichContextRefresh] selftest result ok=true cancelled=\(result.wasCancelled) collected=\(collected) skipped=\(skipped) updatedCanonical=\(result.updatedCanonicalState) primary=\(result.fusedPacket?.primarySource.rawValue ?? "nil")")
+				NSApp.terminate(nil)
+			}
+			return true
+		}
+
+		// Proposal timing self-test (synthetic metadata-only).
+		// Run the app with `CONTEXTUAL_RUN_PROPOSAL_TIMING_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_PROPOSAL_TIMING_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let okGate = ProposalTimingGate.selfTest()
+
+				// Deferred-cancel safety self-test: schedule a deferred refresh, then invalidate selection before it fires.
+				let sampleText = String(repeating: "a", count: TriggerEngine.selectedTextMinCharacterCount)
+				self.processSourceEvent(.sourceChanged(.selectedTextChanged(text: sampleText)))
+				let gen = self.contextPipelineGeneration
+				self.scheduleDeferredProposalRefreshIfNeeded(retryAfter: 0.15, originalGeneration: gen)
+
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+					self.processSourceEvent(.sourceChanged(.selectedTextChanged(text: nil)))
+				}
+
+				try? await Task.sleep(nanoseconds: 300_000_000) // 0.30s
+
+				print("[ProposalTiming] selftest ok=\(okGate)")
 				NSApp.terminate(nil)
 			}
 			return true
