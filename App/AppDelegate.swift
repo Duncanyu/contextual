@@ -1295,6 +1295,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Rich Analyze Screen pipeline self-test (prompt build only; no AI calls, no screenshots).
+		// Run the app with `CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST"] == "1" {
+			let ctx = ContextModel()
+			let ocr = "Xcode\nError: Something failed\nfunc foo() { return 1 }\n"
+			let fused = FusedContextPacket(
+				id: UUID(),
+				createdAt: Date(),
+				primarySource: .selectedText,
+				availableSources: [.activeApp, .selectedText, .visualDescriptor],
+				staleSources: [],
+				appName: "Xcode",
+				bundleIdentifier: "com.apple.dt.Xcode",
+				windowTitleAvailable: false,
+				primaryTextSource: .selectedText,
+				textAvailability: true,
+				textLength: 120,
+				lineCount: 6,
+				hasSelectedText: true,
+				hasClipboardText: false,
+				hasOCRText: true,
+				hasAXText: true,
+				hasWindowSnapshot: true,
+				hasVisualDescriptor: true,
+				hasTypingActivity: true,
+				hasPointerActivity: true,
+				visualKinds: [.editor, .dialog],
+				uiStructureHints: ["ax_editor_like", "visual_dialog_like"],
+				typingState: .idle,
+				pointerState: .idle,
+				confidence: 0.82,
+				freshnessScore: 0.84,
+				conflictScore: 0.10,
+				isStale: false,
+				debugSummaryMetadata: ["selftest": "1"]
+			)
+			let meta: [String: String] = [
+				"axFragments": "24",
+				"axTextLen": "1200",
+				"visualKinds": "editor,dialog",
+				"visualConf": "0.82",
+				"visualPanels": "2"
+			]
+			let built = RichAnalyzeScreenPromptBuilder.build(
+				context: ctx,
+				ocrText: ocr,
+				ocrLineCount: 4,
+				fused: fused,
+				refreshMeta: meta
+			)
+			let containsImageLike = built.input.contains("CGImage") || built.input.contains("data:") || built.input.contains("base64")
+			let ok = built.input.contains("## OCR")
+				&& built.input.contains("## Visual hints")
+				&& built.input.contains("## AX hints")
+				&& built.input.contains("## Fused context")
+				&& built.input.contains("## Workflow hints")
+				&& !containsImageLike
+			print("[AnalyzeScreenRich] selftest prompt_built ocrChars=\(built.ocrChars) axFragments=\(built.axFragments) visualKinds=\(built.visualKinds.joined(separator: ",")) ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Proposal timing self-test (synthetic metadata-only).
 		// Run the app with `CONTEXTUAL_RUN_PROPOSAL_TIMING_SELFTEST=1` to execute once and exit.
 		if env["CONTEXTUAL_RUN_PROPOSAL_TIMING_SELFTEST"] == "1" {

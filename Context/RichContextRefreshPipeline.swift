@@ -198,6 +198,25 @@ final class RichContextRefreshPipeline {
 		let finishedAt = Date()
 		print("[RichContextRefresh] completed generation=\(generation) sources=\(collected.map(\.rawValue).joined(separator: ",")) updated=\(updated)")
 
+		var meta: [String: String] = [
+			"generation": "\(generation)",
+			"requested": requestedLabel(request),
+			"updatedCanonical": updated ? "1" : "0",
+			"primary": packet.primarySource.rawValue,
+			"freshness": String(format: "%.2f", packet.freshnessScore),
+			"confidence": String(format: "%.2f", packet.confidence)
+		]
+		if let ax = axContent {
+			meta["axFragments"] = "\(ax.visibleTextFragments.count)"
+			meta["axTextLen"] = "\(ax.estimatedVisibleTextLength)"
+			meta["axKinds"] = "\(ax.visibleControlKinds.count)"
+		}
+		if let v = visual {
+			meta["visualKinds"] = v.visibleUIKinds.map(\.rawValue).joined(separator: ",")
+			meta["visualConf"] = String(format: "%.2f", v.confidence)
+			meta["visualPanels"] = "\(v.estimatedPanelCount)"
+		}
+
 		let result = RichContextRefreshResult(
 			id: id,
 			startedAt: startedAt,
@@ -207,14 +226,7 @@ final class RichContextRefreshPipeline {
 			skippedSources: skipped,
 			fusedPacket: packet,
 			updatedCanonicalState: updated,
-			debugSummaryMetadata: [
-				"generation": "\(generation)",
-				"requested": requestedLabel(request),
-				"updatedCanonical": updated ? "1" : "0",
-				"primary": packet.primarySource.rawValue,
-				"freshness": String(format: "%.2f", packet.freshnessScore),
-				"confidence": String(format: "%.2f", packet.confidence)
-			]
+			debugSummaryMetadata: meta
 		)
 
 		await state.finish(generation: generation, result: result)

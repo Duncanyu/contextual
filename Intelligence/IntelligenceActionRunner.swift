@@ -54,9 +54,17 @@ enum IntelligenceActionRunner {
 			"""
 		case .analyzeScreen:
 			return """
-			Based only on the text visible in the OCR below (not the image), explain what appears to be on screen. Summarize the key points and what the user is likely looking at. If the OCR is noisy, say so and focus on the clearest lines. Do not claim you can see visual details beyond the OCR. Reply with only the analysis, no title.
+			You are analyzing what the user is likely looking at on screen.
 
-			OCR context:
+			IMPORTANT RULES:
+			- Base your analysis ONLY on the provided OCR text and the structured metadata sections.
+			- Do NOT infer hidden UI content or details that are not supported by the OCR or metadata.
+			- Treat visual/AX/fused fields as *hints*, not ground truth.
+			- If OCR is noisy or incomplete, say so and prefer the clearest evidence.
+			- If evidence is insufficient, say what is uncertain and what is missing.
+			- Be concise and practical. No title.
+
+			Screen context (OCR + metadata):
 			\(input)
 			"""
 		}
