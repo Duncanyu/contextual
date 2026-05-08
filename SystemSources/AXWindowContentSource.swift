@@ -23,22 +23,27 @@ final class AXWindowContentSource {
 	func clear() {
 		lastContext = nil
 		print("[AXContent] cleared")
+		ContextDebugLogger.shared.log(stage: .ax, event: .updated, source: "axText", reason: "cleared")
 	}
 
 	func extractActiveWindowContent() -> AXWindowContentContext? {
+		ContextDebugLogger.shared.log(stage: .ax, event: .collected, source: "axText", reason: "attempt")
 		guard hasAccessibilityPermission() else {
 			print("[AXContent] skipped reason=permission_denied")
+			ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "permission_denied")
 			return nil
 		}
 
 		guard let app = NSWorkspace.shared.frontmostApplication else {
 			print("[AXContent] skipped reason=no_focused_window")
+			ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "no_focused_window")
 			return nil
 		}
 
 		let bundleId = app.bundleIdentifier
 		if bundleId == Bundle.main.bundleIdentifier {
 			print("[AXContent] skipped reason=contextual_window")
+			ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "contextual_window")
 			return nil
 		}
 
@@ -47,6 +52,7 @@ final class AXWindowContentSource {
 
 		guard let window = focusedWindow(for: axApp) else {
 			print("[AXContent] skipped reason=no_focused_window")
+			ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "no_focused_window")
 			return nil
 		}
 
@@ -230,8 +236,21 @@ final class AXWindowContentSource {
 
 		let c = String(format: "%.2f", conf)
 		print("[AXContent] extracted app=\(app.localizedName ?? "nil") nodes=\(visited) textFragments=\(fragments.count) conf=\(c)")
+		ContextDebugLogger.shared.log(
+			stage: .ax,
+			event: .collected,
+			source: "axText",
+			privacy: .moderate,
+			confidence: conf,
+			meta: [
+				"nodes": "\(visited)",
+				"fragments": "\(fragments.count)",
+				"controls": "\(controlKinds.count)"
+			]
+		)
 		if didHitLimit {
 			print("[AXContent] skipped reason=depth_limit")
+			ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "depth_limit")
 		}
 
 		return ctx

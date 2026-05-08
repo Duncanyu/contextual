@@ -160,6 +160,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
+		// Rich context debug logger self-test (metadata-only).
+		// Run the app with `CONTEXTUAL_RUN_CONTEXT_DEBUG_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_CONTEXT_DEBUG_SELFTEST"] == "1" {
+			print("[ContextDebug] selftest starting")
+			let ok = ContextDebugLogger.shared.selfTest()
+			print("[ContextDebug] selftest finished ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+				NSApp.terminate(nil)
+			}
+		}
+
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
 		menuBarController = MenuBarController(appState: appState)

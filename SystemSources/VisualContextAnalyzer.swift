@@ -15,12 +15,14 @@ final class VisualContextAnalyzer {
 	private init() {}
 
 	func analyze(snapshot: WindowSnapshotContext) -> VisualContextDescriptor? {
+		ContextDebugLogger.shared.log(stage: .visual, event: .collected, source: "visualDescriptor", reason: "analyze_attempt")
 		// Freshness gate (descriptor can still be created but marked stale).
 		let age = Date().timeIntervalSince(snapshot.capturedAt)
 		let isStale = age > VisualContextDescriptor.recommendedFreshnessSeconds
 
 		guard let features = extractFeatures(from: snapshot.image) else {
 			print("[VisualContext] skipped reason=analysis_failed")
+			ContextDebugLogger.shared.log(stage: .visual, event: .skipped, source: "visualDescriptor", reason: "analysis_failed")
 			return nil
 		}
 
@@ -55,6 +57,14 @@ final class VisualContextAnalyzer {
 		let kindsLabel = kinds.map(\.rawValue).joined(separator: ",")
 		let c = String(format: "%.2f", conf)
 		print("[VisualContext] analyzed kinds=\(kindsLabel) conf=\(c)")
+		ContextDebugLogger.shared.log(
+			stage: .visual,
+			event: .updated,
+			source: "visualDescriptor",
+			freshness: isStale ? 0.0 : conf, // best-effort; avoids additional timestamps
+			confidence: conf,
+			meta: ["kinds": kindsLabel]
+		)
 		return descriptor
 	}
 

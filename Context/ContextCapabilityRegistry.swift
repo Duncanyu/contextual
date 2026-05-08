@@ -37,8 +37,28 @@ final class ContextCapabilityRegistry {
 		lock.unlock()
 
 		print("[ContextCapability] updated id=\(capability.id.rawValue) availability=\(capability.isAvailable)")
+		ContextDebugLogger.shared.log(
+			stage: .capability,
+			event: .updated,
+			source: capability.id.rawValue,
+			cost: capability.collectionCost,
+			privacy: capability.privacySensitivity,
+			latency: capability.latencyCategory,
+			permission: capability.permissionState,
+			mode: capability.collectionMode
+		)
 		if !exists {
 			print("[ContextCapability] registered id=\(capability.id.rawValue)")
+			ContextDebugLogger.shared.log(
+				stage: .capability,
+				event: .registered,
+				source: capability.id.rawValue,
+				cost: capability.collectionCost,
+				privacy: capability.privacySensitivity,
+				latency: capability.latencyCategory,
+				permission: capability.permissionState,
+				mode: capability.collectionMode
+			)
 		}
 	}
 
@@ -53,6 +73,16 @@ final class ContextCapabilityRegistry {
 		lock.unlock()
 
 		print("[ContextCapability] updated id=\(id.rawValue) availability=\(existing.isAvailable)")
+		ContextDebugLogger.shared.log(
+			stage: .capability,
+			event: .updated,
+			source: id.rawValue,
+			cost: existing.collectionCost,
+			privacy: existing.privacySensitivity,
+			latency: existing.latencyCategory,
+			permission: existing.permissionState,
+			mode: existing.collectionMode
+		)
 	}
 
 	func invalidateCapability(_ id: ContextCapabilityID) {
@@ -67,6 +97,7 @@ final class ContextCapabilityRegistry {
 		lock.unlock()
 
 		print("[ContextCapability] invalidated id=\(id.rawValue)")
+		ContextDebugLogger.shared.log(stage: .capability, event: .invalidated, source: id.rawValue, reason: "manual_invalidate")
 	}
 
 	// MARK: - Private
@@ -130,6 +161,17 @@ final class ContextCapabilityRegistry {
 
 		if changed {
 			print("[ContextCapability] updated id=\(id.rawValue) availability=\(isAvailable)")
+			ContextDebugLogger.shared.log(
+				stage: .capability,
+				event: .updated,
+				source: id.rawValue,
+				reason: "availability_refresh",
+				cost: cap.collectionCost,
+				privacy: cap.privacySensitivity,
+				latency: cap.latencyCategory,
+				permission: cap.permissionState,
+				mode: cap.collectionMode
+			)
 		}
 	}
 
@@ -141,6 +183,16 @@ final class ContextCapabilityRegistry {
 
 		if !exists {
 			print("[ContextCapability] registered id=\(capability.id.rawValue)")
+			ContextDebugLogger.shared.log(
+				stage: .capability,
+				event: .registered,
+				source: capability.id.rawValue,
+				cost: capability.collectionCost,
+				privacy: capability.privacySensitivity,
+				latency: capability.latencyCategory,
+				permission: capability.permissionState,
+				mode: capability.collectionMode
+			)
 		}
 	}
 

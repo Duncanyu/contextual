@@ -63,6 +63,7 @@ final class PointerActivitySource {
 		}
 
 		print("[PointerActivity] started_monitoring")
+		ContextDebugLogger.shared.log(stage: .pointer, event: .updated, source: "pointerActivity", reason: "started_monitoring")
 	}
 
 	func stopMonitoring() {
@@ -81,6 +82,7 @@ final class PointerActivitySource {
 		}
 
 		print("[PointerActivity] stopped_monitoring")
+		ContextDebugLogger.shared.log(stage: .pointer, event: .updated, source: "pointerActivity", reason: "stopped_monitoring")
 	}
 
 	func reset() {
@@ -94,6 +96,7 @@ final class PointerActivitySource {
 		lastStateLogAt = nil
 		lock.unlock()
 		print("[PointerActivity] reset")
+		ContextDebugLogger.shared.log(stage: .pointer, event: .updated, source: "pointerActivity", reason: "reset")
 	}
 
 	func currentContext() -> PointerActivityContext {
@@ -308,6 +311,18 @@ final class PointerActivitySource {
 
 		guard shouldLog else { return }
 		print("[PointerActivity] state=\(state.rawValue) moveEvents=\(moveEvents) clickEvents=\(clickEvents) moveIntensity=\(moveIntensity.rawValue) clickIntensity=\(clickIntensity.rawValue)")
+		ContextDebugLogger.shared.log(
+			stage: .pointer,
+			event: .updated,
+			source: "pointerActivity",
+			meta: [
+				"state": state.rawValue,
+				"moveEvents": "\(moveEvents)",
+				"clickEvents": "\(clickEvents)",
+				"moveIntensity": moveIntensity.rawValue,
+				"clickIntensity": clickIntensity.rawValue
+			]
+		)
 	}
 }
 

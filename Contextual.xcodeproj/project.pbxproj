@@ -92,6 +92,7 @@
 		AA0001740000000000000095 /* FusedContextPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002760000000000000096 /* FusedContextPacket.swift */; };
 		AA0001750000000000000097 /* ContextFusionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002770000000000000098 /* ContextFusionEngine.swift */; };
 		AA0001760000000000000099 /* ContextFreshnessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000278000000000000009A /* ContextFreshnessPolicy.swift */; };
+		AA000177000000000000009B /* ContextDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000279000000000000009C /* ContextDebugLogger.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -182,6 +183,7 @@
 		AA0002760000000000000096 /* FusedContextPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FusedContextPacket.swift; sourceTree = "<group>"; };
 		AA0002770000000000000098 /* ContextFusionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextFusionEngine.swift; sourceTree = "<group>"; };
 		AA000278000000000000009A /* ContextFreshnessPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextFreshnessPolicy.swift; sourceTree = "<group>"; };
+		AA000279000000000000009C /* ContextDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextDebugLogger.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -285,6 +287,7 @@
 				AA0002760000000000000096 /* FusedContextPacket.swift */,
 				AA0002770000000000000098 /* ContextFusionEngine.swift */,
 				AA000278000000000000009A /* ContextFreshnessPolicy.swift */,
+				AA000279000000000000009C /* ContextDebugLogger.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -498,6 +501,7 @@
 				AA0001740000000000000095 /* FusedContextPacket.swift in Sources */,
 				AA0001750000000000000097 /* ContextFusionEngine.swift in Sources */,
 				AA0001760000000000000099 /* ContextFreshnessPolicy.swift in Sources */,
+				AA000177000000000000009B /* ContextDebugLogger.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,

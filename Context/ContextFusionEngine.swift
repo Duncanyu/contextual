@@ -56,6 +56,16 @@ final class ContextFusionEngine {
 		let typingFresh = freshness(source: .typingActivity, capturedAt: typingActivity?.updatedAt, now: now)
 		let pointerFresh = freshness(source: .pointerActivity, capturedAt: pointerActivity?.updatedAt, now: now)
 
+		// Freshness debug logs (label change only; metadata-only).
+		if hasSelection { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.selectedText.rawValue, score: selectionFresh) }
+		if hasAX { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.axText.rawValue, score: axFresh) }
+		if hasOCR { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.screenOCR.rawValue, score: ocrFresh) }
+		if hasClipboard { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.clipboardText.rawValue, score: clipboardFresh) }
+		if hasSnapshot { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.activeWindowSnapshot.rawValue, score: snapshotFresh) }
+		if hasVisual { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.visualDescriptor.rawValue, score: visualFresh) }
+		if hasTyping { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.typingActivity.rawValue, score: typingFresh) }
+		if hasPointer { ContextDebugLogger.shared.logFreshness(source: FusedContextSource.pointerActivity.rawValue, score: pointerFresh) }
+
 		if hasOCR, isStale(source: .screenOCR, capturedAt: contextModel.screenOCRCapturedAt, now: now) { stale.append(.screenOCR) }
 		if hasSnapshot, isStale(source: .activeWindowSnapshot, capturedAt: windowSnapshot?.capturedAt, now: now) { stale.append(.activeWindowSnapshot) }
 		if hasVisual, isStale(source: .visualDescriptor, capturedAt: visualDescriptor?.generatedAt, now: now) { stale.append(.activeWindowSnapshot) }
@@ -311,6 +321,29 @@ final class ContextFusionEngine {
 		let fresh = String(format: "%.2f", packet.freshnessScore)
 		let conflict = String(format: "%.2f", packet.conflictScore)
 		print("[ContextFusion] fused primary=\(packet.primaryTextSource.rawValue) sources=\(sources) stale=\(stale.isEmpty ? "none" : stale) visual=\(visual.isEmpty ? "none" : visual) confidence=\(conf) freshness=\(fresh) conflict=\(conflict)")
+		ContextDebugLogger.shared.log(
+			stage: .fusion,
+			event: .fused,
+			source: packet.primaryTextSource.rawValue,
+			freshness: packet.freshnessScore,
+			confidence: packet.confidence,
+			conflict: packet.conflictScore,
+			meta: [
+				"sources": sources,
+				"stale": stale.isEmpty ? "none" : stale,
+				"visual": visual.isEmpty ? "none" : visual
+			]
+		)
+		ContextDebugLogger.shared.log(
+			stage: .fusion,
+			event: .primary_selected,
+			source: packet.primaryTextSource.rawValue,
+			freshness: packet.freshnessScore,
+			confidence: packet.confidence
+		)
+		if packet.conflictScore >= 0.18 {
+			ContextDebugLogger.shared.log(stage: .fusion, event: .conflict, reason: "conflict_detected", conflict: packet.conflictScore)
+		}
 	}
 
 	/// Debug-only freshness self-test. Called via env-var runner in `AppDelegate`.

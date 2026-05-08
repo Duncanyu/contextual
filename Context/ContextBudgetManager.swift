@@ -231,6 +231,7 @@ final class ContextBudgetManager {
 		}
 
 		print("[ContextBudget] recorded capability=\(capability.rawValue)")
+		ContextDebugLogger.shared.log(stage: .budget, event: .recorded, source: capability.rawValue)
 	}
 
 	func reset() {
@@ -276,8 +277,10 @@ final class ContextBudgetManager {
 		let s = String(format: "%.2f", score)
 		if deferred {
 			print("[ContextBudget] deferred capability=\(requestedCapability.rawValue) reason=\(reason) score=\(s)")
+			ContextDebugLogger.shared.log(stage: .budget, event: .deferred, source: requestedCapability.rawValue, reason: reason, score: score)
 		} else {
 			print("[ContextBudget] \(allowed ? "allowed" : "denied") capability=\(requestedCapability.rawValue) reason=\(reason) score=\(s)")
+			ContextDebugLogger.shared.log(stage: .budget, event: allowed ? .allowed : .denied, source: requestedCapability.rawValue, reason: reason, score: score)
 		}
 		return ContextBudgetDecision(
 			allowed: allowed,

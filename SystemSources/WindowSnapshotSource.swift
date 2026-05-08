@@ -16,25 +16,30 @@ final class WindowSnapshotSource {
 	/// Attempts to capture the frontmost application's most-likely active window.
 	/// - Returns: A `WindowSnapshotContext` containing an in-memory `CGImage`, or `nil` if capture is not possible.
 	func captureActiveWindowSnapshot() -> WindowSnapshotContext? {
+		ContextDebugLogger.shared.log(stage: .snapshot, event: .collected, source: "activeWindowSnapshot", reason: "attempt")
 		guard hasScreenRecordingPermission() else {
 			print("[WindowSnapshot] skipped reason=permission_denied")
+			ContextDebugLogger.shared.log(stage: .snapshot, event: .skipped, source: "activeWindowSnapshot", reason: "permission_denied")
 			return nil
 		}
 
 		guard let app = NSWorkspace.shared.frontmostApplication else {
 			print("[WindowSnapshot] skipped reason=no_active_window")
+			ContextDebugLogger.shared.log(stage: .snapshot, event: .skipped, source: "activeWindowSnapshot", reason: "no_active_window")
 			return nil
 		}
 
 		let bundleId = app.bundleIdentifier
 		if bundleId == Bundle.main.bundleIdentifier {
 			print("[WindowSnapshot] skipped reason=contextual_window")
+			ContextDebugLogger.shared.log(stage: .snapshot, event: .skipped, source: "activeWindowSnapshot", reason: "contextual_window")
 			return nil
 		}
 
 		let pid = app.processIdentifier
 		guard let windowInfo = pickBestWindowInfo(frontmostPid: pid) else {
 			print("[WindowSnapshot] skipped reason=no_matching_window")
+			ContextDebugLogger.shared.log(stage: .snapshot, event: .skipped, source: "activeWindowSnapshot", reason: "no_matching_window")
 			return nil
 		}
 
@@ -51,6 +56,7 @@ final class WindowSnapshotSource {
 
 		guard let image else {
 			print("[WindowSnapshot] skipped reason=capture_failed")
+			ContextDebugLogger.shared.log(stage: .snapshot, event: .skipped, source: "activeWindowSnapshot", reason: "capture_failed")
 			return nil
 		}
 
@@ -68,12 +74,21 @@ final class WindowSnapshotSource {
 		lastSnapshot = ctx
 
 		print("[WindowSnapshot] captured app=\(app.localizedName ?? "nil") size=\(image.width)x\(image.height)")
+		ContextDebugLogger.shared.log(
+			stage: .snapshot,
+			event: .collected,
+			source: "activeWindowSnapshot",
+			cost: .medium,
+			privacy: .high,
+			meta: ["w": "\(image.width)", "h": "\(image.height)"]
+		)
 		return ctx
 	}
 
 	func clearSnapshot() {
 		lastSnapshot = nil
 		print("[WindowSnapshot] cleared")
+		ContextDebugLogger.shared.log(stage: .snapshot, event: .updated, source: "activeWindowSnapshot", reason: "cleared")
 	}
 
 	// MARK: - Window picking

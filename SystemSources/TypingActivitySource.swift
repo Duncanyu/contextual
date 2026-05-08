@@ -47,6 +47,7 @@ final class TypingActivitySource {
 		}
 
 		print("[TypingActivity] started_monitoring")
+		ContextDebugLogger.shared.log(stage: .typing, event: .updated, source: "typingActivity", reason: "started_monitoring")
 	}
 
 	func stopMonitoring() {
@@ -65,6 +66,7 @@ final class TypingActivitySource {
 		}
 
 		print("[TypingActivity] stopped_monitoring")
+		ContextDebugLogger.shared.log(stage: .typing, event: .updated, source: "typingActivity", reason: "stopped_monitoring")
 	}
 
 	func reset() {
@@ -76,6 +78,7 @@ final class TypingActivitySource {
 		lastStateLogAt = nil
 		lock.unlock()
 		print("[TypingActivity] reset")
+		ContextDebugLogger.shared.log(stage: .typing, event: .updated, source: "typingActivity", reason: "reset")
 	}
 
 	func currentContext() -> TypingActivityContext {
@@ -239,6 +242,12 @@ final class TypingActivitySource {
 
 		guard shouldLog else { return }
 		print("[TypingActivity] state=\(state.rawValue) intensity=\(intensity.rawValue) events=\(events)")
+		ContextDebugLogger.shared.log(
+			stage: .typing,
+			event: .updated,
+			source: "typingActivity",
+			meta: ["state": state.rawValue, "intensity": intensity.rawValue, "events": "\(events)"]
+		)
 	}
 }
 
