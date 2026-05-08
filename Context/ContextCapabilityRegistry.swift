@@ -105,6 +105,13 @@ final class ContextCapabilityRegistry {
 			checkedAt: now
 		)
 
+		updateAvailabilityLocked(
+			id: .activeWindowSnapshot,
+			isAvailable: screenAuthorized,
+			permissionState: screenAuthorized ? .granted : .denied,
+			checkedAt: now
+		)
+
 		lock.unlock()
 	}
 
@@ -227,6 +234,30 @@ final class ContextCapabilityRegistry {
 				supportsManualInvocation: false,
 				supportsBackgroundCollection: true,
 				notes: nil,
+				sourceVersion: nil,
+				metadata: nil,
+				lastAvailabilityCheckedAt: nil,
+				lastUpdatedAt: nil,
+				lastInvalidatedAt: nil
+			)
+		)
+
+		register(
+			ContextCapability(
+				id: .activeWindowSnapshot,
+				displayName: "Active Window Snapshot",
+				isAvailable: true,
+				permissionState: .unknown,
+				freshnessInterval: 20.0,
+				collectionCost: .medium,
+				privacySensitivity: .high,
+				latencyCategory: .fast,
+				collectionMode: .manual,
+				isCurrentlyStale: true,
+				supportsContinuousCollection: false,
+				supportsManualInvocation: true,
+				supportsBackgroundCollection: false,
+				notes: "Captures frontmost window only; depends on Screen Recording permission.",
 				sourceVersion: nil,
 				metadata: nil,
 				lastAvailabilityCheckedAt: nil,

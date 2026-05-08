@@ -79,6 +79,8 @@
 		AA0001650000000000000077 /* ContextCapabilityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002670000000000000078 /* ContextCapabilityRegistry.swift */; };
 		AA000168000000000000007D /* ContextBudgetTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026A000000000000007E /* ContextBudgetTypes.swift */; };
 		AA000169000000000000007F /* ContextBudgetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026B0000000000000080 /* ContextBudgetManager.swift */; };
+		AA00016A0000000000000081 /* WindowSnapshotContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026C0000000000000082 /* WindowSnapshotContext.swift */; };
+		AA00016B0000000000000083 /* WindowSnapshotSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026D0000000000000084 /* WindowSnapshotSource.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -156,6 +158,8 @@
 		AA0002670000000000000078 /* ContextCapabilityRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCapabilityRegistry.swift; sourceTree = "<group>"; };
 		AA00026A000000000000007E /* ContextBudgetTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBudgetTypes.swift; sourceTree = "<group>"; };
 		AA00026B0000000000000080 /* ContextBudgetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBudgetManager.swift; sourceTree = "<group>"; };
+		AA00026C0000000000000082 /* WindowSnapshotContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSnapshotContext.swift; sourceTree = "<group>"; };
+		AA00026D0000000000000084 /* WindowSnapshotSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSnapshotSource.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -221,6 +225,7 @@
 				AA00020B0000000000000015 /* ClipboardSource.swift */,
 				AA00020C0000000000000016 /* SelectionSource.swift */,
 				AA000230000000000000002E /* ScreenCaptureSource.swift */,
+				AA00026D0000000000000084 /* WindowSnapshotSource.swift */,
 			);
 			path = SystemSources;
 			sourceTree = "<group>";
@@ -246,6 +251,7 @@
 				AA0002670000000000000078 /* ContextCapabilityRegistry.swift */,
 				AA00026A000000000000007E /* ContextBudgetTypes.swift */,
 				AA00026B0000000000000080 /* ContextBudgetManager.swift */,
+				AA00026C0000000000000082 /* WindowSnapshotContext.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";

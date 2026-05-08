@@ -1466,23 +1466,6 @@ This is not a rigid cooldown system.
 
 ---
 
-### T13.3 — Active Window Snapshot Layer
-
-Add active-window-only snapshot support.
-
-Goals:
-
-- avoid full-screen dependence  
-- improve contextual precision  
-- reduce irrelevant visual noise  
-
-Requirements:
-
-- local only  
-- permission-aware  
-- selective capture  
-- freshness-aware  
-- no continuous screenshot loop  
 
 ---
 

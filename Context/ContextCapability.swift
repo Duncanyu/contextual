@@ -5,6 +5,7 @@ enum ContextCapabilityID: String, CaseIterable, Hashable, Sendable, Codable {
 	case windowTitle
 	case selectedText
 	case clipboardText
+	case activeWindowSnapshot
 	case screenOCR
 	case screenVision
 	case typingActivity
