@@ -102,6 +102,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
+		// Pointer activity DEBUG self-test (metadata-only; uses synthetic events to be non-interactive).
+		// Run the app with `CONTEXTUAL_RUN_POINTER_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_POINTER_SELFTEST"] == "1" {
+			print("[PointerActivity] selftest starting")
+			let src = PointerActivitySource.shared
+			src.reset()
+			src.startMonitoring()
+
+			func logSnapshot(_ label: String) {
+				let ctx = src.currentContext()
+				let idle = String(format: "%.1f", ctx.idleDuration)
+				let focus = String(format: "%.2f", ctx.estimatedFocusIntensity)
+				print("[PointerActivity] selftest \(label) state=\(ctx.pointerState.rawValue) moveEvents=\(ctx.recentMoveEventCount) clickEvents=\(ctx.recentClickEventCount) moveIntensity=\(ctx.movementBurstIntensity.rawValue) clickIntensity=\(ctx.clickBurstIntensity.rawValue) active=\(ctx.isPointerActive) idle=\(idle)s focus=\(focus)")
+			}
+
+			logSnapshot("initial")
+
+			for _ in 0..<12 { src.recordSyntheticMoveEventForTesting() }
+			logSnapshot("after_moves")
+			for _ in 0..<3 { src.recordSyntheticClickEventForTesting() }
+			logSnapshot("after_clicks")
+			for _ in 0..<8 { src.recordSyntheticMoveEventForTesting() }
+			for _ in 0..<2 { src.recordSyntheticScrollEventForTesting() }
+			for _ in 0..<4 { src.recordSyntheticClickEventForTesting() }
+			logSnapshot("after_burst_mix")
+
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+				logSnapshot("after_wait_1s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+				logSnapshot("after_wait_3s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+				logSnapshot("after_wait_6s")
+				src.stopMonitoring()
+				print("[PointerActivity] selftest finished")
+				NSApp.terminate(nil)
+			}
+		}
+
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
 		menuBarController = MenuBarController(appState: appState)
