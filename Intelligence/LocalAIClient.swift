@@ -37,7 +37,7 @@ final class LocalAIClient: @unchecked Sendable {
 
 	func generate(prompt: String, model: String) async throws -> String {
 		let inputLength = prompt.utf8.count
-		print("[LocalAI] Generate request started model=\(model) inputLength=\(inputLength)")
+		print("[LocalAI] generate_started model=\(model) inputBytes=\(inputLength)")
 		do {
 			guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else {
 				throw LocalAIClientError.invalidURL
@@ -65,10 +65,10 @@ final class LocalAIClient: @unchecked Sendable {
 				throw LocalAIClientError.emptyResponse
 			}
 			let outLen = text.utf8.count
-			print("[LocalAI] Generate response received length=\(outLen)")
+			print("[LocalAI] generate_done model=\(model) outputBytes=\(outLen)")
 			return text
 		} catch {
-			print("[LocalAI] Generate failed: \(error.localizedDescription)")
+			print("[LocalAI] generate_failed model=\(model)")
 			throw error
 		}
 	}

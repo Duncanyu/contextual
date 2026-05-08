@@ -114,7 +114,9 @@ struct SystemStatusView: View {
 		switch appState.modelRuntimeState {
 		case .ready:
 			return .systemGreen
-		case .notRunning, .installing:
+		case .checking, .starting, .installing:
+			return .systemOrange
+		case .unavailable, .modelMissing:
 			return .systemOrange
 		case .notInstalled, .error:
 			return .systemRed
@@ -128,12 +130,18 @@ struct SystemStatusView: View {
 		switch appState.modelRuntimeState {
 		case .ready:
 			return "Running"
-		case .notRunning:
-			return "Installed but not running"
+		case .checking:
+			return "Checking…"
+		case .starting:
+			return "Starting…"
+		case .unavailable:
+			return "Unavailable"
 		case .notInstalled:
 			return "Not installed"
 		case .installing:
-			return "Starting…"
+			return "Downloading model…"
+		case .modelMissing(let model):
+			return "Model missing (\(model))"
 		case .error:
 			return "Error"
 		}
@@ -154,7 +162,7 @@ struct SystemStatusView: View {
 				}
 				.buttonStyle(.bordered)
 				.controlSize(.small)
-			case .notRunning:
+			case .unavailable:
 				HStack(spacing: 8) {
 					Button("Start Ollama") {
 						appState.startOllamaNow()
@@ -167,8 +175,28 @@ struct SystemStatusView: View {
 					.buttonStyle(.bordered)
 					.controlSize(.small)
 				}
+				Text("If Ollama is still launching, wait a few seconds or start it from the menu bar.")
+					.font(.caption2)
+					.foregroundStyle(.secondary)
+			case .modelMissing(let model):
+				VStack(alignment: .leading, spacing: 6) {
+					Text("Install the configured model with Ollama, or pull it here.")
+						.font(.caption2)
+						.foregroundStyle(.secondary)
+					Button("Download model (\(model))") {
+						appState.pullLocalAIModel()
+					}
+					.buttonStyle(.bordered)
+					.controlSize(.small)
+				}
+			case .checking, .starting:
+				Text("Connecting to local inference…")
+					.font(.caption2)
+					.foregroundStyle(.secondary)
 			case .installing:
-				EmptyView()
+				Text("Downloading — this can take several minutes.")
+					.font(.caption2)
+					.foregroundStyle(.secondary)
 			case .ready:
 				EmptyView()
 			case .error(let message):

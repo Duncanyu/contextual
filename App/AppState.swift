@@ -37,7 +37,7 @@ final class AppState: ObservableObject {
 
 	// MARK: - Local AI (delegates persistence + orchestration to app lifecycle)
 
-	@Published var modelRuntimeState: ModelRuntimeState = .notRunning
+	@Published var modelRuntimeState: ModelRuntimeState = .checking
 	@Published var localAIEnabled: Bool = false
 	@Published var autoStartOllama: Bool = false
 
@@ -79,6 +79,7 @@ final class AppState: ObservableObject {
 	var onDisableAutoStartOllama: (() -> Void)?
 	var onStartOllamaNow: (() -> Void)?
 	var onOpenOllamaDownload: (() -> Void)?
+	var onPullLocalAIModel: (() -> Void)?
 	/// Opens the assistant popover (menu bar); wired by app lifecycle.
 	var onRevealAssistantPanel: (() -> Void)?
 
@@ -248,6 +249,10 @@ final class AppState: ObservableObject {
 
 	func openOllamaDownloadPage() {
 		onOpenOllamaDownload?()
+	}
+
+	func pullLocalAIModel() {
+		onPullLocalAIModel?()
 	}
 
 	func clearResult() {

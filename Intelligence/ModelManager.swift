@@ -1,13 +1,58 @@
 import Foundation
 
-/// Prepares local model runtime availability; inference is not implemented yet (see `generate`).
+/// Prepares local model runtime availability; inference uses `LocalAIClient` / `generate`.
 final class ModelManager: @unchecked Sendable {
 	static let shared = ModelManager()
 
 	private static var serveProcess: Process?
 	private static let serveDrainQueue = DispatchQueue(label: "com.contextual.ollama.serve.drain", qos: .utility)
 
+	private static let startupGraceSeconds: TimeInterval = 4.0
+	private static let availabilityCacheTTL: TimeInterval = 6.0
+	private static let tagsTimeoutQuick: TimeInterval = 2.0
+	private static let tagsTimeoutProbe: TimeInterval = 4.0
+	private static let minimumDiskBytesForModelPull: Int64 = 8 * 1_073_741_824
+	private static let pullCommandTimeoutSeconds: TimeInterval = 45 * 60
+
+	private static var appLaunchTime: Date?
+	private static let launchLock = NSLock()
+
+	private let availabilityLock = NSLock()
+	private var cachedGenerationAvailable: (value: Bool, at: Date)?
+	private var inFlightGenerationTask: Task<Bool, Never>?
+
+	private static var lastStartRequestAt: Date?
+	private static let startRequestCooldown: TimeInterval = 8.0
+
+	private static var dedupeLogAt: [String: Date] = [:]
+	private static let dedupeLogWindow: TimeInterval = 2.5
+
 	private init() {}
+
+	/// Call once from `AppDelegate.applicationDidFinishLaunching` so startup grace aligns with real launch.
+	func noteAppLaunch() {
+		Self.launchLock.lock()
+		defer { Self.launchLock.unlock() }
+		if Self.appLaunchTime == nil {
+			Self.appLaunchTime = Date()
+		}
+	}
+
+	private static func withinStartupGrace() -> Bool {
+		Self.launchLock.lock()
+		let t = Self.appLaunchTime
+		Self.launchLock.unlock()
+		guard let t else { return false }
+		return Date().timeIntervalSince(t) < Self.startupGraceSeconds
+	}
+
+	private static func dedupedPrint(_ key: String, _ line: String) {
+		let now = Date()
+		if let last = dedupeLogAt[key], now.timeIntervalSince(last) < dedupeLogWindow { return }
+		dedupeLogAt[key] = now
+		dedupeLogAt = dedupeLogAt.filter { now.timeIntervalSince($0.value) < 30 }
+		print(line)
+	}
 
 	/// Returns whether the `ollama` CLI is on `PATH` (Homebrew / common locations included).
 	func isRuntimeAvailable() -> Bool {
@@ -22,40 +67,51 @@ final class ModelManager: @unchecked Sendable {
 		await Self.detectOllamaServerRunningImpl()
 	}
 
-	/// Starts `ollama serve` as a detached child process if the API is not already reachable. Does not wait for readiness beyond spawn.
+	/// Starts `ollama serve` as a detached child process if the API is not already reachable.
 	func startOllamaServer() async throws {
 		try await Self.startOllamaServeIfNeeded()
 	}
 
 	private static func startOllamaServeIfNeeded() async throws {
 		if await Self.detectOllamaServerRunningImpl() { return }
+		let now = Date()
+		if let last = lastStartRequestAt, now.timeIntervalSince(last) < startRequestCooldown {
+			dedupedPrint("start_skip", "[ModelManager] start_skipped reason=cooldown")
+			return
+		}
+		lastStartRequestAt = now
+		dedupedPrint("start_req", "[ModelManager] start_requested")
 		try Self.spawnOllamaServeProcess()
 	}
 
-	/// Verifies the configured model via HTTP `/api/tags` when reachable; pulls if missing. Does not call `ollama list` while the server is unreachable.
+	/// Verifies the configured model via HTTP `/api/tags` when reachable; pulls only when allowed (legacy helper).
 	func ensureModelAvailable() async {
 		guard LocalAISettings.shared.localAIEnabled else { return }
 		let name = LocalAISettings.shared.modelName
 
-		switch await Self.fetchTagsViaHTTP() {
+		switch await Self.fetchTagsViaHTTP(timeout: Self.tagsTimeoutProbe) {
 		case .unreachable:
 			return
 		case .reachable(let names):
 			if Self.tagsListContainsModel(names, modelName: name) {
-				print("[ModelManager] \(name) already available")
 				return
 			}
-			print("[ModelManager] \(name) missing, pulling...")
 			_ = await Self.pullModelOnly(modelName: name)
 		}
 	}
 
-	/// Orchestrates install detection, optional auto-start of the daemon, and model pull. Subprocess work stays off the main actor.
+	/// - Parameter allowModelPull: Startup probes should pass `false` to avoid blocking UI / disk on pull storms.
 	func prepareLocalAIIfEnabled(
 		settings: LocalAISettings,
+		allowModelPull: Bool = false,
 		updateState: @escaping (ModelRuntimeState) -> Void
 	) async {
 		guard settings.localAIEnabled else { return }
+
+		await MainActor.run {
+			updateState(.checking)
+		}
+		Self.dedupedPrint("status_checking", "[ModelManager] status=checking")
 
 		guard Self.resolveOllamaExecutablePath() != nil else {
 			await MainActor.run {
@@ -63,35 +119,39 @@ final class ModelManager: @unchecked Sendable {
 			}
 			return
 		}
-		print("[ModelManager] Ollama installed")
 
 		let modelName = settings.modelName
-		var tagsResult = await Self.fetchTagsViaHTTP()
+		var tagsResult = await Self.fetchTagsViaHTTP(timeout: Self.tagsTimeoutProbe)
 
 		if case .unreachable = tagsResult {
 			if settings.autoStartOllama {
+				await MainActor.run {
+					updateState(.starting)
+				}
+				Self.dedupedPrint("status_starting", "[ModelManager] status=starting")
 				do {
 					try await Self.startOllamaServeIfNeeded()
 					try await Task.sleep(nanoseconds: 2_000_000_000)
 				} catch {
 					await MainActor.run {
-						updateState(.error(error.localizedDescription))
+						updateState(.unavailable)
 					}
+					Self.dedupedPrint("status_unavail_start", "[ModelManager] status=unavailable reason=start_failed")
 					return
 				}
-				tagsResult = await Self.fetchTagsViaHTTP()
+				tagsResult = await Self.fetchTagsViaHTTP(timeout: Self.tagsTimeoutProbe)
 				if case .unreachable = tagsResult {
-					print("[ModelManager] Ollama server not running")
 					await MainActor.run {
-						updateState(.error("Ollama server could not be started"))
+						updateState(.unavailable)
 					}
+					Self.dedupedPrint("status_unavail_srv", "[ModelManager] status=unavailable reason=server_unreachable")
 					return
 				}
 			} else {
-				print("[ModelManager] Ollama server not running")
 				await MainActor.run {
-					updateState(.notRunning)
+					updateState(.unavailable)
 				}
+				Self.dedupedPrint("status_unavail_off", "[ModelManager] status=unavailable reason=server_unreachable")
 				return
 			}
 		}
@@ -100,17 +160,24 @@ final class ModelManager: @unchecked Sendable {
 			return
 		}
 
-		print("[ModelManager] Ollama server running")
-
 		if Self.tagsListContainsModel(names, modelName: modelName) {
-			print("[ModelManager] \(modelName) already available")
 			await MainActor.run {
 				updateState(.ready)
+			}
+			Self.dedupedPrint("status_ready", "[ModelManager] status=ready model=\(modelName)")
+			Self.invalidateGenerationCache()
+			return
+		}
+
+		Self.dedupedPrint("status_model_miss", "[ModelManager] status=model_missing model=\(modelName)")
+
+		guard allowModelPull else {
+			await MainActor.run {
+				updateState(.modelMissing(model: modelName))
 			}
 			return
 		}
 
-		print("[ModelManager] \(modelName) missing, pulling...")
 		await MainActor.run {
 			updateState(.installing)
 		}
@@ -122,6 +189,54 @@ final class ModelManager: @unchecked Sendable {
 			await MainActor.run {
 				updateState(.ready)
 			}
+			Self.dedupedPrint("pull_done", "[ModelManager] pull_completed model=\(modelName)")
+			Self.invalidateGenerationCache()
+		case .failed(let message):
+			await MainActor.run {
+				updateState(.error(message))
+			}
+		}
+	}
+
+	/// User-triggered pull when server is expected up (System Status).
+	func pullConfiguredModel(
+		updateState: @escaping (ModelRuntimeState) -> Void
+	) async {
+		guard LocalAISettings.shared.localAIEnabled else { return }
+		let name = LocalAISettings.shared.modelName
+		Self.dedupedPrint("pull_req", "[ModelManager] pull_requested model=\(name)")
+
+		guard Self.resolveOllamaExecutablePath() != nil else {
+			await MainActor.run { updateState(.notInstalled) }
+			return
+		}
+
+		switch await Self.fetchTagsViaHTTP(timeout: Self.tagsTimeoutProbe) {
+		case .unreachable:
+			await MainActor.run { updateState(.unavailable) }
+			Self.dedupedPrint("pull_skip_net", "[ModelManager] status=unavailable reason=server_unreachable")
+			return
+		case .reachable(let names):
+			if Self.tagsListContainsModel(names, modelName: name) {
+				await MainActor.run { updateState(.ready) }
+				Self.dedupedPrint("pull_skip_have", "[ModelManager] status=ready model=\(name)")
+				Self.invalidateGenerationCache()
+				return
+			}
+		}
+
+		await MainActor.run {
+			updateState(.installing)
+		}
+
+		let outcome = await Self.pullModelOnly(modelName: name)
+		switch outcome {
+		case .ok:
+			await MainActor.run {
+				updateState(.ready)
+			}
+			Self.dedupedPrint("pull_done_user", "[ModelManager] pull_completed model=\(name)")
+			Self.invalidateGenerationCache()
 		case .failed(let message):
 			await MainActor.run {
 				updateState(.error(message))
@@ -130,14 +245,65 @@ final class ModelManager: @unchecked Sendable {
 	}
 
 	func isGenerationAvailable() async -> Bool {
-		guard LocalAISettings.shared.localAIEnabled else { return false }
+		guard LocalAISettings.shared.localAIEnabled else {
+			return false
+		}
+
+		if Self.withinStartupGrace() {
+			Self.dedupedPrint("grace", "[ModelManager] check_cached status=startup_grace")
+			return false
+		}
+
+		return await coalescedGenerationAvailable()
+	}
+
+	private func coalescedGenerationAvailable() async -> Bool {
 		let model = LocalAISettings.shared.modelName
-		switch await Self.fetchTagsViaHTTP() {
+
+		availabilityLock.lock()
+		if let c = cachedGenerationAvailable, Date().timeIntervalSince(c.at) < Self.availabilityCacheTTL {
+			availabilityLock.unlock()
+			Self.dedupedPrint("cache", "[ModelManager] check_cached status=\(c.value ? "ready" : "unavailable")")
+			return c.value
+		}
+
+		if let inflight = inFlightGenerationTask {
+			availabilityLock.unlock()
+			Self.dedupedPrint("coal", "[ModelManager] check_coalesced")
+			return await inflight.value
+		}
+
+		let task = Task<Bool, Never> {
+			let r = await Self.computeGenerationAvailable(modelName: model)
+			self.availabilityLock.lock()
+			self.cachedGenerationAvailable = (r, Date())
+			self.inFlightGenerationTask = nil
+			self.availabilityLock.unlock()
+			if r {
+				Self.dedupedPrint("gen_ready", "[ModelManager] status=ready model=\(model)")
+			} else {
+				Self.dedupedPrint("gen_no", "[ModelManager] status=unavailable reason=generation_gate")
+			}
+			return r
+		}
+		inFlightGenerationTask = task
+		availabilityLock.unlock()
+		return await task.value
+	}
+
+	private static func computeGenerationAvailable(modelName: String) async -> Bool {
+		switch await Self.fetchTagsViaHTTP(timeout: Self.tagsTimeoutQuick) {
 		case .unreachable:
 			return false
 		case .reachable(let names):
-			return Self.tagsListContainsModel(names, modelName: model)
+			return Self.tagsListContainsModel(names, modelName: modelName)
 		}
+	}
+
+	private static func invalidateGenerationCache() {
+		ModelManager.shared.availabilityLock.lock()
+		ModelManager.shared.cachedGenerationAvailable = nil
+		ModelManager.shared.availabilityLock.unlock()
 	}
 
 	// MARK: - Model availability
@@ -152,15 +318,14 @@ final class ModelManager: @unchecked Sendable {
 		case reachable(names: [String])
 	}
 
-	/// Uses `GET http://127.0.0.1:11434/api/tags` only; returns `.unreachable` if the server does not respond with HTTP 200.
-	private static func fetchTagsViaHTTP() async -> HTTPFetchTagsResult {
+	private static func fetchTagsViaHTTP(timeout: TimeInterval) async -> HTTPFetchTagsResult {
 		await Task.detached(priority: .utility) {
 			guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else {
 				return HTTPFetchTagsResult.unreachable
 			}
 			var request = URLRequest(url: url)
 			request.httpMethod = "GET"
-			request.timeoutInterval = 4
+			request.timeoutInterval = timeout
 			do {
 				let (data, response) = try await URLSession.shared.data(for: request)
 				guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -187,7 +352,6 @@ final class ModelManager: @unchecked Sendable {
 		return []
 	}
 
-	/// Matches configured model against names from `/api/tags` (e.g. `phi3`, `phi3:latest`).
 	private static func tagsListContainsModel(_ names: [String], modelName: String) -> Bool {
 		let needle = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !needle.isEmpty else { return false }
@@ -204,12 +368,10 @@ final class ModelManager: @unchecked Sendable {
 			return .failed("Ollama executable not found")
 		}
 
-		// Safety: model pulls can consume multiple GB; avoid running the machine out of disk.
-		// This does not delete anything; it only blocks the pull when space is critically low.
 		if let bytes = Self.availableDiskBytesForImportantUsage(), bytes < Self.minimumDiskBytesForModelPull {
 			let gb = Double(bytes) / 1_073_741_824.0
 			let label = String(format: "%.1fGB", gb)
-			print("[ModelManager] \(modelName) pull blocked: low disk space available=\(label)")
+			Self.dedupedPrint("disk", "[ModelManager] pull_blocked reason=low_disk available=\(label)")
 			return .failed("Insufficient disk space to pull model")
 		}
 
@@ -223,24 +385,16 @@ final class ModelManager: @unchecked Sendable {
 		switch pullOutcome {
 		case .completed(let code, _, let stderr):
 			if code == 0 {
-				print("[ModelManager] \(modelName) pull completed")
 				return .ok
 			}
 			let detail = Self.compactErrorDetail(exitCode: code, stderr: stderr)
-			print("[ModelManager] \(modelName) pull failed: \(detail)")
 			return .failed(detail)
 		case .timedOut:
-			print("[ModelManager] \(modelName) pull failed: timed out")
 			return .failed("Model pull timed out")
 		case .launchFailed(let error):
-			print("[ModelManager] \(modelName) pull failed: \(error.localizedDescription)")
 			return .failed(error.localizedDescription)
 		}
 	}
-
-	// MARK: - Server probe
-
-	private static let minimumDiskBytesForModelPull: Int64 = 8 * 1_073_741_824 // 8 GiB
 
 	private static func availableDiskBytesForImportantUsage() -> Int64? {
 		let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
@@ -250,7 +404,7 @@ final class ModelManager: @unchecked Sendable {
 	}
 
 	private static func detectOllamaServerRunningImpl() async -> Bool {
-		switch await Self.fetchTagsViaHTTP() {
+		switch await Self.fetchTagsViaHTTP(timeout: Self.tagsTimeoutProbe) {
 		case .reachable:
 			return true
 		case .unreachable:
@@ -283,10 +437,6 @@ final class ModelManager: @unchecked Sendable {
 			_ = errHandle.readDataToEndOfFile()
 		}
 	}
-
-	// MARK: - Subprocess + timeouts (no inference)
-
-	private static let pullCommandTimeoutSeconds: TimeInterval = 45 * 60
 
 	private enum RunOutcome {
 		case completed(exitCode: Int32, stdout: Data, stderr: Data)
@@ -329,13 +479,12 @@ final class ModelManager: @unchecked Sendable {
 		return raw
 	}
 
-	/// Runs `ollama` with a wall-clock timeout; never blocks the main thread (caller uses background executor).
 	private static func runOllama(binary: String, arguments: [String], timeoutSeconds: TimeInterval) async -> RunOutcome {
 		await Task.detached(priority: .utility) {
 			let task = Process()
 			task.executableURL = URL(fileURLWithPath: binary)
 			task.arguments = arguments
-			task.environment = augmentedEnvironment()
+			task.environment = Self.augmentedEnvironment()
 
 			let stdoutPipe = Pipe()
 			let stderrPipe = Pipe()
@@ -370,11 +519,11 @@ final class ModelManager: @unchecked Sendable {
 	private static func logStdioMetadata(label: String, outcome: RunOutcome) {
 		switch outcome {
 		case .completed(let exitCode, let stdout, let stderr):
-			print("[ModelManager] \(label) exit=\(exitCode) stdoutBytes=\(stdout.count) stderrBytes=\(stderr.count)")
+			Self.dedupedPrint("stdio_done", "[ModelManager] \(label) exit=\(exitCode) stdoutBytes=\(stdout.count) stderrBytes=\(stderr.count)")
 		case .timedOut:
-			print("[ModelManager] \(label) timed out before completion")
-		case .launchFailed(let error):
-			print("[ModelManager] \(label) launch failed: \(error.localizedDescription)")
+			Self.dedupedPrint("stdio_to", "[ModelManager] \(label) timed out before completion")
+		case .launchFailed:
+			Self.dedupedPrint("stdio_lf", "[ModelManager] \(label) launch_failed reason=process")
 		}
 	}
 

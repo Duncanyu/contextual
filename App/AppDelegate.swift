@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let intelligenceProposalSelector = IntelligenceProposalSelector()
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
@@ -104,6 +105,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let s = LocalAISettings.shared
 		appState.localAIEnabled = s.localAIEnabled
 		appState.autoStartOllama = s.autoStartOllama
+		if s.localAIEnabled {
+			appState.modelRuntimeState = .checking
+		}
 	}
 
 	private func wireLocalAIHandlers() {
@@ -111,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			guard let self else { return }
 			LocalAISettings.shared.localAIEnabled = true
 			self.appState.localAIEnabled = true
+			self.appState.modelRuntimeState = .checking
 			self.scheduleLocalAIPrepare()
 		}
 
@@ -118,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			guard let self else { return }
 			LocalAISettings.shared.localAIEnabled = false
 			self.appState.localAIEnabled = false
-			self.appState.modelRuntimeState = .notRunning
+			self.appState.modelRuntimeState = .unavailable
 		}
 
 		appState.onEnableAutoStartOllama = { [weak self] in
@@ -131,15 +136,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 					try await ModelManager.shared.startOllamaServer()
 				} catch {
 					await MainActor.run {
-						uiState.modelRuntimeState = .error(error.localizedDescription)
+						uiState.modelRuntimeState = .unavailable
 					}
 					return
 				}
-				await ModelManager.shared.prepareLocalAIIfEnabled(settings: LocalAISettings.shared) { runtimeState in
-					DispatchQueue.main.async {
-						uiState.modelRuntimeState = runtimeState
+				await ModelManager.shared.prepareLocalAIIfEnabled(
+					settings: LocalAISettings.shared,
+					allowModelPull: true,
+					updateState: { runtimeState in
+						DispatchQueue.main.async {
+							uiState.modelRuntimeState = runtimeState
+						}
 					}
-				}
+				)
 			}
 		}
 
@@ -157,15 +166,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 					try await ModelManager.shared.startOllamaServer()
 				} catch {
 					await MainActor.run {
-						uiState.modelRuntimeState = .error(error.localizedDescription)
+						uiState.modelRuntimeState = .unavailable
 					}
 					return
 				}
-				await ModelManager.shared.prepareLocalAIIfEnabled(settings: LocalAISettings.shared) { runtimeState in
-					DispatchQueue.main.async {
-						uiState.modelRuntimeState = runtimeState
+				await ModelManager.shared.prepareLocalAIIfEnabled(
+					settings: LocalAISettings.shared,
+					allowModelPull: true,
+					updateState: { runtimeState in
+						DispatchQueue.main.async {
+							uiState.modelRuntimeState = runtimeState
+						}
 					}
-				}
+				)
 			}
 		}
 
@@ -174,16 +187,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				NSWorkspace.shared.open(url)
 			}
 		}
+
+		appState.onPullLocalAIModel = { [weak self] in
+			guard let self else { return }
+			let uiState = self.appState
+			Task.detached(priority: .utility) {
+				await ModelManager.shared.pullConfiguredModel { runtimeState in
+					DispatchQueue.main.async {
+						uiState.modelRuntimeState = runtimeState
+					}
+				}
+			}
+		}
 	}
 
 	private func scheduleLocalAIPrepare() {
 		let uiState = appState
+		appState.modelRuntimeState = .checking
 		Task.detached(priority: .utility) {
-			await ModelManager.shared.prepareLocalAIIfEnabled(settings: LocalAISettings.shared) { runtimeState in
-				DispatchQueue.main.async {
-					uiState.modelRuntimeState = runtimeState
+			let graceNanos = UInt64(4 * 1_000_000_000)
+			try? await Task.sleep(nanoseconds: graceNanos)
+			await ModelManager.shared.prepareLocalAIIfEnabled(
+				settings: LocalAISettings.shared,
+				allowModelPull: false,
+				updateState: { runtimeState in
+					DispatchQueue.main.async {
+						uiState.modelRuntimeState = runtimeState
+					}
 				}
-			}
+			)
 		}
 	}
 
