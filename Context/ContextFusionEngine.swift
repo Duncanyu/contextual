@@ -204,6 +204,7 @@ final class ContextFusionEngine {
 		)
 
 		logFusion(packet: packet)
+		CanonicalContextState.shared.update(packet)
 		return packet
 	}
 
