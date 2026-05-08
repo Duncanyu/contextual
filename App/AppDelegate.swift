@@ -54,121 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
 
-		// Self-test hook (no UI, no continuous polling).
-		// Run the app with `CONTEXTUAL_RUN_AX_SELFTEST=1` to execute once and exit.
 		let env = ProcessInfo.processInfo.environment
-		if env["CONTEXTUAL_RUN_AX_SELFTEST"] == "1" {
-			print("[AXContent] selftest starting")
-			let ok = AXWindowContentSource.shared._selfTest()
-			print("[AXContent] selftest finished ok=\(ok)")
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-				NSApp.terminate(nil)
-			}
-		}
-
-		// Typing activity DEBUG self-test (metadata-only; uses synthetic events to be non-interactive).
-		// Run the app with `CONTEXTUAL_RUN_TYPING_SELFTEST=1` to execute once and exit.
-		if env["CONTEXTUAL_RUN_TYPING_SELFTEST"] == "1" {
-			print("[TypingActivity] selftest starting")
-			let src = TypingActivitySource.shared
-			src.reset()
-			src.startMonitoring()
-
-			func logSnapshot(_ label: String) {
-				let ctx = src.currentContext()
-				let s = String(format: "%.2f", ctx.estimatedEditingActivity)
-				let idle = String(format: "%.1f", ctx.idleDuration)
-				print("[TypingActivity] selftest \(label) state=\(ctx.typingState.rawValue) intensity=\(ctx.burstIntensity.rawValue) events=\(ctx.recentEventCount) active=\(ctx.isTypingActive) idle=\(idle)s activity=\(s)")
-			}
-
-			logSnapshot("initial")
-
-			for _ in 0..<6 { src.recordSyntheticKeyEventForTesting() }
-			logSnapshot("after_6")
-			for _ in 0..<10 { src.recordSyntheticKeyEventForTesting() }
-			logSnapshot("after_16")
-
-			DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-				logSnapshot("after_wait_1s")
-			}
-			DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-				logSnapshot("after_wait_3s")
-			}
-			DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
-				logSnapshot("after_wait_6s")
-				src.stopMonitoring()
-				print("[TypingActivity] selftest finished")
-				NSApp.terminate(nil)
-			}
-		}
-
-		// Pointer activity DEBUG self-test (metadata-only; uses synthetic events to be non-interactive).
-		// Run the app with `CONTEXTUAL_RUN_POINTER_SELFTEST=1` to execute once and exit.
-		if env["CONTEXTUAL_RUN_POINTER_SELFTEST"] == "1" {
-			print("[PointerActivity] selftest starting")
-			let src = PointerActivitySource.shared
-			src.reset()
-			src.startMonitoring()
-
-			func logSnapshot(_ label: String) {
-				let ctx = src.currentContext()
-				let idle = String(format: "%.1f", ctx.idleDuration)
-				let focus = String(format: "%.2f", ctx.estimatedFocusIntensity)
-				print("[PointerActivity] selftest \(label) state=\(ctx.pointerState.rawValue) moveEvents=\(ctx.recentMoveEventCount) clickEvents=\(ctx.recentClickEventCount) moveIntensity=\(ctx.movementBurstIntensity.rawValue) clickIntensity=\(ctx.clickBurstIntensity.rawValue) active=\(ctx.isPointerActive) idle=\(idle)s focus=\(focus)")
-			}
-
-			logSnapshot("initial")
-
-			for _ in 0..<12 { src.recordSyntheticMoveEventForTesting() }
-			logSnapshot("after_moves")
-			for _ in 0..<3 { src.recordSyntheticClickEventForTesting() }
-			logSnapshot("after_clicks")
-			for _ in 0..<8 { src.recordSyntheticMoveEventForTesting() }
-			for _ in 0..<2 { src.recordSyntheticScrollEventForTesting() }
-			for _ in 0..<4 { src.recordSyntheticClickEventForTesting() }
-			logSnapshot("after_burst_mix")
-
-			DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-				logSnapshot("after_wait_1s")
-			}
-			DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-				logSnapshot("after_wait_3s")
-			}
-			DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
-				logSnapshot("after_wait_6s")
-				src.stopMonitoring()
-				print("[PointerActivity] selftest finished")
-				NSApp.terminate(nil)
-			}
-		}
-
-		// Context fusion DEBUG self-test (synthetic metadata-only).
-		// Run the app with `CONTEXTUAL_RUN_FUSION_SELFTEST=1` to execute once and exit.
-		if env["CONTEXTUAL_RUN_FUSION_SELFTEST"] == "1" {
-			_ = ContextFusionEngine.shared._selfTest()
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-				NSApp.terminate(nil)
-			}
-		}
-
-		// Context freshness DEBUG self-test (synthetic metadata-only).
-		// Run the app with `CONTEXTUAL_RUN_FRESHNESS_SELFTEST=1` to execute once and exit.
-		if env["CONTEXTUAL_RUN_FRESHNESS_SELFTEST"] == "1" {
-			_ = ContextFusionEngine.shared._freshnessSelfTest()
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-				NSApp.terminate(nil)
-			}
-		}
-
-		// Rich context debug logger self-test (metadata-only).
-		// Run the app with `CONTEXTUAL_RUN_CONTEXT_DEBUG_SELFTEST=1` to execute once and exit.
-		if env["CONTEXTUAL_RUN_CONTEXT_DEBUG_SELFTEST"] == "1" {
-			print("[ContextDebug] selftest starting")
-			let ok = ContextDebugLogger.shared.selfTest()
-			print("[ContextDebug] selftest finished ok=\(ok)")
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-				NSApp.terminate(nil)
-			}
+		if runPhase13SelfTestsIfRequested(environment: env) {
+			return
 		}
 
 		syncLocalAIFromStorage()
@@ -1187,5 +1075,127 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			"selectionLength=\(context.selectedTextLength)",
 			"createdAt=\(packet.createdAt)"
 		)
+	}
+
+	@discardableResult
+	private func runPhase13SelfTestsIfRequested(environment env: [String: String]) -> Bool {
+		// Phase 13 env-var self-tests should run once and exit without wiring the normal app pipeline.
+		// This keeps verification runs clean and avoids incidental startup logs/side-effects.
+
+		// Self-test hook (no UI, no continuous polling).
+		// Run the app with `CONTEXTUAL_RUN_AX_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_AX_SELFTEST"] == "1" {
+			print("[AXContent] selftest starting")
+			let ok = AXWindowContentSource.shared._selfTest()
+			print("[AXContent] selftest finished ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Typing activity DEBUG self-test (metadata-only; uses synthetic events to be non-interactive).
+		// Run the app with `CONTEXTUAL_RUN_TYPING_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_TYPING_SELFTEST"] == "1" {
+			print("[TypingActivity] selftest starting")
+			let src = TypingActivitySource.shared
+			src.reset()
+			src.startMonitoring()
+
+			func logSnapshot(_ label: String) {
+				let ctx = src.currentContext()
+				let s = String(format: "%.2f", ctx.estimatedEditingActivity)
+				let idle = String(format: "%.1f", ctx.idleDuration)
+				print("[TypingActivity] selftest \(label) state=\(ctx.typingState.rawValue) intensity=\(ctx.burstIntensity.rawValue) events=\(ctx.recentEventCount) active=\(ctx.isTypingActive) idle=\(idle)s activity=\(s)")
+			}
+
+			logSnapshot("initial")
+
+			for _ in 0..<6 { src.recordSyntheticKeyEventForTesting() }
+			logSnapshot("after_6")
+			for _ in 0..<10 { src.recordSyntheticKeyEventForTesting() }
+			logSnapshot("after_16")
+
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+				logSnapshot("after_wait_1s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+				logSnapshot("after_wait_3s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+				logSnapshot("after_wait_6s")
+				src.stopMonitoring()
+				print("[TypingActivity] selftest finished")
+				NSApp.terminate(nil)
+			}
+			return true
+		}
+
+		// Pointer activity DEBUG self-test (metadata-only; uses synthetic events to be non-interactive).
+		// Run the app with `CONTEXTUAL_RUN_POINTER_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_POINTER_SELFTEST"] == "1" {
+			print("[PointerActivity] selftest starting")
+			let src = PointerActivitySource.shared
+			src.reset()
+			src.startMonitoring()
+
+			func logSnapshot(_ label: String) {
+				let ctx = src.currentContext()
+				let idle = String(format: "%.1f", ctx.idleDuration)
+				let focus = String(format: "%.2f", ctx.estimatedFocusIntensity)
+				print("[PointerActivity] selftest \(label) state=\(ctx.pointerState.rawValue) moveEvents=\(ctx.recentMoveEventCount) clickEvents=\(ctx.recentClickEventCount) moveIntensity=\(ctx.movementBurstIntensity.rawValue) clickIntensity=\(ctx.clickBurstIntensity.rawValue) active=\(ctx.isPointerActive) idle=\(idle)s focus=\(focus)")
+			}
+
+			logSnapshot("initial")
+
+			for _ in 0..<12 { src.recordSyntheticMoveEventForTesting() }
+			logSnapshot("after_moves")
+			for _ in 0..<3 { src.recordSyntheticClickEventForTesting() }
+			logSnapshot("after_clicks")
+			for _ in 0..<8 { src.recordSyntheticMoveEventForTesting() }
+			for _ in 0..<2 { src.recordSyntheticScrollEventForTesting() }
+			for _ in 0..<4 { src.recordSyntheticClickEventForTesting() }
+			logSnapshot("after_burst_mix")
+
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+				logSnapshot("after_wait_1s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+				logSnapshot("after_wait_3s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+				logSnapshot("after_wait_6s")
+				src.stopMonitoring()
+				print("[PointerActivity] selftest finished")
+				NSApp.terminate(nil)
+			}
+			return true
+		}
+
+		// Context fusion DEBUG self-test (synthetic metadata-only).
+		// Run the app with `CONTEXTUAL_RUN_FUSION_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_FUSION_SELFTEST"] == "1" {
+			_ = ContextFusionEngine.shared._selfTest()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Context freshness DEBUG self-test (synthetic metadata-only).
+		// Run the app with `CONTEXTUAL_RUN_FRESHNESS_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_FRESHNESS_SELFTEST"] == "1" {
+			_ = ContextFusionEngine.shared._freshnessSelfTest()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Rich context debug logger self-test (metadata-only).
+		// Run the app with `CONTEXTUAL_RUN_CONTEXT_DEBUG_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_CONTEXT_DEBUG_SELFTEST"] == "1" {
+			print("[ContextDebug] selftest starting")
+			let ok = ContextDebugLogger.shared.selfTest()
+			print("[ContextDebug] selftest finished ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		return false
 	}
 }

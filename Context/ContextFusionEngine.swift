@@ -40,9 +40,9 @@ final class ContextFusionEngine {
 		if hasClipboard { available.append(.clipboardText) }
 		if hasOCR { available.append(.screenOCR) }
 		// AX is a distinct logical source; capability ID remains coarse for now.
-		if hasAX { available.append(.selectedText) }
+		if hasAX { available.append(.axWindowContent) }
 		if hasSnapshot { available.append(.activeWindowSnapshot) }
-		if hasVisual { available.append(.activeWindowSnapshot) }
+		if hasVisual { available.append(.visualDescriptor) }
 		if hasTyping { available.append(.typingActivity) }
 		if hasPointer { available.append(.cursorActivity) }
 
@@ -68,7 +68,7 @@ final class ContextFusionEngine {
 
 		if hasOCR, isStale(source: .screenOCR, capturedAt: contextModel.screenOCRCapturedAt, now: now) { stale.append(.screenOCR) }
 		if hasSnapshot, isStale(source: .activeWindowSnapshot, capturedAt: windowSnapshot?.capturedAt, now: now) { stale.append(.activeWindowSnapshot) }
-		if hasVisual, isStale(source: .visualDescriptor, capturedAt: visualDescriptor?.generatedAt, now: now) { stale.append(.activeWindowSnapshot) }
+		if hasVisual, isStale(source: .visualDescriptor, capturedAt: visualDescriptor?.generatedAt, now: now) { stale.append(.visualDescriptor) }
 
 		// Choose primary text source per explicit priority + freshness.
 		let primaryText = choosePrimaryTextSource(

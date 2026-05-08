@@ -1665,6 +1665,437 @@ After Phase 13:
 
 ---
 
+## Phase 14 — Rich Context Activation
+
+### Goal
+
+Activate the rich context infrastructure built in Phase 13 and begin using it to meaningfully improve intelligence, proposals, timing, and future dynamic action generation.
+
+Phase 13 built the nervous system.
+
+Phase 14 begins teaching the assistant how to actually use it.
+
+The assistant should begin feeling:
+
+- situationally aware  
+- adaptive  
+- grounded in the current workflow  
+- less random  
+- less interruptive  
+- more intentional  
+
+without becoming:
+
+- intrusive  
+- over-reactive  
+- constantly sampling expensive context  
+- visually noisy  
+- computationally heavy  
+
+---
+
+### Core Principle
+
+Rich context should influence behavior.
+
+Not merely exist.
+
+The assistant should begin making decisions based on:
+
+- workflow state  
+- user interaction intensity  
+- visible UI structure  
+- contextual freshness  
+- multimodal agreement  
+- editing/activity state  
+
+instead of relying primarily on:
+
+- clipboard contents  
+- selected text  
+- simple heuristics  
+
+---
+
+### Updated System Flow
+
+Sources  
+↓  
+Context Capability Registry  
+↓  
+Context Budget Manager  
+↓  
+Rich Context Collection  
+↓  
+Context Fusion Engine  
+↓  
+Canonical Fused Context Packet  
+↓  
+Intelligence + Proposal Systems  
+↓  
+Dynamic Action Selection  
+↓  
+UI / Interaction Layer  
+
+---
+
+### Design Philosophy
+
+The assistant should stop behaving like:
+
+> “Some text was copied.”
+
+and start behaving more like:
+
+> “The user is debugging code inside Xcode while actively typing and rapidly switching editor panes.”
+
+---
+
+### Activation Philosophy
+
+Phase 14 is NOT about adding more sources.
+
+It is about:
+
+- activating existing context infrastructure  
+- wiring it into decisions  
+- improving timing  
+- improving relevance  
+- improving awareness  
+
+The intelligence layer should finally begin consuming the fused context packet.
+
+---
+
+### Performance Philosophy
+
+Rich context activation must remain:
+
+- selective  
+- event-driven  
+- budget-aware  
+- freshness-aware  
+- cancelable  
+- interrupt-safe  
+
+Expensive context should still remain:
+
+- sparse  
+- justified  
+- scoped  
+- temporary  
+
+---
+
+### Behavioral Philosophy
+
+The assistant should learn:
+
+when to stay quiet.
+
+Typing bursts, interaction bursts, rapid cursor movement, stale context, and weak multimodal confidence should all reduce interruption likelihood.
+
+The assistant should become calmer during active work.
+
+---
+
+### Context-Aware Proposal Philosophy
+
+Proposals should begin adapting to context.
+
+Examples:
+
+- editor visible + active typing → suppress interruptions
+- error dialog + stopped typing → explain/debug proposal
+- article visible + low activity → summarize proposal
+- form-heavy UI + interaction burst → stay quiet
+- stale clipboard + fresh AX content → prioritize AX
+
+---
+
+### Dynamic Action Direction
+
+This phase begins preparing for:
+
+- generated actions
+- situational actions
+- workflow-aware actions
+- context-sensitive tools
+
+but does NOT yet implement autonomous agents.
+
+---
+
+### Rich Context Consumption Rules
+
+The intelligence layer should consume:
+
+- fused context metadata
+- freshness
+- confidence
+- multimodal hints
+- interaction state
+- visual descriptors
+- structural UI hints
+
+before escalating to expensive reasoning.
+
+---
+
+### Performance Rules
+
+- No continuous multimodal loops
+- No always-on screenshot reasoning
+- No continuous OCR scanning
+- No proposal spam during active interaction
+- No blocking UI for context fusion
+- No raw context persistence
+- No cloud dependency
+
+---
+
+### Privacy Rules
+
+The assistant should remain:
+
+- local-first
+- privacy-first
+- minimally persistent
+- metadata-oriented
+
+Rich context should improve awareness,
+not become surveillance.
+
+---
+
+## Tickets
+
+---
+
+### T14.1 — Canonical Fused Context State
+
+Introduce a globally accessible canonical fused context packet.
+
+Goals:
+
+- maintain latest unified context state
+- expose freshness/confidence centrally
+- eliminate fragmented context access
+- provide stable intelligence input
+
+Requirements:
+
+- lightweight updates
+- freshness-aware replacement
+- no raw persistence
+- thread-safe access
+
+---
+
+### T14.2 — Rich Context Refresh Pipeline
+
+Create a coordinated refresh pipeline for rich context.
+
+Responsibilities:
+
+- selective source refresh
+- freshness-driven invalidation
+- budget-aware collection
+- asynchronous fusion updates
+- cancellation support
+
+The pipeline should avoid redundant expensive collection.
+
+---
+
+### T14.3 — Context-Aware Proposal Timing
+
+Use typing/pointer/activity signals to improve interruption timing.
+
+Examples:
+
+- suppress during intense interaction
+- allow during idle pauses
+- defer during rapid editing
+- soften proposal frequency during bursts
+
+Goals:
+
+- fewer interruptions
+- calmer assistant behavior
+- better timing awareness
+
+---
+
+### T14.4 — Rich Context Proposal Selection
+
+Allow proposal selection to use:
+
+- visual descriptors
+- AX structure
+- workflow metadata
+- interaction state
+- fused context confidence
+
+Examples:
+
+- editor + error dialog → explain/debug
+- article + idle → summarize
+- form-heavy UI → suppress
+- terminal + stacktrace → explain
+
+---
+
+### T14.5 — Context-Aware Action Eligibility
+
+Improve available action selection using fused context.
+
+Actions should become:
+
+- situationally aware
+- workflow-aware
+- multimodally informed
+
+instead of relying mostly on selected text.
+
+---
+
+### T14.6 — Rich Analyze Screen Pipeline
+
+Upgrade Analyze Screen to consume:
+
+- OCR
+- visual descriptors
+- AX hierarchy
+- fused context metadata
+- active workflow hints
+
+instead of OCR-only interpretation.
+
+Still no full visual agent reasoning yet.
+
+---
+
+### T14.7 — Context Confidence Arbitration
+
+Improve conflict handling between context sources.
+
+Examples:
+
+- stale clipboard vs fresh AX
+- OCR vs visible editor metadata
+- typing-active vs idle snapshot
+- conflicting visual descriptors
+
+Goals:
+
+- reduce wrong context assumptions
+- improve stability
+- improve proposal accuracy
+
+---
+
+### T14.8 — Adaptive Context Sampling
+
+Adjust expensive context collection dynamically.
+
+Examples:
+
+- active editing → reduce rich sampling
+- idle reading → allow richer sampling
+- repeated same workflow → reuse cached context
+- weak confidence → allow richer collection
+
+This should feel adaptive,
+not cooldown-based.
+
+---
+
+### T14.9 — Rich Context UI Awareness
+
+Begin lightly surfacing context awareness in the UI.
+
+Possible metadata indicators:
+
+- typing active
+- editor visible
+- browser/article visible
+- OCR stale
+- rich context active
+
+No intrusive dashboards or debug spam.
+
+---
+
+### T14.10 — Rich Context Debug Visualization
+
+Improve internal debugging visibility for fused context state.
+
+Metadata-only.
+
+Possible debug info:
+
+- source freshness
+- fusion confidence
+- active visual descriptors
+- interaction state
+- arbitration decisions
+- sampling decisions
+
+No raw context logging.
+
+---
+
+### T14.11 — Phase 14 Tuning Pass
+
+Tune rich context activation behavior.
+
+Goals:
+
+- reduce proposal spam
+- improve timing quality
+- improve situational awareness
+- improve action relevance
+- reduce unnecessary expensive sampling
+- maintain responsiveness
+- keep assistant feeling calm and intentional
+
+---
+
+### Out of Scope
+
+Do NOT implement yet:
+
+- autonomous agents
+- unrestricted computer control
+- persistent workflow memory
+- continuous visual reasoning
+- continuous audio understanding
+- generated tool execution
+- long-horizon planning
+- cross-app automation graphs
+- hidden background surveillance
+
+---
+
+### Success Criteria
+
+After Phase 14:
+
+- rich context meaningfully affects behavior
+- proposal timing improves
+- interruptions decrease
+- actions feel more situationally aware
+- multimodal context begins influencing intelligence
+- expensive context is sampled adaptively
+- stale context problems are reduced further
+- Analyze Screen becomes substantially smarter
+- assistant behavior feels calmer and more grounded
+- performance remains responsive
+- the system still feels privacy-first and local-first
+
+---
+
 ### Resulting UX
 
 After Phase 9:

@@ -128,6 +128,13 @@ final class ContextCapabilityRegistry {
 			checkedAt: now
 		)
 
+		updateAvailabilityLocked(
+			id: .axWindowContent,
+			isAvailable: axTrusted,
+			permissionState: axTrusted ? .granted : .denied,
+			checkedAt: now
+		)
+
 		// Screen OCR depends on manual capture pipeline; treat permission as screen recording.
 		updateAvailabilityLocked(
 			id: .screenOCR,
@@ -138,6 +145,13 @@ final class ContextCapabilityRegistry {
 
 		updateAvailabilityLocked(
 			id: .activeWindowSnapshot,
+			isAvailable: screenAuthorized,
+			permissionState: screenAuthorized ? .granted : .denied,
+			checkedAt: now
+		)
+
+		updateAvailabilityLocked(
+			id: .visualDescriptor,
 			isAvailable: screenAuthorized,
 			permissionState: screenAuthorized ? .granted : .denied,
 			checkedAt: now
@@ -296,6 +310,30 @@ final class ContextCapabilityRegistry {
 
 		register(
 			ContextCapability(
+				id: .axWindowContent,
+				displayName: "AX Window Content",
+				isAvailable: true,
+				permissionState: .unknown,
+				freshnessInterval: 15.0,
+				collectionCost: .medium,
+				privacySensitivity: .high,
+				latencyCategory: .fast,
+				collectionMode: .manual,
+				isCurrentlyStale: true,
+				supportsContinuousCollection: false,
+				supportsManualInvocation: true,
+				supportsBackgroundCollection: false,
+				notes: "Bounded accessibility tree extraction (in-memory); depends on Accessibility permission.",
+				sourceVersion: nil,
+				metadata: nil,
+				lastAvailabilityCheckedAt: nil,
+				lastUpdatedAt: nil,
+				lastInvalidatedAt: nil
+			)
+		)
+
+		register(
+			ContextCapability(
 				id: .activeWindowSnapshot,
 				displayName: "Active Window Snapshot",
 				isAvailable: true,
@@ -310,6 +348,30 @@ final class ContextCapabilityRegistry {
 				supportsManualInvocation: true,
 				supportsBackgroundCollection: false,
 				notes: "Captures frontmost window only; depends on Screen Recording permission.",
+				sourceVersion: nil,
+				metadata: nil,
+				lastAvailabilityCheckedAt: nil,
+				lastUpdatedAt: nil,
+				lastInvalidatedAt: nil
+			)
+		)
+
+		register(
+			ContextCapability(
+				id: .visualDescriptor,
+				displayName: "Visual Descriptor",
+				isAvailable: true,
+				permissionState: .unknown,
+				freshnessInterval: 15.0,
+				collectionCost: .medium,
+				privacySensitivity: .high,
+				latencyCategory: .fast,
+				collectionMode: .manual,
+				isCurrentlyStale: true,
+				supportsContinuousCollection: false,
+				supportsManualInvocation: true,
+				supportsBackgroundCollection: false,
+				notes: "Lightweight local visual heuristics over a window snapshot; depends on Screen Recording permission.",
 				sourceVersion: nil,
 				metadata: nil,
 				lastAvailabilityCheckedAt: nil,
