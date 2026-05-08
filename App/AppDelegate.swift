@@ -516,6 +516,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		guard generation == contextPipelineGeneration else {
 			print("[IntelligenceSelection] stale_result_discarded")
 			print("[IntelligenceFallback] reason=stale_context layer=selector")
+			IntelligenceDebugLogger.log(
+				stage: .selection,
+				event: "stale_discarded",
+				meta: IntelligenceDebugMeta(reason: "stale_context", layer: "selector")
+			)
 			return
 		}
 
@@ -536,6 +541,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		guard generation == contextPipelineGeneration else {
 			print("[IntelligenceSelection] stale_result_discarded")
 			print("[IntelligenceFallback] reason=stale_context layer=selector")
+			IntelligenceDebugLogger.log(
+				stage: .selection,
+				event: "stale_discarded",
+				meta: IntelligenceDebugMeta(reason: "stale_context", layer: "selector")
+			)
 			return
 		}
 
@@ -622,6 +632,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		guard generation == contextPipelineGeneration else {
 			print("[IntelligenceSelection] stale_result_discarded")
 			print("[IntelligenceFallback] reason=stale_context layer=selector")
+			IntelligenceDebugLogger.log(
+				stage: .selection,
+				event: "stale_discarded",
+				meta: IntelligenceDebugMeta(reason: "stale_context", layer: "selector")
+			)
 			return
 		}
 

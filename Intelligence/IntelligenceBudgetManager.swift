@@ -157,6 +157,12 @@ final class IntelligenceBudgetManager {
 		lastLogSig = sig
 		lastLogAt = now
 		print("[IntelligenceBudget] \(allowed ? "allowed" : "denied") reason=\(reason) score=\(s)")
+		IntelligenceDebugLogger.log(
+			stage: .budget,
+			event: allowed ? "allowed" : "denied",
+			meta: IntelligenceDebugMeta(reason: reason, score: s),
+			throttleKey: sig
+		)
 	}
 
 	private func fnv1a64(_ text: String) -> UInt64 {

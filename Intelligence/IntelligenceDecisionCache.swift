@@ -157,6 +157,46 @@ final class IntelligenceDecisionCache {
 		lastLogSig = sig
 		lastLogAt = now
 		print("[IntelligenceDecisionCache] \(event) fp=\(fp)")
+
+		let (debugEvent, reason): (String, String?)
+		switch event {
+		case "miss":
+			debugEvent = "miss"
+			reason = "cache_miss"
+		case "hit":
+			debugEvent = "hit"
+			reason = "cache_hit"
+		case "expired":
+			debugEvent = "expired"
+			reason = nil
+		case "rejected_invalid":
+			debugEvent = "rejected"
+			reason = "invalid_output"
+		case "rejected_action_missing", "store_rejected_bad_action":
+			debugEvent = "rejected"
+			reason = "invalid_action"
+		case "rejected_decayed":
+			debugEvent = "rejected"
+			reason = "low_conf"
+		case "store":
+			debugEvent = "store"
+			reason = nil
+		case "store_rejected_invalid":
+			debugEvent = "rejected"
+			reason = "invalid_output"
+		case "store_rejected_missing_action":
+			debugEvent = "rejected"
+			reason = "invalid_action"
+		default:
+			debugEvent = event
+			reason = nil
+		}
+		IntelligenceDebugLogger.log(
+			stage: .cache,
+			event: debugEvent,
+			meta: IntelligenceDebugMeta(reason: reason, fp: fp),
+			throttleKey: sig
+		)
 	}
 
 	private static func fnv1a64(_ text: String) -> UInt64 {

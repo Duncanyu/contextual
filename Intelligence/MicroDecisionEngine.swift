@@ -5,21 +5,64 @@ final class MicroDecisionEngine {
 	func decide(request: MicroDecisionRequest) -> MicroDecisionResponse {
 		if let reason = Self.skipReason(for: request) {
 			print("[MicroDecision] skipped reason=\(reason)")
+			let code = Self.debugSkipCode(reason)
+			IntelligenceDebugLogger.log(
+				stage: .micro,
+				event: "skipped",
+				meta: IntelligenceDebugMeta(reason: code, layer: "micro", detail: reason),
+				throttleKey: "skip|\(code)"
+			)
 			return Self.fallback()
 		}
 
+		IntelligenceDebugLogger.log(
+			stage: .micro,
+			event: "attempted",
+			meta: IntelligenceDebugMeta(layer: "micro", source: request.sourceType, type: request.contextType.rawValue)
+		)
+
 		guard let raw = MicroDecisionModelProvider.shared.predict(request: request) else {
 			print("[MicroDecision] fallback_used reason=no_model_output")
+			IntelligenceDebugLogger.log(
+				stage: .micro,
+				event: "output_missing",
+				meta: IntelligenceDebugMeta(reason: "model_unavailable", layer: "micro")
+			)
+			IntelligenceDebugLogger.log(
+				stage: .micro,
+				event: "fallback",
+				meta: IntelligenceDebugMeta(reason: "model_unavailable", layer: "micro", fallback: true)
+			)
 			return Self.fallback()
 		}
 
 		guard let validated = Self.validate(raw, request: request) else {
 			print("[MicroDecision] fallback_used reason=invalid_model_output")
+			IntelligenceDebugLogger.log(
+				stage: .micro,
+				event: "output_invalid",
+				meta: IntelligenceDebugMeta(reason: "invalid_output", layer: "micro")
+			)
+			IntelligenceDebugLogger.log(
+				stage: .micro,
+				event: "fallback",
+				meta: IntelligenceDebugMeta(reason: "invalid_output", layer: "micro", fallback: true)
+			)
 			return Self.fallback()
 		}
 
 		let c = String(format: "%.2f", validated.confidence)
 		print("[MicroDecision] model_used conf=\(c)")
+		IntelligenceDebugLogger.log(
+			stage: .micro,
+			event: "decision",
+			meta: IntelligenceDebugMeta(
+				layer: "micro",
+				action: validated.bestActionId,
+				conf: c,
+				suggest: validated.shouldSuggest
+			)
+		)
 		return validated
 	}
 
@@ -57,6 +100,16 @@ final class MicroDecisionEngine {
 
 	private static func fallback() -> MicroDecisionResponse {
 		MicroDecisionResponse(shouldSuggest: false, bestActionId: nil, confidence: 0)
+	}
+
+	private static func debugSkipCode(_ internalReason: String) -> String {
+		switch internalReason {
+		case "empty_compressed": return "invalid_request"
+		case "no_actions": return "no_actions"
+		case "too_short": return "too_short"
+		case "sourceType": return "bad_source"
+		default: return "invalid_request"
+		}
 	}
 
 	#if DEBUG

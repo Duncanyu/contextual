@@ -59,6 +59,7 @@
 		AA0001580000000000000060 /* MicroDecisionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025C0000000000000061 /* MicroDecisionTypes.swift */; };
 		AA0001590000000000000062 /* MicroDecisionModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025D0000000000000063 /* MicroDecisionModelProvider.swift */; };
 		AA00015A0000000000000064 /* MicroDecisionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025E0000000000000065 /* MicroDecisionEngine.swift */; };
+		AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */; };
 		AA0001260000000000000026 /* OCRProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000231000000000000002F /* OCRProcessor.swift */; };
 		AA0001240000000000000024 /* SuggestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00022F000000000000002D /* SuggestionCard.swift */; };
 		AA0001280000000000000028 /* ResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002330000000000000031 /* ResultView.swift */; };
@@ -134,6 +135,7 @@
 		AA00025C0000000000000061 /* MicroDecisionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionTypes.swift; sourceTree = "<group>"; };
 		AA00025D0000000000000063 /* MicroDecisionModelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionModelProvider.swift; sourceTree = "<group>"; };
 		AA00025E0000000000000065 /* MicroDecisionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionEngine.swift; sourceTree = "<group>"; };
+		AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceDebugLogger.swift; sourceTree = "<group>"; };
 		AA000231000000000000002F /* OCRProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRProcessor.swift; sourceTree = "<group>"; };
 		AA00022F000000000000002D /* SuggestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionCard.swift; sourceTree = "<group>"; };
 		AA0002330000000000000031 /* ResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultView.swift; sourceTree = "<group>"; };
@@ -287,6 +289,7 @@
 				AA00025C0000000000000061 /* MicroDecisionTypes.swift */,
 				AA00025D0000000000000063 /* MicroDecisionModelProvider.swift */,
 				AA00025E0000000000000065 /* MicroDecisionEngine.swift */,
+				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA000231000000000000002F /* OCRProcessor.swift */,
 			);
 			path = Intelligence;
@@ -459,6 +462,7 @@
 				AA0001580000000000000060 /* MicroDecisionTypes.swift in Sources */,
 				AA0001590000000000000062 /* MicroDecisionModelProvider.swift in Sources */,
 				AA00015A0000000000000064 /* MicroDecisionEngine.swift in Sources */,
+				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,

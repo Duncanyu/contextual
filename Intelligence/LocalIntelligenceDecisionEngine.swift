@@ -31,6 +31,12 @@ final class LocalIntelligenceDecisionEngine {
 			group.cancelAll()
 			if first.reason == "proposal_llm_timeout" {
 				print("[IntelligenceFallback] reason=timeout layer=llm")
+				IntelligenceDebugLogger.log(
+					stage: .llm,
+					event: "fallback",
+					meta: IntelligenceDebugMeta(reason: "timeout", layer: "llm", fallback: true),
+					throttleKey: "timeout"
+				)
 			}
 			return first
 		}
@@ -41,23 +47,29 @@ final class LocalIntelligenceDecisionEngine {
 		suggestionStrength: SuggestionStrength? = nil
 	) async -> IntelligenceDecisionResponse {
 		if let strength = suggestionStrength, strength == .weak {
+			Self.logLLMSkipped(reason: "weak_strength", meta: Self.safeMeta(request))
 			return Self.fallback(reason: "Skipped: weak strength")
 		}
 
 		guard !request.compressedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			Self.logLLMSkipped(reason: "empty_text", meta: Self.safeMeta(request))
 			return Self.fallback(reason: "Skipped: empty compressedText")
 		}
 		guard !request.availableActions.isEmpty else {
+			Self.logLLMSkipped(reason: "no_actions", meta: Self.safeMeta(request))
 			return Self.fallback(reason: "Skipped: no availableActions")
 		}
 		guard request.textLength >= 30 else {
+			Self.logLLMSkipped(reason: "too_short", meta: Self.safeMeta(request))
 			return Self.fallback(reason: "Skipped: too_short")
 		}
 		guard request.contextType != .random else {
+			Self.logLLMSkipped(reason: "random_context", meta: Self.safeMeta(request))
 			return Self.fallback(reason: "Skipped: random")
 		}
 		let st = request.sourceType.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !st.isEmpty, st != "unknown" else {
+			Self.logLLMSkipped(reason: "bad_source", meta: Self.safeMeta(request))
 			return Self.fallback(reason: "Skipped: sourceType")
 		}
 
@@ -65,15 +77,26 @@ final class LocalIntelligenceDecisionEngine {
 		if let strength = suggestionStrength, strength == .medium || strength == .strong {
 			// ok
 		} else if suggestionStrength != nil {
+			Self.logLLMSkipped(reason: "strength_not_allowed", meta: Self.safeMeta(request))
 			return Self.fallback(reason: "Skipped: strength")
 		}
 
 		guard await modelManager.isGenerationAvailable() else {
 			print("[IntelligenceFallback] reason=model_unavailable layer=llm")
+			IntelligenceDebugLogger.log(
+				stage: .llm,
+				event: "skipped",
+				meta: IntelligenceDebugMeta(reason: "model_unavailable", layer: "llm", source: request.sourceType, type: request.contextType.rawValue),
+				throttleKey: "model_unavailable"
+			)
 			return Self.fallback(reason: "Local intelligence unavailable or skipped")
 		}
 
-		print("[LocalIntelligence] attempted \(request.debugSummary())")
+		IntelligenceDebugLogger.log(
+			stage: .llm,
+			event: "started",
+			meta: IntelligenceDebugMeta(layer: "llm", source: request.sourceType, type: request.contextType.rawValue)
+		)
 
 		let prompt = buildPrompt(request: request)
 		let model = LocalAISettings.shared.modelName
@@ -82,25 +105,63 @@ final class LocalIntelligenceDecisionEngine {
 		do {
 			raw = try await client.generate(prompt: prompt, model: model)
 		} catch {
-			print("[LocalIntelligence] fallback reason=generate_failed")
+			IntelligenceDebugLogger.log(
+				stage: .llm,
+				event: "fallback",
+				meta: IntelligenceDebugMeta(reason: "generate_failed", layer: "llm", fallback: true),
+				throttleKey: "gen_fail"
+			)
 			return Self.fallback(reason: "Local intelligence unavailable or skipped")
 		}
 
 		guard let decoded = parseJSONDecision(from: raw) else {
-			print("[LocalIntelligence] fallback reason=parse_failed")
 			print("[IntelligenceFallback] reason=invalid_output layer=llm")
+			IntelligenceDebugLogger.log(
+				stage: .llm,
+				event: "fallback",
+				meta: IntelligenceDebugMeta(reason: "invalid_output", layer: "llm", fallback: true),
+				throttleKey: "parse_fail"
+			)
 			return Self.fallback(reason: "Local intelligence unavailable or skipped")
 		}
 
 		let sanitized = sanitize(response: decoded, for: request)
 		guard sanitized.isValid(for: request) else {
-			print("[LocalIntelligence] fallback reason=invalid_response")
 			print("[IntelligenceFallback] reason=invalid_output layer=llm")
+			IntelligenceDebugLogger.log(
+				stage: .llm,
+				event: "fallback",
+				meta: IntelligenceDebugMeta(reason: "invalid_output", layer: "llm", fallback: true),
+				throttleKey: "invalid_sanitize"
+			)
 			return Self.fallback(reason: "Local intelligence unavailable or skipped")
 		}
 
-		print("[LocalIntelligence] accepted shouldSuggest=\(sanitized.shouldSuggest) confidence=\(String(format: "%.2f", sanitized.confidence))")
+		let cs = String(format: "%.2f", sanitized.confidence)
+		IntelligenceDebugLogger.log(
+			stage: .llm,
+			event: "decision",
+			meta: IntelligenceDebugMeta(
+				layer: "llm",
+				action: sanitized.bestActionId,
+				conf: cs,
+				suggest: sanitized.shouldSuggest
+			)
+		)
 		return sanitized
+	}
+
+	private static func safeMeta(_ request: IntelligenceDecisionRequest) -> IntelligenceDebugMeta {
+		IntelligenceDebugMeta(
+			layer: "llm",
+			source: request.sourceType,
+			type: request.contextType.rawValue,
+			lenBucket: request.textLength / 25
+		)
+	}
+
+	private static func logLLMSkipped(reason: String, meta: IntelligenceDebugMeta) {
+		IntelligenceDebugLogger.log(stage: .llm, event: "skipped", meta: meta.with(reason: reason), throttleKey: "skip|\(reason)")
 	}
 
 	// MARK: - Prompting (no raw text logging)
