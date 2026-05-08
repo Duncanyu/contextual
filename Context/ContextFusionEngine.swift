@@ -39,57 +39,26 @@ final class ContextFusionEngine {
 		if hasSelection { available.append(.selectedText) }
 		if hasClipboard { available.append(.clipboardText) }
 		if hasOCR { available.append(.screenOCR) }
-		if hasAX { available.append(.selectedText) /* AX is selection-adjacent; keep separate via primaryTextSource */ }
+		// AX is a distinct logical source; capability ID remains coarse for now.
+		if hasAX { available.append(.selectedText) }
 		if hasSnapshot { available.append(.activeWindowSnapshot) }
 		if hasVisual { available.append(.activeWindowSnapshot) }
 		if hasTyping { available.append(.typingActivity) }
 		if hasPointer { available.append(.cursorActivity) }
 
-		// Freshness evaluation (metadata-only).
-		let selectionFresh = estimateFreshness(
-			eventAt: estimateSelectionTimestamp(contextModel),
-			now: now,
-			window: 15
-		)
-		let clipboardFresh = estimateFreshness(
-			eventAt: estimateClipboardTimestamp(contextModel),
-			now: now,
-			window: 45
-		)
-		let ocrFresh = estimateFreshness(
-			eventAt: contextModel.screenOCRCapturedAt,
-			now: now,
-			window: 35
-		)
-		let axFresh = estimateFreshness(
-			eventAt: axContent?.extractedAt,
-			now: now,
-			window: 15
-		)
-		let snapshotFresh = estimateFreshness(
-			eventAt: windowSnapshot?.capturedAt,
-			now: now,
-			window: 20
-		)
-		let visualFresh = estimateFreshness(
-			eventAt: visualDescriptor?.generatedAt,
-			now: now,
-			window: 15
-		)
-		let typingFresh = estimateFreshness(
-			eventAt: typingActivity?.updatedAt,
-			now: now,
-			window: 6
-		)
-		let pointerFresh = estimateFreshness(
-			eventAt: pointerActivity?.updatedAt,
-			now: now,
-			window: 6
-		)
+		// Freshness evaluation (metadata-only) via centralized policy.
+		let selectionFresh = freshness(source: .selectedText, capturedAt: estimateSelectionTimestamp(contextModel), now: now)
+		let clipboardFresh = freshness(source: .clipboardText, capturedAt: estimateClipboardTimestamp(contextModel), now: now)
+		let ocrFresh = freshness(source: .screenOCR, capturedAt: contextModel.screenOCRCapturedAt, now: now)
+		let axFresh = freshness(source: .axText, capturedAt: axContent?.extractedAt, now: now)
+		let snapshotFresh = freshness(source: .activeWindowSnapshot, capturedAt: windowSnapshot?.capturedAt, now: now)
+		let visualFresh = freshness(source: .visualDescriptor, capturedAt: visualDescriptor?.generatedAt, now: now)
+		let typingFresh = freshness(source: .typingActivity, capturedAt: typingActivity?.updatedAt, now: now)
+		let pointerFresh = freshness(source: .pointerActivity, capturedAt: pointerActivity?.updatedAt, now: now)
 
-		if hasOCR, ocrFresh <= 0.10 { stale.append(.screenOCR) }
-		if hasSnapshot, snapshotFresh <= 0.10 { stale.append(.activeWindowSnapshot) }
-		if hasVisual, visualFresh <= 0.10 { stale.append(.activeWindowSnapshot) }
+		if hasOCR, isStale(source: .screenOCR, capturedAt: contextModel.screenOCRCapturedAt, now: now) { stale.append(.screenOCR) }
+		if hasSnapshot, isStale(source: .activeWindowSnapshot, capturedAt: windowSnapshot?.capturedAt, now: now) { stale.append(.activeWindowSnapshot) }
+		if hasVisual, isStale(source: .visualDescriptor, capturedAt: visualDescriptor?.generatedAt, now: now) { stale.append(.activeWindowSnapshot) }
 
 		// Choose primary text source per explicit priority + freshness.
 		let primaryText = choosePrimaryTextSource(
@@ -160,7 +129,7 @@ final class ContextFusionEngine {
 		confidence = clamp01(confidence)
 
 		// Freshness score: max of key modalities.
-		let freshness = clamp01(max(selectionFresh, axFresh, ocrFresh, clipboardFresh, visualFresh, snapshotFresh))
+		let freshness = clamp01(max(selectionFresh, axFresh, ocrFresh, clipboardFresh, visualFresh, snapshotFresh, typingFresh, pointerFresh))
 
 		let isStale = freshness < 0.15 && !hasTyping && !hasPointer
 
@@ -277,12 +246,14 @@ final class ContextFusionEngine {
 		}
 	}
 
-	private func estimateFreshness(eventAt: Date?, now: Date, window: TimeInterval) -> Double {
-		guard let eventAt else { return 0.0 }
-		let age = now.timeIntervalSince(eventAt)
-		if age <= 0 { return 1.0 }
-		if age >= window { return 0.0 }
-		return clamp01(1.0 - (age / window))
+	private func freshness(source: FusedContextSource, capturedAt: Date?, now: Date) -> Double {
+		guard let capturedAt else { return 0.0 }
+		return ContextFreshnessPolicy.freshnessScore(for: source, capturedAt: capturedAt, now: now)
+	}
+
+	private func isStale(source: FusedContextSource, capturedAt: Date?, now: Date) -> Bool {
+		guard let capturedAt else { return true }
+		return ContextFreshnessPolicy.isStale(source: source, capturedAt: capturedAt, now: now)
 	}
 
 	private func estimateSelectionTimestamp(_ model: ContextModel) -> Date? {
@@ -340,6 +311,63 @@ final class ContextFusionEngine {
 		let fresh = String(format: "%.2f", packet.freshnessScore)
 		let conflict = String(format: "%.2f", packet.conflictScore)
 		print("[ContextFusion] fused primary=\(packet.primaryTextSource.rawValue) sources=\(sources) stale=\(stale.isEmpty ? "none" : stale) visual=\(visual.isEmpty ? "none" : visual) confidence=\(conf) freshness=\(fresh) conflict=\(conflict)")
+	}
+
+	/// Debug-only freshness self-test. Called via env-var runner in `AppDelegate`.
+	func _freshnessSelfTest() -> Bool {
+		print("[ContextFreshness] selftest starting")
+		let now = Date()
+
+		func score(_ source: FusedContextSource, age: TimeInterval) -> (Double, ContextFreshnessLabel) {
+			let at = now.addingTimeInterval(-age)
+			let s = ContextFreshnessPolicy.freshnessScore(for: source, capturedAt: at, now: now)
+			return (s, ContextFreshnessPolicy.decayLabel(score: s))
+		}
+
+		// Score checks (synthetic)
+		let (s1, l1) = score(.selectedText, age: 1)
+		print("[ContextFreshness] source=selectedText score=\(String(format: "%.2f", s1)) label=\(l1.rawValue)")
+
+		let (s2, l2) = score(.clipboardText, age: 35)
+		print("[ContextFreshness] source=clipboardText score=\(String(format: "%.2f", s2)) label=\(l2.rawValue)")
+
+		let (s3, l3) = score(.screenOCR, age: 44)
+		print("[ContextFreshness] source=screenOCR score=\(String(format: "%.2f", s3)) label=\(l3.rawValue)")
+
+		let (s4, l4) = score(.screenOCR, age: 80)
+		print("[ContextFreshness] source=screenOCR score=\(String(format: "%.2f", s4)) label=\(l4.rawValue)")
+
+		// Fusion priority tests (synthetic metadata-only).
+		func makeModel(selectionLen: Int, clipboardLen: Int, ocrLen: Int, ocrAge: TimeInterval, trigger: LastSourceTrigger) -> ContextModel {
+			var m = ContextModel()
+			m.activeAppName = "FreshnessTestApp"
+			m.activeAppBundleIdentifier = "com.example.freshness"
+			m.selectedTextAvailable = selectionLen > 0
+			m.selectedTextLength = selectionLen
+			m.clipboardTextAvailable = clipboardLen > 0
+			m.clipboardTextLength = clipboardLen
+			m.screenOCRAvailable = ocrLen > 0
+			m.screenOCRTextLength = ocrLen
+			m.screenOCRLineCount = ocrLen > 0 ? 8 : 0
+			m.screenOCRCapturedAt = ocrLen > 0 ? now.addingTimeInterval(-ocrAge) : nil
+			m.updatedAt = now
+			m.lastSourceTrigger = trigger
+			return m
+		}
+
+		// Selected beats stale OCR.
+		let mA = makeModel(selectionLen: 80, clipboardLen: 0, ocrLen: 900, ocrAge: 80, trigger: .selectedTextChanged)
+		let pA = fuse(contextModel: mA)
+		let staleA = pA.staleSources.map(\.rawValue).joined(separator: ",")
+		print("[ContextFreshness] fuse case=sel_beats_stale_ocr primary=\(pA.primaryTextSource.rawValue) stale=\(staleA.isEmpty ? "none" : staleA)")
+
+		// Fresh OCR beats stale clipboard if selection/AX absent.
+		let mB = makeModel(selectionLen: 0, clipboardLen: 500, ocrLen: 700, ocrAge: 5, trigger: .screenOCRCompleted)
+		let pB = fuse(contextModel: mB)
+		print("[ContextFreshness] fuse case=ocr_beats_clip primary=\(pB.primaryTextSource.rawValue)")
+
+		print("[ContextFreshness] selftest finished")
+		return true
 	}
 
 	private func uniquePreserveOrder<T: Hashable>(_ values: [T]) -> [T] {
