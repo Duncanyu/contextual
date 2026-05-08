@@ -119,6 +119,7 @@ final class IntelligenceProposalSelector {
 
 		// MARK: Step 3 — Micro (sync; only when a real CoreML model is loaded)
 
+		MicroDecisionModelProvider.shared.loadModelIfNeeded()
 		if MicroDecisionModelProvider.shared.isModelLoaded {
 			let microReq = MicroDecisionRequest(
 				contextType: contextType,

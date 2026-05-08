@@ -344,3 +344,9 @@ Do not build fast.
 Build in a way that allows you to KEEP building.
 
 Every phase should make the next phase easier, not harder.
+
+---
+
+## Phase 12 — Micro classifier asset (T12.3.7)
+
+Bundled `MicroDecisionClassifier.mlmodel` is produced by `Scripts/build_micro_classifier.py` (Python venv with `scikit-learn==1.5.1` + `coremltools`). Feature layout is duplicated in `Intelligence/MicroDecisionFeatureEncoder.swift`. Xcode compiles the `.mlmodel` to `.mlmodelc` in the app bundle.

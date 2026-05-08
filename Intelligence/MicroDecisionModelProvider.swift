@@ -11,31 +11,95 @@ final class MicroDecisionModelProvider {
 	private var cachedStringInputName: String?
 	private var didAttemptLoad = false
 	private var didLogMissingModel = false
+	/// Bundled T12.3.7 classifier uses a 32-D feature vector (see `MicroDecisionFeatureEncoder`).
+	private var usesCompiledFeatureInput = false
+	private var detectedInputKind: String = "unknown"
 
 	private init() {}
 
-	/// Lazily loads optional bundled CoreML model (`MicroDecisionClassifier.mlmodelc`).
+	/// Lazily loads optional bundled CoreML model (`MicroDecisionClassifier.mlmodelc` or `.mlmodel`).
 	func loadModelIfNeeded() {
 		guard !isModelLoaded else { return }
 		guard coreModel == nil else { return }
 		guard !didAttemptLoad else { return }
 		didAttemptLoad = true
 
-		guard let url = Bundle.main.url(forResource: "MicroDecisionClassifier", withExtension: "mlmodelc") else {
-			logMissingModelOnce()
+		let bundle = Bundle.main
+		let resolution = Self.resolveClassifierModelURL(in: bundle)
+
+		guard let url = resolution.url else {
+			logMissingModel(searched: resolution.searchSummary)
 			return
 		}
+
+		print("[MicroDecisionModel] found resource=\(resolution.resourceLabel) bundle_lookup=yes")
 
 		do {
 			let model = try MLModel(contentsOf: url)
 			coreModel = model
 			isModelLoaded = true
-			print("[MicroDecisionModel] loaded")
+			if model.modelDescription.inputDescriptionsByName["features"]?.type == .multiArray {
+				usesCompiledFeatureInput = true
+				detectedInputKind = "features_multiarray"
+				cachedStringInputName = nil
+			} else {
+				usesCompiledFeatureInput = false
+				detectedInputKind = "string"
+			}
+			print("[MicroDecisionModel] loaded mlmodel_loaded=yes input_kind=\(detectedInputKind)")
 		} catch {
-			print("[MicroDecisionModel] unavailable reason=load_failed")
+			print("[MicroDecisionModel] unavailable reason=load_failed mlmodel_loaded=no")
 			coreModel = nil
 			isModelLoaded = false
+			detectedInputKind = "unknown"
 		}
+	}
+
+	/// Resolves bundled classifier; order matches typical Xcode output (`mlmodelc` in Resources) and dev layouts (`mlmodel`).
+	private static func resolveClassifierModelURL(in bundle: Bundle) -> (
+		url: URL?,
+		resourceLabel: String,
+		searchSummary: String
+	) {
+		var parts: [String] = []
+
+		if let u = bundle.url(forResource: "MicroDecisionClassifier", withExtension: "mlmodelc") {
+			parts.append("forResource_mlmodelc=yes")
+			return (u, "MicroDecisionClassifier.mlmodelc", parts.joined(separator: " "))
+		}
+		parts.append("forResource_mlmodelc=no")
+
+		if let u = bundle.url(forResource: "MicroDecisionClassifier", withExtension: "mlmodel") {
+			parts.append("forResource_mlmodel=yes")
+			return (u, "MicroDecisionClassifier.mlmodel", parts.joined(separator: " "))
+		}
+		parts.append("forResource_mlmodel=no")
+
+		let scanC = bundle.urls(forResourcesWithExtension: "mlmodelc", subdirectory: nil) ?? []
+		let matchC = scanC.first { $0.lastPathComponent.contains("MicroDecisionClassifier") }
+		parts.append("scan_mlmodelc_count=\(scanC.count)")
+		if let u = matchC {
+			parts.append("scan_mlmodelc_match=yes")
+			return (u, u.lastPathComponent, parts.joined(separator: " "))
+		}
+		parts.append("scan_mlmodelc_match=no")
+
+		let scanM = bundle.urls(forResourcesWithExtension: "mlmodel", subdirectory: nil) ?? []
+		let matchM = scanM.first { $0.lastPathComponent.contains("MicroDecisionClassifier") }
+		parts.append("scan_mlmodel_count=\(scanM.count)")
+		if let u = matchM {
+			parts.append("scan_mlmodel_match=yes")
+			return (u, u.lastPathComponent, parts.joined(separator: " "))
+		}
+		parts.append("scan_mlmodel_match=no")
+
+		return (nil, "", parts.joined(separator: " "))
+	}
+
+	private func logMissingModel(searched: String) {
+		guard !didLogMissingModel else { return }
+		didLogMissingModel = true
+		print("[MicroDecisionModel] unavailable reason=model_missing searched=\(searched)")
 	}
 
 	/// Runs synchronous CoreML inference when a model is present; otherwise returns `nil`.
@@ -43,21 +107,23 @@ final class MicroDecisionModelProvider {
 		loadModelIfNeeded()
 		guard let model = coreModel, isModelLoaded else { return nil }
 
-		let featureString = Self.buildModelInputString(request: request)
-
-		let inputName: String
-		if let cached = cachedStringInputName {
-			inputName = cached
-		} else {
-			let resolved = Self.resolveStringInputFeatureName(model: model)
-			cachedStringInputName = resolved
-			inputName = resolved
-		}
-
 		let input: MLDictionaryFeatureProvider
 		do {
-			let v = MLFeatureValue(string: featureString)
-			input = try MLDictionaryFeatureProvider(dictionary: [inputName: v])
+			if usesCompiledFeatureInput {
+				input = try Self.makeFeaturesProvider(request: request)
+			} else {
+				let featureString = Self.buildModelInputString(request: request)
+				let inputName: String
+				if let cached = cachedStringInputName {
+					inputName = cached
+				} else {
+					let resolved = Self.resolveStringInputFeatureName(model: model)
+					cachedStringInputName = resolved
+					inputName = resolved
+				}
+				let v = MLFeatureValue(string: featureString)
+				input = try MLDictionaryFeatureProvider(dictionary: [inputName: v])
+			}
 		} catch {
 			print("[MicroDecisionModel] prediction_failed reason=input_build")
 			return nil
@@ -81,7 +147,20 @@ final class MicroDecisionModelProvider {
 		return mapped
 	}
 
-	// MARK: - Input (never log this string)
+	// MARK: - Feature input (T12.3.7)
+
+	private static func makeFeaturesProvider(request: MicroDecisionRequest) throws -> MLDictionaryFeatureProvider {
+		let floats = MicroDecisionFeatureEncoder.floats(for: request)
+		let n = MicroDecisionFeatureEncoder.dimension
+		precondition(floats.count == n)
+		let ma = try MLMultiArray(shape: [NSNumber(value: n)], dataType: .double)
+		for i in 0..<n {
+			ma[i] = NSNumber(value: floats[i])
+		}
+		return try MLDictionaryFeatureProvider(dictionary: ["features": MLFeatureValue(multiArray: ma)])
+	}
+
+	// MARK: - Legacy string input (never log this string)
 
 	private static func buildModelInputString(request: MicroDecisionRequest) -> String {
 		let lenBucket = request.textLength / 25
@@ -221,9 +300,4 @@ final class MicroDecisionModelProvider {
 		}
 	}
 
-	private func logMissingModelOnce() {
-		guard !didLogMissingModel else { return }
-		didLogMissingModel = true
-		print("[MicroDecisionModel] unavailable reason=model_missing")
-	}
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Fast local classification tier (T12.3.5). Not wired into live proposal selection yet.
+/// Fast local classification tier (T12.3.5 / T12.3.7). Uses bundled CoreML when present.
 final class MicroDecisionEngine {
 	func decide(request: MicroDecisionRequest) -> MicroDecisionResponse {
 		if let reason = Self.skipReason(for: request) {
