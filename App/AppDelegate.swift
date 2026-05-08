@@ -66,6 +66,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
+		// Typing activity DEBUG self-test (metadata-only; uses synthetic events to be non-interactive).
+		// Run the app with `CONTEXTUAL_RUN_TYPING_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_TYPING_SELFTEST"] == "1" {
+			print("[TypingActivity] selftest starting")
+			let src = TypingActivitySource.shared
+			src.reset()
+			src.startMonitoring()
+
+			func logSnapshot(_ label: String) {
+				let ctx = src.currentContext()
+				let s = String(format: "%.2f", ctx.estimatedEditingActivity)
+				let idle = String(format: "%.1f", ctx.idleDuration)
+				print("[TypingActivity] selftest \(label) state=\(ctx.typingState.rawValue) intensity=\(ctx.burstIntensity.rawValue) events=\(ctx.recentEventCount) active=\(ctx.isTypingActive) idle=\(idle)s activity=\(s)")
+			}
+
+			logSnapshot("initial")
+
+			for _ in 0..<6 { src.recordSyntheticKeyEventForTesting() }
+			logSnapshot("after_6")
+			for _ in 0..<10 { src.recordSyntheticKeyEventForTesting() }
+			logSnapshot("after_16")
+
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+				logSnapshot("after_wait_1s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+				logSnapshot("after_wait_3s")
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+				logSnapshot("after_wait_6s")
+				src.stopMonitoring()
+				print("[TypingActivity] selftest finished")
+				NSApp.terminate(nil)
+			}
+		}
+
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
 		menuBarController = MenuBarController(appState: appState)

@@ -85,6 +85,8 @@
 		AA00016D0000000000000087 /* VisualContextAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026F0000000000000088 /* VisualContextAnalyzer.swift */; };
 		AA00016E0000000000000089 /* AXWindowContentContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000270000000000000008A /* AXWindowContentContext.swift */; };
 		AA00016F000000000000008B /* AXWindowContentSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000271000000000000008C /* AXWindowContentSource.swift */; };
+		AA000170000000000000008D /* TypingActivityContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000272000000000000008E /* TypingActivityContext.swift */; };
+		AA000171000000000000008F /* TypingActivitySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002730000000000000090 /* TypingActivitySource.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -168,6 +170,8 @@
 		AA00026F0000000000000088 /* VisualContextAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextAnalyzer.swift; sourceTree = "<group>"; };
 		AA000270000000000000008A /* AXWindowContentContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXWindowContentContext.swift; sourceTree = "<group>"; };
 		AA000271000000000000008C /* AXWindowContentSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXWindowContentSource.swift; sourceTree = "<group>"; };
+		AA000272000000000000008E /* TypingActivityContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingActivityContext.swift; sourceTree = "<group>"; };
+		AA0002730000000000000090 /* TypingActivitySource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingActivitySource.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -236,6 +240,7 @@
 				AA00026D0000000000000084 /* WindowSnapshotSource.swift */,
 				AA00026F0000000000000088 /* VisualContextAnalyzer.swift */,
 				AA000271000000000000008C /* AXWindowContentSource.swift */,
+				AA0002730000000000000090 /* TypingActivitySource.swift */,
 			);
 			path = SystemSources;
 			sourceTree = "<group>";
@@ -264,6 +269,7 @@
 				AA00026C0000000000000082 /* WindowSnapshotContext.swift */,
 				AA00026E0000000000000086 /* VisualContextDescriptor.swift */,
 				AA000270000000000000008A /* AXWindowContentContext.swift */,
+				AA000272000000000000008E /* TypingActivityContext.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -470,6 +476,8 @@
 				AA00016D0000000000000087 /* VisualContextAnalyzer.swift in Sources */,
 				AA00016E0000000000000089 /* AXWindowContentContext.swift in Sources */,
 				AA00016F000000000000008B /* AXWindowContentSource.swift in Sources */,
+				AA000170000000000000008D /* TypingActivityContext.swift in Sources */,
+				AA000171000000000000008F /* TypingActivitySource.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,
