@@ -382,6 +382,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[ProposalRanking] tie resolved primary=\(ranking.primaryActionId)")
 		}
 
+		// Phase 14.4: rich context proposal selection (metadata-only; uses canonical fused context if present).
+		let richAdj = RichContextProposalAdjuster.adjust(
+			relevance: relevance,
+			context: context,
+			fused: CanonicalContextState.shared.current(),
+			contextType: contextType,
+			features: features,
+			isManualInvocation: packet.triggerType == .manualInvocation
+		)
+		let richRelevance = richAdj.adjustedScores
+		if richAdj.reasonCodes.contains("no_rich_context") {
+			print("[RichProposal] kept reason=no_rich_context")
+		} else if richAdj.reasonCodes.contains("rich_context_ignored_stale") {
+			print("[RichProposal] ignored reason=rich_context_ignored_stale")
+		} else if richAdj.shouldSuppressAutomaticProposal {
+			print("[RichProposal] suppressed reason=form_context_suppress")
+		} else if let r = richAdj.reasonCodes.first, r != "no_rich_adjustment" {
+			print("[RichProposal] adjusted reason=\(r) primary=\(richAdj.adjustedPrimaryActionId ?? ranking.primaryActionId)")
+		}
+
+		guard let richRanking = ProposalRanker.rank(relevance: richRelevance, reasoningPrimary: decision.primaryActionId) else {
+			preserveOrClearAvailableActions(reason: "proposal ranking unavailable after rich adjust")
+			return
+		}
+
 		// Phase 14: activity-aware proposal timing gate (Triggers layer; metadata-only).
 		let typingCtx = TypingActivitySource.shared.currentContext()
 		let pointerCtx = PointerActivitySource.shared.currentContext()
@@ -395,24 +420,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			canonicalConfidence: canonical?.confidence,
 			typing: typingCtx,
 			pointer: pointerCtx,
-			proposalStrengthHint: max(decision.confidence, ranking.topScore)
+			proposalStrengthHint: max(decision.confidence, richRanking.topScore)
 		)
 		logProposalTimingIfNeeded(decision: timing, typing: typingCtx, pointer: pointerCtx)
 
 		// If everything is weak, avoid creating a proposal (Available Actions still show).
-		let shouldGenerateProposalByRelevance = ranking.topScore >= 0.50
+		let shouldGenerateProposalByRelevance = richRanking.topScore >= 0.50
 
 		let overriddenDecision = ReasoningDecision(
 			shouldSurface: decision.shouldSurface,
-			primaryActionId: ranking.primaryActionId,
-			rankedActionIds: rankedIds.isEmpty ? decision.rankedActionIds : rankedIds,
+			primaryActionId: richRanking.primaryActionId,
+			rankedActionIds: rankedIds.isEmpty ? decision.rankedActionIds : [richRanking.primaryActionId] + richRanking.secondaryActionIds,
 			reason: decision.reason,
 			confidence: decision.confidence
 		)
 
 		var proposal: ActionProposal?
 		var strength: SuggestionStrengthResult?
-		if timing.outcome == .suppress, packet.triggerType != .manualInvocation {
+		if (timing.outcome == .suppress || richAdj.shouldSuppressAutomaticProposal), packet.triggerType != .manualInvocation {
 			proposal = nil
 		} else if timing.outcome == .deferred, packet.triggerType != .manualInvocation {
 			proposal = nil
@@ -1219,6 +1244,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				print("[RichContextRefresh] selftest result ok=true cancelled=\(result.wasCancelled) collected=\(collected) skipped=\(skipped) updatedCanonical=\(result.updatedCanonicalState) primary=\(result.fusedPacket?.primarySource.rawValue ?? "nil")")
 				NSApp.terminate(nil)
 			}
+			return true
+		}
+
+		// Rich proposal selection self-test (synthetic metadata-only; no collection).
+		// Run the app with `CONTEXTUAL_RUN_RICH_PROPOSAL_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_RICH_PROPOSAL_SELFTEST"] == "1" {
+			let ok = RichContextProposalSelfTest.run()
+			print("[RichProposal] selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
 

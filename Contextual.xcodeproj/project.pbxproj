@@ -97,6 +97,8 @@
 		AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */; };
 		AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */; };
 		AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027D00000000000000A4 /* ProposalTimingGate.swift */; };
+		AA00017C00000000000000A5 /* RichContextProposalAdjuster.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */; };
+		AA00017D00000000000000A7 /* RichContextProposalSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -192,6 +194,8 @@
 		AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextRefreshPipeline.swift; sourceTree = "<group>"; };
 		AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextRefreshTypes.swift; sourceTree = "<group>"; };
 		AA00027D00000000000000A4 /* ProposalTimingGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalTimingGate.swift; sourceTree = "<group>"; };
+		AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextProposalAdjuster.swift; sourceTree = "<group>"; };
+		AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextProposalSelfTest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -360,6 +364,8 @@
 				AA00025D0000000000000063 /* MicroDecisionModelProvider.swift */,
 				AA00025E0000000000000065 /* MicroDecisionEngine.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
+				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
+				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
 				AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */,
 				AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */,
 				AA000231000000000000002F /* OCRProcessor.swift */,
@@ -517,6 +523,8 @@
 				AA000178000000000000009D /* CanonicalContextState.swift in Sources */,
 				AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */,
 				AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */,
+				AA00017C00000000000000A5 /* RichContextProposalAdjuster.swift in Sources */,
+				AA00017D00000000000000A7 /* RichContextProposalSelfTest.swift in Sources */,
 				AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
