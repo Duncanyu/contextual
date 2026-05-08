@@ -77,6 +77,8 @@
 		AA0001250000000000000025 /* ScreenCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000230000000000000002E /* ScreenCaptureSource.swift */; };
 		AA0001640000000000000075 /* ContextCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002660000000000000076 /* ContextCapability.swift */; };
 		AA0001650000000000000077 /* ContextCapabilityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002670000000000000078 /* ContextCapabilityRegistry.swift */; };
+		AA000168000000000000007D /* ContextBudgetTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026A000000000000007E /* ContextBudgetTypes.swift */; };
+		AA000169000000000000007F /* ContextBudgetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00026B0000000000000080 /* ContextBudgetManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -152,6 +154,8 @@
 		AA000230000000000000002E /* ScreenCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureSource.swift; sourceTree = "<group>"; };
 		AA0002660000000000000076 /* ContextCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCapability.swift; sourceTree = "<group>"; };
 		AA0002670000000000000078 /* ContextCapabilityRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCapabilityRegistry.swift; sourceTree = "<group>"; };
+		AA00026A000000000000007E /* ContextBudgetTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBudgetTypes.swift; sourceTree = "<group>"; };
+		AA00026B0000000000000080 /* ContextBudgetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBudgetManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -240,6 +244,8 @@
 				AA000243000000000000003B /* FloatingSimilarityText.swift */,
 				AA0002660000000000000076 /* ContextCapability.swift */,
 				AA0002670000000000000078 /* ContextCapabilityRegistry.swift */,
+				AA00026A000000000000007E /* ContextBudgetTypes.swift */,
+				AA00026B0000000000000080 /* ContextBudgetManager.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -438,6 +444,8 @@
 				AA000139000000000000003A /* FloatingSimilarityText.swift in Sources */,
 				AA0001640000000000000075 /* ContextCapability.swift in Sources */,
 				AA0001650000000000000077 /* ContextCapabilityRegistry.swift in Sources */,
+				AA000168000000000000007D /* ContextBudgetTypes.swift in Sources */,
+				AA000169000000000000007F /* ContextBudgetManager.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
 				AA0001120000000000000012 /* TriggerEngine.swift in Sources */,
