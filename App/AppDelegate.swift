@@ -53,6 +53,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
+
+		// Self-test hook (no UI, no continuous polling).
+		// Run the app with `CONTEXTUAL_RUN_AX_SELFTEST=1` to execute once and exit.
+		let env = ProcessInfo.processInfo.environment
+		if env["CONTEXTUAL_RUN_AX_SELFTEST"] == "1" {
+			print("[AXContent] selftest starting")
+			let ok = AXWindowContentSource.shared._selfTest()
+			print("[AXContent] selftest finished ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+				NSApp.terminate(nil)
+			}
+		}
+
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
 		menuBarController = MenuBarController(appState: appState)
