@@ -117,6 +117,14 @@ final class ContextFusionEngine {
 			recentAppNames: contextModel.recentAppNames
 		)
 
+		// Confidence arbitration between candidates (stale clipboard vs fresh AX, OCR vs editor hints, etc.).
+		let candidates: [FusedContextSourceCandidate] = [
+			FusedContextSourceCandidate(source: .selectedText, isPresent: hasSelection, freshness: selectionFresh, baseWeight: 0.85),
+			FusedContextSourceCandidate(source: .axText, isPresent: hasAX, freshness: axFresh, baseWeight: 0.78),
+			FusedContextSourceCandidate(source: .screenOCR, isPresent: hasOCR, freshness: ocrFresh, baseWeight: 0.62),
+			FusedContextSourceCandidate(source: .clipboardText, isPresent: hasClipboard, freshness: clipboardFresh, baseWeight: 0.55)
+		]
+
 		// Confidence: combine primary text freshness + supporting modalities (capped).
 		var confidence: Double = 0.35
 		switch primaryText {
@@ -138,19 +146,21 @@ final class ContextFusionEngine {
 		if conflict > 0 { confidence -= min(0.18, conflict * 0.18) }
 		confidence = clamp01(confidence)
 
+		// Apply arbitration adjustments on top of the base fusion result.
+		let provisionalPrimary: FusedPrimarySource = {
+			switch primaryText {
+			case .selectedText: return .selectedText
+			case .axText: return .axText
+			case .screenOCR: return .screenOCR
+			case .clipboardText: return .clipboardText
+			case .none: return .none
+			}
+		}()
+
 		// Freshness score: max of key modalities.
 		let freshness = clamp01(max(selectionFresh, axFresh, ocrFresh, clipboardFresh, visualFresh, snapshotFresh, typingFresh, pointerFresh))
 
 		let isStale = freshness < 0.15 && !hasTyping && !hasPointer
-
-		let primarySource: FusedPrimarySource
-		switch primaryText {
-		case .selectedText: primarySource = .selectedText
-		case .axText: primarySource = .axText
-		case .screenOCR: primarySource = .screenOCR
-		case .clipboardText: primarySource = .clipboardText
-		case .none: primarySource = .none
-		}
 
 		var debug: [String: String] = [
 			"primaryText": primaryText.rawValue,
@@ -160,7 +170,7 @@ final class ContextFusionEngine {
 			"clipFresh": String(format: "%.2f", clipboardFresh),
 			"visualFresh": String(format: "%.2f", visualFresh),
 			"snapFresh": String(format: "%.2f", snapshotFresh),
-			"conflict": String(format: "%.2f", conflict)
+			"conflict": String(format: "%.2f", clamp01(conflict))
 		]
 		debug["hasSelection"] = hasSelection ? "1" : "0"
 		debug["hasAX"] = hasAX ? "1" : "0"
@@ -170,6 +180,54 @@ final class ContextFusionEngine {
 		debug["hasSnapshot"] = hasSnapshot ? "1" : "0"
 		debug["hasTyping"] = hasTyping ? "1" : "0"
 		debug["hasPointer"] = hasPointer ? "1" : "0"
+
+		// Build a provisional packet for arbitration context (visual hints, etc.).
+		let provisionalPacket = FusedContextPacket(
+			id: UUID(),
+			createdAt: now,
+			primarySource: provisionalPrimary,
+			availableSources: uniquePreserveOrder(available),
+			staleSources: uniquePreserveOrder(stale),
+			appName: contextModel.activeAppName,
+			bundleIdentifier: contextModel.activeAppBundleIdentifier,
+			windowTitleAvailable: (contextModel.activeWindowTitle != nil),
+			primaryTextSource: primaryText,
+			textAvailability: textAvailable,
+			textLength: textLength,
+			lineCount: lineCount,
+			hasSelectedText: hasSelection,
+			hasClipboardText: hasClipboard,
+			hasOCRText: hasOCR,
+			hasAXText: hasAX,
+			hasWindowSnapshot: hasSnapshot,
+			hasVisualDescriptor: hasVisual,
+			hasTypingActivity: hasTyping,
+			hasPointerActivity: hasPointer,
+			visualKinds: visualDescriptor?.visibleUIKinds ?? [],
+			uiStructureHints: structureHints,
+			typingState: typingActivity?.typingState,
+			pointerState: pointerActivity?.pointerState,
+			confidence: confidence,
+			freshnessScore: freshness,
+			conflictScore: clamp01(conflict),
+			isStale: isStale,
+			suppressedSources: [],
+			supportingSources: [],
+			arbitrationReasons: ["provisional"],
+			debugSummaryMetadata: debug
+		)
+
+		let arb = ContextConfidenceArbitrator.shared.arbitrate(candidates: candidates, basePacket: provisionalPacket, now: now)
+		let finalConflict = clamp01(arb.conflictScore)
+		let finalConfidence = clamp01(arb.confidence)
+
+		// Arbitration can suppress/support and adjust confidence/conflict without changing the
+		// already-determined primary text selection (keeps behavior stable).
+		let primarySource: FusedPrimarySource = provisionalPrimary
+
+		debug["arbConflict"] = String(format: "%.2f", arb.conflictScore)
+		debug["arbConf"] = String(format: "%.2f", arb.confidence)
+		debug["arbPrimary"] = arb.primarySource?.rawValue ?? "nil"
 
 		let packet = FusedContextPacket(
 			id: UUID(),
@@ -196,10 +254,13 @@ final class ContextFusionEngine {
 			uiStructureHints: structureHints,
 			typingState: typingActivity?.typingState,
 			pointerState: pointerActivity?.pointerState,
-			confidence: confidence,
+			confidence: finalConfidence,
 			freshnessScore: freshness,
-			conflictScore: clamp01(conflict),
+			conflictScore: finalConflict,
 			isStale: isStale,
+			suppressedSources: arb.suppressedSources,
+			supportingSources: arb.supportingSources,
+			arbitrationReasons: arb.reasonCodes,
 			debugSummaryMetadata: debug
 		)
 

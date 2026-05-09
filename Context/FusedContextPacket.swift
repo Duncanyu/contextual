@@ -55,6 +55,11 @@ struct FusedContextPacket: Hashable, Sendable {
 	let conflictScore: Double
 	let isStale: Bool
 
+	/// Arbitration output (metadata-only; no raw content).
+	let suppressedSources: [FusedContextSource]
+	let supportingSources: [FusedContextSource]
+	let arbitrationReasons: [String]
+
 	/// Metadata-only summary for debugging/instrumentation (never raw content).
 	let debugSummaryMetadata: [String: String]
 }

@@ -171,6 +171,9 @@ enum ContextAwareActionEligibility {
 				freshnessScore: fresh,
 				conflictScore: 0,
 				isStale: stale,
+				suppressedSources: [],
+				supportingSources: [],
+				arbitrationReasons: ["selftest"],
 				debugSummaryMetadata: ["selftest": "1"]
 			)
 		}

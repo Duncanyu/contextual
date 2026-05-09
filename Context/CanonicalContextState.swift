@@ -263,6 +263,9 @@ final class CanonicalContextState {
 				freshnessScore: clamp01(freshness),
 				conflictScore: clamp01(conflict),
 				isStale: isStale,
+				suppressedSources: [],
+				supportingSources: [],
+				arbitrationReasons: ["selftest"],
 				debugSummaryMetadata: ["selftest": "1"]
 			)
 		}

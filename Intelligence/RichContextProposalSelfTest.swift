@@ -49,6 +49,9 @@ enum RichContextProposalSelfTest {
 				freshnessScore: fresh,
 				conflictScore: conflict,
 				isStale: stale,
+				suppressedSources: [],
+				supportingSources: [],
+				arbitrationReasons: ["selftest"],
 				debugSummaryMetadata: ["selftest": "1"]
 			)
 		}
