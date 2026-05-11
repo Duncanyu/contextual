@@ -66,6 +66,7 @@
 		AA00019300000000000000C2 /* GeneratedActionFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029B00000000000000C2 /* GeneratedActionFactory.swift */; };
 		AA00019600000000000000C3 /* GeneratedActionPlanTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029C00000000000000C3 /* GeneratedActionPlanTypes.swift */; };
 		AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */; };
+		AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */; };
 		AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */; };
 		AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */; };
 		AA0001630000000000000072 /* MicroDecisionClassifier.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */; };
@@ -187,6 +188,7 @@
 		AA00029B00000000000000C2 /* GeneratedActionFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionFactory.swift; sourceTree = "<group>"; };
 		AA00029C00000000000000C3 /* GeneratedActionPlanTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPlanTypes.swift; sourceTree = "<group>"; };
 		AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPlanBuilder.swift; sourceTree = "<group>"; };
+		AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowAwareProposalRanker.swift; sourceTree = "<group>"; };
 		AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceDebugLogger.swift; sourceTree = "<group>"; };
 		AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionFeatureEncoder.swift; sourceTree = "<group>"; };
 		AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = MicroDecisionClassifier.mlmodel; sourceTree = "<group>"; };
@@ -420,6 +422,7 @@
 				AA00029B00000000000000C2 /* GeneratedActionFactory.swift */,
 				AA00029C00000000000000C3 /* GeneratedActionPlanTypes.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
+				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
@@ -641,6 +644,7 @@
 				AA00019300000000000000C2 /* GeneratedActionFactory.swift in Sources */,
 				AA00019600000000000000C3 /* GeneratedActionPlanTypes.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
+				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,

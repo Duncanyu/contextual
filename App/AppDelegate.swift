@@ -416,6 +416,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[ProposalRanking] tie resolved primary=\(ranking.primaryActionId)")
 		}
 
+		let typingCtx = TypingActivitySource.shared.currentContext()
+		let pointerCtx = PointerActivitySource.shared.currentContext()
+
 		// Phase 14.4: rich context proposal selection (metadata-only; uses canonical fused context if present).
 		let richAdj = RichContextProposalAdjuster.adjust(
 			relevance: relevance,
@@ -436,14 +439,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[RichProposal] adjusted reason=\(r) primary=\(richAdj.adjustedPrimaryActionId ?? ranking.primaryActionId)")
 		}
 
-		guard let richRanking = ProposalRanker.rank(relevance: richRelevance, reasoningPrimary: decision.primaryActionId) else {
+		let workflowRank = WorkflowAwareProposalRanker.adjust(
+			baseRelevance: richRelevance,
+			packet: packet,
+			context: context,
+			contextType: contextType,
+			features: features,
+			profile: profile,
+			redundancyMemory: appState.redundancyMemory,
+			lifecycle: appState.floatingSuggestionLifecycle,
+			typing: typingCtx,
+			pointer: pointerCtx,
+			reasoningPrimary: decision.primaryActionId
+		)
+
+		guard let richRanking = ProposalRanker.rank(relevance: workflowRank.adjustedScores, reasoningPrimary: decision.primaryActionId) else {
 			preserveOrClearAvailableActions(reason: "proposal ranking unavailable after rich adjust")
 			return
 		}
 
 		// Phase 14: activity-aware proposal timing gate (Triggers layer; metadata-only).
-		let typingCtx = TypingActivitySource.shared.currentContext()
-		let pointerCtx = PointerActivitySource.shared.currentContext()
 		let canonical = CanonicalContextState.shared.current()
 		let timing = ProposalTimingGate.evaluate(
 			isManualInvocation: packet.triggerType == .manualInvocation,
@@ -1415,6 +1430,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_ACTION_PLAN_SELFTEST"] == "1" {
 			let ok = GeneratedActionPlanBuilder.runSelfTest()
 			print("[ActionPlan] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Workflow-aware proposal ranking self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_WORKFLOW_PROPOSAL_RANKING_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_WORKFLOW_PROPOSAL_RANKING_SELFTEST"] == "1" {
+			let ok = WorkflowAwareProposalRanker.runSelfTest()
+			print("[WorkflowProposalRank] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
