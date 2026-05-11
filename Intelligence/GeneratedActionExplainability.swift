@@ -3,8 +3,8 @@ import Foundation
 // MARK: - Builder
 
 enum GeneratedActionExplanationBuilder {
-	private static let maxShortSummary = 140
-	private static let maxLine = 96
+	private static let maxShortSummary = 118
+	private static let maxLine = 88
 	private static let maxSignals = 14
 
 	/// Builds from existing metadata only. Overrides are for tests; otherwise uses canonical/session/suppression singletons.
@@ -459,7 +459,7 @@ extension GeneratedActionExplanationBuilder {
 			assertCase("summarize_reasoning", re.workflowReasoning.primaryCode == "wf_read_summarize")
 		}
 
-		let lowIntent = intent(.explainApiResponse, .research, conf: 0.44, stale: false)
+		let lowIntent = intent(.explainApiResponse, .research, conf: 0.46, stale: false)
 		if case .produced(let lowAct) = GeneratedActionFactory.materialize(from: lowIntent, referenceTime: t0, source: .selfTest) {
 			let lowSafety = GeneratedActionSafetyPolicy.evaluate(action: lowAct)
 			let lowExpl = buildForAction(action: lowAct, safety: lowSafety, referenceTime: t0, fusedOverride: resFused)

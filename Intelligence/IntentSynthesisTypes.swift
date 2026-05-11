@@ -38,21 +38,21 @@ struct IntentSynthesisRequest: Equatable, Sendable {
 
 /// Tunable thresholds for intent suppression (deterministic, bounded, in-memory only).
 struct IntentSuppressionProfile: Equatable, Sendable {
-	var minConfidenceAuto: Double = 0.50
-	var minConfidenceManual: Double = 0.42
-	var minConfidenceStaleWorkflowAuto: Double = 0.58
-	var minConfidenceStaleWorkflowManual: Double = 0.50
+	var minConfidenceAuto: Double = 0.52
+	var minConfidenceManual: Double = 0.45
+	var minConfidenceStaleWorkflowAuto: Double = 0.60
+	var minConfidenceStaleWorkflowManual: Double = 0.52
 	var weakMultimodalFusionMax: Double = 0.48
 	var weakMultimodalConflictMin: Double = 0.55
-	var weakMultimodalMinConfidenceAuto: Double = 0.52
-	var weakMultimodalMinConfidenceManual: Double = 0.44
+	var weakMultimodalMinConfidenceAuto: Double = 0.53
+	var weakMultimodalMinConfidenceManual: Double = 0.46
 	var browsingFusionMax: Double = 0.52
 	var browsingFreshnessMax: Double = 0.48
-	var browsingMinConfidence: Double = 0.56
-	var browsingSummarizeMinConfidence: Double = 0.54
-	var interactionBurstMinConfidence: Double = 0.62
-	var interactionBurstMinConfidenceManual: Double = 0.56
-	var repeatWindowAuto: TimeInterval = 52
+	var browsingMinConfidence: Double = 0.58
+	var browsingSummarizeMinConfidence: Double = 0.56
+	var interactionBurstMinConfidence: Double = 0.64
+	var interactionBurstMinConfidenceManual: Double = 0.58
+	var repeatWindowAuto: TimeInterval = 42
 	var repeatWindowManual: TimeInterval = 30
 	var ringCapacity: Int = 56
 }

@@ -62,10 +62,10 @@ struct DynamicActionDisplaySummary: Equatable, Sendable {
 enum DynamicActionDisplayBuilder {
 	static let maxTitleLengthForTests = 52
 	private static let maxTitle = 52
-	private static let maxDescription = 120
+	private static let maxDescription = 96
 	private static let maxPrimitives = 4
 	private static let maxChips = 8
-	private static let maxPreviewRows = 6
+	private static let maxPreviewRows = 4
 	private static let maxBlockedLines = 4
 
 	private static var lastBlockedSkipLogSig: String?

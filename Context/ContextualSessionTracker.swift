@@ -25,8 +25,8 @@ final class ContextualSessionTracker {
 
 	private let maxSamples = 16
 	private let sampleHorizonSeconds: TimeInterval = 140
-	private let decayTauSeconds: TimeInterval = 48
-	private let smoothingAlpha: Double = 0.42
+	private let decayTauSeconds: TimeInterval = 44
+	private let smoothingAlpha: Double = 0.38
 
 	private init() {}
 
@@ -105,7 +105,7 @@ final class ContextualSessionTracker {
 		if multimodalStableLocked() { signals.append(.multimodalStable) }
 		if decayFactor < 0.98 { signals.append(.decayApplied) }
 		if oscillation < 0.99 { signals.append(.oscillationDampen) }
-		if (inference?.isStale == true) || fresh < 0.28 || conflict > 0.62 {
+		if (inference?.isStale == true) || fresh < 0.32 || conflict > 0.62 {
 			signals.append(.weakEvidenceDampen)
 		}
 		if trajectoryEchoLocked(dominant: dominant) { signals.append(.trajectoryEcho) }

@@ -130,12 +130,12 @@ final class DynamicIntentSuppressionEngine {
 			if interactionBurst {
 				let strongExplain = intent.workflow == .debugging
 					&& intent.type == .explainLikelyError
-					&& intent.confidence >= 0.52
-					&& sessionCont >= 0.48
+					&& intent.confidence >= 0.54
+					&& sessionCont >= 0.50
 				let strongSummarize = (intent.workflow == .research || intent.workflow == .browsing)
 					&& intent.type == .summarizeCurrentArticle
-					&& intent.confidence >= 0.55
-					&& sessionCont >= 0.45
+					&& intent.confidence >= 0.57
+					&& sessionCont >= 0.48
 				if strongExplain || strongSummarize {
 					strongWorkflowSignal = true
 				} else if intent.confidence < burstMin {
@@ -189,7 +189,7 @@ final class DynamicIntentSuppressionEngine {
 	private func shouldSuppressNearDuplicateGA(intent: SynthesizedIntent, latestGA: [GeneratedAction], manual: Bool) -> Bool {
 		guard let top = latestGA.max(by: { $0.confidence < $1.confidence }) else { return false }
 		guard top.intentType == intent.type else { return false }
-		let margin = manual ? 0.06 : 0.10
+		let margin = manual ? 0.07 : 0.12
 		return top.confidence >= intent.confidence + margin
 	}
 
@@ -409,7 +409,7 @@ extension DynamicIntentSuppressionEngine {
 		// High conflict + low fused confidence
 		engine.reset()
 		let fusedBad = fusedStub(typing: .idle, pointer: .idle, conf: 0.42, conflict: 0.72, fresh: 0.50, kinds: [.browser], text: true)
-		let mid = intent(.summarizeCurrentArticle, conf: 0.50, wf: .browsing)
+		let mid = intent(.summarizeCurrentArticle, conf: 0.525, wf: .browsing)
 		let dMM = engine.evaluate(rawIntents: [mid], request: req(fused: fusedBad, wf: wfOk, session: nil, manual: false), referenceTime: t0)
 		assertCase("multimodal_suppresses", dMM.suppressed.contains { $0.reason == .weakMultimodalAgreement })
 
@@ -423,7 +423,7 @@ extension DynamicIntentSuppressionEngine {
 
 		// Manual more permissive on confidence, still stale intent blocked
 		engine.reset()
-		let borderline = intent(.draftReply, conf: 0.44, wf: .writing)
+		let borderline = intent(.draftReply, conf: 0.46, wf: .writing)
 		let dMan = engine.evaluate(rawIntents: [borderline], request: req(fused: fusedCalm, wf: wfOk, session: nil, manual: true), referenceTime: t0)
 		assertCase("manual_permissive_conf", !dMan.allowed.isEmpty)
 

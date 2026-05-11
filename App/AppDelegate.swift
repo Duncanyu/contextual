@@ -1389,6 +1389,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Phase 15 tuning pass (synthetic; preview-only generated actions; metadata-only).
+		// Run with `CONTEXTUAL_RUN_PHASE15_TUNING_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_PHASE15_TUNING_SELFTEST"] == "1" {
+			let ok = Phase15TuningSelfTest.run()
+			print("[Phase15Tuning] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Workflow inference engine self-test (synthetic metadata-only).
 		// Run with `CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST"] == "1" {

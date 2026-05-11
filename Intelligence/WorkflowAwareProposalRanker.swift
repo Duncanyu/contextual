@@ -37,8 +37,8 @@ struct WorkflowAwareProposalRankingResult: Equatable, Sendable {
 
 /// Conservative workflow/session/intent-aware adjustments on top of rich-adjusted relevance scores.
 enum WorkflowAwareProposalRanker {
-	private static let minGeneratedInfluenceConfidence: Double = 0.45
-	private static let minSessionContinuity: Double = 0.38
+	private static let minGeneratedInfluenceConfidence: Double = 0.48
+	private static let minSessionContinuity: Double = 0.40
 	private static let logThrottleSeconds: TimeInterval = 2.3
 	private static var lastLogSignature: String?
 	private static var lastLogAt: Date?
@@ -119,7 +119,7 @@ enum WorkflowAwareProposalRanker {
 		let sessionBoost = 0.82 + 0.18 * sessionCont
 		let wfBoost = 0.75 + 0.25 * wfConf
 
-		let freshIntents = (intentResult?.intents ?? []).filter { !$0.isStale && $0.confidence >= 0.42 }
+		let freshIntents = (intentResult?.intents ?? []).filter { !$0.isStale && $0.confidence >= 0.46 }
 		let topIntent = freshIntents.max(by: { $0.confidence < $1.confidence })
 
 		applyIntentWorkflowBoosts(
@@ -284,7 +284,7 @@ enum WorkflowAwareProposalRanker {
 		for a in actions {
 			for p in a.primitives {
 				guard let sid = mapPrimitiveToStaticId(p, contextType: contextType) else { continue }
-				addDelta(&deltas, sid, 0.032 * a.confidence * (0.88 + 0.12 * a.workflowRelevance))
+				addDelta(&deltas, sid, 0.026 * a.confidence * (0.88 + 0.12 * a.workflowRelevance))
 				codes.append(.generatedPrimitiveBoost)
 			}
 		}

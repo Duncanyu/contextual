@@ -133,15 +133,24 @@ final class WorkflowInferenceEngine {
 		if kinds.contains(.browser) {
 			let idleLike = isIdleTyping(typing) && isIdlePointer(pointer)
 			if idleLike, conflict < 0.48 {
-				scores[.browsing, default: 0] += 0.34 + freshness * 0.08
+				scores[.browsing, default: 0] += 0.30 + freshness * 0.06
 				signals.append("visual_browser_idle")
 			}
 		}
 
 		if kinds.contains(.browser) || kinds.contains(.article) {
-			if fused.textAvailability, fused.lineCount >= 8, isIdleTyping(typing), conflict < 0.52 {
+			if fused.textAvailability, fused.lineCount >= 10, isIdleTyping(typing), conflict < 0.52, confidence >= 0.44 {
 				scores[.research, default: 0] += 0.36 + min(0.14, Double(fused.lineCount) / 220.0)
 				signals.append("long_text_reading_shape")
+			}
+		}
+
+		// Video-like browser surfaces: weak text + media → prefer unknown unless article/editor signals appear.
+		if kinds.contains(.browser), kinds.contains(.media), !kinds.contains(.article), !kinds.contains(.editor), fused.lineCount < 10 {
+			let weakText = !fused.textAvailability || fused.textLength < 220
+			if weakText, conflict < 0.55 {
+				scores[.unknown, default: 0] += 0.26
+				signals.append("media_browser_weak_text")
 			}
 		}
 
@@ -168,7 +177,8 @@ final class WorkflowInferenceEngine {
 				scores[.debugging, default: 0] += 0.28
 				signals.append("terminal_burst_or_conflict")
 			} else {
-				scores[.debugging, default: 0] += 0.16
+				let terminalIdleBoost = confidence >= 0.54 ? 0.14 : 0.08
+				scores[.debugging, default: 0] += terminalIdleBoost
 				signals.append("terminal_present")
 			}
 		}
@@ -186,14 +196,14 @@ final class WorkflowInferenceEngine {
 
 		// Visual kind disagreement dampening (browser + terminal + editor without strong confidence).
 		let noisyVisualSet = kinds.intersection([.browser, .terminal, .editor])
-		if noisyVisualSet.count >= 2, confidence < 0.62 {
+		if noisyVisualSet.count >= 2, confidence < 0.64 {
 			scores[.unknown, default: 0] += 0.22
 			signals.append("visual_set_conflict_dampen")
 		}
 
 		// Pick dominant
 		let best = scores.max(by: { $0.value < $1.value })
-		guard let top = best, top.value >= 0.24 else {
+		guard let top = best, top.value >= 0.27 else {
 			return WorkflowInferenceResult(
 				workflow: .unknown,
 				confidence: 0.55,

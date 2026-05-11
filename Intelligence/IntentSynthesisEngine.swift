@@ -11,7 +11,7 @@ final class IntentSynthesisEngine {
 	private var lastLogAt: Date?
 
 	private let maxIntents = 3
-	private static let scoreFloor: Double = 0.44
+	private static let scoreFloor: Double = 0.455
 
 	private init() {}
 
@@ -96,7 +96,7 @@ final class IntentSynthesisEngine {
 		let lineCount = fused?.lineCount ?? 0
 
 		// Very weak browsing: intentionally under-generate.
-		if wf == .browsing, fusionConf < 0.46, fusionFresh < 0.42 {
+		if wf == .browsing, fusionConf < 0.50, fusionFresh < 0.46 {
 			return IntentSynthesisResult(intents: [], suppressedReason: nil, skippedReason: "weak_evidence", synthesizedAt: referenceTime)
 		}
 
@@ -113,7 +113,7 @@ final class IntentSynthesisEngine {
 		let wordCount = features?.wordCount ?? 0
 
 		// Debugging + error/code signals → explain likely error / bug source.
-		if wf == .debugging || kinds.contains(.terminal) {
+		if wf == .debugging || (kinds.contains(.terminal) && (codeLike || logLike || kinds.contains(.editor))) {
 			var s = 0.28
 			var c = ["rule_debugging_base"]
 			if kinds.contains(.terminal) { s += 0.14; c.append("visual_terminal") }
@@ -126,8 +126,8 @@ final class IntentSynthesisEngine {
 			}
 		}
 
-		// Research / reading-shaped UI.
-		if wf == .research || wf == .browsing {
+		// Research / reading-shaped UI (research vs browsing split: skip video-like browsing).
+		if wf == .research {
 			var s = 0.22
 			var c = ["rule_reading_base"]
 			if kinds.contains(.article) { s += 0.26; c.append("visual_article") }
@@ -136,7 +136,21 @@ final class IntentSynthesisEngine {
 			if typing == .idle || typing == nil { s += 0.06; c.append("typing_idle_reading") }
 			add(.summarizeCurrentArticle, s * sessionBoost, c)
 			if wordCount > 80, lineCount > 6 {
-				add(.extractActionItems, 0.16 * sessionBoost + (wf == .research ? 0.08 : 0), ["rule_action_items_shape", "text_density"])
+				add(.extractActionItems, 0.24 * sessionBoost, ["rule_action_items_shape", "text_density"])
+			}
+		} else if wf == .browsing {
+			let videoLikeWeak = kinds.contains(.media) && !kinds.contains(.article) && lineCount < 10 && wordCount < 40
+			if !videoLikeWeak {
+				var s = 0.18
+				var c = ["rule_reading_browsing"]
+				if kinds.contains(.article) { s += 0.26; c.append("visual_article") }
+				if kinds.contains(.browser) { s += 0.10; c.append("visual_browser") }
+				if textAvail, lineCount >= 12 { s += 0.10; c.append("text_shape_long") }
+				if typing == .idle || typing == nil { s += 0.05; c.append("typing_idle_reading") }
+				add(.summarizeCurrentArticle, s * sessionBoost, c)
+				if wordCount > 90, lineCount > 10, kinds.contains(.article) {
+					add(.extractActionItems, 0.14 * sessionBoost, ["rule_action_items_shape", "text_density"])
+				}
 			}
 		}
 
@@ -157,14 +171,14 @@ final class IntentSynthesisEngine {
 
 		// Reviewing / editing + code.
 		if wf == .reviewing {
-			var s = 0.30
+			var s = 0.34
 			var c = ["rule_reviewing_base"]
 			if codeLike { s += 0.18; c.append("feature_code_shape") }
 			if kinds.contains(.editor) { s += 0.10; c.append("visual_editor") }
 			add(.summarizeCodeChange, s * sessionBoost, c)
 		}
 		if wf == .editing, codeLike {
-			add(.summarizeCodeChange, 0.26 * sessionBoost, ["rule_editing_code", "feature_code_shape"])
+			add(.summarizeCodeChange, 0.30 * sessionBoost, ["rule_editing_code", "feature_code_shape"])
 		}
 
 		// API-ish reading + log-shaped text (conservative).
@@ -181,9 +195,9 @@ final class IntentSynthesisEngine {
 		let manual = req.triggerType == .manualInvocation
 		let wantsAnalyze = req.candidateActionIds.contains("analyze_screen")
 		if manual, wantsAnalyze || fused?.hasOCRText == true {
-			var s = 0.22
+			var s = 0.32
 			var c = ["rule_screen_context"]
-			if wantsAnalyze { s += 0.20; c.append("candidate_analyze_screen") }
+			if wantsAnalyze { s += 0.26; c.append("candidate_analyze_screen") }
 			if fused?.hasOCRText == true { s += 0.12; c.append("has_ocr_metadata") }
 			if fused?.hasWindowSnapshot == true { s += 0.06; c.append("has_window_snapshot_metadata") }
 			add(.explainScreenContext, s * sessionBoost, c)
@@ -192,7 +206,7 @@ final class IntentSynthesisEngine {
 		// Aggregate best score per type.
 		var merged: [SynthesizedIntentType: (score: Double, codes: [String])] = [:]
 		for (t, sc, codes) in scores {
-			let adj = sc * (1.0 - 0.28 * conflict) * (0.82 + 0.18 * fusionFresh) * (0.85 + 0.15 * fusionConf)
+			let adj = sc * (1.0 - 0.32 * conflict) * (0.82 + 0.18 * fusionFresh) * (0.85 + 0.15 * fusionConf)
 			if let cur = merged[t] {
 				if adj > cur.score {
 					merged[t] = (adj, Array(Set(cur.codes + codes)).sorted())

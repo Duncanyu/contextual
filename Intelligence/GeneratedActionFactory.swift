@@ -4,7 +4,7 @@ import Foundation
 enum GeneratedActionFactory {
 	private static let maxTitleLength = 56
 	private static let maxDescriptionLength = 200
-	static let minimumIntentConfidence: Double = 0.40
+	static let minimumIntentConfidence: Double = 0.46
 	private static let defaultTTL: TimeInterval = 180
 
 	/// Rejects empty sets, oversized primitive lists, and incompatible primitive pairs.

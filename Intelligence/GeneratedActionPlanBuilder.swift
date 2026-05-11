@@ -3,7 +3,7 @@ import Foundation
 /// Deterministic primitive compositions into non-executable plans (T15.5).
 enum GeneratedActionPlanBuilder {
 	private static let maxSteps = 3
-	private static let minimumPlanActionConfidence: Double = 0.40
+	private static let minimumPlanActionConfidence: Double = 0.46
 
 	static func build(from action: GeneratedAction, referenceTime: Date = Date()) -> GeneratedActionPlanValidationResult {
 		if action.isStale {

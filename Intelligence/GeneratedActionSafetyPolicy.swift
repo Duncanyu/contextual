@@ -70,8 +70,8 @@ enum GeneratedActionSafetyPolicy {
 	private static let maxDescriptionLength = 200
 	private static let maxExplainabilityLength = 512
 	private static let maxPlanSteps = 3
-	private static let minPlanConfidenceBlocked: Double = 0.40
-	private static let minPlanConfidenceReview: Double = 0.48
+	private static let minPlanConfidenceBlocked: Double = 0.44
+	private static let minPlanConfidenceReview: Double = 0.50
 
 	private static var lastLogSignature: String?
 	private static var lastLogAt: Date?
