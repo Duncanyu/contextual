@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let triggerEngine = TriggerEngine()
 	private let actionRouter = ActionRouter()
 	private var manualTriggerObserver: NSObjectProtocol?
+	private var canonicalContextObserver: NSObjectProtocol?
 
 	private var lastFinishedActionKey: String?
 	private var lastFinishedAt: Date?
@@ -97,6 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			self?.menuBarController?.revealPopoverIfNeeded()
 		}
 
+		canonicalContextObserver = NotificationCenter.default.addObserver(
+			forName: .contextualCanonicalContextUpdated,
+			object: nil,
+			queue: .main
+		) { [weak self] _ in
+			self?.appState.refreshContextAwarenessSummary()
+		}
+
 		let manager = SourceManager { event in
 			self.processSourceEvent(event)
 		}
@@ -112,6 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	func applicationWillTerminate(_ notification: Notification) {
 		if let manualTriggerObserver {
 			NotificationCenter.default.removeObserver(manualTriggerObserver)
+		}
+		if let canonicalContextObserver {
+			NotificationCenter.default.removeObserver(canonicalContextObserver)
 		}
 		sourceManager?.stop()
 	}
@@ -305,6 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 	private func processUpdatedContextAfterPipeline() {
 		appState.debugContext = contextBuilder.model
+		appState.refreshContextAwarenessSummary()
 		logContextModel(contextBuilder.model)
 
 		let context = contextBuilder.model
@@ -1309,6 +1322,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_ADAPTIVE_SAMPLING_SELFTEST"] == "1" {
 			let ok = AdaptiveContextSampler.runSelfTest()
 			print("[AdaptiveSampling] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Context awareness UI summary self-test (synthetic fused metadata only).
+		// Run the app with `CONTEXTUAL_RUN_CONTEXT_AWARENESS_UI_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_CONTEXT_AWARENESS_UI_SELFTEST"] == "1" {
+			let ok = ContextAwarenessSummaryBuilder.runSelfTest()
+			print("[ContextAwarenessUI] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}

@@ -103,6 +103,8 @@
 		AA00017F00000000000000AB /* RichAnalyzeScreenPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028100000000000000AC /* RichAnalyzeScreenPromptBuilder.swift */; };
 		AA00018000000000000000AD /* ContextConfidenceArbitrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */; };
 		AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028400000000000000B0 /* AdaptiveContextSampler.swift */; };
+		AA00018500000000000000B1 /* ContextAwarenessSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028700000000000000B3 /* ContextAwarenessSummary.swift */; };
+		AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028800000000000000B4 /* ContextAwarenessView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -204,6 +206,8 @@
 		AA00028100000000000000AC /* RichAnalyzeScreenPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichAnalyzeScreenPromptBuilder.swift; sourceTree = "<group>"; };
 		AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextConfidenceArbitrator.swift; sourceTree = "<group>"; };
 		AA00028400000000000000B0 /* AdaptiveContextSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveContextSampler.swift; sourceTree = "<group>"; };
+		AA00028700000000000000B3 /* ContextAwarenessSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessSummary.swift; sourceTree = "<group>"; };
+		AA00028800000000000000B4 /* ContextAwarenessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -250,6 +254,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0002050000000000000005 /* AssistantPanelView.swift */,
+				AA00028800000000000000B4 /* ContextAwarenessView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
 				AA0002340000000000000032 /* InputPreviewView.swift */,
@@ -309,6 +314,7 @@
 				AA000278000000000000009A /* ContextFreshnessPolicy.swift */,
 				AA000279000000000000009C /* ContextDebugLogger.swift */,
 				AA00027A000000000000009E /* CanonicalContextState.swift */,
+				AA00028700000000000000B3 /* ContextAwarenessSummary.swift */,
 				AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */,
 				AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */,
 				AA00028400000000000000B0 /* AdaptiveContextSampler.swift */,
@@ -497,6 +503,7 @@
 				AA0001040000000000000004 /* MenuBarController.swift in Sources */,
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
+				AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */,
 				AA0001240000000000000024 /* SuggestionCard.swift in Sources */,
 				AA0001280000000000000028 /* ResultView.swift in Sources */,
 				AA0001290000000000000029 /* InputPreviewView.swift in Sources */,
@@ -533,6 +540,7 @@
 				AA0001760000000000000099 /* ContextFreshnessPolicy.swift in Sources */,
 				AA000177000000000000009B /* ContextDebugLogger.swift in Sources */,
 				AA000178000000000000009D /* CanonicalContextState.swift in Sources */,
+				AA00018500000000000000B1 /* ContextAwarenessSummary.swift in Sources */,
 				AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */,
 				AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */,
 				AA00017C00000000000000A5 /* RichContextProposalAdjuster.swift in Sources */,

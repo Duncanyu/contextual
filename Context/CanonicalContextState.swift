@@ -41,6 +41,7 @@ final class CanonicalContextState {
 		lastDecisionAt = nil
 		lock.unlock()
 		print("[CanonicalContext] cleared")
+		Self.notifyCanonicalContextUpdatedOnMain()
 	}
 
 	func update(_ newPacket: FusedContextPacket) {
@@ -52,6 +53,7 @@ final class CanonicalContextState {
 			updateCount &+= 1
 			lock.unlock()
 			logDecision(reason: reason, packet: newPacket)
+			Self.notifyCanonicalContextUpdatedOnMain()
 		case .reject(let reason):
 			lock.unlock()
 			logDecision(reason: reason, packet: newPacket)
@@ -171,6 +173,12 @@ final class CanonicalContextState {
 	}
 
 	// MARK: - Logging
+
+	private static func notifyCanonicalContextUpdatedOnMain() {
+		DispatchQueue.main.async {
+			NotificationCenter.default.post(name: .contextualCanonicalContextUpdated, object: nil)
+		}
+	}
 
 	private func logDecision(reason: String, packet: FusedContextPacket) {
 		// Throttle identical decisions to reduce log spam.

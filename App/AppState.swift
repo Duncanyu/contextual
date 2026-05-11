@@ -18,6 +18,12 @@ final class AppState: ObservableObject {
 	/// Latest context for UI (updated by app lifecycle; not built in UI).
 	@Published var debugContext: ContextModel = ContextModel()
 
+	/// Metadata-only chips for subtle panel context awareness (T14.9); updated by app lifecycle only.
+	@Published var contextAwarenessSummary: ContextAwarenessSummary = .empty
+
+	private var lastContextAwarenessLogSignature: String?
+	private var lastContextAwarenessLogAt: Date?
+
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
 	@Published var currentProposal: ActionProposal?
@@ -380,5 +386,40 @@ final class AppState: ObservableObject {
 			return title
 		}
 		return "Open"
+	}
+
+	// MARK: - Context awareness (T14.9)
+
+	/// Recomputes panel chips from canonical fused metadata + safe app hints (no collection).
+	func refreshContextAwarenessSummary() {
+		let next = ContextAwarenessSummaryBuilder.build(
+			canonical: CanonicalContextState.shared.current(),
+			contextModel: debugContext
+		)
+		contextAwarenessSummary = next
+		logContextAwarenessIfNeeded(next)
+	}
+
+	private func logContextAwarenessIfNeeded(_ summary: ContextAwarenessSummary) {
+		let now = Date()
+		if !summary.showsInPanel {
+			let sig = "hidden"
+			if sig == lastContextAwarenessLogSignature, let lastContextAwarenessLogAt, now.timeIntervalSince(lastContextAwarenessLogAt) < 2.0 {
+				return
+			}
+			lastContextAwarenessLogSignature = sig
+			lastContextAwarenessLogAt = now
+			print("[ContextAwarenessUI] hidden reason=no_context")
+			return
+		}
+
+		let sig = summary.chipsJoined
+		if sig == lastContextAwarenessLogSignature, let lastContextAwarenessLogAt, now.timeIntervalSince(lastContextAwarenessLogAt) < 1.2 {
+			return
+		}
+		lastContextAwarenessLogSignature = sig
+		lastContextAwarenessLogAt = now
+		let chipsCsv = summary.chips.joined(separator: ",")
+		print("[ContextAwarenessUI] updated chips=\(chipsCsv)")
 	}
 }

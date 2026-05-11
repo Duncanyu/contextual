@@ -13,6 +13,8 @@ struct AssistantPanelView: View {
 				PanelHeaderBar()
 					.environmentObject(appState)
 
+				ContextAwarenessView(summary: appState.contextAwarenessSummary)
+
 				suggestionSection
 
 				availableActionsSection
