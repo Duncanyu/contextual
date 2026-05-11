@@ -333,7 +333,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		contextPipelineGeneration += 1
 		let generation = contextPipelineGeneration
-		if let packet = triggerEngine.evaluate(context) {
+		let triggerPacket = triggerEngine.evaluate(context)
+
+		// T15.3: structured intent concepts (non-executable, bounded, metadata-only).
+		let synthesisText = ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .automatic) ?? ""
+		let synthesisFeatures = FeatureExtractor.extract(from: synthesisText)
+		var synthesisCandidateIds = triggerPacket?.candidateActions ?? []
+		if synthesisCandidateIds.isEmpty, !appState.availableActions.isEmpty {
+			synthesisCandidateIds = appState.availableActions.map { $0.id }
+		}
+		let intentRequest = IntentSynthesisRequest(
+			workflowInference: WorkflowInferenceEngine.shared.latestResult(),
+			sessionState: ContextualSessionTracker.shared.currentState(),
+			fused: CanonicalContextState.shared.current(),
+			features: synthesisFeatures,
+			candidateActionIds: synthesisCandidateIds,
+			triggerType: triggerPacket?.triggerType,
+			lastSourceTrigger: context.lastSourceTrigger?.rawValue
+		)
+		IntentSynthesisEngine.shared.record(intentRequest, referenceTime: Date())
+
+		if let packet = triggerPacket {
 			logTriggerPacket(packet, context: context)
 			Task { self.updateAvailableActions(from: packet, context: context, generation: generation) }
 		} else {
@@ -1368,6 +1388,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_SESSION_TRACKING_SELFTEST"] == "1" {
 			let ok = ContextualSessionTracker.runSelfTest()
 			print("[SessionTracking] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Intent synthesis engine self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_INTENT_SYNTHESIS_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_INTENT_SYNTHESIS_SELFTEST"] == "1" {
+			let ok = IntentSynthesisEngine.runSelfTest()
+			print("[IntentSynthesis] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}

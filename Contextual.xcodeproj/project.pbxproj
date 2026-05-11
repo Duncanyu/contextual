@@ -60,6 +60,8 @@
 		AA0001580000000000000060 /* MicroDecisionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025C0000000000000061 /* MicroDecisionTypes.swift */; };
 		AA0001590000000000000062 /* MicroDecisionModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025D0000000000000063 /* MicroDecisionModelProvider.swift */; };
 		AA00015A0000000000000064 /* MicroDecisionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025E0000000000000065 /* MicroDecisionEngine.swift */; };
+		AA00019000000000000000BF /* IntentSynthesisTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029800000000000000BF /* IntentSynthesisTypes.swift */; };
+		AA00019100000000000000C0 /* IntentSynthesisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029900000000000000C0 /* IntentSynthesisEngine.swift */; };
 		AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */; };
 		AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */; };
 		AA0001630000000000000072 /* MicroDecisionClassifier.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */; };
@@ -175,6 +177,8 @@
 		AA00025C0000000000000061 /* MicroDecisionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionTypes.swift; sourceTree = "<group>"; };
 		AA00025D0000000000000063 /* MicroDecisionModelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionModelProvider.swift; sourceTree = "<group>"; };
 		AA00025E0000000000000065 /* MicroDecisionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionEngine.swift; sourceTree = "<group>"; };
+		AA00029800000000000000BF /* IntentSynthesisTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentSynthesisTypes.swift; sourceTree = "<group>"; };
+		AA00029900000000000000C0 /* IntentSynthesisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentSynthesisEngine.swift; sourceTree = "<group>"; };
 		AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceDebugLogger.swift; sourceTree = "<group>"; };
 		AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionFeatureEncoder.swift; sourceTree = "<group>"; };
 		AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = MicroDecisionClassifier.mlmodel; sourceTree = "<group>"; };
@@ -402,6 +406,8 @@
 				AA00025C0000000000000061 /* MicroDecisionTypes.swift */,
 				AA00025D0000000000000063 /* MicroDecisionModelProvider.swift */,
 				AA00025E0000000000000065 /* MicroDecisionEngine.swift */,
+				AA00029800000000000000BF /* IntentSynthesisTypes.swift */,
+				AA00029900000000000000C0 /* IntentSynthesisEngine.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
@@ -617,6 +623,8 @@
 				AA0001580000000000000060 /* MicroDecisionTypes.swift in Sources */,
 				AA0001590000000000000062 /* MicroDecisionModelProvider.swift in Sources */,
 				AA00015A0000000000000064 /* MicroDecisionEngine.swift in Sources */,
+				AA00019000000000000000BF /* IntentSynthesisTypes.swift in Sources */,
+				AA00019100000000000000C0 /* IntentSynthesisEngine.swift in Sources */,
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,
