@@ -1410,6 +1410,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Generated action plan composition self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_ACTION_PLAN_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_ACTION_PLAN_SELFTEST"] == "1" {
+			let ok = GeneratedActionPlanBuilder.runSelfTest()
+			print("[ActionPlan] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Canonical fused context state self-test (synthetic metadata-only).
 		// Run the app with `CONTEXTUAL_RUN_CANONICAL_CONTEXT_SELFTEST=1` to execute once and exit.
 		if env["CONTEXTUAL_RUN_CANONICAL_CONTEXT_SELFTEST"] == "1" {

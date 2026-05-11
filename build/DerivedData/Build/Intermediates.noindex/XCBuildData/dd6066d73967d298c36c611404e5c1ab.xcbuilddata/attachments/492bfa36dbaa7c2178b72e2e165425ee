@@ -55,6 +55,8 @@
 /Users/duncanyu/Documents/GitHub/contextual/Context/AdaptiveContextSampler.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/WorkflowInferenceTypes.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/WorkflowInferenceEngine.swift
+/Users/duncanyu/Documents/GitHub/contextual/Context/ContextualSessionTypes.swift
+/Users/duncanyu/Documents/GitHub/contextual/Context/ContextualSessionTracker.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/RichContextRefreshPipeline.swift
 /Users/duncanyu/Documents/GitHub/contextual/Triggers/TriggerPacket.swift
 /Users/duncanyu/Documents/GitHub/contextual/Triggers/CooldownManager.swift
@@ -95,6 +97,12 @@
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionTypes.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionModelProvider.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionEngine.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntentSynthesisTypes.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntentSynthesisEngine.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionTypes.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionFactory.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionPlanTypes.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionPlanBuilder.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntelligenceDebugLogger.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionFeatureEncoder.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/OCRProcessor.swift

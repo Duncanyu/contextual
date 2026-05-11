@@ -156,16 +156,22 @@ final class GeneratedActionEngine {
 
 	private let lock = NSLock()
 	private var latest: [GeneratedAction] = []
+	private var storedPlans: [GeneratedActionPlan] = []
 	private var lastLogSignature: String?
 	private var lastLogAt: Date?
+	private var lastPlanLogSignature: String?
+	private var lastPlanLogAt: Date?
 
 	private init() {}
 
 	func reset() {
 		lock.lock()
 		latest.removeAll()
+		storedPlans.removeAll()
 		lastLogSignature = nil
 		lastLogAt = nil
+		lastPlanLogSignature = nil
+		lastPlanLogAt = nil
 		lock.unlock()
 	}
 
@@ -176,20 +182,48 @@ final class GeneratedActionEngine {
 		return c
 	}
 
+	func currentPlans() -> [GeneratedActionPlan] {
+		lock.lock()
+		let p = storedPlans
+		lock.unlock()
+		return p
+	}
+
 	/// Builds from synthesized intents (order preserved, max 3).
 	func record(from intents: [SynthesizedIntent], referenceTime: Date = Date()) {
 		guard !intents.isEmpty else {
 			lock.lock()
 			latest = []
+			storedPlans.removeAll()
 			lock.unlock()
 			return
 		}
 
 		let (built, rejectedUnsafe) = GeneratedActionFactory.makeActions(from: intents, referenceTime: referenceTime, maxActions: 3)
+		var plans: [GeneratedActionPlan] = []
+		plans.reserveCapacity(built.count)
+		var invalidCombo = false
+		var staleActionSkip = false
+		for a in built {
+			switch GeneratedActionPlanBuilder.build(from: a, referenceTime: referenceTime) {
+			case .accepted(let p):
+				plans.append(p)
+			case .rejected(let codes):
+				if codes.contains("invalid_primitive_combo") {
+					invalidCombo = true
+				}
+			case .skipped(let reason):
+				if reason == "stale_action" {
+					staleActionSkip = true
+				}
+			}
+		}
 		lock.lock()
 		latest = built
+		storedPlans = plans
 		lock.unlock()
 		logOutcome(actions: built, intents: intents, rejectedUnsafe: rejectedUnsafe)
+		logPlanOutcome(plans: plans, invalidCombo: invalidCombo, staleActionSkip: staleActionSkip)
 	}
 
 	private func logOutcome(actions: [GeneratedAction], intents: [SynthesizedIntent], rejectedUnsafe: Bool) {
@@ -230,6 +264,36 @@ final class GeneratedActionEngine {
 
 		print("[GeneratedAction] created count=\(actions.count) top=\(topType) confidence=\(conf)")
 		print("[GeneratedAction] kept reason=non_executable count=\(actions.count)")
+	}
+
+	private func logPlanOutcome(plans: [GeneratedActionPlan], invalidCombo: Bool, staleActionSkip: Bool) {
+		if invalidCombo {
+			print("[ActionPlan] rejected reason=invalid_primitive_combo")
+		}
+		if staleActionSkip, plans.isEmpty {
+			print("[ActionPlan] skipped reason=stale_action")
+		}
+		guard !plans.isEmpty else { return }
+
+		let top = plans.max(by: { $0.confidence < $1.confidence })
+		let topRule = top?.compositionRule.rawValue ?? "none"
+		let conf = String(format: "%.2f", top?.confidence ?? 0)
+		let sig = "\(plans.count)|\(topRule)|\(conf)"
+		let now = Date()
+		lock.lock()
+		let shouldSkip: Bool
+		if lastPlanLogSignature == sig, let t = lastPlanLogAt, now.timeIntervalSince(t) < 2.2 {
+			shouldSkip = true
+		} else {
+			shouldSkip = false
+			lastPlanLogSignature = sig
+			lastPlanLogAt = now
+		}
+		lock.unlock()
+		if shouldSkip { return }
+
+		print("[ActionPlan] created count=\(plans.count) top=\(topRule) confidence=\(conf)")
+		print("[ActionPlan] kept reason=non_executable count=\(plans.count)")
 	}
 }
 
@@ -365,6 +429,13 @@ extension GeneratedActionEngine {
 		assertCase("stale_batch_empty", engine.latestActions().isEmpty)
 		engine.reset()
 		assertCase("reset_latest", engine.latestActions().isEmpty)
+
+		// Pipeline integration: intents → actions → plans (non-executable).
+		let article = intent(type: .summarizeCurrentArticle, title: "Article", description: "D", confidence: 0.66, workflow: .research, stale: false)
+		engine.record(from: [article], referenceTime: t0)
+		assertCase("integration_has_actions", !engine.latestActions().isEmpty)
+		assertCase("integration_has_plans", !engine.currentPlans().isEmpty)
+		engine.reset()
 
 		let ok = failures.isEmpty
 		print("[GeneratedAction] selftest summary failures=\(failures.count) detail=\(failures.joined(separator: ";")) ok=\(ok)")
