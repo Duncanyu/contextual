@@ -80,6 +80,7 @@ final class AdaptiveContextSampler {
 		var scores: [Double] = []
 
 		let isManual = request.trigger == .manual
+		let isExplicitAnalyzeRefresh = (request.reason == "analyze_screen")
 		let pkt = request.currentCanonicalContext
 		let canonicalFresh = Self.canonicalIsFreshEnough(pkt)
 		let weakContext = Self.isWeakContext(packet: pkt, currentConfidence: request.currentConfidence)
@@ -158,9 +159,9 @@ final class AdaptiveContextSampler {
 				}
 			}
 
-			if isManual {
+			if isManual, isExplicitAnalyzeRefresh {
 				allowed.insert(cap)
-				reasonCodes[cap] = "manual_sampling_allowed"
+				reasonCodes[cap] = "manual_explicit_analyze_allow"
 				let s = activeEditing ? 0.62 : (weakContext ? 0.78 : 0.70)
 				logLine(outcome: "allow", cap: cap, reason: reasonCodes[cap]!, score: s)
 				scores.append(s)
@@ -377,9 +378,25 @@ final class AdaptiveContextSampler {
 			actionExec: false,
 			canonical: nil,
 			workflowKey: "wf-h2",
-			t: t0
+			t: t0,
+			reason: "analyze_screen"
 		), referenceTime: t0)
 		assertCase("manual_vs_auto_editing", rAuto.deferredSources.contains(.axWindowContent) && rMan.allowedSources.contains(.axWindowContent))
+
+		let rManualNonAnalyze = sampler.evaluate(Self.makeRequest(
+			trigger: .manual,
+			requested: [.axWindowContent],
+			typing: typingBurst,
+			pointer: pointerIdle,
+			confidence: 0.80,
+			allowExpensive: true,
+			actionExec: false,
+			canonical: nil,
+			workflowKey: "wf-h3",
+			t: t0,
+			reason: "selftest"
+		), referenceTime: t0)
+		assertCase("manual_non_analyze_defers_under_burst", rManualNonAnalyze.deferredSources.contains(.axWindowContent))
 
 		// 9) Sampling history reduces repeat collection
 		sampler.reset()
@@ -516,7 +533,8 @@ final class AdaptiveContextSampler {
 		actionExec: Bool,
 		canonical: FusedContextPacket?,
 		workflowKey: String,
-		t: Date
+		t: Date,
+		reason: String = "selftest"
 	) -> AdaptiveSamplingRequest {
 		AdaptiveSamplingRequest(
 			trigger: trigger,
@@ -527,7 +545,7 @@ final class AdaptiveContextSampler {
 			isActionExecuting: actionExec,
 			currentConfidence: confidence,
 			workflowKey: workflowKey,
-			reason: "selftest",
+			reason: reason,
 			allowExpensiveSources: allowExpensive
 		)
 	}

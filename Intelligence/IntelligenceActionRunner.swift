@@ -8,6 +8,20 @@ enum ActionPromptKind {
 }
 
 enum IntelligenceActionRunner {
+	/// Shared anti-speculation rules for Analyze Screen (also asserted by Phase 14 tuning self-test).
+	static let analyzeScreenSafetyPreamble = """
+	You are helping interpret on-screen evidence for a macOS user.
+
+	IMPORTANT RULES:
+	- Treat the OCR body as the only verbatim evidence of visible text. Quote or paraphrase it carefully.
+	- App name, bundle id, window-title availability, workflow hints, and fused metadata are NOT proof of what is on screen; never invent UI text from them.
+	- Visual/AX/fused fields are low-trust hints only; if they disagree with OCR, prefer OCR for literal claims.
+	- Never mention workflow hints (e.g. code editing, terminal debugging) unless directly supported by OCR or AX evidence. If visual metadata conflicts, ignore it for semantic conclusions.
+	- If OCR is empty, very short, garbled, or metadata-only, say evidence is limited and avoid detailed narratives.
+	- Do not infer passwords, private URLs, file paths, emails, or unseen window titles.
+	- Be concise and practical. No title.
+	"""
+
 	static func runActionPrompt(actionType: ActionPromptKind, input: String) async -> String {
 		guard LocalAISettings.shared.localAIEnabled else {
 			return unavailableMessage(for: actionType, detail: "Local AI is disabled.")
@@ -54,15 +68,7 @@ enum IntelligenceActionRunner {
 			"""
 		case .analyzeScreen:
 			return """
-			You are analyzing what the user is likely looking at on screen.
-
-			IMPORTANT RULES:
-			- Base your analysis ONLY on the provided OCR text and the structured metadata sections.
-			- Do NOT infer hidden UI content or details that are not supported by the OCR or metadata.
-			- Treat visual/AX/fused fields as *hints*, not ground truth.
-			- If OCR is noisy or incomplete, say so and prefer the clearest evidence.
-			- If evidence is insufficient, say what is uncertain and what is missing.
-			- Be concise and practical. No title.
+			\(Self.analyzeScreenSafetyPreamble)
 
 			Screen context (OCR + metadata):
 			\(input)

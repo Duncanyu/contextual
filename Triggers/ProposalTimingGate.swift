@@ -72,10 +72,10 @@ enum ProposalTimingGate {
 
 		// Burst behavior: avoid interrupting; defer briefly if it might be useful soon.
 		if isTypingBurst {
-			return ProposalTimingDecision(outcome: .deferred, reason: "typing_burst_defer", suggestedRetryAfter: 1.6)
+			return ProposalTimingDecision(outcome: .deferred, reason: "typing_burst_defer", suggestedRetryAfter: 1.75)
 		}
 		if isPointerBurst {
-			return ProposalTimingDecision(outcome: .deferred, reason: "pointer_burst_defer", suggestedRetryAfter: 1.4)
+			return ProposalTimingDecision(outcome: .deferred, reason: "pointer_burst_defer", suggestedRetryAfter: 1.55)
 		}
 
 		// Low-intensity pointer movement should not defer strong proposals.
@@ -262,6 +262,9 @@ enum ProposalTimingGate {
 			&& cases.contains(where: { $0.0 == "action_executing_suppresses" && $0.1.outcome == .suppress })
 
 		print("[ProposalTiming] selftest finished ok=\(ok)")
+		if ok {
+			print("[Phase14Tuning] tuned reason=proposal_timing")
+		}
 		return ok
 	}
 }

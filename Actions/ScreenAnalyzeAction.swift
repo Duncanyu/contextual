@@ -8,13 +8,19 @@ struct ScreenAnalyzeAction: ActionProtocol {
 	var name: String { "Analyze Screen" }
 
 	func canExecute(context: ContextModel) -> Bool {
+		// Manual assistant open: user may run Analyze Screen; AppDelegate performs capture+OCR immediately before execute.
+		if context.lastSourceTrigger == .manualTriggerRequested {
+			return true
+		}
+		// Post–screen-OCR trigger: allow when an explicit OCR completion populated the model.
+		guard context.lastSourceTrigger == .screenOCRCompleted else { return false }
 		guard context.screenCaptureAvailable else { return false }
-		// Allow execution when OCR pipeline has run, even if text is weak, so we can fall back to metadata.
 		guard context.screenOCRAvailable else { return false }
 		return true
 	}
 
 	func execute(context: ContextModel) async -> ActionResult {
+		print("[AnalyzeScreenRich] explicit=true")
 		print("[AnalyzeScreenRich] refresh_started")
 
 		// Manual rich refresh (budget-aware). Never sends screenshots to the model.

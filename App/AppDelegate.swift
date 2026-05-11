@@ -258,21 +258,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		didLogManualGuard = false
 		lastManualInvocationAt = now
 
-		sourceManager?.captureScreenNow()
+		print("[ManualInvocation] screen_capture_skipped reason=normal_manual")
+		print("[ScreenCapture] skipped reason=not_explicit_analyze_screen")
 		sourceManager?.refreshSelectionNow()
 		processSourceEvent(.sourceChanged(.manualTriggerRequested))
-
-		if let image = contextBuilder.model.screenCaptureImage {
-			Task.detached(priority: .utility) { [weak self] in
-				guard let self else { return }
-				let result = await OCRProcessor.shared.recognizeText(from: image)
-				await MainActor.run {
-					self.processSourceEvent(
-					.sourceChanged(.screenOCRCompleted(text: result.text, lineCount: result.lineCount, capturedAt: result.timestamp))
-					)
-				}
-			}
-		}
 	}
 
 	private func processSourceEvent(_ event: SourceEvent) {
@@ -541,7 +530,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let didHaveAnalyze = lastReasonedActions.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
 		let hasAnalyzeNow = ordered.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
 		if hasAnalyzeNow && !didHaveAnalyze {
-			print("[AvailableActions] added analyze_screen from OCR")
+			if packet.triggerType == .manualInvocation, context.lastSourceTrigger == .manualTriggerRequested {
+				print("[AvailableActions] added analyze_screen reason=manual_affordance")
+			} else {
+				print("[AvailableActions] added analyze_screen from OCR")
+			}
 		}
 
 		var finalProposal: ActionProposal? = proposal
@@ -1078,7 +1071,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		let age = Date().timeIntervalSince(cachedAt)
 		if age < availableActionsCacheTTLSeconds, !lastReasonedActions.isEmpty {
-			appState.availableActions = lastReasonedActions
+			let liveContext = contextBuilder.model
+			appState.availableActions = lastReasonedActions.filter { $0.canExecute(context: liveContext) }
 			if let p = lastReasonedProposal,
 			   lastReasonedActions.contains(where: { $0.id == p.primaryActionId }),
 			   !appState.isSuggestionOnCooldown(p, context: appState.debugContext) {
@@ -1109,6 +1103,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func invokeStoredAction(actionId: String) {
+		if actionId == ScreenAnalyzeAction.analyzeScreenId {
+			invokeAnalyzeScreenStoredAction()
+			return
+		}
+
 		var execContext = contextBuilder.model
 		execContext.actionInputSourcePreference = appState.selectedInputSourceChoice
 		guard let action = appState.availableActions.first(where: { $0.id == actionId }) else { return }
@@ -1163,6 +1162,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				print("[ActionExecution] Failed action \(actionId): timed out")
 				appState.latestActionResult = "This action timed out. Try again with less text or check that local AI is responding."
 				appState.latestActionTimestamp = Date()
+			}
+		}
+	}
+
+	/// Screen capture + OCR only for explicit Analyze Screen (not normal manual assistant open).
+	@MainActor
+	private func runExplicitAnalyzeScreenCaptureAndOCR() async {
+		print("[AnalyzeScreenRich] explicit_screen_analysis=true")
+		print("[Phase14Tuning] fixed reason=manual_ocr_gate")
+		sourceManager?.captureScreenNow()
+		guard let image = contextBuilder.model.screenCaptureImage else {
+			print("[ScreenCapture] post_capture_no_image reason=explicit_analyze_screen")
+			return
+		}
+		let result = await OCRProcessor.shared.recognizeText(from: image)
+		processSourceEvent(
+			.sourceChanged(.screenOCRCompleted(text: result.text, lineCount: result.lineCount, capturedAt: result.timestamp))
+		)
+	}
+
+	private func invokeAnalyzeScreenStoredAction() {
+		let actionId = ScreenAnalyzeAction.analyzeScreenId
+		var execContext = contextBuilder.model
+		execContext.actionInputSourcePreference = appState.selectedInputSourceChoice
+		guard appState.availableActions.contains(where: { $0.id == actionId }) else { return }
+		guard ScreenAnalyzeAction().canExecute(context: execContext) else {
+			print("[ActionResult] No valid actions")
+			return
+		}
+
+		if appState.isActionExecuting {
+			print("[ActionExecution] Ignored duplicate action while execution is in progress")
+			return
+		}
+
+		appState.isActionExecuting = true
+		appState.executingActionId = actionId
+		appState.executingActionTitle = "Analyze Screen"
+		appState.latestActionResult = nil
+		appState.latestActionId = actionId
+		appState.latestActionTimestamp = Date()
+		print("[AppState] executing action=\(actionId)")
+		print("[ActionExecution] Starting action \(actionId)")
+		Task { @MainActor in
+			defer {
+				appState.isActionExecuting = false
+				appState.executingActionId = nil
+				appState.executingActionTitle = nil
+				print("[AppState] execution finished action=\(actionId)")
+				print("[ActionExecution] Cleared in-flight state")
+			}
+
+			await self.runExplicitAnalyzeScreenCaptureAndOCR()
+
+			var freshContext = self.contextBuilder.model
+			freshContext.actionInputSourcePreference = self.appState.selectedInputSourceChoice
+			guard ScreenAnalyzeAction().canExecute(context: freshContext) else {
+				print("[ActionResult] Analyze Screen unavailable after capture (permissions or empty capture)")
+				self.appState.latestActionResult = "Could not capture the screen for analysis. Check Screen Recording permission and try again."
+				self.appState.latestActionTimestamp = Date()
+				return
+			}
+
+			let inputFingerprint = Self.stableInputFingerprint(for: freshContext)
+			let invocationKey = "\(actionId)|\(inputFingerprint)"
+			if let finishedAt = self.lastFinishedAt,
+			   self.lastFinishedActionKey == invocationKey,
+			   Date().timeIntervalSince(finishedAt) < 2 {
+				print("[ActionExecution] Ignored duplicate action invocation within cooldown")
+				return
+			}
+
+			let outcome = await Self.runActionWithSecondsTimeout(seconds: 45) {
+				await ScreenAnalyzeAction().execute(context: freshContext)
+			}
+			switch outcome {
+			case .completed(let result):
+				print("[ActionResult]", result.outputText)
+				self.appState.latestActionResult = result.outputText
+				self.appState.latestActionTimestamp = Date()
+				self.lastFinishedActionKey = invocationKey
+				self.lastFinishedAt = Date()
+				print("[ActionExecution] Finished action \(actionId)")
+			case .timedOut:
+				print("[ActionExecution] Action timed out")
+				print("[ActionExecution] Failed action \(actionId): timed out")
+				self.appState.latestActionResult = "This action timed out. Try again with less text or check that local AI is responding."
+				self.appState.latestActionTimestamp = Date()
+				self.lastFinishedActionKey = invocationKey
+				self.lastFinishedAt = Date()
 			}
 		}
 	}
@@ -1243,6 +1332,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private func runPhase13SelfTestsIfRequested(environment env: [String: String]) -> Bool {
 		// Phase 13 env-var self-tests should run once and exit without wiring the normal app pipeline.
 		// This keeps verification runs clean and avoids incidental startup logs/side-effects.
+
+		// Phase 14 tuning pass regression self-test (synthetic; no capture/OCR).
+		// Run with `CONTEXTUAL_RUN_PHASE14_TUNING_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_PHASE14_TUNING_SELFTEST"] == "1" {
+			let ok = Phase14TuningSelfTest.run()
+			print("[Phase14Tuning] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
 
 		// Canonical fused context state self-test (synthetic metadata-only).
 		// Run the app with `CONTEXTUAL_RUN_CANONICAL_CONTEXT_SELFTEST=1` to execute once and exit.
@@ -1398,13 +1496,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				refreshMeta: meta
 			)
 			let containsImageLike = built.input.contains("CGImage") || built.input.contains("data:") || built.input.contains("base64")
-			let ok = built.input.contains("## OCR")
+			let ok = built.input.contains("Evidence contract")
+				&& built.input.contains("## OCR")
 				&& built.input.contains("## Visual hints")
 				&& built.input.contains("## AX hints")
 				&& built.input.contains("## Fused context")
 				&& built.input.contains("## Workflow hints")
 				&& !containsImageLike
-			print("[AnalyzeScreenRich] selftest prompt_built ocrChars=\(built.ocrChars) axFragments=\(built.axFragments) visualKinds=\(built.visualKinds.joined(separator: ",")) ok=\(ok)")
+
+			// New (T14.11 fix): conflicting visual kinds + weak OCR must not generate workflow claims.
+			let weakOCR = "YouTube\nSkip ads\n"
+			let weakMeta: [String: String] = [
+				"axFragments": "0",
+				"axTextLen": "0",
+				"visualKinds": "browser,editor,terminal,dialog",
+				"visualConf": "0.35",
+				"visualPanels": "1"
+			]
+			let weakBuilt = RichAnalyzeScreenPromptBuilder.build(
+				context: ctx,
+				ocrText: weakOCR,
+				ocrLineCount: 2,
+				fused: fused,
+				refreshMeta: weakMeta
+			)
+			let weakOk = weakBuilt.input.contains("uncertaintyMode: on")
+				&& weakBuilt.input.contains("visualKindsArbitrated: browser")
+				&& !weakBuilt.input.contains("likelyWorkflow=terminal_debugging")
+				&& !weakBuilt.input.contains("likelyWorkflow=code_editing")
+
+			let finalOk = ok && weakOk
+			print("[AnalyzeScreenRich] selftest prompt_built ocrChars=\(built.ocrChars) axFragments=\(built.axFragments) visualKinds=\(built.visualKinds.joined(separator: ",")) ok=\(finalOk)")
+			if finalOk {
+				print("[Phase14Tuning] tuned reason=analyze_prompt")
+			}
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}

@@ -17,7 +17,11 @@ enum ContextAwareActionEligibility {
 		features: ContextFeatures,
 		fused: FusedContextPacket?
 	) -> ActionEligibilityDecision {
-		let base = uniquePreserveOrder(currentCandidateActionIds)
+		let base = filterAnalyzeScreenIfNeeded(
+			uniquePreserveOrder(currentCandidateActionIds),
+			triggerType: triggerType,
+			context: context
+		)
 		guard !base.isEmpty else {
 			return ActionEligibilityDecision(eligibleActionIds: [], reasonCodes: ["no_candidates"], debugSummary: ["count": "0"])
 		}
@@ -117,6 +121,25 @@ enum ContextAwareActionEligibility {
 			out.append(id)
 		}
 		return out
+	}
+
+	/// `analyze_screen` is only offered on explicit manual assistant open or immediately after OCR completion (T14.11).
+	private static func isAnalyzeScreenOfferAllowed(triggerType: TriggerType, context: ContextModel) -> Bool {
+		if triggerType == .manualInvocation, context.lastSourceTrigger == .manualTriggerRequested {
+			return true
+		}
+		if context.lastSourceTrigger == .screenOCRCompleted,
+		   context.screenOCRAvailable,
+		   context.screenOCRTextLength > 30 {
+			return true
+		}
+		return false
+	}
+
+	private static func filterAnalyzeScreenIfNeeded(_ ids: [String], triggerType: TriggerType, context: ContextModel) -> [String] {
+		guard ids.contains(ScreenAnalyzeAction.analyzeScreenId) else { return ids }
+		guard !isAnalyzeScreenOfferAllowed(triggerType: triggerType, context: context) else { return ids }
+		return ids.filter { $0 != ScreenAnalyzeAction.analyzeScreenId }
 	}
 
 	private static func uniquePreserveOrder(_ ids: [String]) -> [String] {
@@ -225,9 +248,28 @@ enum ContextAwareActionEligibility {
 		print("[ActionEligibility] selftest case=stale reason=\(stale.reasonCodes.first ?? "nil")")
 
 		// Manual invocation not over-limited for form.
-		let formManual = evaluate(currentCandidateActionIds: candidates, triggerType: .manualInvocation, context: ctxNoText, contextType: .random, features: FeatureExtractor.extract(from: "x"), fused: fused(kinds: [.form], hints: ["ax_form_like"]))
+		var ctxFormManual = ContextModel()
+		ctxFormManual.lastSourceTrigger = .manualTriggerRequested
+		let formManual = evaluate(currentCandidateActionIds: candidates, triggerType: .manualInvocation, context: ctxFormManual, contextType: .random, features: FeatureExtractor.extract(from: "x"), fused: fused(kinds: [.form], hints: ["ax_form_like"]))
 		let formManualActions = formManual.eligibleActionIds.joined(separator: ",")
 		print("[ActionEligibility] selftest case=form_manual actions=\(formManualActions)")
+
+		// Stale OCR with non-manual / non-OCR trigger: analyze_screen must not leak into manual invocation list.
+		var staleOCRTrig = ContextModel()
+		staleOCRTrig.lastSourceTrigger = .activeAppChanged
+		staleOCRTrig.screenCaptureAvailable = true
+		staleOCRTrig.screenOCRAvailable = true
+		staleOCRTrig.screenOCRTextLength = 400
+		let staleAnalyze = evaluate(
+			currentCandidateActionIds: candidates,
+			triggerType: .manualInvocation,
+			context: staleOCRTrig,
+			contextType: .code,
+			features: FeatureExtractor.extract(from: "fn x() {}"),
+			fused: fused(kinds: [.editor])
+		)
+		let staleAnalyzeIds = staleAnalyze.eligibleActionIds.joined(separator: ",")
+		print("[ActionEligibility] selftest case=stale_ocr_manual actions=\(staleAnalyzeIds)")
 
 		let ok = sel.reasonCodes.contains("strong_selection_preserved")
 			&& editor.eligibleActionIds.first == "explain_text"
@@ -236,6 +278,7 @@ enum ContextAwareActionEligibility {
 			&& noText.reasonCodes.contains("rich_context_no_text_safe")
 			&& stale.reasonCodes.contains("rich_context_ignored_stale")
 			&& formManual.eligibleActionIds.count == candidates.count
+			&& !staleAnalyze.eligibleActionIds.contains(ScreenAnalyzeAction.analyzeScreenId)
 
 		print("[ActionEligibility] selftest finished ok=\(ok)")
 		return ok

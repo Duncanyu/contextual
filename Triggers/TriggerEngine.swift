@@ -11,7 +11,8 @@ final class TriggerEngine {
 	private static let selectedTextCooldownKey = "selected_text_eligible"
 
 	private let clipboardCooldownInterval: TimeInterval = 6
-	private let selectedTextCooldownInterval: TimeInterval = 6
+	/// Slightly calmer re-triggers on repeated similar selections (T14.11 tuning).
+	private let selectedTextCooldownInterval: TimeInterval = 6.5
 
 	private static let clipboardCandidateActions = ["summarize_text", "explain_text", "rewrite_text"]
 	private static let selectedTextCandidateActions = ["summarize_text", "explain_text", "rewrite_text"]
@@ -37,7 +38,7 @@ final class TriggerEngine {
 		guard context.lastSourceTrigger == .screenOCRCompleted else { return nil }
 		guard context.screenCaptureAvailable,
 			  context.screenOCRAvailable,
-			  (context.screenOCRText?.count ?? 0) > 30 else { return nil }
+			  context.screenOCRTextLength > 30 else { return nil }
 
 		var candidateActions: [String] = []
 		if context.clipboardTextAvailable || context.selectedTextAvailable {
@@ -62,11 +63,8 @@ final class TriggerEngine {
 		if context.clipboardTextAvailable || context.selectedTextAvailable {
 			candidateActions.append("summarize_text")
 		}
-		if context.screenCaptureAvailable,
-		   context.screenOCRAvailable,
-		   (context.screenOCRText?.count ?? 0) > 30 {
-			candidateActions.append("analyze_screen")
-		}
+		// Explicit affordance: Analyze Screen is user-chosen; capture/OCR runs only when that action runs (AppDelegate).
+		candidateActions.append("analyze_screen")
 		candidateActions.append(contentsOf: ["explain_text", "rewrite_text"])
 
 		let hasStructuredSnippet = context.clipboardTextAvailable || context.selectedTextAvailable

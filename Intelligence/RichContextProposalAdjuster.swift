@@ -46,6 +46,7 @@ enum RichContextProposalAdjuster {
 		let isDialogLike = kinds.contains(.dialog) || hints.contains("visual_dialog_like")
 		let isArticleLike = kinds.contains(.article) || kinds.contains(.browser) || contextType == .article || contextType == .notes
 		let isFormLike = kinds.contains(.form) || hints.contains("ax_form_like")
+		let strongSelection = context.selectedTextAvailable && context.selectedTextLength >= 30
 
 		// Editor/code context: explain is preferred; rewrite is not boosted.
 		if isEditorLike {
@@ -64,9 +65,10 @@ enum RichContextProposalAdjuster {
 
 		// Article/notes/reading: boost summarize, reduce rewrite for long prose.
 		if isArticleLike {
-			deltas["summarize_text", default: 0] += 0.10
+			// Strong selection: keep summarize tilt gentle so explain can still win for code-like snippets (T14.11).
+			deltas["summarize_text", default: 0] += strongSelection ? 0.04 : 0.10
 			if features.textLength >= 220 {
-				deltas["rewrite_text", default: 0] -= 0.06
+				deltas["rewrite_text", default: 0] -= strongSelection ? 0.03 : 0.06
 			}
 			reasons.append("article_or_notes_summarize")
 		}

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		AA0001010000000000000001 /* ContextualApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002010000000000000001 /* ContextualApp.swift */; };
 		AA0001020000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002020000000000000002 /* AppDelegate.swift */; };
+		AA00018A00000000000000BA /* Phase14TuningSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029200000000000000BA /* Phase14TuningSelfTest.swift */; };
 		AA0001030000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030000000000000003 /* AppState.swift */; };
 		AA0001040000000000000004 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040000000000000004 /* MenuBarController.swift */; };
 		AA0001050000000000000005 /* AssistantPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050000000000000005 /* AssistantPanelView.swift */; };
@@ -113,6 +114,7 @@
 		AA0000010000000000000000 /* Contextual.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Contextual.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0002010000000000000001 /* ContextualApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualApp.swift; sourceTree = "<group>"; };
 		AA0002020000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AA00029200000000000000BA /* Phase14TuningSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase14TuningSelfTest.swift; sourceTree = "<group>"; };
 		AA0002030000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSuggestionWindowController.swift; sourceTree = "<group>"; };
@@ -246,6 +248,7 @@
 			children = (
 				AA0002010000000000000001 /* ContextualApp.swift */,
 				AA0002020000000000000002 /* AppDelegate.swift */,
+				AA00029200000000000000BA /* Phase14TuningSelfTest.swift */,
 				AA0002030000000000000003 /* AppState.swift */,
 				AA0002040000000000000004 /* MenuBarController.swift */,
 				AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */,
@@ -505,6 +508,7 @@
 			files = (
 				AA0001010000000000000001 /* ContextualApp.swift in Sources */,
 				AA0001020000000000000002 /* AppDelegate.swift in Sources */,
+				AA00018A00000000000000BA /* Phase14TuningSelfTest.swift in Sources */,
 				AA0001030000000000000003 /* AppState.swift in Sources */,
 				AA0001040000000000000004 /* MenuBarController.swift in Sources */,
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
