@@ -1335,6 +1335,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Rich context debug summary self-test (synthetic fused metadata only).
+		// Run the app with `CONTEXTUAL_RUN_RICH_CONTEXT_DEBUG_UI_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_RICH_CONTEXT_DEBUG_UI_SELFTEST"] == "1" {
+			let ok = RichContextDebugSummaryBuilder.runSelfTest()
+			print("[RichContextDebugUI] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Rich Analyze Screen pipeline self-test (prompt build only; no AI calls, no screenshots).
 		// Run the app with `CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST=1` to execute once and exit.
 		if env["CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST"] == "1" {

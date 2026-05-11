@@ -105,6 +105,8 @@
 		AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028400000000000000B0 /* AdaptiveContextSampler.swift */; };
 		AA00018500000000000000B1 /* ContextAwarenessSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028700000000000000B3 /* ContextAwarenessSummary.swift */; };
 		AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028800000000000000B4 /* ContextAwarenessView.swift */; };
+		AA00018700000000000000B5 /* RichContextDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028900000000000000B6 /* RichContextDebugSummary.swift */; };
+		AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029000000000000000B8 /* RichContextDebugView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -208,6 +210,8 @@
 		AA00028400000000000000B0 /* AdaptiveContextSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveContextSampler.swift; sourceTree = "<group>"; };
 		AA00028700000000000000B3 /* ContextAwarenessSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessSummary.swift; sourceTree = "<group>"; };
 		AA00028800000000000000B4 /* ContextAwarenessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessView.swift; sourceTree = "<group>"; };
+		AA00028900000000000000B6 /* RichContextDebugSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextDebugSummary.swift; sourceTree = "<group>"; };
+		AA00029000000000000000B8 /* RichContextDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextDebugView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -255,6 +259,7 @@
 			children = (
 				AA0002050000000000000005 /* AssistantPanelView.swift */,
 				AA00028800000000000000B4 /* ContextAwarenessView.swift */,
+				AA00029000000000000000B8 /* RichContextDebugView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
 				AA0002340000000000000032 /* InputPreviewView.swift */,
@@ -315,6 +320,7 @@
 				AA000279000000000000009C /* ContextDebugLogger.swift */,
 				AA00027A000000000000009E /* CanonicalContextState.swift */,
 				AA00028700000000000000B3 /* ContextAwarenessSummary.swift */,
+				AA00028900000000000000B6 /* RichContextDebugSummary.swift */,
 				AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */,
 				AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */,
 				AA00028400000000000000B0 /* AdaptiveContextSampler.swift */,
@@ -504,6 +510,7 @@
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
 				AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */,
+				AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */,
 				AA0001240000000000000024 /* SuggestionCard.swift in Sources */,
 				AA0001280000000000000028 /* ResultView.swift in Sources */,
 				AA0001290000000000000029 /* InputPreviewView.swift in Sources */,
@@ -541,6 +548,7 @@
 				AA000177000000000000009B /* ContextDebugLogger.swift in Sources */,
 				AA000178000000000000009D /* CanonicalContextState.swift in Sources */,
 				AA00018500000000000000B1 /* ContextAwarenessSummary.swift in Sources */,
+				AA00018700000000000000B5 /* RichContextDebugSummary.swift in Sources */,
 				AA00017A00000000000000A1 /* RichContextRefreshTypes.swift in Sources */,
 				AA00017B00000000000000A3 /* ProposalTimingGate.swift in Sources */,
 				AA00017C00000000000000A5 /* RichContextProposalAdjuster.swift in Sources */,

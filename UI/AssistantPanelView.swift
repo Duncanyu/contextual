@@ -6,6 +6,7 @@ struct AssistantPanelView: View {
 	private var debugCtx: ContextModel { appState.debugContext }
 	@State private var dismissedProposalKey: String?
 	@State private var debugExpanded: Bool = false
+	@State private var richContextDebugExpanded: Bool = false
 
 	var body: some View {
 		ScrollView {
@@ -153,6 +154,15 @@ struct AssistantPanelView: View {
 				Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
 				Text("Recent apps (max 5): \(recentList(debugCtx.recentAppNames))")
 				Text("Recent triggers (max 5): \(recentList(debugCtx.recentTriggers))")
+
+				DisclosureGroup(isExpanded: $richContextDebugExpanded) {
+					RichContextDebugView(summary: appState.richContextDebugSummary)
+						.padding(.top, 4)
+				} label: {
+					Text("Rich context (internal)")
+						.font(.caption)
+						.fontWeight(.medium)
+				}
 			}
 			.font(.caption)
 			.foregroundStyle(.secondary)

@@ -4,7 +4,27 @@ final class RichContextRefreshPipeline {
 	static let shared = RichContextRefreshPipeline()
 
 	private let state = State()
+	/// Latest useful refresh outcome for debug UI (metadata only; no raw content).
+	private let lastRefreshLock = NSLock()
+	private var lastRefreshDebugSnapshot: RichContextRefreshResult?
+
 	private init() {}
+
+	/// Last completed refresh with fused/collection metadata (nil until first useful refresh).
+	func lastRefreshResultSnapshot() -> RichContextRefreshResult? {
+		lastRefreshLock.lock()
+		let r = lastRefreshDebugSnapshot
+		lastRefreshLock.unlock()
+		return r
+	}
+
+	private func publishRefreshDebugSnapshot(_ result: RichContextRefreshResult) {
+		let useful = result.fusedPacket != nil || !result.collectedSources.isEmpty || !result.skippedSources.isEmpty
+		guard useful else { return }
+		lastRefreshLock.lock()
+		lastRefreshDebugSnapshot = result
+		lastRefreshLock.unlock()
+	}
 
 	func refresh(_ request: RichContextRefreshRequest) async -> RichContextRefreshResult {
 		let id = UUID()
@@ -211,6 +231,7 @@ final class RichContextRefreshPipeline {
 				]
 			)
 			await state.finish(generation: generation, result: result)
+			publishRefreshDebugSnapshot(result)
 			return result
 		}
 
@@ -267,6 +288,7 @@ final class RichContextRefreshPipeline {
 		AdaptiveContextSampler.shared.recordSampling(recordedCaps, workflowKey: workflowKey)
 
 		await state.finish(generation: generation, result: result)
+		publishRefreshDebugSnapshot(result)
 		return result
 	}
 
@@ -280,6 +302,9 @@ final class RichContextRefreshPipeline {
 
 	func reset() {
 		AdaptiveContextSampler.shared.reset()
+		lastRefreshLock.lock()
+		lastRefreshDebugSnapshot = nil
+		lastRefreshLock.unlock()
 		Task { await state.reset() }
 	}
 

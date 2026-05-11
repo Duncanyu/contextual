@@ -21,8 +21,13 @@ final class AppState: ObservableObject {
 	/// Metadata-only chips for subtle panel context awareness (T14.9); updated by app lifecycle only.
 	@Published var contextAwarenessSummary: ContextAwarenessSummary = .empty
 
+	/// Internal rich-context debug snapshot (T14.10); metadata only; updated by app lifecycle only.
+	@Published var richContextDebugSummary: RichContextDebugSummary = .empty
+
 	private var lastContextAwarenessLogSignature: String?
 	private var lastContextAwarenessLogAt: Date?
+	private var lastRichContextDebugLogSignature: String?
+	private var lastRichContextDebugLogAt: Date?
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
@@ -398,6 +403,7 @@ final class AppState: ObservableObject {
 		)
 		contextAwarenessSummary = next
 		logContextAwarenessIfNeeded(next)
+		refreshRichContextDebugSummary()
 	}
 
 	private func logContextAwarenessIfNeeded(_ summary: ContextAwarenessSummary) {
@@ -421,5 +427,47 @@ final class AppState: ObservableObject {
 		lastContextAwarenessLogAt = now
 		let chipsCsv = summary.chips.joined(separator: ",")
 		print("[ContextAwarenessUI] updated chips=\(chipsCsv)")
+	}
+
+	// MARK: - Rich context debug (T14.10)
+
+	func refreshRichContextDebugSummary() {
+		let next = RichContextDebugSummaryBuilder.build(
+			canonical: CanonicalContextState.shared.current(),
+			refreshResult: RichContextRefreshPipeline.shared.lastRefreshResultSnapshot(),
+			samplingDecision: AdaptiveContextSampler.shared.lastSamplingDecisionSnapshot(),
+			lastArbitration: ContextConfidenceArbitrator.shared.lastArbitrationSnapshot()
+		)
+		richContextDebugSummary = next
+		logRichContextDebugUIIfNeeded(next)
+	}
+
+	private func logRichContextDebugUIIfNeeded(_ summary: RichContextDebugSummary) {
+		let now = Date()
+		if !summary.showsRichDebug {
+			let sig = "hidden"
+			if sig == lastRichContextDebugLogSignature, let lastRichContextDebugLogAt, now.timeIntervalSince(lastRichContextDebugLogAt) < 2.0 {
+				return
+			}
+			lastRichContextDebugLogSignature = sig
+			lastRichContextDebugLogAt = now
+			print("[RichContextDebugUI] hidden reason=no_context")
+			return
+		}
+
+		let sig = [
+			summary.primarySource ?? "nil",
+			summary.freshnessScoreBucket ?? "nil",
+			summary.confidenceBucket ?? "nil",
+			summary.lastSamplingDecision ?? ""
+		].joined(separator: "|")
+		if sig == lastRichContextDebugLogSignature, let lastRichContextDebugLogAt, now.timeIntervalSince(lastRichContextDebugLogAt) < 1.2 {
+			return
+		}
+		lastRichContextDebugLogSignature = sig
+		lastRichContextDebugLogAt = now
+		print(
+			"[RichContextDebugUI] updated primary=\(summary.primarySource ?? "nil") freshness=\(summary.freshnessScoreBucket ?? "nil") confidence=\(summary.confidenceBucket ?? "nil")"
+		)
 	}
 }

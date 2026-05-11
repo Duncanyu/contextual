@@ -18,7 +18,24 @@ struct ContextArbitrationResult: Hashable, Sendable {
 
 final class ContextConfidenceArbitrator {
 	static let shared = ContextConfidenceArbitrator()
+	private let lastLock = NSLock()
+	private var lastSnapshot: ContextArbitrationResult?
+
 	private init() {}
+
+	/// Latest arbitration output (metadata only) for debug UI.
+	func lastArbitrationSnapshot() -> ContextArbitrationResult? {
+		lastLock.lock()
+		let s = lastSnapshot
+		lastLock.unlock()
+		return s
+	}
+
+	private func recordArbitrationSnapshot(_ r: ContextArbitrationResult) {
+		lastLock.lock()
+		lastSnapshot = r
+		lastLock.unlock()
+	}
 
 	func arbitrate(
 		candidates: [FusedContextSourceCandidate],
@@ -27,7 +44,7 @@ final class ContextConfidenceArbitrator {
 	) -> ContextArbitrationResult {
 		let present = candidates.filter { $0.isPresent }
 		if present.isEmpty {
-			return ContextArbitrationResult(
+			let r = ContextArbitrationResult(
 				confidence: basePacket?.confidence ?? 0.0,
 				conflictScore: basePacket?.conflictScore ?? 0.0,
 				primarySource: nil,
@@ -35,6 +52,8 @@ final class ContextConfidenceArbitrator {
 				supportingSources: [],
 				reasonCodes: ["no_candidates"]
 			)
+			recordArbitrationSnapshot(r)
+			return r
 		}
 
 		// Suppress clearly stale sources early.
@@ -111,7 +130,7 @@ final class ContextConfidenceArbitrator {
 		if (basePacket?.visualKinds.contains(.editor) ?? false), ocrFresh < 0.30 { reasons.append("ocr_vs_editor_hint") }
 		if reasons.isEmpty { reasons.append("no_change") }
 
-		return ContextArbitrationResult(
+		let out = ContextArbitrationResult(
 			confidence: confidence,
 			conflictScore: conflict,
 			primarySource: primary,
@@ -119,6 +138,8 @@ final class ContextConfidenceArbitrator {
 			supportingSources: supporting,
 			reasonCodes: reasons
 		)
+		recordArbitrationSnapshot(out)
+		return out
 	}
 
 	func selfTest() -> Bool {

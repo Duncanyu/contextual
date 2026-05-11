@@ -30,6 +30,8 @@ final class AdaptiveContextSampler {
 
 	private let lock = NSLock()
 	private var recentRecords: [SamplingRecord] = []
+	/// Latest adaptive decision (metadata only) for debug UI.
+	private var lastSamplingDecision: AdaptiveSamplingDecision?
 
 	private struct SamplingRecord: Sendable {
 		let at: Date
@@ -42,7 +44,16 @@ final class AdaptiveContextSampler {
 	func reset() {
 		lock.lock()
 		recentRecords.removeAll()
+		lastSamplingDecision = nil
 		lock.unlock()
+	}
+
+	/// Metadata-only snapshot of the most recent `evaluate` decision (for debug UI).
+	func lastSamplingDecisionSnapshot() -> AdaptiveSamplingDecision? {
+		lock.lock()
+		let d = lastSamplingDecision
+		lock.unlock()
+		return d
 	}
 
 	func recordSampling(_ sources: Set<ContextCapabilityID>, workflowKey: String?, recordedAt: Date = Date()) {
@@ -202,7 +213,7 @@ final class AdaptiveContextSampler {
 			aggregate = scores.reduce(0, +) / Double(scores.count)
 		}
 
-		return AdaptiveSamplingDecision(
+		let decision = AdaptiveSamplingDecision(
 			allowedSources: allowed,
 			deferredSources: deferred,
 			deniedSources: denied,
@@ -210,6 +221,10 @@ final class AdaptiveContextSampler {
 			reasonCodes: reasonCodes,
 			samplingScore: max(0.0, min(1.0, aggregate))
 		)
+		lock.lock()
+		lastSamplingDecision = decision
+		lock.unlock()
+		return decision
 	}
 
 	// MARK: - Self-test (synthetic metadata only)
