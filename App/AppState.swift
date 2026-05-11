@@ -30,6 +30,9 @@ final class AppState: ObservableObject {
 	/// Preview-only generated action display models (T15.11); derived, not persisted; updated by app lifecycle only.
 	@Published var dynamicActionDisplaySummary: DynamicActionDisplaySummary = .empty
 
+	/// Inline assistance candidate snapshot (T16.6 foundations; metadata-only; not rendered inline yet).
+	@Published var inlineAssistanceSnapshot: InlineAssistanceSnapshot = .empty
+
 	/// Lightweight metadata for panel proposal card (T16.2); empty when no safe context.
 	@Published private(set) var proposalContextSummary: ProposalContextSummary = .unavailable
 	/// Same for floating suggestion card.
@@ -514,6 +517,30 @@ final class AppState: ObservableObject {
 			let capped = Array(next.previewItems.prefix(VisibleGeneratedActionPanelAdapter.maxVisiblePreviews))
 			VisibleGeneratedActionPanelAdapter.logPanelShownIfNeeded(rows: capped, groupLabel: next.previewGroupLabel)
 		}
+		refreshInlineAssistanceCandidates()
+	}
+
+	// MARK: - Inline assistance foundations (T16.6)
+
+	func refreshInlineAssistanceCandidates() {
+		let typing = TypingActivitySource.shared.currentContext()
+		let pointer = PointerActivitySource.shared.currentContext()
+		let fused = CanonicalContextState.shared.current()
+		let staticSummaries = availableActions.map { ($0.id, $0.name) }
+		let input = InlineAssistanceBuildInput(
+			context: debugContext,
+			staticActions: staticSummaries,
+			currentProposal: currentProposal,
+			currentProposalKey: currentProposalKey,
+			generatedPreviewItems: dynamicActionDisplaySummary.previewItems,
+			isManualInvocation: false,
+			isActionExecuting: isActionExecuting,
+			lastDismissedProposalActionId: lastDismissedProposalActionId,
+			typing: typing,
+			pointer: pointer,
+			fused: fused
+		)
+		inlineAssistanceSnapshot = InlineAssistanceCandidateBuilder.build(input: input)
 	}
 
 	// MARK: - Proposal context (T16.2)
@@ -527,6 +554,7 @@ final class AppState: ObservableObject {
 			proposalContextSummary = .unavailable
 			logProposalContextHiddenIfNeeded()
 		}
+		refreshInlineAssistanceCandidates()
 	}
 
 	func refreshFloatingProposalContext(for proposal: ActionProposal?) {

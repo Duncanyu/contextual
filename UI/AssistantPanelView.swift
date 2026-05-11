@@ -9,6 +9,7 @@ struct AssistantPanelView: View {
 	@State private var richContextDebugExpanded: Bool = false
 	@State private var dynamicIntentDebugExpanded: Bool = false
 	@State private var dynamicActionPreviewExpanded: Bool = false
+	@State private var inlineAssistanceDebugExpanded: Bool = false
 	@State private var dismissedVisibleGeneratedActionIds: Set<UUID> = []
 
 	var body: some View {
@@ -192,6 +193,15 @@ struct AssistantPanelView: View {
 						.padding(.top, 4)
 				} label: {
 					Text("Generated actions (internal)")
+						.font(.caption)
+						.fontWeight(.medium)
+				}
+
+				DisclosureGroup(isExpanded: $inlineAssistanceDebugExpanded) {
+					InlineAssistanceDebugView(snapshot: appState.inlineAssistanceSnapshot)
+						.padding(.top, 4)
+				} label: {
+					Text("Inline assistance (internal)")
 						.font(.caption)
 						.fontWeight(.medium)
 				}

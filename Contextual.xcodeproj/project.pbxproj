@@ -72,6 +72,8 @@
 		AA00019A00000000000000C7 /* GeneratedActionSafetyPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A00000000000000C7 /* GeneratedActionSafetyPolicy.swift */; };
 		AA00019B00000000000000C8 /* GeneratedActionExplainability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */; };
 		AA0001B60000000000000D5 /* GeneratedAssistanceCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B60000000000000D5 /* GeneratedAssistanceCategory.swift */; };
+		AA0001B70000000000000D6 /* InlineAssistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B70000000000000D6 /* InlineAssistanceModels.swift */; };
+		AA0001B80000000000000D7 /* InlineAssistanceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B80000000000000D7 /* InlineAssistanceDebugView.swift */; };
 		AA0001B20000000000000D2 /* ProposalContextSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B20000000000000D2 /* ProposalContextSummary.swift */; };
 		AA0001B30000000000000D3 /* WorkflowActionOrderingSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B30000000000000D3 /* WorkflowActionOrderingSelfTest.swift */; };
 		AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */; };
@@ -208,6 +210,8 @@
 		AA0002A00000000000000C7 /* GeneratedActionSafetyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionSafetyPolicy.swift; sourceTree = "<group>"; };
 		AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionExplainability.swift; sourceTree = "<group>"; };
 		AA0002B60000000000000D5 /* GeneratedAssistanceCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedAssistanceCategory.swift; sourceTree = "<group>"; };
+		AA0002B70000000000000D6 /* InlineAssistanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineAssistanceModels.swift; sourceTree = "<group>"; };
+		AA0002B80000000000000D7 /* InlineAssistanceDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineAssistanceDebugView.swift; sourceTree = "<group>"; };
 		AA0002B20000000000000D2 /* ProposalContextSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalContextSummary.swift; sourceTree = "<group>"; };
 		AA0002B30000000000000D3 /* WorkflowActionOrderingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowActionOrderingSelfTest.swift; sourceTree = "<group>"; };
 		AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceDebugLogger.swift; sourceTree = "<group>"; };
@@ -317,6 +321,7 @@
 				AA0002A30000000000000CA /* DynamicIntentDebugView.swift */,
 				AA0002A70000000000000CE /* DynamicActionPreviewView.swift */,
 				AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */,
+				AA0002B80000000000000D7 /* InlineAssistanceDebugView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
 				AA0002340000000000000032 /* InputPreviewView.swift */,
@@ -460,6 +465,7 @@
 				AA0002A00000000000000C7 /* GeneratedActionSafetyPolicy.swift */,
 				AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */,
 				AA0002B60000000000000D5 /* GeneratedAssistanceCategory.swift */,
+				AA0002B70000000000000D6 /* InlineAssistanceModels.swift */,
 				AA0002B20000000000000D2 /* ProposalContextSummary.swift */,
 				AA0002B30000000000000D3 /* WorkflowActionOrderingSelfTest.swift */,
 				AA0002A20000000000000C9 /* DynamicIntentDebugSummary.swift */,
@@ -589,6 +595,7 @@
 				AA0001040000000000000004 /* MenuBarController.swift in Sources */,
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
+				AA0001B80000000000000D7 /* InlineAssistanceDebugView.swift in Sources */,
 				AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */,
 				AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */,
 				AA00019D00000000000000CA /* DynamicIntentDebugView.swift in Sources */,
@@ -696,6 +703,7 @@
 				AA00019A00000000000000C7 /* GeneratedActionSafetyPolicy.swift in Sources */,
 				AA00019B00000000000000C8 /* GeneratedActionExplainability.swift in Sources */,
 				AA0001B60000000000000D5 /* GeneratedAssistanceCategory.swift in Sources */,
+				AA0001B70000000000000D6 /* InlineAssistanceModels.swift in Sources */,
 				AA0001B20000000000000D2 /* ProposalContextSummary.swift in Sources */,
 				AA0001B30000000000000D3 /* WorkflowActionOrderingSelfTest.swift in Sources */,
 				AA00019C00000000000000C9 /* DynamicIntentDebugSummary.swift in Sources */,
