@@ -2096,6 +2096,591 @@ After Phase 14:
 
 ---
 
+## Phase 15 — Dynamic Intent + Action Synthesis
+
+### Goal
+
+Transform the assistant from a static action system into a contextually intelligent intent synthesis system.
+
+Phase 13 built contextual infrastructure.
+
+Phase 14 activated rich context consumption.
+
+Phase 15 begins allowing the assistant to:
+
+- infer workflows
+- synthesize contextual intents
+- dynamically generate actions
+- compose actions from primitives
+- adapt behavior situationally
+- surface semantically useful assistance
+
+without becoming:
+
+- autonomous
+- chaotic
+- intrusive
+- spammy
+- unpredictable
+- computationally excessive
+
+---
+
+### Core Principle
+
+The assistant should stop thinking in terms of:
+
+- summarize
+- explain
+- rewrite
+
+and begin thinking in terms of:
+
+- “The user is debugging”
+- “The user is researching”
+- “The user is writing”
+- “The user is reviewing code”
+- “The user is filling repetitive UI”
+- “The user is context-switching heavily”
+- “The user is investigating an issue”
+- “The user is extracting information”
+
+The assistant should synthesize contextual usefulness,
+not merely expose generic utilities.
+
+---
+
+### Updated System Flow
+
+Sources  
+↓  
+Rich Context Infrastructure  
+↓  
+Canonical Fused Context  
+↓  
+Workflow Inference Engine  
+↓  
+Intent Synthesis Engine  
+↓  
+Dynamic Action Generator  
+↓  
+Proposal Intelligence  
+↓  
+Action Execution Layer  
+↓  
+UI / Interaction Layer  
+
+---
+
+### Design Philosophy
+
+The assistant should evolve from:
+
+> “Some text exists.”
+
+toward:
+
+> “The user appears to be debugging a SwiftUI layout issue after repeatedly switching between Xcode, terminal output, and documentation.”
+
+The system should begin understanding:
+
+- workflow state
+- behavioral patterns
+- semantic usefulness
+- situational intent
+- contextual continuity
+
+instead of reacting narrowly to individual triggers.
+
+---
+
+### Dynamic Action Philosophy
+
+Dynamic actions are:
+
+- generated contextually
+- situationally synthesized
+- confidence-scored
+- temporary
+- composable
+- workflow-aware
+
+Dynamic actions are NOT:
+
+- arbitrary generated code
+- unrestricted automation
+- unrestricted tool execution
+- autonomous agents
+- uncontrolled planning loops
+
+The assistant should generate:
+
+- intentions
+- structured proposals
+- composed action plans
+
+not unrestricted execution.
+
+---
+
+### Workflow Inference Philosophy
+
+The assistant should begin inferring:
+
+- editing workflows
+- debugging workflows
+- research workflows
+- writing workflows
+- review workflows
+- browsing workflows
+- repetitive interaction patterns
+- contextual sessions
+
+using:
+
+- app transitions
+- interaction timing
+- contextual continuity
+- multimodal agreement
+- repeated behavioral patterns
+- rich fused context
+
+---
+
+### Intent Synthesis Philosophy
+
+The assistant should synthesize useful intentions dynamically.
+
+Examples:
+
+- “Explain likely cause of this stacktrace”
+- “Summarize changes in this diff”
+- “Extract TODOs from this screen”
+- “Generate commit summary”
+- “Draft response to selected message”
+- “Compare these snippets”
+- “Summarize article section”
+- “Identify likely bug source”
+- “Extract action items”
+- “Explain highlighted API response”
+
+The assistant should begin generating actions because they are useful in-context,
+not because they were statically predefined.
+
+---
+
+### Action Composition Philosophy
+
+Generated actions should be composed from safe primitives.
+
+Examples:
+
+- explain
+- summarize
+- rewrite
+- extract
+- compare
+- classify
+- structure
+- transform
+
+The assistant should synthesize execution plans from these primitives.
+
+This preserves:
+
+- determinism
+- safety
+- responsiveness
+- explainability
+
+while enabling flexible behavior.
+
+---
+
+### Proposal Philosophy
+
+Proposal quality becomes more important than proposal quantity.
+
+The assistant should prefer:
+
+- fewer
+- higher-confidence
+- more contextually meaningful
+- more situationally useful
+
+proposals.
+
+The assistant should increasingly optimize for:
+
+- usefulness
+- timing
+- workflow continuity
+- interruption cost
+- contextual relevance
+
+instead of simply reacting to triggers.
+
+---
+
+### Behavioral Philosophy
+
+The assistant should begin feeling:
+
+- thoughtful
+- situationally aware
+- workflow-sensitive
+- calm
+- useful
+- intentional
+
+instead of:
+
+- reactive
+- generic
+- repetitive
+- heuristic-heavy
+- clipboard-driven
+
+---
+
+### Performance Philosophy
+
+Dynamic intent generation must remain:
+
+- lightweight
+- local-first
+- cancellable
+- bounded
+- confidence-aware
+- budget-aware
+
+The assistant should NOT:
+
+- constantly generate actions
+- continuously reason deeply
+- aggressively sample context
+- block interaction responsiveness
+
+Most reasoning should remain:
+
+- opportunistic
+- event-driven
+- selective
+- confidence-gated
+
+---
+
+### Safety Philosophy
+
+Generated actions must remain:
+
+- constrained
+- explainable
+- interrupt-safe
+- deterministic where possible
+- confidence-scored
+- reversible
+
+The assistant should never:
+
+- execute arbitrary generated code
+- silently automate workflows
+- create uncontrolled execution loops
+- persist hidden behavioral memory
+- escalate privileges autonomously
+
+---
+
+### Privacy Philosophy
+
+The assistant remains:
+
+- local-first
+- privacy-first
+- minimally persistent
+- metadata-oriented
+- transparency-oriented
+
+Rich behavioral understanding should improve usefulness,
+not become surveillance.
+
+---
+
+## Tickets
+
+---
+
+### T15.1 — Workflow Inference Engine
+
+Introduce workflow inference infrastructure.
+
+The system should begin inferring:
+
+- debugging workflows
+- writing workflows
+- research workflows
+- browsing workflows
+- editing workflows
+- review workflows
+
+using:
+
+- app transitions
+- interaction state
+- context continuity
+- multimodal agreement
+- behavioral repetition
+
+The output should remain:
+
+- lightweight
+- confidence-scored
+- temporary
+- metadata-only
+
+---
+
+### T15.2 — Contextual Session Tracking
+
+Introduce lightweight contextual session continuity.
+
+The assistant should begin tracking:
+
+- recent workflow continuity
+- repeated contexts
+- recurring interaction patterns
+- active task continuity
+
+without persistent long-term behavioral memory.
+
+Goals:
+
+- reduce contextual reset feeling
+- improve proposal continuity
+- improve workflow awareness
+
+---
+
+### T15.3 — Intent Synthesis Engine
+
+Create a dynamic intent synthesis layer.
+
+The assistant should generate:
+
+- contextual intents
+- situational assistance ideas
+- workflow-aware proposal concepts
+
+instead of relying entirely on predefined actions.
+
+Generated intents should remain:
+
+- structured
+- confidence-scored
+- non-executable
+- temporary
+
+---
+
+### T15.4 — Generated Action Model
+
+Introduce generated action structures.
+
+Generated actions should contain:
+
+- title
+- description
+- intent type
+- confidence
+- required context
+- execution primitives
+- interruption cost
+- workflow relevance
+
+Generated actions should remain:
+
+- explainable
+- deterministic
+- non-autonomous
+
+---
+
+### T15.5 — Action Primitive Composition
+
+Allow actions to be composed from primitives.
+
+Examples:
+
+- summarize + extract
+- explain + compare
+- structure + summarize
+- classify + extract
+
+The system should synthesize simple execution plans dynamically.
+
+---
+
+### T15.6 — Workflow-Aware Proposal Ranking
+
+Proposal ranking should begin considering:
+
+- workflow continuity
+- repeated usefulness
+- interruption cost
+- recent proposal rejection
+- active workflow type
+- generated action confidence
+
+instead of mostly static heuristics.
+
+---
+
+### T15.7 — Dynamic Intent Suppression
+
+Suppress low-quality or low-usefulness generated intents.
+
+Examples:
+
+- weak contextual evidence
+- repetitive generated proposals
+- active interaction bursts
+- stale workflows
+- low multimodal agreement
+
+Goals:
+
+- maintain calmness
+- reduce hallucinated usefulness
+- reduce proposal spam
+
+---
+
+### T15.8 — Generated Action Safety Constraints
+
+Introduce safety constraints for generated actions.
+
+Generated actions must NOT:
+
+- execute arbitrary commands
+- access unrestricted APIs
+- create uncontrolled loops
+- escalate privileges
+- silently automate workflows
+
+All generated actions must remain bounded and reviewable.
+
+---
+
+### T15.9 — Dynamic Action Explainability
+
+Generated actions should expose:
+
+- why they appeared
+- what context influenced them
+- confidence
+- workflow reasoning
+
+without exposing raw sensitive context.
+
+The assistant should increasingly feel transparent.
+
+---
+
+### T15.10 — Generated Intent Debug Visualization
+
+Improve debugging visibility for:
+
+- workflow inference
+- generated intents
+- proposal ranking
+- suppression decisions
+- execution composition
+- contextual continuity
+
+Metadata-only.
+
+No raw context logging.
+
+---
+
+### T15.11 — Dynamic Action UX Foundations
+
+Begin preparing the UI for contextual/generated actions.
+
+Possible future-facing behaviors:
+
+- contextual inline actions
+- grouped workflow suggestions
+- richer proposal cards
+- intent categories
+- lightweight workflow surfacing
+
+Do NOT redesign the UI yet.
+
+Focus on foundational support only.
+
+---
+
+### T15.12 — Phase 15 Tuning Pass
+
+Tune dynamic intent behavior.
+
+Goals:
+
+- reduce low-value generated actions
+- improve contextual usefulness
+- improve workflow continuity
+- improve proposal quality
+- improve calmness
+- improve trustworthiness
+- maintain responsiveness
+- avoid over-generation
+
+The assistant should feel:
+
+- intelligent
+- grounded
+- situationally useful
+- non-intrusive
+
+---
+
+### Out of Scope
+
+Do NOT implement yet:
+
+- unrestricted autonomous agents
+- browser automation
+- shell execution
+- generated Swift execution
+- unrestricted tool ecosystems
+- long-horizon planning
+- persistent behavioral profiling
+- cloud-dependent reasoning
+- hidden background automation
+- fully autonomous workflows
+
+---
+
+### Success Criteria
+
+After Phase 15:
+
+- the assistant begins synthesizing contextual intents
+- actions become workflow-aware
+- proposals feel more situationally useful
+- workflow continuity improves
+- proposal quality improves substantially
+- generic summarize/explain behavior becomes less dominant
+- generated actions remain calm and bounded
+- interruption quality improves
+- dynamic actions feel intentional
+- the assistant begins feeling semantically intelligent
+- responsiveness remains high
+- privacy-first/local-first philosophy remains intact
+
+---
+
 ### Resulting UX
 
 After Phase 9:

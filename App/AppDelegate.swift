@@ -319,6 +319,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			lastPipelineActiveAppKey = bid
 		}
 
+		// T15.1: lightweight workflow inference (metadata-only, in-memory).
+		WorkflowInferenceEngine.shared.recordAppBundle(bid.isEmpty ? nil : bid)
+		WorkflowInferenceEngine.shared.evaluate(referenceTime: Date())
+
 		contextPipelineGeneration += 1
 		let generation = contextPipelineGeneration
 		if let packet = triggerEngine.evaluate(context) {
@@ -1338,6 +1342,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_PHASE14_TUNING_SELFTEST"] == "1" {
 			let ok = Phase14TuningSelfTest.run()
 			print("[Phase14Tuning] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Workflow inference engine self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST"] == "1" {
+			let ok = WorkflowInferenceEngine.runSelfTest()
+			print("[WorkflowInference] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}

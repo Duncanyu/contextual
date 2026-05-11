@@ -104,6 +104,8 @@
 		AA00017F00000000000000AB /* RichAnalyzeScreenPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028100000000000000AC /* RichAnalyzeScreenPromptBuilder.swift */; };
 		AA00018000000000000000AD /* ContextConfidenceArbitrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */; };
 		AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028400000000000000B0 /* AdaptiveContextSampler.swift */; };
+		AA00018C00000000000000BB /* WorkflowInferenceTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029400000000000000BB /* WorkflowInferenceTypes.swift */; };
+		AA00018D00000000000000BC /* WorkflowInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029500000000000000BC /* WorkflowInferenceEngine.swift */; };
 		AA00018500000000000000B1 /* ContextAwarenessSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028700000000000000B3 /* ContextAwarenessSummary.swift */; };
 		AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028800000000000000B4 /* ContextAwarenessView.swift */; };
 		AA00018700000000000000B5 /* RichContextDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028900000000000000B6 /* RichContextDebugSummary.swift */; };
@@ -210,6 +212,8 @@
 		AA00028100000000000000AC /* RichAnalyzeScreenPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichAnalyzeScreenPromptBuilder.swift; sourceTree = "<group>"; };
 		AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextConfidenceArbitrator.swift; sourceTree = "<group>"; };
 		AA00028400000000000000B0 /* AdaptiveContextSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveContextSampler.swift; sourceTree = "<group>"; };
+		AA00029400000000000000BB /* WorkflowInferenceTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowInferenceTypes.swift; sourceTree = "<group>"; };
+		AA00029500000000000000BC /* WorkflowInferenceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowInferenceEngine.swift; sourceTree = "<group>"; };
 		AA00028700000000000000B3 /* ContextAwarenessSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessSummary.swift; sourceTree = "<group>"; };
 		AA00028800000000000000B4 /* ContextAwarenessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessView.swift; sourceTree = "<group>"; };
 		AA00028900000000000000B6 /* RichContextDebugSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextDebugSummary.swift; sourceTree = "<group>"; };
@@ -328,6 +332,8 @@
 				AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */,
 				AA00028400000000000000B0 /* AdaptiveContextSampler.swift */,
 				AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */,
+				AA00029400000000000000BB /* WorkflowInferenceTypes.swift */,
+				AA00029500000000000000BC /* WorkflowInferenceEngine.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -561,6 +567,8 @@
 				AA00017F00000000000000AB /* RichAnalyzeScreenPromptBuilder.swift in Sources */,
 				AA00018000000000000000AD /* ContextConfidenceArbitrator.swift in Sources */,
 				AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */,
+				AA00018C00000000000000BB /* WorkflowInferenceTypes.swift in Sources */,
+				AA00018D00000000000000BC /* WorkflowInferenceEngine.swift in Sources */,
 				AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
