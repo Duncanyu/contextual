@@ -84,8 +84,8 @@ enum Phase14TuningSelfTest {
 		// 6) Analyze Screen model instructions (anti-speculation).
 		let preamble = IntelligenceActionRunner.analyzeScreenSafetyPreamble
 		if !preamble.localizedCaseInsensitiveContains("verbatim")
-			|| !preamble.localizedCaseInsensitiveContains("metadata-only")
-			|| !preamble.localizedCaseInsensitiveContains("Never mention workflow hints") {
+			|| !preamble.localizedCaseInsensitiveContains("layout hint")
+			|| !preamble.localizedCaseInsensitiveContains("practical") {
 			failures.append("analyze_prompt_preamble_weak")
 		}
 
@@ -96,7 +96,7 @@ enum Phase14TuningSelfTest {
 			fused: fusedArticle,
 			refreshMeta: ["axFragments": "3", "axTextLen": "40", "visualKinds": "article"]
 		)
-		if !built.input.contains("Evidence contract") {
+		if !built.input.contains("## What you are doing") {
 			failures.append("builder_missing_evidence_contract")
 		}
 
@@ -108,10 +108,12 @@ enum Phase14TuningSelfTest {
 			fused: fusedArticle,
 			refreshMeta: ["axFragments": "0", "axTextLen": "0", "visualKinds": "browser,editor,terminal,dialog"]
 		)
-		if !weakBuilt.input.contains("uncertaintyMode: on")
-			|| !weakBuilt.input.contains("visualKindsArbitrated: browser")
-			|| weakBuilt.input.contains("likelyWorkflow=terminal_debugging")
-			|| weakBuilt.input.contains("likelyWorkflow=code_editing")
+		let weakLower = weakBuilt.input.lowercased()
+		if !weakBuilt.situation.visualEvidenceConflicting
+			|| weakBuilt.situation.shouldUseWorkflow
+			|| weakLower.contains("likelyworkflow")
+			|| !weakBuilt.input.contains("Limited readable text: yes")
+			|| !RichAnalyzeScreenPromptBuilder.analyzePromptExcludesBannedTokens(weakBuilt.input)
 		{
 			failures.append("builder_conflict_should_not_infer_workflow")
 		}

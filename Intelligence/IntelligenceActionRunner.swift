@@ -13,11 +13,11 @@ enum IntelligenceActionRunner {
 	You are helping interpret on-screen evidence for a macOS user.
 
 	IMPORTANT RULES:
-	- Treat the OCR body as the only verbatim evidence of visible text. Quote or paraphrase it carefully.
-	- App name, bundle id, window-title availability, workflow hints, and fused metadata are NOT proof of what is on screen; never invent UI text from them.
-	- Visual/AX/fused fields are low-trust hints only; if they disagree with OCR, prefer OCR for literal claims.
-	- Never mention workflow hints (e.g. code editing, terminal debugging) unless directly supported by OCR or AX evidence. If visual metadata conflicts, ignore it for semantic conclusions.
-	- If OCR is empty, very short, garbled, or metadata-only, say evidence is limited and avoid detailed narratives.
+	- Treat the “Visible text” section as the only verbatim transcript of on-screen characters. Quote or paraphrase it carefully.
+	- App name and bundle id are context only; they are not proof of what is visible.
+	- Any “Layout hint” or “Activity pattern” lines are secondary; if they disagree with the readable text, prefer the text for factual claims.
+	- Do not claim debugging, terminals, code review, or deep research unless the readable text clearly supports it.
+	- If the capture is empty, very short, or mostly chrome/menus, say evidence is limited in one short sentence, then suggest practical next steps (select or copy text).
 	- Do not infer passwords, private URLs, file paths, emails, or unseen window titles.
 	- Be concise and practical. No title.
 	"""
@@ -70,7 +70,7 @@ enum IntelligenceActionRunner {
 			return """
 			\(Self.analyzeScreenSafetyPreamble)
 
-			Screen context (OCR + metadata):
+			Screen situation and readable text:
 			\(input)
 			"""
 		}

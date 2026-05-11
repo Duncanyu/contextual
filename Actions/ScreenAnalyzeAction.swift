@@ -52,20 +52,27 @@ struct ScreenAnalyzeAction: ActionProtocol {
 			refreshMeta: refresh.debugSummaryMetadata
 		)
 
+		ScreenSituationClassifier.logPromptProfile(situation: built.situation)
+
 		let kindsLabel = built.visualKinds.isEmpty ? "none" : built.visualKinds.joined(separator: ",")
-		print("[AnalyzeScreenRich] prompt_built ocrChars=\(built.ocrChars) axFragments=\(built.axFragments) visualKinds=\(kindsLabel) confidence=\(String(format: "%.2f", built.fusedConfidence))")
+		print("[AnalyzeScreenRich] prompt_built ocrChars=\(built.ocrChars) situation=\(built.situation.kind.rawValue) evidenceBucket=\(built.situation.confidenceBucket) axFragments=\(built.axFragments) visualKinds=\(kindsLabel)")
 
 		let richSources = refresh.collectedSources.map(\.rawValue).joined(separator: ",")
 		print("[AnalyzeScreenRich] refresh_completed sources=ocr,\(richSources)")
 
-		// Failure behavior: if OCR is empty and fused metadata is weak, return a safe "not enough context" result.
+		if built.situation.shouldSkipLocalAI, let det = built.situation.deterministicUserReply {
+			print("[AnalyzeScreenRich] deterministic_fallback reason=\(built.situation.kind.rawValue)")
+			return ActionResult(actionId: id, outputText: det)
+		}
+
+		// Failure behavior: if OCR is empty and supporting hints are weak, return a safe result without calling the model.
 		let hasMeaningfulOCR = (ocrChars >= Self.minOCRLength)
 		let hasUsefulMeta = (built.axFragments > 0) || !built.visualKinds.isEmpty || (built.fusedFreshness >= 0.35)
 		if !hasMeaningfulOCR, !hasUsefulMeta {
-			print("[AnalyzeScreenRich] fallback reason=not_enough_context")
+			print("[AnalyzeScreenRich] deterministic_fallback reason=not_enough_context")
 			return ActionResult(
 				actionId: id,
-				outputText: "I don’t have enough readable screen text or reliable metadata to analyze right now. Try again on a more text-heavy screen, or rerun after the screen finishes updating."
+				outputText: "I don’t have enough readable screen text or reliable layout hints to analyze right now. Try again on a more text-heavy screen, or rerun after the screen finishes updating."
 			)
 		}
 

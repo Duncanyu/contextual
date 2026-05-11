@@ -55,6 +55,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/RichContextProposalSelfTest.swift
 /Users/duncanyu/Documents/GitHub/contextual/Actions/ContextAwareActionEligibility.swift
 /Users/duncanyu/Documents/GitHub/contextual/Actions/RichAnalyzeScreenPromptBuilder.swift
+/Users/duncanyu/Documents/GitHub/contextual/Actions/ScreenSituation.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/ContextConfidenceArbitrator.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/AdaptiveContextSampler.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/WorkflowInferenceTypes.swift

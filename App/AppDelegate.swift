@@ -1635,11 +1635,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Screen situation + Analyze Screen prompt jargon self-test (synthetic inputs only; no AI, no screenshots).
+		// Run the app with `CONTEXTUAL_RUN_SCREEN_SITUATION_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_SCREEN_SITUATION_SELFTEST"] == "1" {
+			let sOk = ScreenSituationClassifier.runSelfTest()
+			let jOk = RichAnalyzeScreenPromptBuilder.runJargonSelfTest()
+			let ok = sOk && jOk
+			print("[ScreenSituation] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Rich Analyze Screen pipeline self-test (prompt build only; no AI calls, no screenshots).
 		// Run the app with `CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST=1` to execute once and exit.
 		if env["CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST"] == "1" {
-			let ctx = ContextModel()
-			let ocr = "Xcode\nError: Something failed\nfunc foo() { return 1 }\n"
+			var ctx = ContextModel()
+			ctx.activeAppName = "Xcode"
+			ctx.activeAppBundleIdentifier = "com.apple.dt.Xcode"
+			let ocr = "Xcode\nBuild failed for target\nfunc foo() { return 1 }\n"
 			let fused = FusedContextPacket(
 				id: UUID(),
 				createdAt: Date(),
@@ -1677,7 +1690,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			let meta: [String: String] = [
 				"axFragments": "24",
 				"axTextLen": "1200",
-				"visualKinds": "editor,dialog",
+				"visualKinds": "editor",
 				"visualConf": "0.82",
 				"visualPanels": "2"
 			]
@@ -1689,15 +1702,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				refreshMeta: meta
 			)
 			let containsImageLike = built.input.contains("CGImage") || built.input.contains("data:") || built.input.contains("base64")
-			let ok = built.input.contains("Evidence contract")
-				&& built.input.contains("## OCR")
-				&& built.input.contains("## Visual hints")
-				&& built.input.contains("## AX hints")
-				&& built.input.contains("## Fused context")
-				&& built.input.contains("## Workflow hints")
+			let ok = built.input.contains("## What you are doing")
+				&& built.input.contains("## Situation profile")
+				&& built.input.contains("## Visible text")
+				&& RichAnalyzeScreenPromptBuilder.analyzePromptExcludesBannedTokens(built.input)
+				&& built.situation.kind == .codeOrEditor
 				&& !containsImageLike
 
-			// New (T14.11 fix): conflicting visual kinds + weak OCR must not generate workflow claims.
+			// Conflicting visual kinds + weak OCR must not enable workflow hints in the situation profile.
 			let weakOCR = "YouTube\nSkip ads\n"
 			let weakMeta: [String: String] = [
 				"axFragments": "0",
@@ -1713,10 +1725,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				fused: fused,
 				refreshMeta: weakMeta
 			)
-			let weakOk = weakBuilt.input.contains("uncertaintyMode: on")
-				&& weakBuilt.input.contains("visualKindsArbitrated: browser")
-				&& !weakBuilt.input.contains("likelyWorkflow=terminal_debugging")
-				&& !weakBuilt.input.contains("likelyWorkflow=code_editing")
+			let weakKindOk = weakBuilt.situation.kind == .browserPage || weakBuilt.situation.kind == .videoOrSocial
+			let weakOk = weakBuilt.situation.visualEvidenceConflicting
+				&& !weakBuilt.situation.shouldUseWorkflow
+				&& weakKindOk
+				&& weakBuilt.input.contains("Limited readable text: yes")
+				&& RichAnalyzeScreenPromptBuilder.analyzePromptExcludesBannedTokens(weakBuilt.input)
+				&& !weakBuilt.input.lowercased().contains("likelyworkflow")
 
 			let finalOk = ok && weakOk
 			print("[AnalyzeScreenRich] selftest prompt_built ocrChars=\(built.ocrChars) axFragments=\(built.axFragments) visualKinds=\(built.visualKinds.joined(separator: ",")) ok=\(finalOk)")
