@@ -8,6 +8,8 @@ struct SuggestionCard: View {
 	var primaryDisabled: Bool = false
 	/// Optional one-line hint for which input source the primary action will use (metadata only).
 	var inputSourceLine: String? = nil
+	/// Lightweight proposal context (T16.2); when unavailable, layout matches pre–T16.2 cards.
+	var proposalContext: ProposalContextSummary = .unavailable
 	let onPrimary: () -> Void
 	let onDismiss: () -> Void
 
@@ -37,6 +39,10 @@ struct SuggestionCard: View {
 					.fixedSize(horizontal: false, vertical: true)
 			}
 
+			if proposalContext.isAvailable {
+				ProposalContextCardChrome(summary: proposalContext, style: .panel)
+			}
+
 			HStack(spacing: 8) {
 				Button(primaryActionTitle) {
 					onPrimary()
@@ -57,6 +63,87 @@ struct SuggestionCard: View {
 	}
 }
 
+// MARK: - Proposal context (T16.2)
+
+enum ProposalContextCardChromeStyle {
+	case panel
+	case floating
+}
+
+struct ProposalContextCardChrome: View {
+	let summary: ProposalContextSummary
+	var style: ProposalContextCardChromeStyle = .panel
+
+	private var whyText: String? {
+		let primary = summary.whyLine?.trimmingCharacters(in: .whitespacesAndNewlines)
+		let hint = summary.explainHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+		if let p = primary, !p.isEmpty { return p }
+		if let h = hint, !h.isEmpty { return h }
+		return nil
+	}
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			if let line = summary.contextSubtitle, !line.isEmpty {
+				Text(line)
+					.font(.caption)
+					.foregroundStyle(.secondary)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+
+			if !summary.chipDisplayLabels.isEmpty {
+				HStack(spacing: 6) {
+					ForEach(Array(summary.chipDisplayLabels.enumerated()), id: \.offset) { _, label in
+						chipLabel(label)
+					}
+				}
+				.fixedSize(horizontal: false, vertical: true)
+			}
+
+			if let why = whyText {
+				Text("Why: \(why)")
+					.font(.caption2)
+					.foregroundStyle(.tertiary)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+	}
+
+	@ViewBuilder
+	private func chipLabel(_ label: String) -> some View {
+		switch style {
+		case .panel:
+			Text(label)
+				.font(.caption2)
+				.fontWeight(.medium)
+				.padding(.horizontal, 8)
+				.padding(.vertical, 3)
+				.background(
+					Capsule(style: .continuous)
+						.fill(Color(nsColor: .quaternaryLabelColor).opacity(0.14))
+				)
+				.overlay(
+					Capsule(style: .continuous)
+						.stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
+				)
+		case .floating:
+			Text(label)
+				.font(.caption2)
+				.fontWeight(.medium)
+				.padding(.horizontal, 8)
+				.padding(.vertical, 3)
+				.background(
+					Capsule(style: .continuous)
+						.fill(Color.primary.opacity(0.06))
+				)
+				.overlay(
+					Capsule(style: .continuous)
+						.stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+				)
+		}
+	}
+}
+
 #if DEBUG
 struct SuggestionCard_Previews: PreviewProvider {
 	static var previews: some View {
@@ -66,6 +153,7 @@ struct SuggestionCard_Previews: PreviewProvider {
 			dismissTitle: "Dismiss",
 			primaryDisabled: false,
 			inputSourceLine: "Using: Clipboard",
+			proposalContext: .unavailable,
 			onPrimary: {},
 			onDismiss: {}
 		)
@@ -74,4 +162,3 @@ struct SuggestionCard_Previews: PreviewProvider {
 	}
 }
 #endif
-

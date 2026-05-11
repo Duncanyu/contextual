@@ -694,6 +694,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		appState.availableActions = ordered
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
+		appState.refreshProposalContext(for: finalProposal)
 		lastReasonedActions = ordered
 		lastReasonedActionsAt = Date()
 		lastReasonedTriggerType = packet.triggerType
@@ -1111,6 +1112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				appState.availableActions = []
 				appState.currentProposal = nil
 				appState.currentProposalKey = nil
+				appState.refreshProposalContext(for: nil)
 				print("[AvailableActions] cleared cached actions reason=\(reason)")
 			}
 			return
@@ -1125,9 +1127,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			   !appState.isSuggestionOnCooldown(p, context: appState.debugContext) {
 				appState.currentProposal = p
 				appState.currentProposalKey = lastReasonedProposalKey
+				appState.refreshProposalContext(for: p)
 			} else {
 				appState.currentProposal = nil
 				appState.currentProposalKey = nil
+				appState.refreshProposalContext(for: nil)
 			}
 			let now = Date()
 			if lastPreserveLogAt == nil || now.timeIntervalSince(lastPreserveLogAt!) > 2 {
@@ -1141,6 +1145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		appState.availableActions = []
 		appState.currentProposal = nil
 		appState.currentProposalKey = nil
+		appState.refreshProposalContext(for: nil)
 		lastReasonedActions = []
 		lastReasonedActionsAt = nil
 		lastReasonedTriggerType = nil
@@ -1484,6 +1489,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_WORKFLOW_PROPOSAL_RANKING_SELFTEST"] == "1" {
 			let ok = WorkflowAwareProposalRanker.runSelfTest()
 			print("[WorkflowProposalRank] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Proposal card context summary self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_PROPOSAL_CONTEXT_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_PROPOSAL_CONTEXT_SELFTEST"] == "1" {
+			let ok = ProposalContextSummaryBuilder.runSelfTest()
+			print("[ProposalContext] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}

@@ -64,6 +64,7 @@ struct AssistantPanelView: View {
 					dismissTitle: "Dismiss",
 					primaryDisabled: appState.isActionExecuting,
 					inputSourceLine: suggestionInputSourceLine(for: proposal),
+					proposalContext: appState.proposalContextSummary,
 					onPrimary: {
 						appState.acceptCurrentProposal()
 						dismissedProposalKey = key

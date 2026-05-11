@@ -71,6 +71,7 @@
 		AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */; };
 		AA00019A00000000000000C7 /* GeneratedActionSafetyPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A00000000000000C7 /* GeneratedActionSafetyPolicy.swift */; };
 		AA00019B00000000000000C8 /* GeneratedActionExplainability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */; };
+		AA0001B20000000000000D2 /* ProposalContextSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B20000000000000D2 /* ProposalContextSummary.swift */; };
 		AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */; };
 		AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */; };
 		AA0001630000000000000072 /* MicroDecisionClassifier.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */; };
@@ -203,6 +204,7 @@
 		AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicIntentSuppressionEngine.swift; sourceTree = "<group>"; };
 		AA0002A00000000000000C7 /* GeneratedActionSafetyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionSafetyPolicy.swift; sourceTree = "<group>"; };
 		AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionExplainability.swift; sourceTree = "<group>"; };
+		AA0002B20000000000000D2 /* ProposalContextSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalContextSummary.swift; sourceTree = "<group>"; };
 		AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceDebugLogger.swift; sourceTree = "<group>"; };
 		AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionFeatureEncoder.swift; sourceTree = "<group>"; };
 		AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = MicroDecisionClassifier.mlmodel; sourceTree = "<group>"; };
@@ -450,6 +452,7 @@
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
 				AA0002A00000000000000C7 /* GeneratedActionSafetyPolicy.swift */,
 				AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */,
+				AA0002B20000000000000D2 /* ProposalContextSummary.swift */,
 				AA0002A20000000000000C9 /* DynamicIntentDebugSummary.swift */,
 				AA0002A60000000000000CD /* DynamicActionDisplayModels.swift */,
 				AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */,
@@ -682,6 +685,7 @@
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,
 				AA00019A00000000000000C7 /* GeneratedActionSafetyPolicy.swift in Sources */,
 				AA00019B00000000000000C8 /* GeneratedActionExplainability.swift in Sources */,
+				AA0001B20000000000000D2 /* ProposalContextSummary.swift in Sources */,
 				AA00019C00000000000000C9 /* DynamicIntentDebugSummary.swift in Sources */,
 				AA0001A00000000000000CD /* DynamicActionDisplayModels.swift in Sources */,
 				AA0001B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift in Sources */,

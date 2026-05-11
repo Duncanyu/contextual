@@ -1,6 +1,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/App/ContextualApp.swift
 /Users/duncanyu/Documents/GitHub/contextual/App/AppDelegate.swift
 /Users/duncanyu/Documents/GitHub/contextual/App/Phase14TuningSelfTest.swift
+/Users/duncanyu/Documents/GitHub/contextual/App/Phase15TuningSelfTest.swift
 /Users/duncanyu/Documents/GitHub/contextual/App/AppState.swift
 /Users/duncanyu/Documents/GitHub/contextual/App/MenuBarController.swift
 /Users/duncanyu/Documents/GitHub/contextual/App/FloatingSuggestionWindowController.swift
@@ -9,6 +10,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/UI/RichContextDebugView.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/DynamicIntentDebugView.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/DynamicActionPreviewView.swift
+/Users/duncanyu/Documents/GitHub/contextual/UI/VisibleGeneratedActionsSection.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/SuggestionCard.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/ResultView.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/InputPreviewView.swift
@@ -109,8 +111,10 @@
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicIntentSuppressionEngine.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionSafetyPolicy.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionExplainability.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/ProposalContextSummary.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicIntentDebugSummary.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicActionDisplayModels.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/VisibleGeneratedActionPanelAdapter.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntelligenceDebugLogger.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionFeatureEncoder.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/OCRProcessor.swift

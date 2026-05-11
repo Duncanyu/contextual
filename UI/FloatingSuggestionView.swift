@@ -14,6 +14,10 @@ struct FloatingSuggestionView: View {
 						.foregroundStyle(.primary)
 						.fixedSize(horizontal: false, vertical: true)
 
+					if appState.floatingProposalContextSummary.isAvailable {
+						ProposalContextCardChrome(summary: appState.floatingProposalContextSummary, style: .floating)
+					}
+
 					if !vm.sourceCaption.isEmpty {
 						Text(vm.sourceCaption)
 							.font(.caption2)

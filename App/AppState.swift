@@ -30,6 +30,11 @@ final class AppState: ObservableObject {
 	/// Preview-only generated action display models (T15.11); derived, not persisted; updated by app lifecycle only.
 	@Published var dynamicActionDisplaySummary: DynamicActionDisplaySummary = .empty
 
+	/// Lightweight metadata for panel proposal card (T16.2); empty when no safe context.
+	@Published private(set) var proposalContextSummary: ProposalContextSummary = .unavailable
+	/// Same for floating suggestion card.
+	@Published private(set) var floatingProposalContextSummary: ProposalContextSummary = .unavailable
+
 	private var lastContextAwarenessLogSignature: String?
 	private var lastContextAwarenessLogAt: Date?
 	private var lastRichContextDebugLogSignature: String?
@@ -38,6 +43,10 @@ final class AppState: ObservableObject {
 	private var lastDynamicIntentDebugLogAt: Date?
 	private var lastDynamicActionUXLogSignature: String?
 	private var lastDynamicActionUXLogAt: Date?
+	private var lastProposalContextLogSignature: String?
+	private var lastProposalContextLogAt: Date?
+	private var lastProposalContextHiddenSignature: String?
+	private var lastProposalContextHiddenAt: Date?
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
@@ -204,6 +213,7 @@ final class AppState: ObservableObject {
 		invokeAction(id: id)
 		currentProposal = nil
 		currentProposalKey = nil
+		refreshProposalContext(for: nil)
 	}
 
 	func dismissCurrentProposal() {
@@ -226,6 +236,7 @@ final class AppState: ObservableObject {
 
 		currentProposal = nil
 		currentProposalKey = nil
+		refreshProposalContext(for: nil)
 	}
 
 	private func selectionFingerprint(context: ContextModel) -> String? {
@@ -304,6 +315,7 @@ final class AppState: ObservableObject {
 
 		floatingSuggestion = suggestion
 		isFloatingSuggestionVisible = true
+		refreshFloatingProposalContext(for: suggestion)
 
 		let work = DispatchWorkItem { [weak self] in
 			Task { @MainActor in
@@ -356,6 +368,7 @@ final class AppState: ObservableObject {
 		floatingAutoDismissWorkItem = nil
 		floatingSuggestion = nil
 		isFloatingSuggestionVisible = false
+		refreshFloatingProposalContext(for: nil)
 
 		if reason != .accepted, let p = proposalSnapshot {
 			let logKey = floatingSuggestionLogKey(for: p, context: ctx)
@@ -501,6 +514,58 @@ final class AppState: ObservableObject {
 			let capped = Array(next.previewItems.prefix(VisibleGeneratedActionPanelAdapter.maxVisiblePreviews))
 			VisibleGeneratedActionPanelAdapter.logPanelShownIfNeeded(rows: capped)
 		}
+	}
+
+	// MARK: - Proposal context (T16.2)
+
+	func refreshProposalContext(for proposal: ActionProposal?) {
+		if let p = proposal {
+			let s = ProposalContextSummaryBuilder.build(for: p)
+			proposalContextSummary = s
+			logProposalContextIfNeeded(s, primary: p.primaryActionId)
+		} else {
+			proposalContextSummary = .unavailable
+			logProposalContextHiddenIfNeeded()
+		}
+	}
+
+	func refreshFloatingProposalContext(for proposal: ActionProposal?) {
+		if let p = proposal {
+			floatingProposalContextSummary = ProposalContextSummaryBuilder.build(for: p)
+		} else {
+			floatingProposalContextSummary = .unavailable
+		}
+	}
+
+	private func logProposalContextIfNeeded(_ summary: ProposalContextSummary, primary: String) {
+		guard summary.isAvailable else {
+			logProposalContextHiddenIfNeeded()
+			return
+		}
+		let now = Date()
+		let wfChip = summary.chips.first { !$0.hasPrefix("confidence_") } ?? "none"
+		let gen = summary.hasGeneratedInfluence ? "yes" : "no"
+		let sig = "\(primary)|\(wfChip)|\(gen)|\(summary.chips.count)"
+		if sig == lastProposalContextLogSignature, let lastProposalContextLogAt, now.timeIntervalSince(lastProposalContextLogAt) < 1.4 {
+			return
+		}
+		lastProposalContextLogSignature = sig
+		lastProposalContextLogAt = now
+		let intentYN = summary.hasIntentAlignment ? "yes" : "no"
+		print("[ProposalContext] built workflow=\(wfChip) generated=\(gen) intent=\(intentYN)")
+		let chipsJoined = summary.chips.joined(separator: ",")
+		print("[ProposalContext] attached proposal=\(primary) chips=\(chipsJoined)")
+	}
+
+	private func logProposalContextHiddenIfNeeded() {
+		let now = Date()
+		let sig = "hidden"
+		if sig == lastProposalContextHiddenSignature, let lastProposalContextHiddenAt, now.timeIntervalSince(lastProposalContextHiddenAt) < 2.0 {
+			return
+		}
+		lastProposalContextHiddenSignature = sig
+		lastProposalContextHiddenAt = now
+		print("[ProposalContext] hidden reason=no_context")
 	}
 
 	private func logDynamicIntentDebugUIIfNeeded(_ summary: DynamicIntentDebugSummary) {
