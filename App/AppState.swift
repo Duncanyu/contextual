@@ -495,6 +495,12 @@ final class AppState: ObservableObject {
 		let next = DynamicActionDisplayBuilder.build()
 		dynamicActionDisplaySummary = next
 		logDynamicActionUXIfNeeded(next)
+		if next.previewItems.isEmpty {
+			VisibleGeneratedActionPanelAdapter.logPanelHiddenIfNeeded()
+		} else {
+			let capped = Array(next.previewItems.prefix(VisibleGeneratedActionPanelAdapter.maxVisiblePreviews))
+			VisibleGeneratedActionPanelAdapter.logPanelShownIfNeeded(rows: capped)
+		}
 	}
 
 	private func logDynamicIntentDebugUIIfNeeded(_ summary: DynamicIntentDebugSummary) {

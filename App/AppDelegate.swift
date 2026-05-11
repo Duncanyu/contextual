@@ -1398,6 +1398,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Visible generated actions panel rules (T16.1; synthetic; metadata-only).
+		// Run with `CONTEXTUAL_RUN_VISIBLE_GENERATED_ACTIONS_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_VISIBLE_GENERATED_ACTIONS_SELFTEST"] == "1" {
+			let ok = VisibleGeneratedActionPanelAdapter.runSelfTest()
+			print("[VisibleGeneratedAction] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Workflow inference engine self-test (synthetic metadata-only).
 		// Run with `CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST"] == "1" {

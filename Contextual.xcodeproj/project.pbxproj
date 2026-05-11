@@ -127,6 +127,8 @@
 		AA00019D00000000000000CA /* DynamicIntentDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A30000000000000CA /* DynamicIntentDebugView.swift */; };
 		AA0001A00000000000000CD /* DynamicActionDisplayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A60000000000000CD /* DynamicActionDisplayModels.swift */; };
 		AA0001A10000000000000CE /* DynamicActionPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A70000000000000CE /* DynamicActionPreviewView.swift */; };
+		AA0001B00000000000000D0 /* VisibleGeneratedActionsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */; };
+		AA0001B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -252,6 +254,8 @@
 		AA0002A30000000000000CA /* DynamicIntentDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicIntentDebugView.swift; sourceTree = "<group>"; };
 		AA0002A60000000000000CD /* DynamicActionDisplayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicActionDisplayModels.swift; sourceTree = "<group>"; };
 		AA0002A70000000000000CE /* DynamicActionPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicActionPreviewView.swift; sourceTree = "<group>"; };
+		AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleGeneratedActionsSection.swift; sourceTree = "<group>"; };
+		AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleGeneratedActionPanelAdapter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -304,6 +308,7 @@
 				AA00029000000000000000B8 /* RichContextDebugView.swift */,
 				AA0002A30000000000000CA /* DynamicIntentDebugView.swift */,
 				AA0002A70000000000000CE /* DynamicActionPreviewView.swift */,
+				AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
 				AA0002340000000000000032 /* InputPreviewView.swift */,
@@ -447,6 +452,7 @@
 				AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */,
 				AA0002A20000000000000C9 /* DynamicIntentDebugSummary.swift */,
 				AA0002A60000000000000CD /* DynamicActionDisplayModels.swift */,
+				AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
@@ -575,6 +581,7 @@
 				AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */,
 				AA00019D00000000000000CA /* DynamicIntentDebugView.swift in Sources */,
 				AA0001A10000000000000CE /* DynamicActionPreviewView.swift in Sources */,
+				AA0001B00000000000000D0 /* VisibleGeneratedActionsSection.swift in Sources */,
 				AA0001240000000000000024 /* SuggestionCard.swift in Sources */,
 				AA0001280000000000000028 /* ResultView.swift in Sources */,
 				AA0001290000000000000029 /* InputPreviewView.swift in Sources */,
@@ -677,6 +684,7 @@
 				AA00019B00000000000000C8 /* GeneratedActionExplainability.swift in Sources */,
 				AA00019C00000000000000C9 /* DynamicIntentDebugSummary.swift in Sources */,
 				AA0001A00000000000000CD /* DynamicActionDisplayModels.swift in Sources */,
+				AA0001B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift in Sources */,
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,

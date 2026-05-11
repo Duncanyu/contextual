@@ -2681,6 +2681,544 @@ After Phase 15:
 
 ---
 
+# Phase 16 — Visible Intelligence
+
+## Goal
+
+Transform the assistant from:
+
+> internally context-aware
+
+into:
+
+> visibly contextually useful.
+
+Phase 15 built the cognitive scaffolding:
+
+- workflow inference
+- session continuity
+- synthesized intents
+- generated actions
+- primitive composition
+- safety systems
+- explainability
+- suppression
+- workflow-aware ranking
+
+But most of this intelligence still remains:
+
+- hidden
+- conservative
+- indirect
+- difficult to perceive externally
+
+Phase 16 focuses on:
+
+- surfacing intelligence
+- contextual usefulness
+- visible workflow awareness
+- richer proposals
+- dynamic assistance
+- trustworthy proactive behavior
+
+without becoming:
+
+- spammy
+- agentic
+- autonomous
+- noisy
+- interruptive
+
+---
+
+## Core Principle
+
+The assistant should begin feeling like:
+
+> “it understands what I’m doing.”
+
+instead of:
+
+> “it detected some text.”
+
+The assistant should now visibly adapt to:
+
+- workflows
+- app context
+- interaction state
+- recent continuity
+- generated intents
+- contextual confidence
+- situational usefulness
+
+---
+
+## Phase 16 Philosophy
+
+Phase 15 created:
+
+```text
+workflow → intent → generated action → plan → safety
+```
+
+Phase 16 makes this visible.
+
+The intelligence pipeline should begin affecting:
+
+- proposal cards
+- action ordering
+- contextual affordances
+- generated suggestions
+- workflow surfacing
+- Analyze Screen usefulness
+- interaction quality
+
+---
+
+## Behavioral Philosophy
+
+The assistant should increasingly feel:
+
+- intelligent
+- grounded
+- situationally aware
+- workflow-aware
+- adaptive
+- calm
+- trustworthy
+
+while remaining:
+
+- reviewable
+- bounded
+- local-first
+- non-agentic
+- non-autonomous
+
+---
+
+## Assistant Personality Direction
+
+The assistant should start behaving less like:
+
+> “generic AI utilities”
+
+and more like:
+
+> “a workflow-sensitive cognitive assistant.”
+
+Examples:
+
+- Xcode + stacktrace + paused typing
+  → “Explain likely error”
+
+- Long article + idle reading
+  → “Summarize key arguments”
+
+- Notes + repeated edits
+  → “Structure these notes”
+
+- Research workflow across browser tabs
+  → “Compare findings”
+
+- Form-heavy UI + active interaction
+  → stay quiet
+
+---
+
+## Generated Action Philosophy
+
+Generated actions should now become:
+
+- partially surfaced
+- visually differentiated
+- contextually justified
+- explainable
+- ranked by usefulness
+
+The user should begin seeing:
+
+- why actions appeared
+- workflow-aware suggestions
+- contextual grouping
+- generated assistance concepts
+
+without exposing:
+
+- raw sensitive context
+- hidden reasoning chains
+- private screen data
+
+---
+
+## Analyze Screen Philosophy
+
+Analyze Screen should evolve from:
+
+> OCR summarization
+
+into:
+
+> contextual screen understanding.
+
+Still bounded.
+
+Still non-agentic.
+
+Still metadata-driven.
+
+But substantially more useful.
+
+The assistant should increasingly combine:
+
+- OCR
+- AX structure
+- workflow inference
+- visual descriptors
+- contextual continuity
+- interaction state
+
+into:
+
+- coherent situational assistance
+
+---
+
+## UI Philosophy
+
+The UI should begin supporting:
+
+- richer proposal cards
+- contextual labels
+- grouped suggestions
+- generated assistance
+- workflow surfacing
+- explainability hints
+
+without becoming:
+
+- dashboard-heavy
+- visually cluttered
+- debug-oriented
+- overwhelming
+
+---
+
+## Performance Philosophy
+
+Even with visible intelligence:
+
+- expensive sampling must remain adaptive
+- OCR should remain sparse
+- no continuous visual loops
+- no persistent surveillance
+- no cloud dependency
+- no background autonomous execution
+
+The system should remain:
+
+- lightweight
+- responsive
+- interrupt-safe
+- budget-aware
+
+---
+
+## Trust Philosophy
+
+Generated assistance must remain:
+
+- explainable
+- suppressible
+- confidence-scored
+- bounded
+- deterministic
+- reviewable
+
+The assistant should never feel:
+
+- manipulative
+- hidden
+- uncontrollable
+- overconfident
+- autonomous
+
+---
+
+## Dynamic Assistance Direction
+
+This phase begins introducing:
+
+- visible generated actions
+- contextual inline assistance
+- workflow-aware suggestions
+- richer proposal composition
+- situational assistance surfacing
+
+but NOT:
+
+- autonomous agents
+- unrestricted automation
+- self-directed workflows
+- hidden background execution
+
+---
+
+## Updated System Flow
+
+Sources
+↓
+Rich Context Pipeline
+↓
+Workflow Inference
+↓
+Session Continuity
+↓
+Intent Synthesis
+↓
+Generated Actions
+↓
+Safety + Explainability
+↓
+Workflow-Aware Ranking
+↓
+Visible Assistance Layer
+↓
+UI / Interaction
+
+---
+
+## Performance Rules
+
+- No unrestricted automation
+- No autonomous execution
+- No hidden workflows
+- No continuous OCR loops
+- No persistent visual surveillance
+- No silent app control
+- No unreviewed generated actions
+- No excessive proposal spam
+
+---
+
+## Privacy Rules
+
+The assistant remains:
+
+- local-first
+- privacy-first
+- minimally persistent
+- metadata-oriented
+- bounded
+
+Generated intelligence should improve usefulness,
+not reduce user control.
+
+---
+
+## Tentative Ticket Direction
+
+### T16.1 — Visible Generated Actions
+
+Begin surfacing generated actions alongside static actions.
+
+Generated actions should:
+
+- appear visually distinct
+- remain preview-oriented
+- remain explainable
+- remain bounded
+
+---
+
+### T16.2 — Contextual Proposal Cards
+
+Upgrade proposal cards to display:
+
+- workflow hints
+- explainability summaries
+- contextual reasoning
+- confidence tiers
+- generated intent origins
+
+without becoming verbose.
+
+---
+
+### T16.3 — Workflow-Sensitive Action Ordering
+
+Allow workflows and session continuity to more aggressively shape:
+
+- action ordering
+- proposal prominence
+- generated action placement
+- contextual grouping
+
+---
+
+### T16.4 — Analyze Screen Situational Understanding
+
+Improve Analyze Screen usefulness by synthesizing:
+
+- OCR
+- AX metadata
+- workflow inference
+- visual descriptors
+- contextual continuity
+
+into more coherent assistance.
+
+Reduce “uncertain generic narration.”
+
+---
+
+### T16.5 — Generated Assistance Categories
+
+Introduce lightweight categories:
+
+- Debugging
+- Research
+- Writing
+- Review
+- Organization
+- Comparison
+
+for generated assistance surfacing.
+
+---
+
+### T16.6 — Inline Contextual Assistance Foundations
+
+Begin foundations for:
+
+- inline contextual suggestions
+- lightweight action chips
+- contextual overlays
+
+without implementing full inline UI yet.
+
+---
+
+### T16.7 — Dynamic Assistance Suppression Tuning
+
+Improve suppression quality for visible generated assistance.
+
+The assistant should surface:
+- fewer
+- higher quality
+- more contextual
+- more trustworthy
+
+suggestions.
+
+---
+
+### T16.8 — Workflow Continuity Surfacing
+
+Lightly surface active workflow continuity.
+
+Examples:
+
+- “Debugging workflow detected”
+- “Research session active”
+- “Writing workflow continuing”
+
+Must remain subtle and non-intrusive.
+
+---
+
+### T16.9 — Generated Action Interaction Tracking
+
+Track lightweight interaction outcomes:
+
+- ignored
+- dismissed
+- expanded
+- accepted
+- repeated usefulness
+
+without persistent behavioral profiling.
+
+---
+
+### T16.10 — Rich Assistance Ranking
+
+Create a unified ranking layer combining:
+
+- static actions
+- generated actions
+- workflow continuity
+- interruption cost
+- contextual confidence
+- usefulness history
+
+---
+
+### T16.11 — Visible Intelligence Debugging
+
+Improve internal debugging visibility for:
+
+- generated action surfacing
+- ranking decisions
+- workflow influence
+- suppression outcomes
+- interaction usefulness
+
+Metadata-only.
+
+---
+
+### T16.12 — Phase 16 Tuning Pass
+
+Tune visible intelligence behavior.
+
+Goals:
+
+- improve generated usefulness
+- improve trustworthiness
+- reduce noisy surfacing
+- improve contextual accuracy
+- improve proposal quality
+- improve workflow relevance
+- maintain calmness
+- maintain responsiveness
+
+---
+
+## Out of Scope
+
+Do NOT implement yet:
+
+- autonomous agents
+- unrestricted computer control
+- self-modifying workflows
+- hidden execution chains
+- long-horizon autonomous planning
+- unrestricted app automation
+- persistent behavioral profiling
+- cloud reasoning dependency
+- background invisible task execution
+
+---
+
+## Success Criteria
+
+After Phase 16:
+
+- generated actions become visibly useful
+- proposal cards feel contextual
+- workflows visibly affect assistance
+- Analyze Screen becomes meaningfully smarter
+- generated assistance feels intentional
+- assistant usefulness becomes externally noticeable
+- proposal quality improves substantially
+- the assistant feels more alive without becoming intrusive
+- trustworthiness remains high
+- responsiveness remains strong
+- the system still feels privacy-first and local-first
+
+---
+
 ### Resulting UX
 
 After Phase 9:

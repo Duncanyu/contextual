@@ -9,6 +9,7 @@ struct AssistantPanelView: View {
 	@State private var richContextDebugExpanded: Bool = false
 	@State private var dynamicIntentDebugExpanded: Bool = false
 	@State private var dynamicActionPreviewExpanded: Bool = false
+	@State private var dismissedVisibleGeneratedActionIds: Set<UUID> = []
 
 	var body: some View {
 		ScrollView {
@@ -21,6 +22,11 @@ struct AssistantPanelView: View {
 				suggestionSection
 
 				availableActionsSection
+
+				VisibleGeneratedActionsSection(
+					summary: appState.dynamicActionDisplaySummary,
+					dismissedIds: $dismissedVisibleGeneratedActionIds
+				)
 
 				InputPreviewView(context: debugCtx)
 					.environmentObject(appState)
@@ -37,6 +43,11 @@ struct AssistantPanelView: View {
 			.padding(.horizontal, 16)
 			.padding(.vertical, 14)
 			.frame(maxWidth: .infinity, alignment: .leading)
+		}
+		.onChange(of: appState.dynamicActionDisplaySummary) { new in
+			if new.previewItems.isEmpty {
+				dismissedVisibleGeneratedActionIds.removeAll()
+			}
 		}
 		.frame(width: 300, height: 620)
 	}
