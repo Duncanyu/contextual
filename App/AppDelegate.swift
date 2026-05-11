@@ -1434,6 +1434,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Generated action safety policy self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_GENERATED_ACTION_SAFETY_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_GENERATED_ACTION_SAFETY_SELFTEST"] == "1" {
+			let ok = GeneratedActionSafetyPolicy.runSelfTest()
+			print("[GeneratedActionSafety] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Generated action plan composition self-test (synthetic metadata-only).
 		// Run with `CONTEXTUAL_RUN_ACTION_PLAN_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_ACTION_PLAN_SELFTEST"] == "1" {

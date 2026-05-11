@@ -54,6 +54,10 @@ enum GeneratedActionPlanBuilder {
 			isExecutable: false,
 			compositionRule: composition.rule
 		)
+		let safety = GeneratedActionSafetyPolicy.evaluate(plan: plan)
+		guard safety.permitsStorage else {
+			return .rejected(reasonCodes: safety.reasonCodes.map(\.rawValue))
+		}
 		return .accepted(plan)
 	}
 

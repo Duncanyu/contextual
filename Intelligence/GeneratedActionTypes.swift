@@ -44,6 +44,11 @@ struct GeneratedActionSafetyProfile: Equatable, Sendable, Codable {
 	var executesCode: Bool
 	var usesNetwork: Bool
 	var usesShell: Bool
+	/// Additional capability flags validated centrally by `GeneratedActionSafetyPolicy`.
+	var usesBrowserAutomation: Bool
+	var touchesFileSystem: Bool
+	var requiresAppControl: Bool
+	var requiresPrivilegedAction: Bool
 
 	static let `default` = GeneratedActionSafetyProfile(
 		requiresUserApproval: false,
@@ -52,7 +57,11 @@ struct GeneratedActionSafetyProfile: Equatable, Sendable, Codable {
 		writesExternalState: false,
 		executesCode: false,
 		usesNetwork: false,
-		usesShell: false
+		usesShell: false,
+		usesBrowserAutomation: false,
+		touchesFileSystem: false,
+		requiresAppControl: false,
+		requiresPrivilegedAction: false
 	)
 
 	/// Draft/rewrite-style primitives require explicit approval in later phases.
@@ -65,7 +74,11 @@ struct GeneratedActionSafetyProfile: Equatable, Sendable, Codable {
 			writesExternalState: false,
 			executesCode: false,
 			usesNetwork: false,
-			usesShell: false
+			usesShell: false,
+			usesBrowserAutomation: false,
+			touchesFileSystem: false,
+			requiresAppControl: false,
+			requiresPrivilegedAction: false
 		)
 	}
 }

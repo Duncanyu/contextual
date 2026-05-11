@@ -2555,19 +2555,6 @@ Goals:
 
 ---
 
-### T15.8 — Generated Action Safety Constraints
-
-Introduce safety constraints for generated actions.
-
-Generated actions must NOT:
-
-- execute arbitrary commands
-- access unrestricted APIs
-- create uncontrolled loops
-- escalate privileges
-- silently automate workflows
-
-All generated actions must remain bounded and reviewable.
 
 ---
 

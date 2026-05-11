@@ -21,6 +21,7 @@ enum GeneratedActionFactory {
 		case skippedLowConfidence
 		case skippedUnknown
 		case rejectedUnsafePrimitive
+		case rejectedSafety
 	}
 
 	static func materialize(
@@ -66,6 +67,10 @@ enum GeneratedActionFactory {
 			explainabilitySummary: explain,
 			source: source
 		)
+		let safety = GeneratedActionSafetyPolicy.evaluate(action: action)
+		guard safety.permitsStorage else {
+			return .rejectedSafety
+		}
 		return .produced(action)
 	}
 
@@ -75,9 +80,10 @@ enum GeneratedActionFactory {
 		maxActions: Int = 3,
 		ttl: TimeInterval = defaultTTL,
 		source: GeneratedActionSource = .synthesizedIntent
-	) -> (actions: [GeneratedAction], rejectedUnsafePrimitive: Bool) {
+	) -> (actions: [GeneratedAction], rejectedUnsafePrimitive: Bool, rejectedSafety: Bool) {
 		var out: [GeneratedAction] = []
 		var unsafe = false
+		var safetyRejected = false
 		out.reserveCapacity(min(maxActions, intents.count))
 		for intent in intents {
 			guard out.count < maxActions else { break }
@@ -86,11 +92,13 @@ enum GeneratedActionFactory {
 				out.append(a)
 			case .rejectedUnsafePrimitive:
 				unsafe = true
+			case .rejectedSafety:
+				safetyRejected = true
 			case .skippedStale, .skippedLowConfidence, .skippedUnknown:
 				break
 			}
 		}
-		return (out, unsafe)
+		return (out, unsafe, safetyRejected)
 	}
 
 	private static func primitives(for type: SynthesizedIntentType) -> [GeneratedActionPrimitive] {
@@ -199,7 +207,7 @@ final class GeneratedActionEngine {
 			return
 		}
 
-		let (built, rejectedUnsafe) = GeneratedActionFactory.makeActions(from: intents, referenceTime: referenceTime, maxActions: 3)
+		let (built, rejectedUnsafe, rejectedSafety) = GeneratedActionFactory.makeActions(from: intents, referenceTime: referenceTime, maxActions: 3)
 		var plans: [GeneratedActionPlan] = []
 		plans.reserveCapacity(built.count)
 		var invalidCombo = false
@@ -222,13 +230,16 @@ final class GeneratedActionEngine {
 		latest = built
 		storedPlans = plans
 		lock.unlock()
-		logOutcome(actions: built, intents: intents, rejectedUnsafe: rejectedUnsafe)
+		logOutcome(actions: built, intents: intents, rejectedUnsafe: rejectedUnsafe, rejectedSafety: rejectedSafety)
 		logPlanOutcome(plans: plans, invalidCombo: invalidCombo, staleActionSkip: staleActionSkip)
 	}
 
-	private func logOutcome(actions: [GeneratedAction], intents: [SynthesizedIntent], rejectedUnsafe: Bool) {
+	private func logOutcome(actions: [GeneratedAction], intents: [SynthesizedIntent], rejectedUnsafe: Bool, rejectedSafety: Bool) {
 		if rejectedUnsafe {
 			print("[GeneratedAction] rejected reason=unsafe_profile")
+		}
+		if rejectedSafety {
+			print("[GeneratedAction] rejected reason=safety_policy")
 		}
 
 		if actions.isEmpty {
@@ -403,7 +414,7 @@ extension GeneratedActionEngine {
 		let many = (0..<5).map { i in
 			intent(type: .explainApiResponse, title: "E\(i)", description: "D\(i)", confidence: 0.7, workflow: .research, stale: false, id: UUID())
 		}
-		let (manyActs, _) = GeneratedActionFactory.makeActions(from: many, referenceTime: t0, maxActions: 3)
+		let (manyActs, _, _) = GeneratedActionFactory.makeActions(from: many, referenceTime: t0, maxActions: 3)
 		assertCase("bounded_three", manyActs.count <= 3)
 
 		// safety defaults
