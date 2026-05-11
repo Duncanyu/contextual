@@ -323,6 +323,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		WorkflowInferenceEngine.shared.recordAppBundle(bid.isEmpty ? nil : bid)
 		WorkflowInferenceEngine.shared.evaluate(referenceTime: Date())
 
+		// T15.2: session continuity (metadata-only, bounded, decaying).
+		ContextualSessionTracker.shared.recordSample(
+			inference: WorkflowInferenceEngine.shared.latestResult(),
+			fused: CanonicalContextState.shared.current(),
+			activeBundle: bid.isEmpty ? nil : bid,
+			referenceTime: Date()
+		)
+
 		contextPipelineGeneration += 1
 		let generation = contextPipelineGeneration
 		if let packet = triggerEngine.evaluate(context) {
@@ -1351,6 +1359,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST"] == "1" {
 			let ok = WorkflowInferenceEngine.runSelfTest()
 			print("[WorkflowInference] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Contextual session tracking self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_SESSION_TRACKING_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_SESSION_TRACKING_SELFTEST"] == "1" {
+			let ok = ContextualSessionTracker.runSelfTest()
+			print("[SessionTracking] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
