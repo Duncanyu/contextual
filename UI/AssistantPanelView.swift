@@ -10,6 +10,7 @@ struct AssistantPanelView: View {
 	@State private var dynamicIntentDebugExpanded: Bool = false
 	@State private var dynamicActionPreviewExpanded: Bool = false
 	@State private var inlineAssistanceDebugExpanded: Bool = false
+	@State private var visibleIntelligenceDebugExpanded: Bool = false
 	@State private var dismissedVisibleGeneratedActionIds: Set<UUID> = []
 
 	var body: some View {
@@ -204,6 +205,15 @@ struct AssistantPanelView: View {
 						.padding(.top, 4)
 				} label: {
 					Text("Inline assistance (internal)")
+						.font(.caption)
+						.fontWeight(.medium)
+				}
+
+				DisclosureGroup(isExpanded: $visibleIntelligenceDebugExpanded) {
+					VisibleIntelligenceDebugView(summary: appState.visibleIntelligenceDebugSummary)
+						.padding(.top, 4)
+				} label: {
+					Text("Visible intelligence (internal)")
 						.font(.caption)
 						.fontWeight(.medium)
 				}

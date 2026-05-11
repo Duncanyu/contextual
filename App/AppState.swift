@@ -33,6 +33,9 @@ final class AppState: ObservableObject {
 	/// Unified static + generated assistance ranking snapshot (T16.10); metadata-only; updated with preview refresh.
 	@Published var richAssistanceRankingResult: RichAssistanceRankingResult = .empty
 
+	/// Consolidated visible intelligence debug snapshot (T16.11); metadata-only; internal/debug UI only.
+	@Published var visibleIntelligenceDebugSummary: VisibleIntelligenceDebugSummary = .empty
+
 	/// Inline assistance candidate snapshot (T16.6 foundations; metadata-only; not rendered inline yet).
 	@Published var inlineAssistanceSnapshot: InlineAssistanceSnapshot = .empty
 
@@ -586,6 +589,21 @@ final class AppState: ObservableObject {
 		if !richAssistanceRankingResult.debugLine.isEmpty {
 			dynamicIntentDebugSummary = dynamicIntentDebugSummary.withRichAssistanceRankLine(richAssistanceRankingResult.debugLine)
 		}
+		refreshVisibleIntelligenceDebugSummary()
+	}
+
+	// MARK: - Visible intelligence debug (T16.11)
+
+	func refreshVisibleIntelligenceDebugSummary() {
+		let capture = VisibleIntelligenceDebugCapture.fromSharedAppState(
+			proposalContext: proposalContextSummary,
+			inline: inlineAssistanceSnapshot,
+			dynamicDisplay: dynamicActionDisplaySummary,
+			richRanking: richAssistanceRankingResult
+		)
+		let next = VisibleIntelligenceDebugSummaryBuilder.build(capture)
+		visibleIntelligenceDebugSummary = next
+		VisibleIntelligenceDebugLogger.logIfNeeded(next)
 	}
 
 	// MARK: - Inline assistance foundations (T16.6)
@@ -623,6 +641,7 @@ final class AppState: ObservableObject {
 			logProposalContextHiddenIfNeeded()
 		}
 		refreshInlineAssistanceCandidates()
+		refreshVisibleIntelligenceDebugSummary()
 	}
 
 	func refreshFloatingProposalContext(for proposal: ActionProposal?) {
@@ -631,6 +650,7 @@ final class AppState: ObservableObject {
 		} else {
 			floatingProposalContextSummary = .unavailable
 		}
+		refreshVisibleIntelligenceDebugSummary()
 	}
 
 	private func logProposalContextIfNeeded(_ summary: ProposalContextSummary, primary: String) {

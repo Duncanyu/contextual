@@ -139,6 +139,8 @@
 		AA0001B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */; };
 		AA0001BB000000000000E2 /* GeneratedActionInteractionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BB000000000000E2 /* GeneratedActionInteractionTracker.swift */; };
 		AA0001BC000000000000E3 /* RichAssistanceRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BC000000000000E3 /* RichAssistanceRanker.swift */; };
+		AA0001BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift */; };
+		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -276,6 +278,8 @@
 		AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleGeneratedActionPanelAdapter.swift; sourceTree = "<group>"; };
 		AA0002BB000000000000E2 /* GeneratedActionInteractionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionInteractionTracker.swift; sourceTree = "<group>"; };
 		AA0002BC000000000000E3 /* RichAssistanceRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichAssistanceRanker.swift; sourceTree = "<group>"; };
+		AA0002BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleIntelligenceDebugSummary.swift; sourceTree = "<group>"; };
+		AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleIntelligenceDebugView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -330,6 +334,7 @@
 				AA0002A70000000000000CE /* DynamicActionPreviewView.swift */,
 				AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */,
 				AA0002B80000000000000D7 /* InlineAssistanceDebugView.swift */,
+				AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */,
 				AA0002BA000000000000E1 /* WorkflowContinuityDisplayView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
@@ -483,6 +488,7 @@
 				AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */,
 				AA0002BB000000000000E2 /* GeneratedActionInteractionTracker.swift */,
 				AA0002BC000000000000E3 /* RichAssistanceRanker.swift */,
+				AA0002BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
@@ -608,6 +614,7 @@
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
 				AA0001B80000000000000D7 /* InlineAssistanceDebugView.swift in Sources */,
+				AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */,
 				AA0001BA000000000000E1 /* WorkflowContinuityDisplayView.swift in Sources */,
 				AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */,
 				AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */,
@@ -725,6 +732,7 @@
 				AA0001B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift in Sources */,
 				AA0001BB000000000000E2 /* GeneratedActionInteractionTracker.swift in Sources */,
 				AA0001BC000000000000E3 /* RichAssistanceRanker.swift in Sources */,
+				AA0001BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift in Sources */,
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,

@@ -1445,6 +1445,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Visible intelligence debug summary (T16.11; synthetic; metadata-only).
+		// Run with `CONTEXTUAL_RUN_VISIBLE_INTELLIGENCE_DEBUG_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_VISIBLE_INTELLIGENCE_DEBUG_SELFTEST"] == "1" {
+			let ok = VisibleIntelligenceDebugSummaryBuilder.runSelfTest()
+			print("[VisibleIntelligenceDebug] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Generated assistance categories (T16.5; synthetic; metadata-only).
 		// Run with `CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST"] == "1" {

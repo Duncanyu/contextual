@@ -78,9 +78,26 @@ enum ScreenSituationClassifier {
 	private static var lastLogSig: String?
 	private static var lastLogAt: Date?
 
+	private static let latestSnapshotLock = NSLock()
+	private static var storedLatestClassificationSnapshot: ScreenSituation?
+
+	/// Latest screen situation from the most recent `classify` call (in-memory only; for internal debug).
+	static func latestClassificationSnapshot() -> ScreenSituation? {
+		latestSnapshotLock.lock()
+		defer { latestSnapshotLock.unlock() }
+		return storedLatestClassificationSnapshot
+	}
+
+	private static func storeLatestClassificationSnapshot(_ situation: ScreenSituation) {
+		latestSnapshotLock.lock()
+		storedLatestClassificationSnapshot = situation
+		latestSnapshotLock.unlock()
+	}
+
 	static func classify(_ i: ScreenSituationInputs) -> ScreenSituation {
 		let out = compose(i)
 		logClassification(out)
+		storeLatestClassificationSnapshot(out)
 		return out
 	}
 
