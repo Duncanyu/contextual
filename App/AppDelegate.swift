@@ -1452,6 +1452,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Generated action explainability self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_ACTION_EXPLAINABILITY_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_ACTION_EXPLAINABILITY_SELFTEST"] == "1" {
+			let ok = GeneratedActionExplanationBuilder.runSelfTest()
+			print("[GeneratedActionExplainability] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Workflow-aware proposal ranking self-test (synthetic metadata-only).
 		// Run with `CONTEXTUAL_RUN_WORKFLOW_PROPOSAL_RANKING_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_WORKFLOW_PROPOSAL_RANKING_SELFTEST"] == "1" {

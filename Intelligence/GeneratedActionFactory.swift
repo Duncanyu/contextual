@@ -65,13 +65,27 @@ enum GeneratedActionFactory {
 			isStale: intent.isStale,
 			safetyProfile: .profile(for: Set(primitives)),
 			explainabilitySummary: explain,
-			source: source
+			source: source,
+			structuredExplainability: nil
 		)
 		let safety = GeneratedActionSafetyPolicy.evaluate(action: action)
 		guard safety.permitsStorage else {
 			return .rejectedSafety
 		}
-		return .produced(action)
+		let structured = GeneratedActionExplanationBuilder.buildForAction(
+			action: action,
+			safety: safety,
+			referenceTime: referenceTime,
+			intentFreshnessOverride: intent.freshness
+		)
+		let finalized = action.withStructuredExplainability(structured)
+		GeneratedActionExplanationBuilder.logBuilt(
+			actionId: finalized.id,
+			confidence: finalized.confidence,
+			review: safety.requiresUserReview || safety.safetyLevel == .reviewRequired,
+			stale: finalized.isStale
+		)
+		return .produced(finalized)
 	}
 
 	static func makeActions(

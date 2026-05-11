@@ -92,4 +92,6 @@ struct GeneratedActionPlan: Equatable, Sendable, Identifiable {
 	/// Always false in this phase — plans are data-only.
 	let isExecutable: Bool
 	let compositionRule: PrimitiveCompositionRule
+	/// Structured explainability for the plan (metadata-only).
+	let structuredExplainability: GeneratedActionExplanation?
 }

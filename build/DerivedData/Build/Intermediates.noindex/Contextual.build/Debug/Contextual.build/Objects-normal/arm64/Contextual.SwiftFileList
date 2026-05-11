@@ -106,6 +106,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/WorkflowAwareProposalRanker.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicIntentSuppressionEngine.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionSafetyPolicy.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionExplainability.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntelligenceDebugLogger.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionFeatureEncoder.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/OCRProcessor.swift

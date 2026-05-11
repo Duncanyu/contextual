@@ -37,6 +37,7 @@ enum GeneratedActionPlanBuilder {
 		let codes = action.sourceReasonCodes + ["composition_rule:\(composition.rule.rawValue)"]
 		let explanation = "rule=\(composition.rule.rawValue)|steps=\(steps.count)|primitives=\(primitives.map(\.rawValue).sorted().joined(separator: ","))"
 
+		let actionSafety = GeneratedActionSafetyPolicy.evaluate(action: action)
 		let plan = GeneratedActionPlan(
 			id: UUID(),
 			generatedActionId: action.id,
@@ -52,13 +53,20 @@ enum GeneratedActionPlanBuilder {
 			safetyProfile: action.safetyProfile,
 			explanation: explanation,
 			isExecutable: false,
-			compositionRule: composition.rule
+			compositionRule: composition.rule,
+			structuredExplainability: nil
 		)
 		let safety = GeneratedActionSafetyPolicy.evaluate(plan: plan)
 		guard safety.permitsStorage else {
 			return .rejected(reasonCodes: safety.reasonCodes.map(\.rawValue))
 		}
-		return .accepted(plan)
+		let planStructured = GeneratedActionExplanationBuilder.buildForPlan(
+			plan: plan,
+			planSafety: safety,
+			actionSafety: actionSafety,
+			referenceTime: referenceTime
+		)
+		return .accepted(plan.withStructuredExplainability(planStructured))
 	}
 
 	// MARK: - Internals
@@ -322,7 +330,8 @@ extension GeneratedActionPlanBuilder {
 				isStale: stale,
 				safetyProfile: sp,
 				explainabilitySummary: "selftest",
-				source: .selfTest
+				source: .selfTest,
+				structuredExplainability: nil
 			)
 		}
 

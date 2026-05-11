@@ -256,7 +256,8 @@ enum GeneratedActionSafetyPolicy {
 				isStale: false,
 				safetyProfile: plan.safetyProfile,
 				explainabilitySummary: plan.explanation,
-				source: .selfTest
+				source: .selfTest,
+				structuredExplainability: nil
 			)
 		)
 		if embedded.safetyLevel == .blocked || !embedded.allowed {
@@ -428,7 +429,8 @@ extension GeneratedActionSafetyPolicy {
 				isStale: stale,
 				safetyProfile: profile,
 				explainabilitySummary: explain,
-				source: .selfTest
+				source: .selfTest,
+				structuredExplainability: nil
 			)
 		}
 
@@ -448,7 +450,8 @@ extension GeneratedActionSafetyPolicy {
 				safetyProfile: action.safetyProfile,
 				explanation: "rule=single_primitive|steps=\(steps.count)|primitives=test",
 				isExecutable: executable,
-				compositionRule: .singlePrimitive
+				compositionRule: .singlePrimitive,
+				structuredExplainability: nil
 			)
 		}
 

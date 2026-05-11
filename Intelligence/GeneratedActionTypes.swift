@@ -88,6 +88,59 @@ enum GeneratedActionSource: String, Hashable, Sendable, Codable {
 	case selfTest = "self_test"
 }
 
+/// Discrete tags for template selection (no free-form reasoning).
+enum GeneratedActionExplanationReason: String, Hashable, Sendable, Codable, CaseIterable {
+	case intentMapped = "intent_mapped"
+	case workflowSignal = "workflow_signal"
+	case confidenceBand = "confidence_band"
+	case safetyEnvelope = "safety_envelope"
+	case reviewGate = "review_gate"
+	case staleness = "staleness"
+	case fusionQuality = "fusion_quality"
+	case interactionLoad = "interaction_load"
+	case sessionContinuity = "session_continuity"
+	case suppressionHint = "suppression_hint"
+	case primitiveComposition = "primitive_composition"
+}
+
+/// Bounded, privacy-safe influence codes (no payloads).
+struct GeneratedActionInfluenceSummary: Equatable, Sendable, Codable {
+	let workflowLabel: String
+	let visualCategoryCodes: String
+	let interactionStateCode: String
+	let sessionContinuityBand: String
+	let fusionFreshnessBand: String
+	let multimodalAgreementBand: String
+	let proposalContinuityBand: String
+	let activeSurfaceCategory: String
+	let intentTypeCode: String
+	let primitiveCompositionCode: String
+}
+
+/// Short workflow rationale (template-derived only).
+struct GeneratedActionWorkflowReasoning: Equatable, Sendable, Codable {
+	let primaryCode: String
+	let secondaryCodes: String
+}
+
+/// Structured explainability for generated actions and plans (metadata-only, deterministic).
+struct GeneratedActionExplanation: Equatable, Sendable, Codable {
+	let shortSummary: String
+	let workflowSummary: String
+	let confidenceSummary: String
+	let influencingSignals: [String]
+	let requiredContextSummary: String
+	let interruptionSummary: String
+	let freshnessSummary: String
+	let safetySummary: String
+	let sourceReasonCodes: [String]
+	let generatedAt: Date
+	let isStale: Bool
+	let workflowReasoning: GeneratedActionWorkflowReasoning
+	let influence: GeneratedActionInfluenceSummary
+	let templateReasons: [GeneratedActionExplanationReason]
+}
+
 /// In-memory generated action concept (bounded, temporary, non-executable).
 struct GeneratedAction: Equatable, Sendable, Identifiable {
 	let id: UUID
@@ -108,4 +161,55 @@ struct GeneratedAction: Equatable, Sendable, Identifiable {
 	let safetyProfile: GeneratedActionSafetyProfile
 	let explainabilitySummary: String
 	let source: GeneratedActionSource
+	/// Deterministic structured explainability (optional; built post–safety approval in normal pipeline).
+	let structuredExplainability: GeneratedActionExplanation?
+}
+
+extension GeneratedAction {
+	func withStructuredExplainability(_ explanation: GeneratedActionExplanation?) -> GeneratedAction {
+		GeneratedAction(
+			id: id,
+			title: title,
+			description: description,
+			intentType: intentType,
+			confidence: confidence,
+			workflow: workflow,
+			requiredContext: requiredContext,
+			primitives: primitives,
+			interruptionCost: interruptionCost,
+			workflowRelevance: workflowRelevance,
+			sourceIntentId: sourceIntentId,
+			sourceReasonCodes: sourceReasonCodes,
+			createdAt: createdAt,
+			expiresAt: expiresAt,
+			isStale: isStale,
+			safetyProfile: safetyProfile,
+			explainabilitySummary: explainabilitySummary,
+			source: source,
+			structuredExplainability: explanation
+		)
+	}
+}
+
+extension GeneratedActionPlan {
+	func withStructuredExplainability(_ structured: GeneratedActionExplanation?) -> GeneratedActionPlan {
+		GeneratedActionPlan(
+			id: id,
+			generatedActionId: generatedActionId,
+			intentType: intentType,
+			workflow: workflow,
+			steps: steps,
+			confidence: confidence,
+			requiredContext: requiredContext,
+			createdAt: createdAt,
+			expiresAt: expiresAt,
+			isStale: isStale,
+			sourceReasonCodes: sourceReasonCodes,
+			safetyProfile: safetyProfile,
+			explanation: self.explanation,
+			isExecutable: isExecutable,
+			compositionRule: compositionRule,
+			structuredExplainability: structured
+		)
+	}
 }
