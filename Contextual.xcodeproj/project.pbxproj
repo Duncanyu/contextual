@@ -122,6 +122,8 @@
 		AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028800000000000000B4 /* ContextAwarenessView.swift */; };
 		AA00018700000000000000B5 /* RichContextDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028900000000000000B6 /* RichContextDebugSummary.swift */; };
 		AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029000000000000000B8 /* RichContextDebugView.swift */; };
+		AA00019C00000000000000C9 /* DynamicIntentDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A20000000000000C9 /* DynamicIntentDebugSummary.swift */; };
+		AA00019D00000000000000CA /* DynamicIntentDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002A30000000000000CA /* DynamicIntentDebugView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -242,6 +244,8 @@
 		AA00028800000000000000B4 /* ContextAwarenessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessView.swift; sourceTree = "<group>"; };
 		AA00028900000000000000B6 /* RichContextDebugSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextDebugSummary.swift; sourceTree = "<group>"; };
 		AA00029000000000000000B8 /* RichContextDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextDebugView.swift; sourceTree = "<group>"; };
+		AA0002A20000000000000C9 /* DynamicIntentDebugSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicIntentDebugSummary.swift; sourceTree = "<group>"; };
+		AA0002A30000000000000CA /* DynamicIntentDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicIntentDebugView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -291,6 +295,7 @@
 				AA0002050000000000000005 /* AssistantPanelView.swift */,
 				AA00028800000000000000B4 /* ContextAwarenessView.swift */,
 				AA00029000000000000000B8 /* RichContextDebugView.swift */,
+				AA0002A30000000000000CA /* DynamicIntentDebugView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
 				AA0002340000000000000032 /* InputPreviewView.swift */,
@@ -432,6 +437,7 @@
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
 				AA0002A00000000000000C7 /* GeneratedActionSafetyPolicy.swift */,
 				AA0002A10000000000000C8 /* GeneratedActionExplainability.swift */,
+				AA0002A20000000000000C9 /* DynamicIntentDebugSummary.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
@@ -557,6 +563,7 @@
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
 				AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */,
 				AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */,
+				AA00019D00000000000000CA /* DynamicIntentDebugView.swift in Sources */,
 				AA0001240000000000000024 /* SuggestionCard.swift in Sources */,
 				AA0001280000000000000028 /* ResultView.swift in Sources */,
 				AA0001290000000000000029 /* InputPreviewView.swift in Sources */,
@@ -657,6 +664,7 @@
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,
 				AA00019A00000000000000C7 /* GeneratedActionSafetyPolicy.swift in Sources */,
 				AA00019B00000000000000C8 /* GeneratedActionExplainability.swift in Sources */,
+				AA00019C00000000000000C9 /* DynamicIntentDebugSummary.swift in Sources */,
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,

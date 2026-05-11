@@ -91,6 +91,16 @@ enum GeneratedActionSafetyPolicy {
 		return d
 	}
 
+	/// Same decision as `evaluate(action:)` without policy logs (metadata-only debug UI).
+	static func evaluateActionSnapshotForDebug(_ action: GeneratedAction) -> GeneratedActionSafetyDecision {
+		evaluateActionCore(action)
+	}
+
+	/// Same decision as `evaluate(plan:)` without policy logs (metadata-only debug UI).
+	static func evaluatePlanSnapshotForDebug(_ plan: GeneratedActionPlan) -> GeneratedActionSafetyDecision {
+		evaluatePlanCore(plan)
+	}
+
 	// MARK: - Action
 
 	private static func evaluateActionCore(_ action: GeneratedAction) -> GeneratedActionSafetyDecision {

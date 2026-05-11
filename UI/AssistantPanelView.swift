@@ -7,6 +7,7 @@ struct AssistantPanelView: View {
 	@State private var dismissedProposalKey: String?
 	@State private var debugExpanded: Bool = false
 	@State private var richContextDebugExpanded: Bool = false
+	@State private var dynamicIntentDebugExpanded: Bool = false
 
 	var body: some View {
 		ScrollView {
@@ -160,6 +161,15 @@ struct AssistantPanelView: View {
 						.padding(.top, 4)
 				} label: {
 					Text("Rich context (internal)")
+						.font(.caption)
+						.fontWeight(.medium)
+				}
+
+				DisclosureGroup(isExpanded: $dynamicIntentDebugExpanded) {
+					DynamicIntentDebugView(summary: appState.dynamicIntentDebugSummary)
+						.padding(.top, 4)
+				} label: {
+					Text("Dynamic intent (internal)")
 						.font(.caption)
 						.fontWeight(.medium)
 				}

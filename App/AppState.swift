@@ -24,10 +24,15 @@ final class AppState: ObservableObject {
 	/// Internal rich-context debug snapshot (T14.10); metadata only; updated by app lifecycle only.
 	@Published var richContextDebugSummary: RichContextDebugSummary = .empty
 
+	/// Internal dynamic intent pipeline debug (T15.10); metadata only; updated by app lifecycle only.
+	@Published var dynamicIntentDebugSummary: DynamicIntentDebugSummary = .empty
+
 	private var lastContextAwarenessLogSignature: String?
 	private var lastContextAwarenessLogAt: Date?
 	private var lastRichContextDebugLogSignature: String?
 	private var lastRichContextDebugLogAt: Date?
+	private var lastDynamicIntentDebugLogSignature: String?
+	private var lastDynamicIntentDebugLogAt: Date?
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
@@ -440,6 +445,7 @@ final class AppState: ObservableObject {
 		)
 		richContextDebugSummary = next
 		logRichContextDebugUIIfNeeded(next)
+		refreshDynamicIntentDebugSummary()
 	}
 
 	private func logRichContextDebugUIIfNeeded(_ summary: RichContextDebugSummary) {
@@ -468,6 +474,39 @@ final class AppState: ObservableObject {
 		lastRichContextDebugLogAt = now
 		print(
 			"[RichContextDebugUI] updated primary=\(summary.primarySource ?? "nil") freshness=\(summary.freshnessScoreBucket ?? "nil") confidence=\(summary.confidenceBucket ?? "nil")"
+		)
+	}
+
+	// MARK: - Dynamic intent debug (T15.10)
+
+	func refreshDynamicIntentDebugSummary() {
+		let next = DynamicIntentDebugSummaryBuilder.build()
+		dynamicIntentDebugSummary = next
+		logDynamicIntentDebugUIIfNeeded(next)
+	}
+
+	private func logDynamicIntentDebugUIIfNeeded(_ summary: DynamicIntentDebugSummary) {
+		let now = Date()
+		if !summary.showsDynamicDebug {
+			let sig = "hidden"
+			if sig == lastDynamicIntentDebugLogSignature, let lastDynamicIntentDebugLogAt, now.timeIntervalSince(lastDynamicIntentDebugLogAt) < 2.0 {
+				return
+			}
+			lastDynamicIntentDebugLogSignature = sig
+			lastDynamicIntentDebugLogAt = now
+			print("[DynamicIntentDebugUI] hidden reason=no_dynamic_state")
+			return
+		}
+
+		let wfKey = summary.workflowLine.isEmpty ? "nil" : String(summary.workflowLine.prefix(48))
+		let sig = "\(wfKey)|i=\(summary.intentLines.count)|a=\(summary.actionLines.count)|p=\(summary.planLines.count)|r=\(summary.rankingLine.isEmpty ? 0 : 1)"
+		if sig == lastDynamicIntentDebugLogSignature, let lastDynamicIntentDebugLogAt, now.timeIntervalSince(lastDynamicIntentDebugLogAt) < 1.2 {
+			return
+		}
+		lastDynamicIntentDebugLogSignature = sig
+		lastDynamicIntentDebugLogAt = now
+		print(
+			"[DynamicIntentDebugUI] updated workflow=\(wfKey) intents=\(summary.intentLines.count) actions=\(summary.actionLines.count) plans=\(summary.planLines.count)"
 		)
 	}
 }

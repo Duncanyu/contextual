@@ -1570,6 +1570,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Dynamic intent debug summary self-test (synthetic metadata only).
+		// Run the app with `CONTEXTUAL_RUN_DYNAMIC_INTENT_DEBUG_UI_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_DYNAMIC_INTENT_DEBUG_UI_SELFTEST"] == "1" {
+			let ok = DynamicIntentDebugSummaryBuilder.runSelfTest()
+			print("[DynamicIntentDebugUI] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Rich Analyze Screen pipeline self-test (prompt build only; no AI calls, no screenshots).
 		// Run the app with `CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST=1` to execute once and exit.
 		if env["CONTEXTUAL_RUN_RICH_ANALYZE_SELFTEST"] == "1" {

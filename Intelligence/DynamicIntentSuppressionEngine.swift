@@ -9,6 +9,8 @@ final class DynamicIntentSuppressionEngine {
 	private var profile = IntentSuppressionProfile()
 	private var lastAllowedLogSig: String?
 	private var lastAllowedLogAt: Date?
+	/// Last `evaluate` output (metadata-only; for internal debug visibility).
+	private var lastDecisionSnapshot: IntentSuppressionDecision?
 
 	private init() {}
 
@@ -17,7 +19,16 @@ final class DynamicIntentSuppressionEngine {
 		ring.removeAll(keepingCapacity: false)
 		lastAllowedLogSig = nil
 		lastAllowedLogAt = nil
+		lastDecisionSnapshot = nil
 		lock.unlock()
+	}
+
+	/// Latest suppression decision from the last `evaluate` call (in-memory only).
+	func latestDecisionSnapshot() -> IntentSuppressionDecision? {
+		lock.lock()
+		let d = lastDecisionSnapshot
+		lock.unlock()
+		return d
 	}
 
 	func setProfileForSelfTest(_ p: IntentSuppressionProfile) {
@@ -163,12 +174,16 @@ final class DynamicIntentSuppressionEngine {
 			print("[IntentSuppression] kept reason=strong_workflow_signal")
 		}
 
-		return IntentSuppressionDecision(
+		let decision = IntentSuppressionDecision(
 			rawIntents: rawIntents,
 			allowed: allowed,
 			suppressed: suppressed,
 			reasonCodes: codes
 		)
+		lock.lock()
+		lastDecisionSnapshot = decision
+		lock.unlock()
+		return decision
 	}
 
 	private func shouldSuppressNearDuplicateGA(intent: SynthesizedIntent, latestGA: [GeneratedAction], manual: Bool) -> Bool {
