@@ -28,12 +28,13 @@ enum VisibleGeneratedActionPanelAdapter {
 	private static var lastExpandSig: String?
 	private static var lastExpandAt: Date?
 
-	static func logPanelShownIfNeeded(rows: [DynamicActionDisplayModel]) {
+	static func logPanelShownIfNeeded(rows: [DynamicActionDisplayModel], groupLabel: String? = nil) {
 		let n = rows.count
 		guard n > 0 else { return }
 		let top = rows.first?.sourceIntentType ?? "none"
 		let cat = rows.first?.category.rawValue ?? "none"
-		let sig = "\(n)|\(top)|\(cat)"
+		let gl = groupLabel.map { String($0.prefix(48)) } ?? ""
+		let sig = "\(n)|\(top)|\(cat)|\(gl)"
 		let now = Date()
 		logLock.lock()
 		let skip: Bool
@@ -47,6 +48,9 @@ enum VisibleGeneratedActionPanelAdapter {
 		logLock.unlock()
 		if skip { return }
 		print("[VisibleGeneratedAction] shown count=\(n) top=\(top) category=\(cat)")
+		if let groupLabel, !groupLabel.isEmpty {
+			print("[WorkflowActionOrdering] grouped label=\(String(groupLabel.prefix(48)))")
+		}
 	}
 
 	static func logPanelHiddenIfNeeded() {
@@ -125,13 +129,14 @@ enum VisibleGeneratedActionPanelAdapter {
 			)
 		}
 
-		let empty = DynamicActionDisplaySummary(previewItems: [], blockedDebugLines: [], blockedSkippedTotal: 0)
+		let empty = DynamicActionDisplaySummary(previewItems: [], blockedDebugLines: [], blockedSkippedTotal: 0, previewGroupLabel: nil)
 		assertCase("no_items_empty", visiblePreviews(from: empty, excluding: []).isEmpty)
 
 		let one = DynamicActionDisplaySummary(
 			previewItems: [row(id: UUID(), title: "Explain likely error", badge: .safeReadOnly, review: false, chips: ["preview_only", "rule_debugging_base"])],
 			blockedDebugLines: [],
-			blockedSkippedTotal: 0
+			blockedSkippedTotal: 0,
+			previewGroupLabel: "Debugging suggestions"
 		)
 		let v1 = visiblePreviews(from: one, excluding: [])
 		assertCase("one_visible", v1.count == 1 && v1[0].isPreviewOnly && !v1[0].isExecutable)
@@ -144,7 +149,8 @@ enum VisibleGeneratedActionPanelAdapter {
 				row(id: idC, title: "C", badge: .safeReadOnly, review: false, chips: ["preview_only"])
 			],
 			blockedDebugLines: [],
-			blockedSkippedTotal: 0
+			blockedSkippedTotal: 0,
+			previewGroupLabel: nil
 		)
 		assertCase("max_two", visiblePreviews(from: three, excluding: []).count == maxVisiblePreviews)
 
@@ -152,7 +158,7 @@ enum VisibleGeneratedActionPanelAdapter {
 		assertCase("dismiss_filters", !vd.contains { $0.id == idA } && vd.count <= maxVisiblePreviews)
 
 		let reviewRow = row(id: UUID(), title: "Draft", badge: .reviewRequired, review: true, chips: ["preview_only", "draft"])
-		let revSummary = DynamicActionDisplaySummary(previewItems: [reviewRow], blockedDebugLines: [], blockedSkippedTotal: 0)
+		let revSummary = DynamicActionDisplaySummary(previewItems: [reviewRow], blockedDebugLines: [], blockedSkippedTotal: 0, previewGroupLabel: nil)
 		let vr = visiblePreviews(from: revSummary, excluding: [])[0]
 		assertCase("review_badge", vr.safetyBadge == .reviewRequired && vr.reviewRequired)
 

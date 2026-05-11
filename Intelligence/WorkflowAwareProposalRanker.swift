@@ -43,6 +43,10 @@ enum WorkflowAwareProposalRanker {
 	private static var lastLogSignature: String?
 	private static var lastLogAt: Date?
 
+	private static let workflowOrderingLogThrottle: TimeInterval = 2.1
+	private static var lastOrderingLogSig: String?
+	private static var lastOrderingLogAt: Date?
+
 	private static let rankingSnapshotLock = NSLock()
 	private static var storedLatestRankingSnapshot: WorkflowAwareProposalRankingResult?
 
@@ -95,22 +99,22 @@ enum WorkflowAwareProposalRanker {
 		let wfType = wf?.workflow ?? .unknown
 		let wfConf = wf.map { min(1.0, max(0.0, $0.confidence)) } ?? 0.0
 		let sessionCont = session.map { min(1.0, max(0.0, $0.continuityConfidence)) } ?? 0.0
-		if wfType == .unknown || (wfConf < 0.22 && sessionCont < minSessionContinuity) {
-			return publishRankingSnapshot(
-				weakFallback(
-					base: baseRelevance,
-					interruption: interruption,
-					generated: generatedActions,
-					intentResult: intentResult,
-					workflowLabel: wfType.rawValue,
-					topIntentLabel: intentResult?.topIntentType?.rawValue ?? "none",
-					packet: packet,
-					profile: profile,
-					redundancy: redundancyMemory,
-					lifecycle: lifecycle,
-					strongSelected: strongSelected
-				)
+		if wfType == .unknown || (wfConf < 0.20 && sessionCont < minSessionContinuity) {
+			let r = weakFallback(
+				base: baseRelevance,
+				interruption: interruption,
+				generated: generatedActions,
+				intentResult: intentResult,
+				workflowLabel: wfType.rawValue,
+				topIntentLabel: intentResult?.topIntentType?.rawValue ?? "none",
+				packet: packet,
+				profile: profile,
+				redundancy: redundancyMemory,
+				lifecycle: lifecycle,
+				strongSelected: strongSelected
 			)
+			logWorkflowActionOrderingWeak(workflow: wfType.rawValue, primary: r.suggestedStaticPrimary ?? "none", generatedCount: generatedActions.count)
+			return publishRankingSnapshot(r)
 		}
 
 		var deltas: [String: Double] = [:]
@@ -128,6 +132,17 @@ enum WorkflowAwareProposalRanker {
 			contextType: contextType,
 			sessionBoost: sessionBoost,
 			wfBoost: wfBoost,
+			deltas: &deltas,
+			codes: &codes
+		)
+
+		applyDirectWorkflowContextBoosts(
+			wfType: wfType,
+			wfConf: wfConf,
+			contextType: contextType,
+			sessionBoost: sessionBoost,
+			wfBoost: wfBoost,
+			session: session,
 			deltas: &deltas,
 			codes: &codes
 		)
@@ -151,7 +166,12 @@ enum WorkflowAwareProposalRanker {
 			codes.append(.interruptionDampen)
 		}
 
-		let rankedGen = rankGeneratedMetadata(generatedActions)
+		let rankedGen = rankGeneratedMetadata(
+			generatedActions,
+			inferredWorkflow: wfType,
+			wfConfidence: wfConf,
+			session: session
+		)
 		let topStatic = merged.max(by: { $0.score < $1.score })
 		let primaryCat = primaryCategory(
 			generated: generatedActions,
@@ -170,7 +190,31 @@ enum WorkflowAwareProposalRanker {
 			adjustment: WorkflowProposalAdjustment(scoreDeltasByActionId: deltas, reasonCodes: uniqueCodes(codes))
 		)
 		logOutcome(result: result, workflow: wfType.rawValue, topIntent: topIntent?.type.rawValue)
+		logWorkflowActionOrderingAdjusted(
+			workflow: wfType.rawValue,
+			primary: result.suggestedStaticPrimary ?? "none",
+			reasons: result.reasonCodes,
+			generatedCount: generatedActions.count,
+			generatedTop: rankedGen.first,
+			category: result.primaryCategory.rawValue
+		)
 		return publishRankingSnapshot(result)
+	}
+
+	/// Small confidence lift for proposal prominence when synthesized intent aligns with ranked primary (T16.3).
+	static func proposalProminenceConfidenceDelta(primaryActionId: String?, interruption01: Double) -> Double {
+		guard let pid = primaryActionId, !pid.isEmpty else { return 0 }
+		guard interruption01 < 0.62 else { return 0 }
+		guard let res = IntentSynthesisEngine.shared.latestResult() else { return 0 }
+		guard let topType = res.topIntentType else { return 0 }
+		guard let intent = res.intents.first(where: { $0.type == topType && !$0.isStale }) else { return 0 }
+		guard intent.confidence >= 0.56 else { return 0 }
+		guard intentAlignsPrimary(pid, intent.type) else { return 0 }
+		let wf = WorkflowInferenceEngine.shared.latestResult()
+		if let w = wf, !w.isStale, w.workflow != .unknown, w.confidence >= 0.38 {
+			if intent.workflow != .unknown, intent.workflow != w.workflow { return 0 }
+		}
+		return min(0.048, 0.022 + intent.confidence * 0.028)
 	}
 
 	// MARK: - Internals
@@ -226,7 +270,7 @@ enum WorkflowAwareProposalRanker {
 		let top = merged.max(by: { $0.score < $1.score })
 		let r = WorkflowAwareProposalRankingResult(
 			adjustedScores: merged,
-			rankedGeneratedActionIds: rankGeneratedMetadata(generated),
+			rankedGeneratedActionIds: rankGeneratedMetadata(generated, inferredWorkflow: .unknown, wfConfidence: 0, session: nil),
 			primaryCategory: .none,
 			suggestedStaticPrimary: top?.actionId,
 			confidence: top?.score ?? 0,
@@ -256,20 +300,87 @@ enum WorkflowAwareProposalRanker {
 
 		switch (wfType, intent.type) {
 		case (.debugging, .explainLikelyError), (.debugging, .identifyPossibleBugSource):
-			addDelta(&deltas, "explain_text", 0.085 * ic * sessionBoost * wfBoost)
+			addDelta(&deltas, "explain_text", 0.102 * ic * sessionBoost * wfBoost)
 			codes.append(.boostedExplainDebugging)
-		case (.research, .summarizeCurrentArticle), (.browsing, .summarizeCurrentArticle):
-			// Keep margin above `ProposalRanker`’s 0.05 tie band vs typical explain_text bases.
-			addDelta(&deltas, "summarize_text", 0.14 * ic * sessionBoost * wfBoost)
+		case (.debugging, .summarizeCodeChange), (.reviewing, .summarizeCodeChange):
+			addDelta(&deltas, "explain_text", 0.055 * ic * sessionBoost * wfBoost)
+			codes.append(.boostedExplainDebugging)
+		case (.research, .summarizeCurrentArticle):
+			addDelta(&deltas, "summarize_text", 0.158 * ic * sessionBoost * wfBoost)
+			codes.append(.boostedSummarizeResearch)
+		case (.browsing, .summarizeCurrentArticle):
+			guard contextType == .article || contextType == .notes else { break }
+			addDelta(&deltas, "summarize_text", 0.118 * ic * sessionBoost * wfBoost)
 			codes.append(.boostedSummarizeResearch)
 		case (.writing, .reviewSelectedText), (.writing, .turnNotesIntoChecklist):
 			if contextType == .code || contextType == .errorLog {
 				addDelta(&deltas, "explain_text", 0.035 * ic * sessionBoost * wfBoost)
 				codes.append(.boostedExplainWritingCode)
 			} else {
-				addDelta(&deltas, "rewrite_text", 0.045 * ic * sessionBoost * wfBoost)
+				addDelta(&deltas, "rewrite_text", 0.058 * ic * sessionBoost * wfBoost)
 				codes.append(.boostedRewriteWritingReview)
 			}
+		case (.reviewing, .reviewSelectedText), (.reviewing, .compareSelectedSnippets):
+			addDelta(&deltas, "rewrite_text", 0.05 * ic * sessionBoost * wfBoost)
+			codes.append(.boostedRewriteWritingReview)
+			if contextType == .article || contextType == .notes {
+				addDelta(&deltas, "summarize_text", 0.042 * ic * sessionBoost * wfBoost)
+				codes.append(.boostedSummarizeResearch)
+			}
+		default:
+			break
+		}
+	}
+
+	private static func applyDirectWorkflowContextBoosts(
+		wfType: InferredWorkflow,
+		wfConf: Double,
+		contextType: ContextType,
+		sessionBoost: Double,
+		wfBoost: Double,
+		session: ContextualSessionState?,
+		deltas: inout [String: Double],
+		codes: inout [WorkflowProposalReasonCode]
+	) {
+		guard wfType != .unknown, wfConf >= 0.32 else { return }
+		let g = (0.52 + 0.48 * wfConf) * sessionBoost * wfBoost
+		let sessionAgrees = session.map { !$0.isStale && $0.dominantWorkflow == wfType && $0.continuityScore >= 0.42 } ?? false
+		let sExtra = sessionAgrees ? 1.08 : 1.0
+
+		switch wfType {
+		case .debugging:
+			if contextType == .code || contextType == .errorLog {
+				addDelta(&deltas, "explain_text", 0.068 * g * sExtra)
+				codes.append(.boostedExplainDebugging)
+			} else if contextType == .question {
+				addDelta(&deltas, "explain_text", 0.04 * g * sExtra)
+				codes.append(.boostedExplainDebugging)
+			}
+		case .research:
+			if contextType == .article || contextType == .notes {
+				addDelta(&deltas, "summarize_text", 0.06 * g * sExtra)
+				codes.append(.boostedSummarizeResearch)
+			}
+		case .writing:
+			if contextType == .notes {
+				addDelta(&deltas, "rewrite_text", 0.052 * g * sExtra)
+				codes.append(.boostedRewriteWritingReview)
+				addDelta(&deltas, "summarize_text", -0.024 * g * sExtra)
+			} else if contextType != .code && contextType != .errorLog {
+				addDelta(&deltas, "rewrite_text", 0.038 * g * sExtra)
+				codes.append(.boostedRewriteWritingReview)
+			}
+		case .reviewing:
+			if contextType == .code || contextType == .errorLog {
+				addDelta(&deltas, "explain_text", 0.052 * g * sExtra)
+				codes.append(.boostedExplainDebugging)
+			}
+			if contextType == .article || contextType == .notes {
+				addDelta(&deltas, "summarize_text", 0.036 * g * sExtra)
+				codes.append(.boostedSummarizeResearch)
+			}
+			addDelta(&deltas, "rewrite_text", 0.03 * g * sExtra)
+			codes.append(.boostedRewriteWritingReview)
 		default:
 			break
 		}
@@ -284,7 +395,7 @@ enum WorkflowAwareProposalRanker {
 		for a in actions {
 			for p in a.primitives {
 				guard let sid = mapPrimitiveToStaticId(p, contextType: contextType) else { continue }
-				addDelta(&deltas, sid, 0.026 * a.confidence * (0.88 + 0.12 * a.workflowRelevance))
+				addDelta(&deltas, sid, 0.033 * a.confidence * (0.86 + 0.14 * a.workflowRelevance))
 				codes.append(.generatedPrimitiveBoost)
 			}
 		}
@@ -344,11 +455,110 @@ enum WorkflowAwareProposalRanker {
 		}
 	}
 
-	private static func rankGeneratedMetadata(_ actions: [GeneratedAction]) -> [String] {
+	private static func rankGeneratedMetadata(
+		_ actions: [GeneratedAction],
+		inferredWorkflow: InferredWorkflow,
+		wfConfidence: Double,
+		session: ContextualSessionState?
+	) -> [String] {
 		actions
 			.filter { !$0.isStale && $0.confidence >= minGeneratedInfluenceConfidence }
-			.sorted { $0.confidence > $1.confidence }
+			.sorted { lhs, rhs in
+				let sl = generatedMetadataOrderingScore(lhs, inferredWorkflow: inferredWorkflow, wfConfidence: wfConfidence, session: session)
+				let sr = generatedMetadataOrderingScore(rhs, inferredWorkflow: inferredWorkflow, wfConfidence: wfConfidence, session: session)
+				if sl != sr { return sl > sr }
+				if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
+				return lhs.createdAt > rhs.createdAt
+			}
 			.map { "ga:\($0.id.uuidString)" }
+	}
+
+	private static func generatedMetadataOrderingScore(
+		_ a: GeneratedAction,
+		inferredWorkflow: InferredWorkflow,
+		wfConfidence: Double,
+		session: ContextualSessionState?
+	) -> Double {
+		let safety = GeneratedActionSafetyPolicy.evaluateActionSnapshotForDebug(a)
+		guard safety.allowed, safety.safetyLevel != .blocked else { return -1e9 }
+		var s = 0.0
+		if !(safety.requiresUserReview || safety.safetyLevel == .reviewRequired) {
+			s += 4.0
+		} else {
+			s += 2.4
+		}
+		let wfC = min(1.0, max(0.0, wfConfidence))
+		let wfMatch: Double
+		if inferredWorkflow != .unknown {
+			let align = (a.workflow == inferredWorkflow) ? 1.0 : 0.22
+			wfMatch = align * wfC + a.workflowRelevance * (0.55 + 0.45 * (1.0 - wfC))
+		} else {
+			wfMatch = a.workflowRelevance * 0.48
+		}
+		s += wfMatch * 2.1
+		s += a.confidence * 1.35
+		let ttl = max(30.0, a.expiresAt.timeIntervalSince(a.createdAt))
+		let fresh = max(0.0, min(1.0, a.expiresAt.timeIntervalSinceNow / ttl))
+		s += fresh * 0.55
+		s += (1.0 - min(1.0, a.interruptionCost)) * 0.32
+		if let ses = session, !ses.isStale, ses.dominantWorkflow == a.workflow, ses.dominantWorkflow != .unknown {
+			s += 0.11 * ses.continuityScore
+		}
+		return s
+	}
+
+	private static func intentAlignsPrimary(_ primary: String, _ type: SynthesizedIntentType) -> Bool {
+		switch (primary, type) {
+		case ("explain_text", .explainLikelyError),
+			("explain_text", .identifyPossibleBugSource),
+			("explain_text", .explainApiResponse),
+			("explain_text", .explainScreenContext),
+			("explain_text", .summarizeCodeChange):
+			return true
+		case ("summarize_text", .summarizeCurrentArticle),
+			("summarize_text", .summarizeCodeChange):
+			return true
+		case ("rewrite_text", .reviewSelectedText),
+			("rewrite_text", .draftReply),
+			("rewrite_text", .turnNotesIntoChecklist),
+			("rewrite_text", .compareSelectedSnippets):
+			return true
+		default:
+			return false
+		}
+	}
+
+	private static func logWorkflowActionOrderingWeak(workflow: String, primary: String, generatedCount: Int) {
+		let sig = "weak|\(workflow)|\(primary)|\(generatedCount)"
+		let now = Date()
+		if lastOrderingLogSig == sig, let t = lastOrderingLogAt, now.timeIntervalSince(t) < workflowOrderingLogThrottle { return }
+		lastOrderingLogSig = sig
+		lastOrderingLogAt = now
+		print("[WorkflowActionOrdering] kept reason=weak_workflow workflow=\(workflow) primary=\(primary)")
+		print("[WorkflowActionOrdering] generated_order count=\(generatedCount) top=none category=none")
+	}
+
+	private static func logWorkflowActionOrderingAdjusted(
+		workflow: String,
+		primary: String,
+		reasons: [WorkflowProposalReasonCode],
+		generatedCount: Int,
+		generatedTop: String?,
+		category: String
+	) {
+		let topShort: String = {
+			guard let g = generatedTop else { return "none" }
+			if g.hasPrefix("ga:") { return String(g.dropFirst(3).prefix(8)) }
+			return String(g.prefix(10))
+		}()
+		let rs = reasons.map(\.rawValue).sorted().joined(separator: ",")
+		let sig = "adj|\(workflow)|\(primary)|\(topShort)|\(category)"
+		let now = Date()
+		if lastOrderingLogSig == sig, let t = lastOrderingLogAt, now.timeIntervalSince(t) < workflowOrderingLogThrottle { return }
+		lastOrderingLogSig = sig
+		lastOrderingLogAt = now
+		print("[WorkflowActionOrdering] adjusted workflow=\(workflow) primary=\(primary) reason=\(rs.isEmpty ? "none" : rs)")
+		print("[WorkflowActionOrdering] generated_order count=\(generatedCount) top=\(topShort) category=\(category)")
 	}
 
 	private static func primaryCategory(

@@ -51,8 +51,10 @@ struct DynamicActionDisplaySummary: Equatable, Sendable {
 	let blockedDebugLines: [String]
 	/// Count of actions/plans omitted from preview due to blocked safety (metadata-only).
 	let blockedSkippedTotal: Int
+	/// Single compact section label when all previews share one workflow bucket (T16.3).
+	let previewGroupLabel: String?
 
-	static let empty = DynamicActionDisplaySummary(previewItems: [], blockedDebugLines: [], blockedSkippedTotal: 0)
+	static let empty = DynamicActionDisplaySummary(previewItems: [], blockedDebugLines: [], blockedSkippedTotal: 0, previewGroupLabel: nil)
 
 	var showsGeneratedPreview: Bool {
 		!previewItems.isEmpty || !blockedDebugLines.isEmpty
@@ -65,11 +67,14 @@ enum DynamicActionDisplayBuilder {
 	private static let maxDescription = 96
 	private static let maxPrimitives = 4
 	private static let maxChips = 8
-	private static let maxPreviewRows = 4
+	/// Visible panel shows at most two previews (T16.1 / T16.3); builder matches that cap after workflow-aware sort.
+	private static let maxPreviewRows = 2
 	private static let maxBlockedLines = 4
 
 	private static var lastBlockedSkipLogSig: String?
 	private static var lastBlockedSkipLogAt: Date?
+	private static var lastGeneratedOrderLogSig: String?
+	private static var lastGeneratedOrderLogAt: Date?
 
 	static func build(
 		actions: [GeneratedAction]? = nil,
@@ -79,12 +84,19 @@ enum DynamicActionDisplayBuilder {
 	) -> DynamicActionDisplaySummary {
 		let acts = actions ?? GeneratedActionEngine.shared.latestActions()
 		let pls = plans ?? GeneratedActionEngine.shared.currentPlans()
-		_ = workflow ?? WorkflowInferenceEngine.shared.latestResult()
-		_ = session ?? ContextualSessionTracker.shared.currentState()
+		let wfResolved = workflow ?? WorkflowInferenceEngine.shared.latestResult()
+		let sessionResolved = session ?? ContextualSessionTracker.shared.currentState()
+		let wfType = wfResolved?.workflow ?? .unknown
+		let wfConf = wfResolved.map { min(1.0, max(0.0, $0.confidence)) } ?? 0.0
 
-		var preview: [DynamicActionDisplayModel] = []
 		var blockedLines: [String] = []
 		var blockedSkipCount = 0
+
+		struct PreviewBuild {
+			let sortKey: Double
+			let build: () -> DynamicActionDisplayModel
+		}
+		var candidates: [PreviewBuild] = []
 
 		for a in acts {
 			let d = GeneratedActionSafetyPolicy.evaluateActionSnapshotForDebug(a)
@@ -97,11 +109,11 @@ enum DynamicActionDisplayBuilder {
 				}
 				continue
 			}
-			if preview.count >= maxPreviewRows { break }
-			preview.append(mapAction(a, safety: d))
+			let sk = generatedPreviewSortScore(a, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved)
+			candidates.append(PreviewBuild(sortKey: sk, build: { mapAction(a, safety: d) }))
 		}
 
-		for p in pls where preview.count < maxPreviewRows {
+		for p in pls {
 			let d = GeneratedActionSafetyPolicy.evaluatePlanSnapshotForDebug(p)
 			if d.safetyLevel == .blocked || !d.allowed {
 				blockedSkipCount += 1
@@ -112,12 +124,102 @@ enum DynamicActionDisplayBuilder {
 				}
 				continue
 			}
-			preview.append(mapPlan(p, safety: d))
+			let sk = generatedPlanPreviewSortScore(p, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved)
+			candidates.append(PreviewBuild(sortKey: sk, build: { mapPlan(p, safety: d) }))
 		}
 
-		logBlockedSkipsAggregateIfNeeded(total: blockedSkipCount)
+		candidates.sort { $0.sortKey > $1.sortKey }
+		let preview = candidates.prefix(maxPreviewRows).map { $0.build() }
+		let groupLabel = homogeneousPreviewGroupLabel(for: preview)
 
-		return DynamicActionDisplaySummary(previewItems: preview, blockedDebugLines: blockedLines, blockedSkippedTotal: blockedSkipCount)
+		logBlockedSkipsAggregateIfNeeded(total: blockedSkipCount)
+		logGeneratedPreviewOrderIfNeeded(items: preview, inferredWorkflow: wfType.rawValue)
+
+		return DynamicActionDisplaySummary(previewItems: preview, blockedDebugLines: blockedLines, blockedSkippedTotal: blockedSkipCount, previewGroupLabel: groupLabel)
+	}
+
+	private static func generatedPreviewSortScore(
+		_ a: GeneratedAction,
+		inferredWorkflow: InferredWorkflow,
+		wfConfidence: Double,
+		session: ContextualSessionState?
+	) -> Double {
+		let safety = GeneratedActionSafetyPolicy.evaluateActionSnapshotForDebug(a)
+		guard safety.allowed, safety.safetyLevel != .blocked else { return -1e9 }
+		var s = 0.0
+		if !(safety.requiresUserReview || safety.safetyLevel == .reviewRequired) { s += 4.0 } else { s += 2.35 }
+		let wfC = min(1.0, max(0.0, wfConfidence))
+		let wfMatch: Double
+		if inferredWorkflow != .unknown {
+			let align = (a.workflow == inferredWorkflow) ? 1.0 : 0.24
+			wfMatch = align * wfC + a.workflowRelevance * (0.52 + 0.48 * (1.0 - wfC))
+		} else {
+			wfMatch = a.workflowRelevance * 0.46
+		}
+		s += wfMatch * 2.15
+		s += a.confidence * 1.32
+		let ttl = max(30.0, a.expiresAt.timeIntervalSince(a.createdAt))
+		s += max(0.0, min(1.0, a.expiresAt.timeIntervalSinceNow / ttl)) * 0.52
+		s += (1.0 - min(1.0, a.interruptionCost)) * 0.3
+		if let ses = session, !ses.isStale, ses.dominantWorkflow == a.workflow, ses.dominantWorkflow != .unknown {
+			s += 0.1 * ses.continuityScore
+		}
+		return s
+	}
+
+	private static func generatedPlanPreviewSortScore(
+		_ p: GeneratedActionPlan,
+		inferredWorkflow: InferredWorkflow,
+		wfConfidence: Double,
+		session: ContextualSessionState?
+	) -> Double {
+		let safety = GeneratedActionSafetyPolicy.evaluatePlanSnapshotForDebug(p)
+		guard safety.allowed, safety.safetyLevel != .blocked else { return -1e9 }
+		var s = 0.05
+		if !(safety.requiresUserReview || safety.safetyLevel == .reviewRequired) { s += 3.85 } else { s += 2.2 }
+		let wfC = min(1.0, max(0.0, wfConfidence))
+		let wfMatch: Double
+		if inferredWorkflow != .unknown {
+			let align = (p.workflow == inferredWorkflow) ? 1.0 : 0.22
+			wfMatch = align * wfC + 0.55 * (0.52 + 0.48 * (1.0 - wfC))
+		} else {
+			wfMatch = 0.42
+		}
+		s += wfMatch * 1.95
+		s += p.confidence * 1.25
+		let ttl = max(30.0, p.expiresAt.timeIntervalSince(p.createdAt))
+		s += max(0.0, min(1.0, p.expiresAt.timeIntervalSinceNow / ttl)) * 0.48
+		if let ses = session, !ses.isStale, ses.dominantWorkflow == p.workflow, ses.dominantWorkflow != .unknown {
+			s += 0.09 * ses.continuityScore
+		}
+		return s
+	}
+
+	private static func homogeneousPreviewGroupLabel(for items: [DynamicActionDisplayModel]) -> String? {
+		guard !items.isEmpty else { return nil }
+		let cats = Set(items.map(\.category))
+		guard cats.count == 1, let only = cats.first else { return nil }
+		switch only {
+		case .debugging: return "Debugging suggestions"
+		case .research: return "Research suggestions"
+		case .writing: return "Writing suggestions"
+		case .reviewing: return "Review suggestions"
+		case .browsing: return "Browsing suggestions"
+		case .editing: return "Editing suggestions"
+		case .utility, .unknown: return "Contextual suggestions"
+		}
+	}
+
+	private static func logGeneratedPreviewOrderIfNeeded(items: [DynamicActionDisplayModel], inferredWorkflow: String) {
+		guard !items.isEmpty else { return }
+		let top = items.first?.sourceIntentType ?? "none"
+		let cat = items.first?.category.rawValue ?? "none"
+		let sig = "\(items.count)|\(top)|\(cat)|\(inferredWorkflow)"
+		let now = Date()
+		if lastGeneratedOrderLogSig == sig, let t = lastGeneratedOrderLogAt, now.timeIntervalSince(t) < 1.9 { return }
+		lastGeneratedOrderLogSig = sig
+		lastGeneratedOrderLogAt = now
+		print("[WorkflowActionOrdering] generated_order count=\(items.count) top=\(top) category=\(cat) workflow=\(inferredWorkflow)")
 	}
 
 	private static func logBlockedSkipsAggregateIfNeeded(total: Int) {
@@ -366,13 +468,14 @@ extension DynamicActionDisplayBuilder {
 			planList = [pl]
 		}
 
-		let sum = build(actions: [safeWith, revWith, blockedAct], plans: planList, workflow: wf, session: session)
-		assertCase("preview_count", sum.previewItems.count >= 2 && sum.previewItems.count <= 4)
-		assertCase("blocked_hidden", !sum.previewItems.contains { $0.id == blockedAct.id })
-		assertCase("blocked_debug", sum.blockedDebugLines.contains(where: { $0.contains("blocked") }))
-		assertCase("blocked_total", sum.blockedSkippedTotal >= 1)
+		let sumBlocked = build(actions: [safeWith, revWith, blockedAct], plans: [], workflow: wf, session: session)
+		assertCase("preview_cap_two", sumBlocked.previewItems.count == 2)
+		assertCase("blocked_hidden", !sumBlocked.previewItems.contains { $0.id == blockedAct.id })
+		assertCase("blocked_debug", sumBlocked.blockedDebugLines.contains(where: { $0.contains("blocked") }))
+		assertCase("blocked_total", sumBlocked.blockedSkippedTotal >= 1)
+		assertCase("mixed_group_label_ok", sumBlocked.previewGroupLabel == nil || !(sumBlocked.previewGroupLabel?.isEmpty ?? true))
 
-		let safeRow = sum.previewItems.first { $0.id == safeWith.id }
+		let safeRow = sumBlocked.previewItems.first { $0.id == safeWith.id }
 		assertCase("safe_badge", safeRow?.safetyBadge == .safeReadOnly)
 		assertCase("safe_review_flag", safeRow?.reviewRequired == false)
 		assertCase("safe_category", safeRow?.category == .debugging)
@@ -383,15 +486,18 @@ extension DynamicActionDisplayBuilder {
 		assertCase("chips_preview", safeRow?.reasonChips.contains("preview_only") == true)
 		assertCase("explain_chips", (safeRow?.reasonChips.count ?? 0) > 1)
 
-		let revRow = sum.previewItems.first { $0.id == revWith.id }
+		let revRow = sumBlocked.previewItems.first { $0.id == revWith.id }
 		assertCase("rev_badge", revRow?.safetyBadge == .reviewRequired || (revRow?.reviewRequired == true))
 
-		if let planRow = sum.previewItems.first(where: { $0.source == DynamicActionDisplaySource.generatedPlan }) {
-			assertCase("plan_prims", !planRow.primitiveLabels.isEmpty)
-			assertCase("plan_exec", planRow.isExecutable == false && planRow.isPreviewOnly == true)
+		if !planList.isEmpty {
+			let planSum = build(actions: [], plans: planList, workflow: wf, session: session)
+			if let planRow = planSum.previewItems.first(where: { $0.source == DynamicActionDisplaySource.generatedPlan }) {
+				assertCase("plan_prims", !planRow.primitiveLabels.isEmpty)
+				assertCase("plan_exec", planRow.isExecutable == false && planRow.isPreviewOnly == true)
+			}
 		}
 
-		let joined = (sum.previewItems.map { $0.title + $0.shortDescription + $0.reasonChips.joined() }).joined()
+		let joined = (sumBlocked.previewItems.map { $0.title + $0.shortDescription + $0.reasonChips.joined() }).joined()
 		assertCase("no_url", !joined.contains("://"))
 
 		let empty = build(actions: [], plans: [], workflow: nil, session: nil)

@@ -14,7 +14,15 @@ struct VisibleGeneratedActionsSection: View {
 		Group {
 			if !visibleRows.isEmpty {
 				VStack(alignment: .leading, spacing: 10) {
-					SectionHeader(title: "Suggested")
+					VStack(alignment: .leading, spacing: 4) {
+						SectionHeader(title: "Suggested")
+						if let label = summary.previewGroupLabel, !label.isEmpty {
+							Text(label)
+								.font(.caption2)
+								.fontWeight(.medium)
+								.foregroundStyle(.secondary)
+						}
+					}
 					VStack(alignment: .leading, spacing: 10) {
 						ForEach(visibleRows) { row in
 							generatedPreviewCard(row)

@@ -512,7 +512,7 @@ final class AppState: ObservableObject {
 			VisibleGeneratedActionPanelAdapter.logPanelHiddenIfNeeded()
 		} else {
 			let capped = Array(next.previewItems.prefix(VisibleGeneratedActionPanelAdapter.maxVisiblePreviews))
-			VisibleGeneratedActionPanelAdapter.logPanelShownIfNeeded(rows: capped)
+			VisibleGeneratedActionPanelAdapter.logPanelShownIfNeeded(rows: capped, groupLabel: next.previewGroupLabel)
 		}
 	}
 

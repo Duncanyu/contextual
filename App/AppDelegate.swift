@@ -476,12 +476,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		// If everything is weak, avoid creating a proposal (Available Actions still show).
 		let shouldGenerateProposalByRelevance = richRanking.topScore >= 0.50
 
+		let proposalPromo = WorkflowAwareProposalRanker.proposalProminenceConfidenceDelta(
+			primaryActionId: richRanking.primaryActionId,
+			interruption01: workflowRank.interruptionCost
+		)
+		let proposalConfidence = min(0.95, decision.confidence + proposalPromo)
+
 		let overriddenDecision = ReasoningDecision(
 			shouldSurface: decision.shouldSurface,
 			primaryActionId: richRanking.primaryActionId,
 			rankedActionIds: rankedIds.isEmpty ? decision.rankedActionIds : [richRanking.primaryActionId] + richRanking.secondaryActionIds,
 			reason: decision.reason,
-			confidence: decision.confidence
+			confidence: proposalConfidence
 		)
 
 		var proposal: ActionProposal?
@@ -1489,6 +1495,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_WORKFLOW_PROPOSAL_RANKING_SELFTEST"] == "1" {
 			let ok = WorkflowAwareProposalRanker.runSelfTest()
 			print("[WorkflowProposalRank] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Workflow-sensitive action ordering (T16.3): bundled synthetic self-tests.
+		// Run with `CONTEXTUAL_RUN_WORKFLOW_ACTION_ORDERING_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_WORKFLOW_ACTION_ORDERING_SELFTEST"] == "1" {
+			let ok = WorkflowActionOrderingSelfTest.run()
+			print("[WorkflowActionOrdering] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
