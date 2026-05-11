@@ -526,6 +526,16 @@
     "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextType.swiftdeps",
     "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextType~partial.swiftmodule"
   },
+  "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicActionDisplayModels.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels~partial.swiftmodule"
+  },
   "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicIntentDebugSummary.swift" : {
     "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicIntentDebugSummary.swiftconstvalues",
     "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicIntentDebugSummary.d",
@@ -1085,6 +1095,16 @@
     "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextAwarenessView.o",
     "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextAwarenessView.swiftdeps",
     "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextAwarenessView~partial.swiftmodule"
+  },
+  "/Users/duncanyu/Documents/GitHub/contextual/UI/DynamicActionPreviewView.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView~partial.swiftmodule"
   },
   "/Users/duncanyu/Documents/GitHub/contextual/UI/DynamicIntentDebugView.swift" : {
     "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicIntentDebugView.swiftconstvalues",

@@ -27,12 +27,17 @@ final class AppState: ObservableObject {
 	/// Internal dynamic intent pipeline debug (T15.10); metadata only; updated by app lifecycle only.
 	@Published var dynamicIntentDebugSummary: DynamicIntentDebugSummary = .empty
 
+	/// Preview-only generated action display models (T15.11); derived, not persisted; updated by app lifecycle only.
+	@Published var dynamicActionDisplaySummary: DynamicActionDisplaySummary = .empty
+
 	private var lastContextAwarenessLogSignature: String?
 	private var lastContextAwarenessLogAt: Date?
 	private var lastRichContextDebugLogSignature: String?
 	private var lastRichContextDebugLogAt: Date?
 	private var lastDynamicIntentDebugLogSignature: String?
 	private var lastDynamicIntentDebugLogAt: Date?
+	private var lastDynamicActionUXLogSignature: String?
+	private var lastDynamicActionUXLogAt: Date?
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
@@ -483,6 +488,13 @@ final class AppState: ObservableObject {
 		let next = DynamicIntentDebugSummaryBuilder.build()
 		dynamicIntentDebugSummary = next
 		logDynamicIntentDebugUIIfNeeded(next)
+		refreshDynamicActionDisplaySummary()
+	}
+
+	func refreshDynamicActionDisplaySummary() {
+		let next = DynamicActionDisplayBuilder.build()
+		dynamicActionDisplaySummary = next
+		logDynamicActionUXIfNeeded(next)
 	}
 
 	private func logDynamicIntentDebugUIIfNeeded(_ summary: DynamicIntentDebugSummary) {
@@ -507,6 +519,33 @@ final class AppState: ObservableObject {
 		lastDynamicIntentDebugLogAt = now
 		print(
 			"[DynamicIntentDebugUI] updated workflow=\(wfKey) intents=\(summary.intentLines.count) actions=\(summary.actionLines.count) plans=\(summary.planLines.count)"
+		)
+	}
+
+	// MARK: - Dynamic action UX preview (T15.11)
+
+	private func logDynamicActionUXIfNeeded(_ summary: DynamicActionDisplaySummary) {
+		let now = Date()
+		if !summary.showsGeneratedPreview {
+			let sig = "hidden"
+			if sig == lastDynamicActionUXLogSignature, let lastDynamicActionUXLogAt, now.timeIntervalSince(lastDynamicActionUXLogAt) < 2.0 {
+				return
+			}
+			lastDynamicActionUXLogSignature = sig
+			lastDynamicActionUXLogAt = now
+			print("[DynamicActionUX] hidden reason=no_generated_actions")
+			return
+		}
+
+		let top = summary.previewItems.first?.category.rawValue ?? "nil"
+		let sig = "\(summary.previewItems.count)|\(top)|b=\(summary.blockedSkippedTotal)"
+		if sig == lastDynamicActionUXLogSignature, let lastDynamicActionUXLogAt, now.timeIntervalSince(lastDynamicActionUXLogAt) < 1.2 {
+			return
+		}
+		lastDynamicActionUXLogSignature = sig
+		lastDynamicActionUXLogAt = now
+		print(
+			"[DynamicActionUX] updated count=\(summary.previewItems.count) top=\(top) category=\(summary.previewItems.first?.category.rawValue ?? "nil")"
 		)
 	}
 }

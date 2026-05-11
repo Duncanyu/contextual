@@ -8,6 +8,7 @@ struct AssistantPanelView: View {
 	@State private var debugExpanded: Bool = false
 	@State private var richContextDebugExpanded: Bool = false
 	@State private var dynamicIntentDebugExpanded: Bool = false
+	@State private var dynamicActionPreviewExpanded: Bool = false
 
 	var body: some View {
 		ScrollView {
@@ -170,6 +171,15 @@ struct AssistantPanelView: View {
 						.padding(.top, 4)
 				} label: {
 					Text("Dynamic intent (internal)")
+						.font(.caption)
+						.fontWeight(.medium)
+				}
+
+				DisclosureGroup(isExpanded: $dynamicActionPreviewExpanded) {
+					DynamicActionPreviewView(summary: appState.dynamicActionDisplaySummary)
+						.padding(.top, 4)
+				} label: {
+					Text("Generated actions (internal)")
 						.font(.caption)
 						.fontWeight(.medium)
 				}
