@@ -4,6 +4,7 @@ import Foundation
 /// - No new collection is triggered here.
 /// - No permissions are requested here.
 /// - Logs are metadata-only.
+/// - `AdaptiveContextSampler` may pre-filter requests; this manager remains the final guardrail.
 final class ContextBudgetManager {
 	static let shared = ContextBudgetManager()
 

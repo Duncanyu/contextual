@@ -11,6 +11,7 @@ enum ContextDebugStage: String, Sendable {
 	case ax
 	case typing
 	case pointer
+	case adaptive
 }
 
 enum ContextDebugEvent: String, Sendable {

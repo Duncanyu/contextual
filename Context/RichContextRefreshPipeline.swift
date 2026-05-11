@@ -54,21 +54,43 @@ final class RichContextRefreshPipeline {
 		let pointerCtx: PointerActivityContext? = request.includePointerActivity ? PointerActivitySource.shared.currentContext() : nil
 		if request.includePointerActivity { collected.append(.pointerActivity) }
 
-		// Freshness-driven reuse gate (very lightweight): if canonical context is already fresh and includes requested heavy sources, skip collection.
 		let canonical = CanonicalContextState.shared.current()
-		let canonicalIsFreshEnough = canonical.map { !$0.isStale && $0.freshnessScore >= 0.60 } ?? false
+		var requestedCapabilities = Set<ContextCapabilityID>()
+		if request.includeAXContent { requestedCapabilities.insert(.axWindowContent) }
+		if request.includeWindowSnapshot { requestedCapabilities.insert(.activeWindowSnapshot) }
+		if request.includeVisualDescriptor { requestedCapabilities.insert(.visualDescriptor) }
+		if request.includeTypingActivity { requestedCapabilities.insert(.typingActivity) }
+		if request.includePointerActivity { requestedCapabilities.insert(.cursorActivity) }
 
-		func canonicalHas(_ capability: ContextCapabilityID) -> Bool {
-			(canonical?.availableSources.contains(capability) ?? false) && canonicalIsFreshEnough
-		}
+		let workflowKey = Self.buildPrivacySafeWorkflowKey(request: request, canonical: canonical, requestedExpensive: requestedCapabilities.intersection([
+			.axWindowContent, .activeWindowSnapshot, .visualDescriptor, .screenOCR, .screenVision
+		]))
+
+		let adaptiveRequest = AdaptiveSamplingRequest(
+			trigger: request.trigger,
+			requestedSources: requestedCapabilities,
+			currentCanonicalContext: canonical,
+			typingActivity: typingCtx,
+			pointerActivity: pointerCtx,
+			isActionExecuting: request.isActionExecuting,
+			currentConfidence: request.currentIntelligenceConfidence,
+			workflowKey: workflowKey,
+			reason: request.reason,
+			allowExpensiveSources: request.allowExpensiveSources
+		)
+		let adaptive = AdaptiveContextSampler.shared.evaluate(adaptiveRequest)
 
 		// AX content (medium/high privacy): only if requested.
 		var axContent: AXWindowContentContext?
 		if request.includeAXContent {
-			if canonicalHas(.axWindowContent) {
-				skipped[.axText] = "fresh_existing_context"
-			} else if !request.allowExpensiveSources {
-				skipped[.axText] = "expensive_not_allowed"
+			if adaptive.reuseExistingSources.contains(.axWindowContent) {
+				skipped[.axText] = "adaptive_reuse"
+			} else if adaptive.deniedSources.contains(.axWindowContent) {
+				skipped[.axText] = "adaptive_denied"
+			} else if adaptive.deferredSources.contains(.axWindowContent) {
+				skipped[.axText] = "adaptive_deferred"
+			} else if !adaptive.allowedSources.contains(.axWindowContent) {
+				skipped[.axText] = "adaptive_denied"
 			} else {
 				let decision = budgetDecision(
 					capability: .axWindowContent,
@@ -97,10 +119,14 @@ final class RichContextRefreshPipeline {
 		// Window snapshot (medium/high privacy): only if requested.
 		var snapshot: WindowSnapshotContext?
 		if request.includeWindowSnapshot {
-			if canonicalHas(.activeWindowSnapshot) {
-				skipped[.activeWindowSnapshot] = "fresh_existing_context"
-			} else if !request.allowExpensiveSources {
-				skipped[.activeWindowSnapshot] = "expensive_not_allowed"
+			if adaptive.reuseExistingSources.contains(.activeWindowSnapshot) {
+				skipped[.activeWindowSnapshot] = "adaptive_reuse"
+			} else if adaptive.deniedSources.contains(.activeWindowSnapshot) {
+				skipped[.activeWindowSnapshot] = "adaptive_denied"
+			} else if adaptive.deferredSources.contains(.activeWindowSnapshot) {
+				skipped[.activeWindowSnapshot] = "adaptive_deferred"
+			} else if !adaptive.allowedSources.contains(.activeWindowSnapshot) {
+				skipped[.activeWindowSnapshot] = "adaptive_denied"
 			} else {
 				let decision = budgetDecision(
 					capability: .activeWindowSnapshot,
@@ -129,12 +155,16 @@ final class RichContextRefreshPipeline {
 		// Visual descriptor: only if requested; requires a snapshot from this refresh.
 		var visual: VisualContextDescriptor?
 		if request.includeVisualDescriptor {
-			if snapshot == nil {
+			if adaptive.reuseExistingSources.contains(.visualDescriptor) {
+				skipped[.visualDescriptor] = "adaptive_reuse"
+			} else if adaptive.deniedSources.contains(.visualDescriptor) {
+				skipped[.visualDescriptor] = "adaptive_denied"
+			} else if adaptive.deferredSources.contains(.visualDescriptor) {
+				skipped[.visualDescriptor] = "adaptive_deferred"
+			} else if !adaptive.allowedSources.contains(.visualDescriptor) {
+				skipped[.visualDescriptor] = "adaptive_denied"
+			} else if snapshot == nil {
 				skipped[.visualDescriptor] = "no_snapshot"
-			} else if canonicalHas(.visualDescriptor) {
-				skipped[.visualDescriptor] = "fresh_existing_context"
-			} else if !request.allowExpensiveSources {
-				skipped[.visualDescriptor] = "expensive_not_allowed"
 			} else {
 				let decision = budgetDecision(
 					capability: .visualDescriptor,
@@ -204,7 +234,8 @@ final class RichContextRefreshPipeline {
 			"updatedCanonical": updated ? "1" : "0",
 			"primary": packet.primarySource.rawValue,
 			"freshness": String(format: "%.2f", packet.freshnessScore),
-			"confidence": String(format: "%.2f", packet.confidence)
+			"confidence": String(format: "%.2f", packet.confidence),
+			"adaptiveScore": String(format: "%.2f", adaptive.samplingScore)
 		]
 		if let ax = axContent {
 			meta["axFragments"] = "\(ax.visibleTextFragments.count)"
@@ -229,6 +260,12 @@ final class RichContextRefreshPipeline {
 			debugSummaryMetadata: meta
 		)
 
+		var recordedCaps = Set<ContextCapabilityID>()
+		if collected.contains(.axText) { recordedCaps.insert(.axWindowContent) }
+		if collected.contains(.activeWindowSnapshot) { recordedCaps.insert(.activeWindowSnapshot) }
+		if collected.contains(.visualDescriptor) { recordedCaps.insert(.visualDescriptor) }
+		AdaptiveContextSampler.shared.recordSampling(recordedCaps, workflowKey: workflowKey)
+
 		await state.finish(generation: generation, result: result)
 		return result
 	}
@@ -242,10 +279,24 @@ final class RichContextRefreshPipeline {
 	}
 
 	func reset() {
+		AdaptiveContextSampler.shared.reset()
 		Task { await state.reset() }
 	}
 
 	// MARK: - Private
+
+	private static func buildPrivacySafeWorkflowKey(
+		request: RichContextRefreshRequest,
+		canonical: FusedContextPacket?,
+		requestedExpensive: Set<ContextCapabilityID>
+	) -> String {
+		let bundle = request.currentContextModel.activeAppBundleIdentifier ?? "unknown"
+		let caps = requestedExpensive.map(\.rawValue).sorted().joined(separator: "+")
+		let visualKinds = (canonical?.visualKinds ?? []).map(\.rawValue).sorted().joined(separator: ",")
+		let primary = canonical?.primarySource.rawValue ?? "na"
+		let inputPref = request.currentContextModel.actionInputSourcePreference.rawValue
+		return [bundle, caps, "vk=\(visualKinds)", "primary=\(primary)", "input=\(inputPref)"].joined(separator: "|")
+	}
 
 	private func requestedLabel(_ request: RichContextRefreshRequest) -> String {
 		var parts: [String] = []

@@ -102,6 +102,7 @@
 		AA00017E00000000000000A9 /* ContextAwareActionEligibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028000000000000000AA /* ContextAwareActionEligibility.swift */; };
 		AA00017F00000000000000AB /* RichAnalyzeScreenPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028100000000000000AC /* RichAnalyzeScreenPromptBuilder.swift */; };
 		AA00018000000000000000AD /* ContextConfidenceArbitrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */; };
+		AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028400000000000000B0 /* AdaptiveContextSampler.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -202,6 +203,7 @@
 		AA00028000000000000000AA /* ContextAwareActionEligibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwareActionEligibility.swift; sourceTree = "<group>"; };
 		AA00028100000000000000AC /* RichAnalyzeScreenPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichAnalyzeScreenPromptBuilder.swift; sourceTree = "<group>"; };
 		AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextConfidenceArbitrator.swift; sourceTree = "<group>"; };
+		AA00028400000000000000B0 /* AdaptiveContextSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveContextSampler.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -309,6 +311,7 @@
 				AA00027A000000000000009E /* CanonicalContextState.swift */,
 				AA00027C00000000000000A2 /* RichContextRefreshTypes.swift */,
 				AA00027B00000000000000A0 /* RichContextRefreshPipeline.swift */,
+				AA00028400000000000000B0 /* AdaptiveContextSampler.swift */,
 				AA00028200000000000000AE /* ContextConfidenceArbitrator.swift */,
 			);
 			path = Context;
@@ -537,6 +540,7 @@
 				AA00017E00000000000000A9 /* ContextAwareActionEligibility.swift in Sources */,
 				AA00017F00000000000000AB /* RichAnalyzeScreenPromptBuilder.swift in Sources */,
 				AA00018000000000000000AD /* ContextConfidenceArbitrator.swift in Sources */,
+				AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */,
 				AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
