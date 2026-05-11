@@ -39,6 +39,12 @@ struct DynamicIntentDebugView: View {
 							.foregroundStyle(.tertiary)
 							.lineLimit(3)
 					}
+					if !summary.interactionSummaryLine.isEmpty {
+						Text(summary.interactionSummaryLine)
+							.font(.caption2)
+							.foregroundStyle(.tertiary)
+							.lineLimit(3)
+					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
 			} else {

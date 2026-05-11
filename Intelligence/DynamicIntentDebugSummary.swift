@@ -55,6 +55,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 	var rankingLine: String
 	/// Metadata-only assistance category counts (non-blocked generated actions/plans only).
 	var assistanceCategorySummaryLine: String
+	/// Session-local generated preview interaction stats (T16.9); no raw content.
+	var interactionSummaryLine: String
 
 	static let empty = DynamicIntentDebugSummary(
 		workflowLine: "",
@@ -67,7 +69,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		safetyLines: [],
 		explainLines: [],
 		rankingLine: "",
-		assistanceCategorySummaryLine: ""
+		assistanceCategorySummaryLine: "",
+		interactionSummaryLine: ""
 	)
 
 	var showsDynamicDebug: Bool {
@@ -82,6 +85,7 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		if !explainLines.isEmpty { return true }
 		if !rankingLine.isEmpty { return true }
 		if !assistanceCategorySummaryLine.isEmpty { return true }
+		if !interactionSummaryLine.isEmpty { return true }
 		return false
 	}
 }
@@ -225,6 +229,8 @@ enum DynamicIntentDebugSummaryBuilder {
 			assistLine = "Assistance categories top=\(catSum.topCategoryRaw ?? "none") \(catSum.formattedCounts)"
 		}
 
+		let interactionLine = GeneratedActionInteractionTracker.shared.debugSummaryLine()
+
 		return DynamicIntentDebugSummary(
 			workflowLine: wfLine,
 			sessionLine: sesLine,
@@ -236,7 +242,8 @@ enum DynamicIntentDebugSummaryBuilder {
 			safetyLines: safeLines,
 			explainLines: expl,
 			rankingLine: rankStr,
-			assistanceCategorySummaryLine: assistLine
+			assistanceCategorySummaryLine: assistLine,
+			interactionSummaryLine: interactionLine
 		)
 	}
 
@@ -421,11 +428,13 @@ extension DynamicIntentDebugSummaryBuilder {
 		assertCase("synthesis_meta", full.synthesisMetaLines.contains(where: { $0.contains("synthesis_skip") }))
 
 		assertCase("assist_cat_line", !full.assistanceCategorySummaryLine.isEmpty)
-		let joined = full.workflowLine + full.sessionLine + full.intentLines.joined() + full.suppressionLines.joined() + full.actionLines.joined() + full.planLines.joined() + full.explainLines.joined() + full.rankingLine + full.assistanceCategorySummaryLine
+		assertCase("interaction_line_safe", !full.interactionSummaryLine.contains("://"))
+		let joined = full.workflowLine + full.sessionLine + full.intentLines.joined() + full.suppressionLines.joined() + full.actionLines.joined() + full.planLines.joined() + full.explainLines.joined() + full.rankingLine + full.assistanceCategorySummaryLine + full.interactionSummaryLine
 		assertCase("no_url", !joined.contains("://"))
 		assertCase("bounded_intents", full.intentLines.count <= 4)
 
 		DynamicIntentSuppressionEngine.shared.reset()
+		GeneratedActionInteractionTracker.shared.reset()
 		let empty = build(inputs: DynamicIntentDebugPipelineInputs(
 			workflow: nil,
 			session: nil,

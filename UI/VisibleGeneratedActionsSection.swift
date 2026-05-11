@@ -38,6 +38,15 @@ struct VisibleGeneratedActionsSection: View {
 						RoundedRectangle(cornerRadius: 12, style: .continuous)
 							.stroke(Color(nsColor: .separatorColor).opacity(0.85), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
 					)
+					.onAppear {
+						GeneratedActionInteractionTracker.shared.onPreviewRowsVisible(visibleRows, surface: .generatedPreview)
+					}
+					.onChange(of: summary.previewItems.map(\.id)) { _ in
+						GeneratedActionInteractionTracker.shared.onPreviewRowsVisible(visibleRows, surface: .generatedPreview)
+					}
+					.onChange(of: dismissedIds) { _ in
+						GeneratedActionInteractionTracker.shared.onPreviewRowsVisible(visibleRows, surface: .generatedPreview)
+					}
 				}
 			}
 		}
@@ -89,6 +98,7 @@ struct VisibleGeneratedActionsSection: View {
 				set: { isOn in
 					if isOn {
 						expandedWhyIds.insert(row.id)
+						GeneratedActionInteractionTracker.shared.recordExpanded(row: row, surface: .generatedPreview)
 						VisibleGeneratedActionPanelAdapter.logExpanded(id: row.id)
 					} else {
 						expandedWhyIds.remove(row.id)
@@ -108,6 +118,7 @@ struct VisibleGeneratedActionsSection: View {
 			Button {
 				dismissedIds.insert(row.id)
 				expandedWhyIds.remove(row.id)
+				GeneratedActionInteractionTracker.shared.recordDismissed(row: row, surface: .generatedPreview)
 				VisibleGeneratedActionPanelAdapter.logDismissed(id: row.id)
 			} label: {
 				Text("Hide suggestion")

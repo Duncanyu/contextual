@@ -77,6 +77,9 @@ enum DynamicActionDisplayBuilder {
 		workflow: WorkflowInferenceResult? = nil,
 		session: ContextualSessionState? = nil
 	) -> DynamicActionDisplaySummary {
+		let now = Date()
+		GeneratedActionInteractionTracker.shared.beginDisplayBuild(referenceTime: now)
+
 		let acts = actions ?? GeneratedActionEngine.shared.latestActions()
 		let pls = plans ?? GeneratedActionEngine.shared.currentPlans()
 		let wfResolved = workflow ?? WorkflowInferenceEngine.shared.latestResult()
@@ -104,7 +107,7 @@ enum DynamicActionDisplayBuilder {
 				}
 				continue
 			}
-			let sk = generatedPreviewSortScore(a, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved)
+			let sk = generatedPreviewSortScore(a, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved, referenceTime: now)
 			candidates.append(PreviewBuild(sortKey: sk, build: { mapAction(a, safety: d) }))
 		}
 
@@ -119,7 +122,7 @@ enum DynamicActionDisplayBuilder {
 				}
 				continue
 			}
-			let sk = generatedPlanPreviewSortScore(p, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved)
+			let sk = generatedPlanPreviewSortScore(p, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved, referenceTime: now)
 			candidates.append(PreviewBuild(sortKey: sk, build: { mapPlan(p, safety: d) }))
 		}
 
@@ -140,7 +143,8 @@ enum DynamicActionDisplayBuilder {
 		_ a: GeneratedAction,
 		inferredWorkflow: InferredWorkflow,
 		wfConfidence: Double,
-		session: ContextualSessionState?
+		session: ContextualSessionState?,
+		referenceTime: Date
 	) -> Double {
 		let safety = GeneratedActionSafetyPolicy.evaluateActionSnapshotForDebug(a)
 		guard safety.allowed, safety.safetyLevel != .blocked else { return -1e9 }
@@ -163,6 +167,7 @@ enum DynamicActionDisplayBuilder {
 		if let ses = session, !ses.isStale, ses.dominantWorkflow == a.workflow, ses.dominantWorkflow != .unknown {
 			s += 0.1 * ses.continuityScore
 		}
+		s += GeneratedActionInteractionTracker.shared.sortAdjustment(forAction: a, referenceTime: referenceTime)
 		return s
 	}
 
@@ -170,7 +175,8 @@ enum DynamicActionDisplayBuilder {
 		_ p: GeneratedActionPlan,
 		inferredWorkflow: InferredWorkflow,
 		wfConfidence: Double,
-		session: ContextualSessionState?
+		session: ContextualSessionState?,
+		referenceTime: Date
 	) -> Double {
 		let safety = GeneratedActionSafetyPolicy.evaluatePlanSnapshotForDebug(p)
 		guard safety.allowed, safety.safetyLevel != .blocked else { return -1e9 }
@@ -192,6 +198,7 @@ enum DynamicActionDisplayBuilder {
 		if let ses = session, !ses.isStale, ses.dominantWorkflow == p.workflow, ses.dominantWorkflow != .unknown {
 			s += 0.09 * ses.continuityScore
 		}
+		s += GeneratedActionInteractionTracker.shared.sortAdjustment(forPlan: p, referenceTime: referenceTime)
 		return s
 	}
 

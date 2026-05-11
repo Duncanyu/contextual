@@ -1427,6 +1427,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Generated action interaction tracking (T16.9; synthetic; metadata-only).
+		// Run with `CONTEXTUAL_RUN_GENERATED_ACTION_INTERACTION_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_GENERATED_ACTION_INTERACTION_SELFTEST"] == "1" {
+			let ok = GeneratedActionInteractionTracker.runSelfTest()
+			print("[GeneratedActionInteraction] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Generated assistance categories (T16.5; synthetic; metadata-only).
 		// Run with `CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST"] == "1" {

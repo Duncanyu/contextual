@@ -125,6 +125,7 @@ final class AppState: ObservableObject {
 	var onRevealAssistantPanel: (() -> Void)?
 
 	func invokeAction(id: String) {
+		GeneratedActionInteractionTracker.shared.considerAcceptedProxy(staticActionId: id)
 		onInvokeActionById?(id)
 	}
 
