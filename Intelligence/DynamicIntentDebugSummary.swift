@@ -57,6 +57,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 	var assistanceCategorySummaryLine: String
 	/// Session-local generated preview interaction stats (T16.9); no raw content.
 	var interactionSummaryLine: String
+	/// Unified rich assistance ranking (T16.10); metadata-only; filled after preview rank pass.
+	var richAssistanceRankLine: String
 
 	static let empty = DynamicIntentDebugSummary(
 		workflowLine: "",
@@ -70,7 +72,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		explainLines: [],
 		rankingLine: "",
 		assistanceCategorySummaryLine: "",
-		interactionSummaryLine: ""
+		interactionSummaryLine: "",
+		richAssistanceRankLine: ""
 	)
 
 	var showsDynamicDebug: Bool {
@@ -86,7 +89,16 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		if !rankingLine.isEmpty { return true }
 		if !assistanceCategorySummaryLine.isEmpty { return true }
 		if !interactionSummaryLine.isEmpty { return true }
+		if !richAssistanceRankLine.isEmpty { return true }
 		return false
+	}
+}
+
+extension DynamicIntentDebugSummary {
+	func withRichAssistanceRankLine(_ line: String) -> DynamicIntentDebugSummary {
+		var c = self
+		c.richAssistanceRankLine = line
+		return c
 	}
 }
 
@@ -243,7 +255,8 @@ enum DynamicIntentDebugSummaryBuilder {
 			explainLines: expl,
 			rankingLine: rankStr,
 			assistanceCategorySummaryLine: assistLine,
-			interactionSummaryLine: interactionLine
+			interactionSummaryLine: interactionLine,
+			richAssistanceRankLine: ""
 		)
 	}
 

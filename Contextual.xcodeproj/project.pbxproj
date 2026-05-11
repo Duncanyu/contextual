@@ -138,6 +138,7 @@
 		AA0001B00000000000000D0 /* VisibleGeneratedActionsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */; };
 		AA0001B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */; };
 		AA0001BB000000000000E2 /* GeneratedActionInteractionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BB000000000000E2 /* GeneratedActionInteractionTracker.swift */; };
+		AA0001BC000000000000E3 /* RichAssistanceRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BC000000000000E3 /* RichAssistanceRanker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -274,6 +275,7 @@
 		AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleGeneratedActionsSection.swift; sourceTree = "<group>"; };
 		AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleGeneratedActionPanelAdapter.swift; sourceTree = "<group>"; };
 		AA0002BB000000000000E2 /* GeneratedActionInteractionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionInteractionTracker.swift; sourceTree = "<group>"; };
+		AA0002BC000000000000E3 /* RichAssistanceRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichAssistanceRanker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -480,6 +482,7 @@
 				AA0002A60000000000000CD /* DynamicActionDisplayModels.swift */,
 				AA0002B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift */,
 				AA0002BB000000000000E2 /* GeneratedActionInteractionTracker.swift */,
+				AA0002BC000000000000E3 /* RichAssistanceRanker.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
@@ -721,6 +724,7 @@
 				AA0001A00000000000000CD /* DynamicActionDisplayModels.swift in Sources */,
 				AA0001B10000000000000D1 /* VisibleGeneratedActionPanelAdapter.swift in Sources */,
 				AA0001BB000000000000E2 /* GeneratedActionInteractionTracker.swift in Sources */,
+				AA0001BC000000000000E3 /* RichAssistanceRanker.swift in Sources */,
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,

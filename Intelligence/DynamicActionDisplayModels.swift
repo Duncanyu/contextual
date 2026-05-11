@@ -75,7 +75,8 @@ enum DynamicActionDisplayBuilder {
 		actions: [GeneratedAction]? = nil,
 		plans: [GeneratedActionPlan]? = nil,
 		workflow: WorkflowInferenceResult? = nil,
-		session: ContextualSessionState? = nil
+		session: ContextualSessionState? = nil,
+		isActionExecutingForPreviewRanking: Bool = false
 	) -> DynamicActionDisplaySummary {
 		let now = Date()
 		GeneratedActionInteractionTracker.shared.beginDisplayBuild(referenceTime: now)
@@ -86,6 +87,7 @@ enum DynamicActionDisplayBuilder {
 		let sessionResolved = session ?? ContextualSessionTracker.shared.currentState()
 		let wfType = wfResolved?.workflow ?? .unknown
 		let wfConf = wfResolved.map { min(1.0, max(0.0, $0.confidence)) } ?? 0.0
+		let previewCtx = RichAssistancePreviewContext.live(isActionExecuting: isActionExecutingForPreviewRanking)
 
 		var blockedLines: [String] = []
 		var blockedSkipCount = 0
@@ -107,7 +109,14 @@ enum DynamicActionDisplayBuilder {
 				}
 				continue
 			}
-			let sk = generatedPreviewSortScore(a, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved, referenceTime: now)
+			let sk = RichAssistanceRanker.previewSortScoreGeneratedAction(
+				a,
+				inferredWorkflow: wfType,
+				wfConfidence: wfConf,
+				session: sessionResolved,
+				previewContext: previewCtx,
+				referenceTime: now
+			)
 			candidates.append(PreviewBuild(sortKey: sk, build: { mapAction(a, safety: d) }))
 		}
 
@@ -122,7 +131,14 @@ enum DynamicActionDisplayBuilder {
 				}
 				continue
 			}
-			let sk = generatedPlanPreviewSortScore(p, inferredWorkflow: wfType, wfConfidence: wfConf, session: sessionResolved, referenceTime: now)
+			let sk = RichAssistanceRanker.previewSortScorePlan(
+				p,
+				inferredWorkflow: wfType,
+				wfConfidence: wfConf,
+				session: sessionResolved,
+				previewContext: previewCtx,
+				referenceTime: now
+			)
 			candidates.append(PreviewBuild(sortKey: sk, build: { mapPlan(p, safety: d) }))
 		}
 
@@ -137,69 +153,6 @@ enum DynamicActionDisplayBuilder {
 		logGeneratedPreviewOrderIfNeeded(items: preview, inferredWorkflow: wfType.rawValue)
 
 		return DynamicActionDisplaySummary(previewItems: preview, blockedDebugLines: blockedLines, blockedSkippedTotal: blockedSkipCount, previewGroupLabel: groupLabel)
-	}
-
-	private static func generatedPreviewSortScore(
-		_ a: GeneratedAction,
-		inferredWorkflow: InferredWorkflow,
-		wfConfidence: Double,
-		session: ContextualSessionState?,
-		referenceTime: Date
-	) -> Double {
-		let safety = GeneratedActionSafetyPolicy.evaluateActionSnapshotForDebug(a)
-		guard safety.allowed, safety.safetyLevel != .blocked else { return -1e9 }
-		var s = 0.0
-		if !(safety.requiresUserReview || safety.safetyLevel == .reviewRequired) { s += 4.0 } else { s += 2.35 }
-		let wfC = min(1.0, max(0.0, wfConfidence))
-		let wfMatch: Double
-		if inferredWorkflow != .unknown {
-			let align = (a.workflow == inferredWorkflow) ? 1.0 : 0.24
-			wfMatch = align * wfC + a.workflowRelevance * (0.52 + 0.48 * (1.0 - wfC))
-		} else {
-			wfMatch = a.workflowRelevance * 0.46
-		}
-		s += wfMatch * 2.15
-		s += GeneratedAssistanceCategoryMapper.sortBoostForAction(a, inferredWorkflow: inferredWorkflow)
-		s += a.confidence * 1.32
-		let ttl = max(30.0, a.expiresAt.timeIntervalSince(a.createdAt))
-		s += max(0.0, min(1.0, a.expiresAt.timeIntervalSinceNow / ttl)) * 0.52
-		s += (1.0 - min(1.0, a.interruptionCost)) * 0.3
-		if let ses = session, !ses.isStale, ses.dominantWorkflow == a.workflow, ses.dominantWorkflow != .unknown {
-			s += 0.1 * ses.continuityScore
-		}
-		s += GeneratedActionInteractionTracker.shared.sortAdjustment(forAction: a, referenceTime: referenceTime)
-		return s
-	}
-
-	private static func generatedPlanPreviewSortScore(
-		_ p: GeneratedActionPlan,
-		inferredWorkflow: InferredWorkflow,
-		wfConfidence: Double,
-		session: ContextualSessionState?,
-		referenceTime: Date
-	) -> Double {
-		let safety = GeneratedActionSafetyPolicy.evaluatePlanSnapshotForDebug(p)
-		guard safety.allowed, safety.safetyLevel != .blocked else { return -1e9 }
-		var s = 0.05
-		if !(safety.requiresUserReview || safety.safetyLevel == .reviewRequired) { s += 3.85 } else { s += 2.2 }
-		let wfC = min(1.0, max(0.0, wfConfidence))
-		let wfMatch: Double
-		if inferredWorkflow != .unknown {
-			let align = (p.workflow == inferredWorkflow) ? 1.0 : 0.22
-			wfMatch = align * wfC + 0.55 * (0.52 + 0.48 * (1.0 - wfC))
-		} else {
-			wfMatch = 0.42
-		}
-		s += wfMatch * 1.95
-		s += GeneratedAssistanceCategoryMapper.sortBoostForPlan(p, inferredWorkflow: inferredWorkflow)
-		s += p.confidence * 1.25
-		let ttl = max(30.0, p.expiresAt.timeIntervalSince(p.createdAt))
-		s += max(0.0, min(1.0, p.expiresAt.timeIntervalSinceNow / ttl)) * 0.48
-		if let ses = session, !ses.isStale, ses.dominantWorkflow == p.workflow, ses.dominantWorkflow != .unknown {
-			s += 0.09 * ses.continuityScore
-		}
-		s += GeneratedActionInteractionTracker.shared.sortAdjustment(forPlan: p, referenceTime: referenceTime)
-		return s
 	}
 
 	private static func logGeneratedPreviewOrderIfNeeded(items: [DynamicActionDisplayModel], inferredWorkflow: String) {

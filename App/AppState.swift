@@ -30,6 +30,9 @@ final class AppState: ObservableObject {
 	/// Preview-only generated action display models (T15.11); derived, not persisted; updated by app lifecycle only.
 	@Published var dynamicActionDisplaySummary: DynamicActionDisplaySummary = .empty
 
+	/// Unified static + generated assistance ranking snapshot (T16.10); metadata-only; updated with preview refresh.
+	@Published var richAssistanceRankingResult: RichAssistanceRankingResult = .empty
+
 	/// Inline assistance candidate snapshot (T16.6 foundations; metadata-only; not rendered inline yet).
 	@Published var inlineAssistanceSnapshot: InlineAssistanceSnapshot = .empty
 
@@ -551,7 +554,7 @@ final class AppState: ObservableObject {
 	}
 
 	func refreshDynamicActionDisplaySummary() {
-		let next = DynamicActionDisplayBuilder.build()
+		let next = DynamicActionDisplayBuilder.build(isActionExecutingForPreviewRanking: isActionExecuting)
 		dynamicActionDisplaySummary = next
 		logDynamicActionUXIfNeeded(next)
 		if next.previewItems.isEmpty {
@@ -561,6 +564,28 @@ final class AppState: ObservableObject {
 			VisibleGeneratedActionPanelAdapter.logPanelShownIfNeeded(rows: capped, groupLabel: next.previewGroupLabel)
 		}
 		refreshInlineAssistanceCandidates()
+
+		let fused = CanonicalContextState.shared.current()
+		let timing = RichAssistancePreviewContext.live(isActionExecuting: isActionExecuting).timing
+		let rankInput = RichAssistanceRankingInput(
+			referenceTime: Date(),
+			staticActionIds: availableActions.map(\.id),
+			staticBaseScores: [:],
+			workflowProposalRanking: WorkflowAwareProposalRanker.latestRankingSnapshot(),
+			generatedActions: GeneratedActionEngine.shared.latestActions(),
+			generatedPlans: GeneratedActionEngine.shared.currentPlans(),
+			workflowInference: WorkflowInferenceEngine.shared.latestResult(),
+			session: ContextualSessionTracker.shared.currentState(),
+			fused: fused,
+			timing: timing,
+			proposalPrimaryActionId: currentProposal?.primaryActionId,
+			inlineDismissalKeys: inlineAssistanceSnapshot.rows.map(\.dismissalKey),
+			interactionSnapshot: nil
+		)
+		richAssistanceRankingResult = RichAssistanceRanker.rankUnified(input: rankInput)
+		if !richAssistanceRankingResult.debugLine.isEmpty {
+			dynamicIntentDebugSummary = dynamicIntentDebugSummary.withRichAssistanceRankLine(richAssistanceRankingResult.debugLine)
+		}
 	}
 
 	// MARK: - Inline assistance foundations (T16.6)

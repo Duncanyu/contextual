@@ -1436,6 +1436,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Rich assistance unified ranking (T16.10; synthetic; metadata-only).
+		// Run with `CONTEXTUAL_RUN_RICH_ASSISTANCE_RANKING_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_RICH_ASSISTANCE_RANKING_SELFTEST"] == "1" {
+			let ok = RichAssistanceRanker.runSelfTest()
+			print("[RichAssistanceRank] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Generated assistance categories (T16.5; synthetic; metadata-only).
 		// Run with `CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST"] == "1" {
