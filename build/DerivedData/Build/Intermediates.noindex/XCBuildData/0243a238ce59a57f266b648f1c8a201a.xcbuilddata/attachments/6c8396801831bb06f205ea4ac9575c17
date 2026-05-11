@@ -336,6 +336,26 @@
     "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextModel.swiftdeps",
     "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextModel~partial.swiftmodule"
   },
+  "/Users/duncanyu/Documents/GitHub/contextual/Context/ContextualSessionTracker.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker~partial.swiftmodule"
+  },
+  "/Users/duncanyu/Documents/GitHub/contextual/Context/ContextualSessionTypes.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes~partial.swiftmodule"
+  },
   "/Users/duncanyu/Documents/GitHub/contextual/Context/FloatingSimilarityText.swift" : {
     "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/FloatingSimilarityText.swiftconstvalues",
     "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/FloatingSimilarityText.d",
@@ -436,6 +456,26 @@
     "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WindowSnapshotContext.swiftdeps",
     "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WindowSnapshotContext~partial.swiftmodule"
   },
+  "/Users/duncanyu/Documents/GitHub/contextual/Context/WorkflowInferenceEngine.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine~partial.swiftmodule"
+  },
+  "/Users/duncanyu/Documents/GitHub/contextual/Context/WorkflowInferenceTypes.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes~partial.swiftmodule"
+  },
   "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/ActionInputCapture.swift" : {
     "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ActionInputCapture.swiftconstvalues",
     "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ActionInputCapture.d",
@@ -485,6 +525,26 @@
     "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextType.o",
     "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextType.swiftdeps",
     "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextType~partial.swiftmodule"
+  },
+  "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionFactory.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory~partial.swiftmodule"
+  },
+  "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionTypes.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes~partial.swiftmodule"
   },
   "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntelligenceActionRunner.swift" : {
     "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceActionRunner.swiftconstvalues",
@@ -555,6 +615,26 @@
     "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceProposalTitleValidator.o",
     "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceProposalTitleValidator.swiftdeps",
     "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceProposalTitleValidator~partial.swiftmodule"
+  },
+  "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntentSynthesisEngine.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine~partial.swiftmodule"
+  },
+  "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntentSynthesisTypes.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes~partial.swiftmodule"
   },
   "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/LocalAIClient.swift" : {
     "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/LocalAIClient.swiftconstvalues",

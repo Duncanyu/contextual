@@ -99,6 +99,8 @@
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionEngine.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntentSynthesisTypes.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntentSynthesisEngine.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionTypes.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionFactory.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntelligenceDebugLogger.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/MicroDecisionFeatureEncoder.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/OCRProcessor.swift

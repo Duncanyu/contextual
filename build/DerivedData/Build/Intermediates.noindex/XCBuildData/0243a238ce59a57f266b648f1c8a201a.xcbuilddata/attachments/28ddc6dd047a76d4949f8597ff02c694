@@ -53,6 +53,10 @@
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/RichAnalyzeScreenPromptBuilder.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextConfidenceArbitrator.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/AdaptiveContextSampler.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceEngine.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTypes.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualSessionTracker.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/RichContextRefreshPipeline.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/TriggerPacket.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/CooldownManager.o
@@ -93,6 +97,10 @@
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/MicroDecisionTypes.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/MicroDecisionModelProvider.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/MicroDecisionEngine.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisTypes.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntentSynthesisEngine.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionFactory.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceDebugLogger.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/MicroDecisionFeatureEncoder.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/OCRProcessor.o

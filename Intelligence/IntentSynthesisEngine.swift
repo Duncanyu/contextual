@@ -21,6 +21,7 @@ final class IntentSynthesisEngine {
 		lastLogSignature = nil
 		lastLogAt = nil
 		lock.unlock()
+		GeneratedActionEngine.shared.reset()
 	}
 
 	func latestResult() -> IntentSynthesisResult? {
@@ -37,6 +38,7 @@ final class IntentSynthesisEngine {
 		latest = result
 		lock.unlock()
 		logOutcome(result, inference: request.workflowInference)
+		GeneratedActionEngine.shared.record(from: result.intents, referenceTime: referenceTime)
 	}
 
 	// MARK: - Core synthesis

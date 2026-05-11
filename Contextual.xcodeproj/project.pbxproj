@@ -62,6 +62,8 @@
 		AA00015A0000000000000064 /* MicroDecisionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025E0000000000000065 /* MicroDecisionEngine.swift */; };
 		AA00019000000000000000BF /* IntentSynthesisTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029800000000000000BF /* IntentSynthesisTypes.swift */; };
 		AA00019100000000000000C0 /* IntentSynthesisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029900000000000000C0 /* IntentSynthesisEngine.swift */; };
+		AA00019200000000000000C1 /* GeneratedActionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029A00000000000000C1 /* GeneratedActionTypes.swift */; };
+		AA00019300000000000000C2 /* GeneratedActionFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029B00000000000000C2 /* GeneratedActionFactory.swift */; };
 		AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */; };
 		AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */; };
 		AA0001630000000000000072 /* MicroDecisionClassifier.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */; };
@@ -179,6 +181,8 @@
 		AA00025E0000000000000065 /* MicroDecisionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionEngine.swift; sourceTree = "<group>"; };
 		AA00029800000000000000BF /* IntentSynthesisTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentSynthesisTypes.swift; sourceTree = "<group>"; };
 		AA00029900000000000000C0 /* IntentSynthesisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentSynthesisEngine.swift; sourceTree = "<group>"; };
+		AA00029A00000000000000C1 /* GeneratedActionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTypes.swift; sourceTree = "<group>"; };
+		AA00029B00000000000000C2 /* GeneratedActionFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionFactory.swift; sourceTree = "<group>"; };
 		AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceDebugLogger.swift; sourceTree = "<group>"; };
 		AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroDecisionFeatureEncoder.swift; sourceTree = "<group>"; };
 		AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = MicroDecisionClassifier.mlmodel; sourceTree = "<group>"; };
@@ -408,6 +412,8 @@
 				AA00025E0000000000000065 /* MicroDecisionEngine.swift */,
 				AA00029800000000000000BF /* IntentSynthesisTypes.swift */,
 				AA00029900000000000000C0 /* IntentSynthesisEngine.swift */,
+				AA00029A00000000000000C1 /* GeneratedActionTypes.swift */,
+				AA00029B00000000000000C2 /* GeneratedActionFactory.swift */,
 				AA00025F0000000000000067 /* IntelligenceDebugLogger.swift */,
 				AA00027E00000000000000A6 /* RichContextProposalAdjuster.swift */,
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
@@ -625,6 +631,8 @@
 				AA00015A0000000000000064 /* MicroDecisionEngine.swift in Sources */,
 				AA00019000000000000000BF /* IntentSynthesisTypes.swift in Sources */,
 				AA00019100000000000000C0 /* IntentSynthesisEngine.swift in Sources */,
+				AA00019200000000000000C1 /* GeneratedActionTypes.swift in Sources */,
+				AA00019300000000000000C2 /* GeneratedActionFactory.swift in Sources */,
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,
