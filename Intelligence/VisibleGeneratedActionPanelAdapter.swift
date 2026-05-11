@@ -115,6 +115,7 @@ enum VisibleGeneratedActionPanelAdapter {
 				title: title,
 				shortDescription: "Metadata-only short line.",
 				category: .debugging,
+				assistanceCategoryReason: .intent,
 				workflowLabel: "debugging",
 				confidenceBucket: "medium",
 				safetyBadge: badge,

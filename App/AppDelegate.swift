@@ -1418,6 +1418,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Generated assistance categories (T16.5; synthetic; metadata-only).
+		// Run with `CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_ASSISTANCE_CATEGORY_SELFTEST"] == "1" {
+			let ok = GeneratedAssistanceCategoryMapper.runSelfTest()
+			print("[AssistanceCategory] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Workflow inference engine self-test (synthetic metadata-only).
 		// Run with `CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST"] == "1" {

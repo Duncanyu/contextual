@@ -67,7 +67,7 @@ struct DynamicActionPreviewView: View {
 		[
 			row.source.rawValue,
 			"wf=\(row.workflowLabel)",
-			"cat=\(row.category.rawValue)",
+			"cat=\(row.category.userFacingLabel)",
 			"conf=\(row.confidenceBucket)",
 			"safety=\(row.safetyBadge.rawValue)",
 			row.reviewRequired ? "review=y" : "review=n",

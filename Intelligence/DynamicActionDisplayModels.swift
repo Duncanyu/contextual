@@ -1,17 +1,5 @@
 import Foundation
 
-/// UI-facing workflow bucket for generated action previews (metadata-only).
-enum DynamicActionDisplayCategory: String, Hashable, Sendable, Codable, CaseIterable {
-	case debugging
-	case writing
-	case research
-	case reviewing
-	case browsing
-	case editing
-	case utility
-	case unknown
-}
-
 /// Policy-facing badge for preview rows (blocked never appears in `previewItems`).
 enum DynamicActionDisplaySafetyBadge: String, Hashable, Sendable, Codable, CaseIterable {
 	case safeReadOnly
@@ -29,7 +17,9 @@ struct DynamicActionDisplayModel: Equatable, Sendable, Identifiable {
 	let id: UUID
 	let title: String
 	let shortDescription: String
-	let category: DynamicActionDisplayCategory
+	let category: GeneratedAssistanceCategory
+	/// Why `category` was chosen (logging / debug only; metadata codes).
+	let assistanceCategoryReason: GeneratedAssistanceCategoryReason
 	let workflowLabel: String
 	let confidenceBucket: String
 	let safetyBadge: DynamicActionDisplaySafetyBadge
@@ -51,10 +41,15 @@ struct DynamicActionDisplaySummary: Equatable, Sendable {
 	let blockedDebugLines: [String]
 	/// Count of actions/plans omitted from preview due to blocked safety (metadata-only).
 	let blockedSkippedTotal: Int
-	/// Single compact section label when all previews share one workflow bucket (T16.3).
+	/// Section subtitle under “Suggested” for generated previews (homogeneous category, or mixed “Contextual suggestions”; T16.5).
 	let previewGroupLabel: String?
 
-	static let empty = DynamicActionDisplaySummary(previewItems: [], blockedDebugLines: [], blockedSkippedTotal: 0, previewGroupLabel: nil)
+	static let empty = DynamicActionDisplaySummary(
+		previewItems: [],
+		blockedDebugLines: [],
+		blockedSkippedTotal: 0,
+		previewGroupLabel: nil
+	)
 
 	var showsGeneratedPreview: Bool {
 		!previewItems.isEmpty || !blockedDebugLines.isEmpty
@@ -130,7 +125,10 @@ enum DynamicActionDisplayBuilder {
 
 		candidates.sort { $0.sortKey > $1.sortKey }
 		let preview = candidates.prefix(maxPreviewRows).map { $0.build() }
-		let groupLabel = homogeneousPreviewGroupLabel(for: preview)
+		let groupLabel = GeneratedAssistanceCategoryMapper.previewSectionSubtitle(for: preview)
+		if let gl = groupLabel {
+			GeneratedAssistanceCategoryMapper.logGroupedIfNeeded(label: gl, count: preview.count)
+		}
 
 		logBlockedSkipsAggregateIfNeeded(total: blockedSkipCount)
 		logGeneratedPreviewOrderIfNeeded(items: preview, inferredWorkflow: wfType.rawValue)
@@ -157,6 +155,7 @@ enum DynamicActionDisplayBuilder {
 			wfMatch = a.workflowRelevance * 0.46
 		}
 		s += wfMatch * 2.15
+		s += GeneratedAssistanceCategoryMapper.sortBoostForAction(a, inferredWorkflow: inferredWorkflow)
 		s += a.confidence * 1.32
 		let ttl = max(30.0, a.expiresAt.timeIntervalSince(a.createdAt))
 		s += max(0.0, min(1.0, a.expiresAt.timeIntervalSinceNow / ttl)) * 0.52
@@ -186,6 +185,7 @@ enum DynamicActionDisplayBuilder {
 			wfMatch = 0.42
 		}
 		s += wfMatch * 1.95
+		s += GeneratedAssistanceCategoryMapper.sortBoostForPlan(p, inferredWorkflow: inferredWorkflow)
 		s += p.confidence * 1.25
 		let ttl = max(30.0, p.expiresAt.timeIntervalSince(p.createdAt))
 		s += max(0.0, min(1.0, p.expiresAt.timeIntervalSinceNow / ttl)) * 0.48
@@ -193,21 +193,6 @@ enum DynamicActionDisplayBuilder {
 			s += 0.09 * ses.continuityScore
 		}
 		return s
-	}
-
-	private static func homogeneousPreviewGroupLabel(for items: [DynamicActionDisplayModel]) -> String? {
-		guard !items.isEmpty else { return nil }
-		let cats = Set(items.map(\.category))
-		guard cats.count == 1, let only = cats.first else { return nil }
-		switch only {
-		case .debugging: return "Debugging suggestions"
-		case .research: return "Research suggestions"
-		case .writing: return "Writing suggestions"
-		case .reviewing: return "Review suggestions"
-		case .browsing: return "Browsing suggestions"
-		case .editing: return "Editing suggestions"
-		case .utility, .unknown: return "Contextual suggestions"
-		}
 	}
 
 	private static func logGeneratedPreviewOrderIfNeeded(items: [DynamicActionDisplayModel], inferredWorkflow: String) {
@@ -236,11 +221,13 @@ enum DynamicActionDisplayBuilder {
 		let badge: DynamicActionDisplaySafetyBadge =
 			(safety.requiresUserReview || safety.safetyLevel == .reviewRequired) ? .reviewRequired : .safeReadOnly
 		let chips = reasonChips(for: a.structuredExplainability, sourceCodes: a.sourceReasonCodes)
+		let catMap = GeneratedAssistanceCategoryMapper.mapAction(a)
 		return DynamicActionDisplayModel(
 			id: a.id,
 			title: clamp(a.title, maxTitle),
 			shortDescription: clamp(a.description, maxDescription),
-			category: category(workflow: a.workflow, intent: a.intentType),
+			category: catMap.category,
+			assistanceCategoryReason: catMap.reason,
 			workflowLabel: a.workflow.rawValue,
 			confidenceBucket: confidenceBucket(a.confidence),
 			safetyBadge: badge,
@@ -262,11 +249,13 @@ enum DynamicActionDisplayBuilder {
 		let chips = reasonChips(for: p.structuredExplainability, sourceCodes: p.sourceReasonCodes)
 		let title = clamp("Plan · \(p.compositionRule.rawValue)", maxTitle)
 		let desc = clamp("steps=\(p.steps.count)|intent=\(p.intentType.rawValue)", maxDescription)
+		let catMap = GeneratedAssistanceCategoryMapper.mapPlan(p)
 		return DynamicActionDisplayModel(
 			id: p.id,
 			title: title,
 			shortDescription: desc,
-			category: category(workflow: p.workflow, intent: p.intentType),
+			category: catMap.category,
+			assistanceCategoryReason: catMap.reason,
 			workflowLabel: p.workflow.rawValue,
 			confidenceBucket: confidenceBucket(p.confidence),
 			safetyBadge: badge,
@@ -312,30 +301,6 @@ enum DynamicActionDisplayBuilder {
 			out = out.replacingOccurrences(of: "__", with: "_")
 		}
 		return clamp(String(out.prefix(32)), 32)
-	}
-
-	private static func category(workflow: InferredWorkflow, intent: SynthesizedIntentType) -> DynamicActionDisplayCategory {
-		switch workflow {
-		case .debugging: return .debugging
-		case .writing: return .writing
-		case .research: return .research
-		case .reviewing: return .reviewing
-		case .browsing: return .browsing
-		case .editing: return .editing
-		case .unknown:
-			switch intent {
-			case .extractActionItems, .compareSelectedSnippets, .turnNotesIntoChecklist:
-				return .utility
-			case .summarizeCurrentArticle, .explainApiResponse:
-				return .research
-			case .draftReply, .reviewSelectedText:
-				return .writing
-			case .explainLikelyError, .identifyPossibleBugSource:
-				return .debugging
-			default:
-				return .unknown
-			}
-		}
 	}
 
 	private static func confidenceBucket(_ c: Double) -> String {
@@ -473,7 +438,7 @@ extension DynamicActionDisplayBuilder {
 		assertCase("blocked_hidden", !sumBlocked.previewItems.contains { $0.id == blockedAct.id })
 		assertCase("blocked_debug", sumBlocked.blockedDebugLines.contains(where: { $0.contains("blocked") }))
 		assertCase("blocked_total", sumBlocked.blockedSkippedTotal >= 1)
-		assertCase("mixed_group_label_ok", sumBlocked.previewGroupLabel == nil || !(sumBlocked.previewGroupLabel?.isEmpty ?? true))
+		assertCase("mixed_group_label_ok", sumBlocked.previewGroupLabel == "Contextual suggestions")
 
 		let safeRow = sumBlocked.previewItems.first { $0.id == safeWith.id }
 		assertCase("safe_badge", safeRow?.safetyBadge == .safeReadOnly)
@@ -503,7 +468,7 @@ extension DynamicActionDisplayBuilder {
 		let empty = build(actions: [], plans: [], workflow: nil, session: nil)
 		assertCase("empty", !empty.showsGeneratedPreview)
 
-		let utilAct = GeneratedAction(
+		let orgAct = GeneratedAction(
 			id: UUID(),
 			title: "Extract items",
 			description: "Metadata-only extract preview.",
@@ -524,15 +489,15 @@ extension DynamicActionDisplayBuilder {
 			source: .selfTest,
 			structuredExplainability: nil
 		)
-		let utilSnap = GeneratedActionSafetyPolicy.evaluateActionSnapshotForDebug(utilAct)
-		guard utilSnap.allowed, utilSnap.safetyLevel != .blocked else {
-			assertCase("util_safe", false)
+		let orgSnap = GeneratedActionSafetyPolicy.evaluateActionSnapshotForDebug(orgAct)
+		guard orgSnap.allowed, orgSnap.safetyLevel != .blocked else {
+			assertCase("org_safe", false)
 			let ok2 = failures.isEmpty
 			print("[DynamicActionUX] selftest summary ok=\(ok2) detail=\(failures.joined(separator: ";"))")
 			return ok2
 		}
-		let utilSum = build(actions: [utilAct], plans: [], workflow: nil, session: nil)
-		assertCase("utility_category", utilSum.previewItems.first?.category == .utility)
+		let orgSum = build(actions: [orgAct], plans: [], workflow: nil, session: nil)
+		assertCase("organization_category", orgSum.previewItems.first?.category == .organization)
 
 		let ok = failures.isEmpty
 		print("[DynamicActionUX] selftest summary ok=\(ok) detail=\(failures.joined(separator: ";"))")

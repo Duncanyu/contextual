@@ -25,6 +25,9 @@ struct ProposalContextSummary: Equatable, Sendable {
 			let rest = String(chip.dropFirst("confidence_".count))
 			return "confidence \(rest)"
 		}
+		if chip.hasPrefix("assist_"), let cat = GeneratedAssistanceCategory(rawValue: String(chip.dropFirst("assist_".count))) {
+			return "Assistance · \(cat.userFacingLabel)"
+		}
 		switch chip {
 		case "contextual": return "generated signal"
 		case "intent_aligned": return "intent signal"
@@ -108,7 +111,14 @@ enum ProposalContextSummaryBuilder {
 		}
 		chips.append("confidence_\(sanitizeToken(confBucket))")
 		if hasGenInfl {
-			chips.append("contextual")
+			if let cat = GeneratedAssistanceCategoryMapper.categoryForPrimaryStaticAction(
+				primaryActionId: proposal.primaryActionId,
+				actions: gas
+			), cat != .unknown {
+				chips.append("assist_\(cat.rawValue)")
+			} else {
+				chips.append("contextual")
+			}
 		} else if intentAligned {
 			chips.append("intent_aligned")
 		} else if continuityShows {
@@ -302,6 +312,27 @@ enum ProposalContextSummaryBuilder {
 			reasonCodes: [.generatedPrimitiveBoost],
 			adjustment: WorkflowProposalAdjustment(scoreDeltasByActionId: [:], reasonCodes: [.generatedPrimitiveBoost])
 		)
+		let gaAssistDebug = GeneratedAction(
+			id: UUID(),
+			title: "G",
+			description: "D",
+			intentType: .explainLikelyError,
+			confidence: 0.68,
+			workflow: .debugging,
+			requiredContext: [.textSnippet],
+			primitives: [.explain],
+			interruptionCost: 0.4,
+			workflowRelevance: 0.7,
+			sourceIntentId: UUID(),
+			sourceReasonCodes: [],
+			createdAt: Date(),
+			expiresAt: Date().addingTimeInterval(120),
+			isStale: false,
+			safetyProfile: .profile(for: [.explain]),
+			explainabilitySummary: "x",
+			source: .selfTest,
+			structuredExplainability: nil
+		)
 		let sDebug = compose(
 			proposal: ActionProposal(title: "E", sourceCaption: "", primaryActionId: "explain_text", secondaryActionIds: [], confidence: 0.72, reason: "r"),
 			wfInf: wfDbg,
@@ -329,11 +360,12 @@ enum ProposalContextSummaryBuilder {
 				suppression: nil
 			),
 			ranking: rankGen,
-			gas: []
+			gas: [gaAssistDebug]
 		)
 		assertCase("debugging_chips", sDebug.isAvailable && sDebug.chips.count <= maxChips)
 		assertCase("debugging_wf", sDebug.contextSubtitle?.contains("debugging") == true)
 		assertCase("debug_gen_infl", sDebug.hasGeneratedInfluence)
+		assertCase("debug_assist_chip", sDebug.chips.contains(where: { $0.hasPrefix("assist_") }))
 
 		let wfRes = WorkflowInferenceResult(
 			workflow: .research,

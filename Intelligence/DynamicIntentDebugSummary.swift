@@ -53,6 +53,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 	var safetyLines: [String]
 	var explainLines: [String]
 	var rankingLine: String
+	/// Metadata-only assistance category counts (non-blocked generated actions/plans only).
+	var assistanceCategorySummaryLine: String
 
 	static let empty = DynamicIntentDebugSummary(
 		workflowLine: "",
@@ -64,7 +66,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		planLines: [],
 		safetyLines: [],
 		explainLines: [],
-		rankingLine: ""
+		rankingLine: "",
+		assistanceCategorySummaryLine: ""
 	)
 
 	var showsDynamicDebug: Bool {
@@ -78,6 +81,7 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		if !safetyLines.isEmpty { return true }
 		if !explainLines.isEmpty { return true }
 		if !rankingLine.isEmpty { return true }
+		if !assistanceCategorySummaryLine.isEmpty { return true }
 		return false
 	}
 }
@@ -213,6 +217,14 @@ enum DynamicIntentDebugSummaryBuilder {
 			}
 		}
 
+		let catSum = GeneratedAssistanceCategoryMapper.summaryForDebug(actions: inputs.actions, plans: inputs.plans)
+		let assistLine: String
+		if catSum.counts.isEmpty {
+			assistLine = ""
+		} else {
+			assistLine = "Assistance categories top=\(catSum.topCategoryRaw ?? "none") \(catSum.formattedCounts)"
+		}
+
 		return DynamicIntentDebugSummary(
 			workflowLine: wfLine,
 			sessionLine: sesLine,
@@ -223,7 +235,8 @@ enum DynamicIntentDebugSummaryBuilder {
 			planLines: plLines,
 			safetyLines: safeLines,
 			explainLines: expl,
-			rankingLine: rankStr
+			rankingLine: rankStr,
+			assistanceCategorySummaryLine: assistLine
 		)
 	}
 
@@ -407,7 +420,8 @@ extension DynamicIntentDebugSummaryBuilder {
 		assertCase("shows", full.showsDynamicDebug)
 		assertCase("synthesis_meta", full.synthesisMetaLines.contains(where: { $0.contains("synthesis_skip") }))
 
-		let joined = full.workflowLine + full.sessionLine + full.intentLines.joined() + full.suppressionLines.joined() + full.actionLines.joined() + full.planLines.joined() + full.explainLines.joined() + full.rankingLine
+		assertCase("assist_cat_line", !full.assistanceCategorySummaryLine.isEmpty)
+		let joined = full.workflowLine + full.sessionLine + full.intentLines.joined() + full.suppressionLines.joined() + full.actionLines.joined() + full.planLines.joined() + full.explainLines.joined() + full.rankingLine + full.assistanceCategorySummaryLine
 		assertCase("no_url", !joined.contains("://"))
 		assertCase("bounded_intents", full.intentLines.count <= 4)
 

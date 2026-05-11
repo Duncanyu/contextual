@@ -1,6 +1,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextualApp.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/AppDelegate.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/Phase14TuningSelfTest.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/Phase15TuningSelfTest.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/AppState.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/MenuBarController.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/FloatingSuggestionWindowController.o
@@ -9,6 +10,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/RichContextDebugView.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicIntentDebugView.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionPreviewView.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/VisibleGeneratedActionsSection.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/SuggestionCard.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ResultView.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/InputPreviewView.o
@@ -53,6 +55,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/RichContextProposalSelfTest.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextAwareActionEligibility.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/RichAnalyzeScreenPromptBuilder.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ScreenSituation.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ContextConfidenceArbitrator.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/AdaptiveContextSampler.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowInferenceTypes.o
@@ -109,8 +112,12 @@
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicIntentSuppressionEngine.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionSafetyPolicy.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionExplainability.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/ProposalContextSummary.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/WorkflowActionOrderingSelfTest.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicIntentDebugSummary.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/DynamicActionDisplayModels.o
+/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/VisibleGeneratedActionPanelAdapter.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceDebugLogger.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/MicroDecisionFeatureEncoder.o
 /Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/OCRProcessor.o

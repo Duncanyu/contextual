@@ -636,6 +636,16 @@
     "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes.swiftdeps",
     "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedActionTypes~partial.swiftmodule"
   },
+  "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedAssistanceCategory.swift" : {
+    "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.swiftconstvalues",
+    "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.d",
+    "diagnostics" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.dia",
+    "index-unit-output-path" : "/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.o",
+    "llvm-bc" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.bc",
+    "object" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.o",
+    "swift-dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory.swiftdeps",
+    "swiftmodule" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/GeneratedAssistanceCategory~partial.swiftmodule"
+  },
   "/Users/duncanyu/Documents/GitHub/contextual/Intelligence/IntelligenceActionRunner.swift" : {
     "const-values" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceActionRunner.swiftconstvalues",
     "dependencies" : "/Users/duncanyu/Documents/GitHub/contextual/build/DerivedData/Build/Intermediates.noindex/Contextual.build/Debug/Contextual.build/Objects-normal/arm64/IntelligenceActionRunner.d",

@@ -21,6 +21,18 @@ struct DynamicIntentDebugView: View {
 					listBlock(title: "Plans", summary.planLines)
 					listBlock(title: "Safety", summary.safetyLines)
 					listBlock(title: "Explainability", summary.explainLines)
+					if !summary.assistanceCategorySummaryLine.isEmpty {
+						VStack(alignment: .leading, spacing: 2) {
+							Text("Assistance categories")
+								.font(.caption2)
+								.fontWeight(.medium)
+								.foregroundStyle(.secondary)
+							Text(summary.assistanceCategorySummaryLine)
+								.font(.caption2)
+								.foregroundStyle(.tertiary)
+								.lineLimit(3)
+						}
+					}
 					if !summary.rankingLine.isEmpty {
 						Text("Ranking · \(summary.rankingLine)")
 							.font(.caption2)

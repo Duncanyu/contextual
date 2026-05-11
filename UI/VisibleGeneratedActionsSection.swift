@@ -47,7 +47,7 @@ struct VisibleGeneratedActionsSection: View {
 	private func generatedPreviewCard(_ row: DynamicActionDisplayModel) -> some View {
 		VStack(alignment: .leading, spacing: 6) {
 			HStack(alignment: .firstTextBaseline, spacing: 6) {
-				Text("Contextual")
+				Text(row.category.userFacingLabel)
 					.font(.caption2)
 					.fontWeight(.semibold)
 					.padding(.horizontal, 6)
