@@ -6,6 +6,8 @@
 /Users/duncanyu/Documents/GitHub/contextual/App/MenuBarController.swift
 /Users/duncanyu/Documents/GitHub/contextual/App/FloatingSuggestionWindowController.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/AssistantPanelView.swift
+/Users/duncanyu/Documents/GitHub/contextual/UI/InlineAssistanceDebugView.swift
+/Users/duncanyu/Documents/GitHub/contextual/UI/WorkflowContinuityDisplayView.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/ContextAwarenessView.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/RichContextDebugView.swift
 /Users/duncanyu/Documents/GitHub/contextual/UI/DynamicIntentDebugView.swift
@@ -62,6 +64,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/Context/WorkflowInferenceEngine.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/ContextualSessionTypes.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/ContextualSessionTracker.swift
+/Users/duncanyu/Documents/GitHub/contextual/Context/WorkflowContinuityDisplayModels.swift
 /Users/duncanyu/Documents/GitHub/contextual/Context/RichContextRefreshPipeline.swift
 /Users/duncanyu/Documents/GitHub/contextual/Triggers/TriggerPacket.swift
 /Users/duncanyu/Documents/GitHub/contextual/Triggers/CooldownManager.swift
@@ -112,6 +115,8 @@
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicIntentSuppressionEngine.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionSafetyPolicy.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedActionExplainability.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/GeneratedAssistanceCategory.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/InlineAssistanceModels.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/ProposalContextSummary.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/WorkflowActionOrderingSelfTest.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/DynamicIntentDebugSummary.swift

@@ -20,6 +20,8 @@ struct AssistantPanelView: View {
 
 				ContextAwarenessView(summary: appState.contextAwarenessSummary)
 
+				WorkflowContinuityDisplayView(summary: appState.workflowContinuitySummary)
+
 				suggestionSection
 
 				availableActionsSection

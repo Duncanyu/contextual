@@ -33,6 +33,12 @@ final class AppState: ObservableObject {
 	/// Inline assistance candidate snapshot (T16.6 foundations; metadata-only; not rendered inline yet).
 	@Published var inlineAssistanceSnapshot: InlineAssistanceSnapshot = .empty
 
+	/// Subtle workflow continuity line for the assistant panel (T16.8); template labels only.
+	@Published var workflowContinuitySummary: WorkflowContinuityDisplaySummary = .hidden(
+		at: Date(timeIntervalSince1970: 0),
+		reasons: ["initial"]
+	)
+
 	/// Lightweight metadata for panel proposal card (T16.2); empty when no safe context.
 	@Published private(set) var proposalContextSummary: ProposalContextSummary = .unavailable
 	/// Same for floating suggestion card.
@@ -50,6 +56,8 @@ final class AppState: ObservableObject {
 	private var lastProposalContextLogAt: Date?
 	private var lastProposalContextHiddenSignature: String?
 	private var lastProposalContextHiddenAt: Date?
+	private var lastWorkflowContinuityLogSignature: String?
+	private var lastWorkflowContinuityLogAt: Date?
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
@@ -430,6 +438,40 @@ final class AppState: ObservableObject {
 		contextAwarenessSummary = next
 		logContextAwarenessIfNeeded(next)
 		refreshRichContextDebugSummary()
+		refreshWorkflowContinuitySummary()
+	}
+
+	// MARK: - Workflow continuity UI (T16.8)
+
+	func refreshWorkflowContinuitySummary() {
+		let next = WorkflowContinuityDisplayBuilder.buildFromCurrentState()
+		workflowContinuitySummary = next
+		logWorkflowContinuityUIIfNeeded(next)
+	}
+
+	private func logWorkflowContinuityUIIfNeeded(_ summary: WorkflowContinuityDisplaySummary) {
+		let now = Date()
+		let sig: String
+		if summary.isVisible {
+			sig = "show|\(summary.workflow.rawValue)|\(summary.confidenceBucket)|\(summary.continuityBucket)"
+		} else {
+			sig = "hide|\(summary.reasonCodes.prefix(2).joined(separator: ","))"
+		}
+		if sig == lastWorkflowContinuityLogSignature, let lastWorkflowContinuityLogAt, now.timeIntervalSince(lastWorkflowContinuityLogAt) < 1.8 {
+			return
+		}
+		lastWorkflowContinuityLogSignature = sig
+		lastWorkflowContinuityLogAt = now
+
+		if summary.isVisible {
+			print(
+				"[WorkflowContinuityUI] shown workflow=\(summary.workflow.rawValue) confidence=\(summary.confidenceBucket) continuity=\(summary.continuityBucket) reason=stable_session"
+			)
+		} else if let r = summary.reasonCodes.first {
+			print("[WorkflowContinuityUI] hidden reason=\(r)")
+		} else {
+			print("[WorkflowContinuityUI] hidden reason=unspecified")
+		}
 	}
 
 	private func logContextAwarenessIfNeeded(_ summary: ContextAwarenessSummary) {

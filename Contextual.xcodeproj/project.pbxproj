@@ -125,6 +125,8 @@
 		AA00018D00000000000000BC /* WorkflowInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029500000000000000BC /* WorkflowInferenceEngine.swift */; };
 		AA00018E00000000000000BD /* ContextualSessionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029600000000000000BD /* ContextualSessionTypes.swift */; };
 		AA00018F00000000000000BE /* ContextualSessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029700000000000000BE /* ContextualSessionTracker.swift */; };
+		AA0001B90000000000000E0 /* WorkflowContinuityDisplayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B90000000000000E0 /* WorkflowContinuityDisplayModels.swift */; };
+		AA0001BA000000000000E1 /* WorkflowContinuityDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BA000000000000E1 /* WorkflowContinuityDisplayView.swift */; };
 		AA00018500000000000000B1 /* ContextAwarenessSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028700000000000000B3 /* ContextAwarenessSummary.swift */; };
 		AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028800000000000000B4 /* ContextAwarenessView.swift */; };
 		AA00018700000000000000B5 /* RichContextDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00028900000000000000B6 /* RichContextDebugSummary.swift */; };
@@ -258,6 +260,8 @@
 		AA00029500000000000000BC /* WorkflowInferenceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowInferenceEngine.swift; sourceTree = "<group>"; };
 		AA00029600000000000000BD /* ContextualSessionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualSessionTypes.swift; sourceTree = "<group>"; };
 		AA00029700000000000000BE /* ContextualSessionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualSessionTracker.swift; sourceTree = "<group>"; };
+		AA0002B90000000000000E0 /* WorkflowContinuityDisplayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowContinuityDisplayModels.swift; sourceTree = "<group>"; };
+		AA0002BA000000000000E1 /* WorkflowContinuityDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowContinuityDisplayView.swift; sourceTree = "<group>"; };
 		AA00028700000000000000B3 /* ContextAwarenessSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessSummary.swift; sourceTree = "<group>"; };
 		AA00028800000000000000B4 /* ContextAwarenessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextAwarenessView.swift; sourceTree = "<group>"; };
 		AA00028900000000000000B6 /* RichContextDebugSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichContextDebugSummary.swift; sourceTree = "<group>"; };
@@ -322,6 +326,7 @@
 				AA0002A70000000000000CE /* DynamicActionPreviewView.swift */,
 				AA0002B00000000000000D0 /* VisibleGeneratedActionsSection.swift */,
 				AA0002B80000000000000D7 /* InlineAssistanceDebugView.swift */,
+				AA0002BA000000000000E1 /* WorkflowContinuityDisplayView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
 				AA0002340000000000000032 /* InputPreviewView.swift */,
@@ -391,6 +396,7 @@
 				AA00029500000000000000BC /* WorkflowInferenceEngine.swift */,
 				AA00029600000000000000BD /* ContextualSessionTypes.swift */,
 				AA00029700000000000000BE /* ContextualSessionTracker.swift */,
+				AA0002B90000000000000E0 /* WorkflowContinuityDisplayModels.swift */,
 			);
 			path = Context;
 			sourceTree = "<group>";
@@ -596,6 +602,7 @@
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
 				AA0001050000000000000005 /* AssistantPanelView.swift in Sources */,
 				AA0001B80000000000000D7 /* InlineAssistanceDebugView.swift in Sources */,
+				AA0001BA000000000000E1 /* WorkflowContinuityDisplayView.swift in Sources */,
 				AA00018600000000000000B2 /* ContextAwarenessView.swift in Sources */,
 				AA00018800000000000000B7 /* RichContextDebugView.swift in Sources */,
 				AA00019D00000000000000CA /* DynamicIntentDebugView.swift in Sources */,
@@ -652,6 +659,7 @@
 				AA00018D00000000000000BC /* WorkflowInferenceEngine.swift in Sources */,
 				AA00018E00000000000000BD /* ContextualSessionTypes.swift in Sources */,
 				AA00018F00000000000000BE /* ContextualSessionTracker.swift in Sources */,
+				AA0001B90000000000000E0 /* WorkflowContinuityDisplayModels.swift in Sources */,
 				AA000179000000000000009F /* RichContextRefreshPipeline.swift in Sources */,
 				AA0001100000000000000010 /* TriggerPacket.swift in Sources */,
 				AA0001110000000000000011 /* CooldownManager.swift in Sources */,
