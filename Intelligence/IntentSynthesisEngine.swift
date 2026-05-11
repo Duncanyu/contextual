@@ -21,6 +21,7 @@ final class IntentSynthesisEngine {
 		lastLogSignature = nil
 		lastLogAt = nil
 		lock.unlock()
+		DynamicIntentSuppressionEngine.shared.reset()
 		GeneratedActionEngine.shared.reset()
 	}
 
@@ -31,9 +32,40 @@ final class IntentSynthesisEngine {
 		return v
 	}
 
-	/// Runs synthesis, stores latest result, and emits metadata-only logs.
+	/// Runs synthesis, applies suppression, stores latest result, and emits metadata-only logs.
 	func record(_ request: IntentSynthesisRequest, referenceTime: Date = Date()) {
-		let result = Self.synthesize(request, referenceTime: referenceTime)
+		let synthesized = Self.synthesize(request, referenceTime: referenceTime)
+		let result: IntentSynthesisResult
+		if synthesized.suppressedReason != nil {
+			result = IntentSynthesisResult(
+				intents: synthesized.intents,
+				suppressedReason: synthesized.suppressedReason,
+				skippedReason: synthesized.skippedReason,
+				synthesizedAt: synthesized.synthesizedAt,
+				suppression: nil
+			)
+		} else if synthesized.intents.isEmpty {
+			result = IntentSynthesisResult(
+				intents: [],
+				suppressedReason: synthesized.suppressedReason,
+				skippedReason: synthesized.skippedReason,
+				synthesizedAt: synthesized.synthesizedAt,
+				suppression: nil
+			)
+		} else {
+			let decision = DynamicIntentSuppressionEngine.shared.evaluate(
+				rawIntents: synthesized.intents,
+				request: request,
+				referenceTime: referenceTime
+			)
+			result = IntentSynthesisResult(
+				intents: decision.allowed,
+				suppressedReason: synthesized.suppressedReason,
+				skippedReason: synthesized.skippedReason,
+				synthesizedAt: synthesized.synthesizedAt,
+				suppression: decision
+			)
+		}
 		lock.lock()
 		latest = result
 		lock.unlock()

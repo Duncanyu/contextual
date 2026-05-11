@@ -36,12 +36,72 @@ struct IntentSynthesisRequest: Equatable, Sendable {
 	let lastSourceTrigger: String?
 }
 
+/// Tunable thresholds for intent suppression (deterministic, bounded, in-memory only).
+struct IntentSuppressionProfile: Equatable, Sendable {
+	var minConfidenceAuto: Double = 0.50
+	var minConfidenceManual: Double = 0.42
+	var minConfidenceStaleWorkflowAuto: Double = 0.58
+	var minConfidenceStaleWorkflowManual: Double = 0.50
+	var weakMultimodalFusionMax: Double = 0.48
+	var weakMultimodalConflictMin: Double = 0.55
+	var weakMultimodalMinConfidenceAuto: Double = 0.52
+	var weakMultimodalMinConfidenceManual: Double = 0.44
+	var browsingFusionMax: Double = 0.52
+	var browsingFreshnessMax: Double = 0.48
+	var browsingMinConfidence: Double = 0.56
+	var browsingSummarizeMinConfidence: Double = 0.54
+	var interactionBurstMinConfidence: Double = 0.62
+	var interactionBurstMinConfidenceManual: Double = 0.56
+	var repeatWindowAuto: TimeInterval = 52
+	var repeatWindowManual: TimeInterval = 30
+	var ringCapacity: Int = 56
+}
+
+enum IntentSuppressionReason: String, Hashable, Sendable, CaseIterable {
+	case lowConfidence = "low_confidence"
+	case repeatedIntent = "repeated_intent"
+	case activeInteractionBurst = "active_interaction"
+	case staleWorkflow = "stale_workflow"
+	case staleIntent = "stale_intent"
+	case weakMultimodalAgreement = "weak_multimodal"
+	case weakBrowsingContext = "weak_browsing"
+}
+
+struct IntentSuppressionEntry: Equatable, Sendable {
+	let intentType: SynthesizedIntentType
+	let reason: IntentSuppressionReason
+}
+
+struct IntentSuppressionDecision: Equatable, Sendable {
+	let rawIntents: [SynthesizedIntent]
+	let allowed: [SynthesizedIntent]
+	/// Metadata-only: intent type + suppression reason (no raw text).
+	let suppressed: [IntentSuppressionEntry]
+	let reasonCodes: [IntentSuppressionReason]
+}
+
 /// Bounded, temporary synthesis output (in-memory only).
 struct IntentSynthesisResult: Equatable, Sendable {
 	let intents: [SynthesizedIntent]
 	let suppressedReason: String?
 	let skippedReason: String?
 	let synthesizedAt: Date
+	/// Present when post-synthesis suppression ran on a non-empty intent list.
+	let suppression: IntentSuppressionDecision?
+
+	init(
+		intents: [SynthesizedIntent],
+		suppressedReason: String?,
+		skippedReason: String?,
+		synthesizedAt: Date,
+		suppression: IntentSuppressionDecision? = nil
+	) {
+		self.intents = intents
+		self.suppressedReason = suppressedReason
+		self.skippedReason = skippedReason
+		self.synthesizedAt = synthesizedAt
+		self.suppression = suppression
+	}
 
 	var topIntentType: SynthesizedIntentType? {
 		intents.max(by: { $0.confidence < $1.confidence })?.type

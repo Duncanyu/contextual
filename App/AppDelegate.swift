@@ -1416,6 +1416,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Dynamic intent suppression self-test (synthetic metadata-only).
+		// Run with `CONTEXTUAL_RUN_INTENT_SUPPRESSION_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_INTENT_SUPPRESSION_SELFTEST"] == "1" {
+			let ok = DynamicIntentSuppressionEngine.runSelfTest()
+			print("[IntentSuppression] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Generated action model self-test (synthetic metadata-only).
 		// Run with `CONTEXTUAL_RUN_GENERATED_ACTION_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_GENERATED_ACTION_SELFTEST"] == "1" {
