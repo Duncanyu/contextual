@@ -59,6 +59,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 	var interactionSummaryLine: String
 	/// Unified rich assistance ranking (T16.10); metadata-only; filled after preview rank pass.
 	var richAssistanceRankLine: String
+	/// Unified action ranking snapshot (T17.9); metadata-only; one-shot debug line.
+	var unifiedRankingLine: String
 
 	static let empty = DynamicIntentDebugSummary(
 		workflowLine: "",
@@ -73,7 +75,8 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		rankingLine: "",
 		assistanceCategorySummaryLine: "",
 		interactionSummaryLine: "",
-		richAssistanceRankLine: ""
+		richAssistanceRankLine: "",
+		unifiedRankingLine: ""
 	)
 
 	var showsDynamicDebug: Bool {
@@ -90,6 +93,7 @@ struct DynamicIntentDebugSummary: Equatable, Sendable {
 		if !assistanceCategorySummaryLine.isEmpty { return true }
 		if !interactionSummaryLine.isEmpty { return true }
 		if !richAssistanceRankLine.isEmpty { return true }
+		if !unifiedRankingLine.isEmpty { return true }
 		return false
 	}
 }
@@ -243,6 +247,14 @@ enum DynamicIntentDebugSummaryBuilder {
 
 		let interactionLine = GeneratedActionInteractionTracker.shared.debugSummaryLine()
 
+		let unifiedLine: String = {
+			let ranking = UnifiedActionRankingAdapter.buildDebugRanking(inputs: inputs)
+			guard let top = ranking.rankedActions.first else { return "" }
+			let src = top.action.sourceType.rawValue
+			let score = String(format: "%.2f", top.components.finalScore)
+			return "Unified rank: top=\(src) score=\(score) static=\(ranking.staticActionCount) gen=\(ranking.generatedActionCount) reuse=\(ranking.reusableActionCount) \(ranking.rankingReasonSummary)"
+		}()
+
 		return DynamicIntentDebugSummary(
 			workflowLine: wfLine,
 			sessionLine: sesLine,
@@ -256,7 +268,8 @@ enum DynamicIntentDebugSummaryBuilder {
 			rankingLine: rankStr,
 			assistanceCategorySummaryLine: assistLine,
 			interactionSummaryLine: interactionLine,
-			richAssistanceRankLine: ""
+			richAssistanceRankLine: "",
+			unifiedRankingLine: unifiedLine
 		)
 	}
 
@@ -437,6 +450,7 @@ extension DynamicIntentDebugSummaryBuilder {
 		assertCase("safety_agg", !full.safetyLines.isEmpty)
 		assertCase("explain", !full.explainLines.isEmpty)
 		assertCase("ranking", full.rankingLine.contains("boosted_explain_debugging") || full.rankingLine.contains("generated_primitive_boost"))
+		assertCase("unified_ranking", full.unifiedRankingLine.contains("Unified rank:"))
 		assertCase("shows", full.showsDynamicDebug)
 		assertCase("synthesis_meta", full.synthesisMetaLines.contains(where: { $0.contains("synthesis_skip") }))
 

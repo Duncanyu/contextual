@@ -1028,6 +1028,10 @@ extension WorkflowAwareProposalRanker {
 		IntentSynthesisEngine.shared.reset()
 		GeneratedActionEngine.shared.reset()
 
+		if !UnifiedActionRanker.runSelfTest() {
+			failures.append("unified_action_ranker")
+		}
+
 		let ok = failures.isEmpty
 		print("[WorkflowProposalRank] selftest summary failures=\(failures.count) detail=\(failures.joined(separator: ";")) ok=\(ok)")
 		return ok

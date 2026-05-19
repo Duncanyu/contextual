@@ -51,6 +51,12 @@ struct DynamicIntentDebugView: View {
 							.foregroundStyle(.tertiary)
 							.lineLimit(3)
 					}
+					if !summary.unifiedRankingLine.isEmpty {
+						Text(summary.unifiedRankingLine)
+							.font(.caption2)
+							.foregroundStyle(.tertiary)
+							.lineLimit(3)
+					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
 			} else {
