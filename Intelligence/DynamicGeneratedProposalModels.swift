@@ -63,6 +63,17 @@ enum DynamicGeneratedProposalSynthesisStatus: String, Sendable, Equatable {
 	case cancelled
 }
 
+/// Metadata-only LLM failure classification (T18.3.3B).
+enum DynamicGeneratedProposalLLMDiagnosticCause: String, Sendable, Equatable {
+	case modelUnavailable = "model_unavailable"
+	case startupGrace = "startup_grace"
+	case appTimeout = "app_timeout"
+	case clientFailed = "client_failed"
+	case malformedResponse = "malformed_response"
+	case responseTooSlow = "response_too_slow"
+	case contextCancelled = "context_cancelled"
+}
+
 struct DynamicGeneratedProposalResult: Equatable, Sendable {
 	let status: DynamicGeneratedProposalSynthesisStatus
 	let shouldChimeIn: Bool
@@ -72,6 +83,7 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 	let requiresVisualContext: Bool
 	let proposals: [ValidatedDynamicGeneratedProposal]
 	let warnings: [String]
+	let llmDiagnosticCause: DynamicGeneratedProposalLLMDiagnosticCause?
 	let createdAt: Date
 
 	static let quiet = DynamicGeneratedProposalResult(
@@ -83,10 +95,14 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 		requiresVisualContext: false,
 		proposals: [],
 		warnings: [],
+		llmDiagnosticCause: nil,
 		createdAt: Date()
 	)
 
-	static func unavailable(reason: String) -> DynamicGeneratedProposalResult {
+	static func unavailable(
+		reason: String,
+		cause: DynamicGeneratedProposalLLMDiagnosticCause = .modelUnavailable
+	) -> DynamicGeneratedProposalResult {
 		DynamicGeneratedProposalResult(
 			status: .modelUnavailable,
 			shouldChimeIn: false,
@@ -95,7 +111,8 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 			proposalConfidence: 0,
 			requiresVisualContext: false,
 			proposals: [],
-			warnings: ["model_unavailable"],
+			warnings: [cause.rawValue],
+			llmDiagnosticCause: cause,
 			createdAt: Date()
 		)
 	}

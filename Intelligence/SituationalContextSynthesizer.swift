@@ -19,7 +19,11 @@ enum SituationalContextSynthesizer {
 	) -> SituationalContextSnapshot {
 		let appCategory = classifyApp(snapshot: snapshot)
 		let selectedSignal = buildSelectedTextSignal(snapshot: snapshot, referenceTime: referenceTime)
-		let clipboardSignal = buildClipboardSignal(snapshot: snapshot, referenceTime: referenceTime)
+		let clipboardSignal = buildClipboardSignal(
+			snapshot: snapshot,
+			appCategory: appCategory,
+			referenceTime: referenceTime
+		)
 		let visualSignal = buildVisualSignal(snapshot: snapshot, referenceTime: referenceTime)
 		let ocrSignal = buildOCRSignal(snapshot: snapshot, referenceTime: referenceTime)
 		let activitySignal = buildActivitySignal(snapshot: snapshot, referenceTime: referenceTime)
@@ -130,6 +134,16 @@ enum SituationalContextSynthesizer {
 		if let hint = BrowserTitleHeuristics.domainHint(from: snapshot.windowTitle) {
 			metadata["title_domain_hint"] = hint
 		}
+		metadata["clipboard_reason"] = clipboardSignal.reasonCodes.first ?? "none"
+		metadata["clipboard_relevance"] = clipboardSignal.relevance.rawValue
+		metadata["clipboard_age_bucket"] = clipboardAgeBucketMetadata(
+			snapshot: snapshot,
+			referenceTime: referenceTime
+		)
+		metadata["app_window_changed_since_clipboard"] = clipboardAppWindowChangedMetadata(
+			snapshot: snapshot,
+			referenceTime: referenceTime
+		)
 
 		return SituationalContextSnapshot(
 			id: UUID(),
@@ -205,6 +219,7 @@ enum SituationalContextSynthesizer {
 
 	private static func buildClipboardSignal(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		appCategory: SituationalAppCategory,
 		referenceTime: Date
 	) -> ClipboardSituationalSignal {
 		let text = snapshot.clipboardText ?? ""
@@ -216,29 +231,17 @@ enum SituationalContextSynthesizer {
 				freshness: .unknown,
 				confidence: .low,
 				reasonCodes: ["no_clipboard"],
-				privacyLevel: .metadataOnly
+				privacyLevel: .metadataOnly,
+				relevance: .unknown,
+				canBePrimary: false
 			)
 		}
 
-		let suppression = GeneratedExecutionClipboardFreshnessPolicy.evaluate(
+		let assessment = SituationalClipboardRelevanceEvaluator.assess(
 			snapshot: snapshot,
+			appCategory: appCategory,
 			referenceTime: referenceTime
 		)
-		if !suppression.includeClipboard {
-			var reasons = [suppression.reasonCode ?? "clipboard_suppressed"]
-			if reasons[0] == "selection_present" {
-				reasons = ["stale_after_app_change", "selection_fresher"]
-			}
-			return ClipboardSituationalSignal(
-				availability: .suppressed,
-				lengthBucket: SituationalSignalMetrics.lengthBucket(for: count),
-				freshness: .stale,
-				confidence: .low,
-				reasonCodes: reasons,
-				privacyLevel: .metadataOnly
-			)
-		}
-
 		let capturedAt = snapshot.sourceMetadata.clipboardCapturedAt ?? snapshot.generatedAt
 		let freshness = SituationalSignalMetrics.freshnessLevel(
 			capturedAt: capturedAt,
@@ -250,15 +253,50 @@ enum SituationalContextSynthesizer {
 			capturedAt: capturedAt,
 			now: referenceTime
 		)
-		let availability: SituationalSourceAvailability = freshness == .stale ? .stale : .available
+
+		let availability: SituationalSourceAvailability
+		if assessment.suppressed {
+			availability = .suppressed
+		} else if freshness == .stale {
+			availability = .stale
+		} else {
+			availability = .available
+		}
+
 		return ClipboardSituationalSignal(
 			availability: availability,
 			lengthBucket: SituationalSignalMetrics.lengthBucket(for: count),
 			freshness: freshness,
 			confidence: SituationalSignalMetrics.confidenceLevel(from: score),
-			reasonCodes: ["clipboard_usable"],
-			privacyLevel: .cappedExcerpt
+			reasonCodes: [assessment.reasonCode],
+			privacyLevel: .metadataOnly,
+			relevance: assessment.relevance,
+			canBePrimary: assessment.canBePrimary && !assessment.suppressed
 		)
+	}
+
+	private static func clipboardAgeBucketMetadata(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		referenceTime: Date
+	) -> String {
+		let at = snapshot.sourceMetadata.clipboardCapturedAt ?? snapshot.generatedAt
+		let age = referenceTime.timeIntervalSince(at)
+		if age < 15 { return "fresh" }
+		if age < 60 { return "recent" }
+		if age < 180 { return "aging" }
+		return "old"
+	}
+
+	private static func clipboardAppWindowChangedMetadata(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		referenceTime: Date
+	) -> String {
+		let assessment = SituationalClipboardRelevanceEvaluator.assess(
+			snapshot: snapshot,
+			appCategory: classifyApp(snapshot: snapshot),
+			referenceTime: referenceTime
+		)
+		return assessment.appWindowChangedSinceClipboard ? "yes" : "no"
 	}
 
 	private static func buildVisualSignal(
@@ -464,13 +502,23 @@ enum SituationalContextSynthesizer {
 		if visual.availability == .available {
 			return .visual
 		}
-		if clipboard.availability == .available, clipboard.freshness != .stale {
+		let hasMetadataContext = titleOnly
+			|| (!snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+				&& snapshot.fusedPacketId == nil)
+		if hasMetadataContext {
+			return .metadataOnly
+		}
+		if clipboard.canBePrimary,
+		   clipboard.availability == .available,
+		   clipboard.freshness != .stale,
+		   clipboard.relevance == .high
+		{
 			return .clipboard
 		}
 		if snapshot.inferredWorkflow != .unknown, snapshot.workflowConfidence >= 0.35 {
 			return .workflowApp
 		}
-		if titleOnly || !snapshot.windowTitle.isEmpty {
+		if !snapshot.windowTitle.isEmpty || snapshot.activeApp != "Unknown" {
 			return .metadataOnly
 		}
 		return .none

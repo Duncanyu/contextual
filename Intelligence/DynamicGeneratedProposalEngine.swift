@@ -26,7 +26,7 @@ actor DynamicGeneratedProposalEngine {
 	init(
 		modelManager: any DynamicGeneratedProposalAvailabilityChecking = ModelManager.shared,
 		client: any DynamicGeneratedProposalLLMGenerating = LocalAIClient.shared,
-		timeoutSeconds: TimeInterval = 12
+		timeoutSeconds: TimeInterval = 9
 	) {
 		self.modelManager = modelManager
 		self.client = client
@@ -63,9 +63,18 @@ actor DynamicGeneratedProposalEngine {
 			return gate
 		}
 
+		guard LocalAISettings.shared.localAIEnabled else {
+			logMetadata(event: "llm_generation_skipped", value: "disabled", extra: "cause=model_unavailable")
+			return .unavailable(reason: "local_ai_disabled", cause: .modelUnavailable)
+		}
+
 		guard await modelManager.isGenerationAvailable() else {
-			logMetadata(event: "llm_generation_skipped", value: "model_unavailable", extra: nil)
-			return .unavailable(reason: "model_unavailable")
+			if ModelManager.shared.isWithinStartupGrace() {
+				logMetadata(event: "llm_generation_skipped", value: "grace", extra: "cause=startup_grace")
+				return .unavailable(reason: "startup_grace", cause: .startupGrace)
+			}
+			logMetadata(event: "llm_generation_skipped", value: "unavailable", extra: "cause=model_unavailable")
+			return .unavailable(reason: "model_unavailable", cause: .modelUnavailable)
 		}
 
 		let prompt = DynamicGeneratedProposalPromptBuilder.build(
@@ -80,58 +89,52 @@ actor DynamicGeneratedProposalEngine {
 		let model = LocalAISettings.shared.modelName
 		logMetadata(event: "llm_generation_started", value: model, extra: "prompt_bytes=\(prompt.utf8.count)")
 
-		let raw: String?
+		let generationStart = Date()
+		let raw: String
 		do {
 			raw = try await withTimeout {
 				try await self.client.generate(prompt: prompt, model: model)
 			}
 		} catch is CancellationError {
-			logMetadata(event: "llm_generation_cancelled", value: "1", extra: nil)
-			return DynamicGeneratedProposalResult(
+			logMetadata(event: "llm_generation_cancelled", value: "1", extra: "cause=context_cancelled")
+			return result(
 				status: .cancelled,
-				shouldChimeIn: false,
 				reason: "cancelled",
-				workflowAssessment: "",
-				proposalConfidence: 0,
-				requiresVisualContext: false,
-				proposals: [],
-				warnings: ["cancelled"],
-				createdAt: referenceTime
+				warnings: ["context_cancelled"],
+				cause: .contextCancelled,
+				referenceTime: referenceTime
 			)
-		} catch let err as DynamicGeneratedProposalEngineError where err == .timeout {
-			logMetadata(event: "llm_generation_timeout", value: "1", extra: nil)
-			return DynamicGeneratedProposalResult(
-				status: .timeout,
-				shouldChimeIn: false,
-				reason: "timeout",
-				workflowAssessment: "",
-				proposalConfidence: 0,
-				requiresVisualContext: false,
-				proposals: [],
-				warnings: ["timeout"],
-				createdAt: referenceTime
-			)
+		} catch let err as DynamicGeneratedProposalEngineError {
+			switch err {
+			case .appTimeout:
+				logMetadata(event: "llm_generation_timeout", value: "1", extra: "cause=app_timeout")
+				return result(
+					status: .timeout,
+					reason: "app_timeout",
+					warnings: ["app_timeout"],
+					cause: .appTimeout,
+					referenceTime: referenceTime
+				)
+			}
 		} catch {
-			logMetadata(event: "llm_generation_failed", value: "1", extra: nil)
-			return .unavailable(reason: "generate_failed")
-		}
-
-		guard let raw else {
-			return .unavailable(reason: "empty_response")
+			let elapsed = Date().timeIntervalSince(generationStart)
+			let cause: DynamicGeneratedProposalLLMDiagnosticCause = elapsed < 2.5 ? .clientFailed : .responseTooSlow
+			logMetadata(
+				event: "llm_generation_failed",
+				value: "1",
+				extra: "cause=\(cause.rawValue) elapsed_ms=\(Int(elapsed * 1000))"
+			)
+			return .unavailable(reason: cause.rawValue, cause: cause)
 		}
 
 		guard let parsed = DynamicGeneratedProposalParser.parse(from: raw, referenceTime: referenceTime) else {
-			logMetadata(event: "llm_parse_failed", value: "1", extra: nil)
-			return DynamicGeneratedProposalResult(
+			logMetadata(event: "llm_parse_failed", value: "1", extra: "cause=malformed_response")
+			return result(
 				status: .parseFailed,
-				shouldChimeIn: false,
 				reason: "parse_failed",
-				workflowAssessment: "",
-				proposalConfidence: 0,
-				requiresVisualContext: false,
-				proposals: [],
-				warnings: ["parse_failed"],
-				createdAt: referenceTime
+				warnings: ["malformed_response"],
+				cause: .malformedResponse,
+				referenceTime: referenceTime
 			)
 		}
 
@@ -177,6 +180,7 @@ actor DynamicGeneratedProposalEngine {
 				requiresVisualContext: false,
 				proposals: [],
 				warnings: ["no_fused_context"],
+				llmDiagnosticCause: nil,
 				createdAt: referenceTime
 			)
 		}
@@ -190,6 +194,7 @@ actor DynamicGeneratedProposalEngine {
 				requiresVisualContext: false,
 				proposals: [],
 				warnings: ["stale_context"],
+				llmDiagnosticCause: nil,
 				createdAt: referenceTime
 			)
 		}
@@ -206,6 +211,7 @@ actor DynamicGeneratedProposalEngine {
 				requiresVisualContext: false,
 				proposals: [],
 				warnings: ["post_dismiss_cooldown"],
+				llmDiagnosticCause: nil,
 				createdAt: referenceTime
 			)
 		}
@@ -236,14 +242,36 @@ actor DynamicGeneratedProposalEngine {
 			requiresVisualContext: parsed.requiresVisualContext,
 			proposals: kept,
 			warnings: parsed.warnings + (kept.count < parsed.proposals.count ? ["repetition_filtered"] : []),
+			llmDiagnosticCause: parsed.llmDiagnosticCause,
 			createdAt: parsed.createdAt
+		)
+	}
+
+	private func result(
+		status: DynamicGeneratedProposalSynthesisStatus,
+		reason: String,
+		warnings: [String],
+		cause: DynamicGeneratedProposalLLMDiagnosticCause?,
+		referenceTime: Date
+	) -> DynamicGeneratedProposalResult {
+		DynamicGeneratedProposalResult(
+			status: status,
+			shouldChimeIn: false,
+			reason: reason,
+			workflowAssessment: "",
+			proposalConfidence: 0,
+			requiresVisualContext: false,
+			proposals: [],
+			warnings: warnings,
+			llmDiagnosticCause: cause,
+			createdAt: referenceTime
 		)
 	}
 
 	// MARK: - Timeout
 
 	private enum DynamicGeneratedProposalEngineError: Error, Equatable {
-		case timeout
+		case appTimeout
 	}
 
 	private func withTimeout(_ operation: @escaping @Sendable () async throws -> String) async throws -> String {
@@ -253,10 +281,10 @@ actor DynamicGeneratedProposalEngine {
 			}
 			group.addTask {
 				try await Task.sleep(nanoseconds: self.timeoutNanoseconds)
-				throw DynamicGeneratedProposalEngineError.timeout
+				throw DynamicGeneratedProposalEngineError.appTimeout
 			}
 			guard let first = try await group.next() else {
-				throw DynamicGeneratedProposalEngineError.timeout
+				throw DynamicGeneratedProposalEngineError.appTimeout
 			}
 			group.cancelAll()
 			return first

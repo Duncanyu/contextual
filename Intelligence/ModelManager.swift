@@ -52,6 +52,11 @@ final class ModelManager: @unchecked Sendable {
 		}
 	}
 
+	/// Exposed for LLM proposal diagnostics (T18.3.3B); does not affect availability checks.
+	func isWithinStartupGrace() -> Bool {
+		Self.withinStartupGrace()
+	}
+
 	private static func withinStartupGrace() -> Bool {
 		Self.launchLock.lock()
 		let t = Self.appLaunchTime

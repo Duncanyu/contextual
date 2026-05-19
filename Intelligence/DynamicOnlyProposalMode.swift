@@ -78,13 +78,16 @@ enum GeneratedProposalDebugStatusBuilder {
 	}
 
 	private static func llmOutcomeLabel(_ result: DynamicGeneratedProposalResult) -> String {
+		if let cause = result.llmDiagnosticCause {
+			return cause.rawValue
+		}
 		switch result.status {
-		case .synthesized: result.shouldChimeIn ? "success" : "success_quiet"
-		case .quietByGate: "gated"
-		case .modelUnavailable: "unavailable"
-		case .parseFailed: "parse_failed"
-		case .timeout: "timeout"
-		case .cancelled: "cancelled"
+		case .synthesized: return result.shouldChimeIn ? "success" : "success_quiet"
+		case .quietByGate: return "gated"
+		case .modelUnavailable: return "unavailable"
+		case .parseFailed: return "parse_failed"
+		case .timeout: return "timeout"
+		case .cancelled: return "cancelled"
 		}
 	}
 

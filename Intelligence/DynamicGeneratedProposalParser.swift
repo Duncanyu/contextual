@@ -67,6 +67,7 @@ enum DynamicGeneratedProposalParser {
 			requiresVisualContext: decoded.requiresVisualContext,
 			proposals: validated,
 			warnings: warnings,
+			llmDiagnosticCause: nil,
 			createdAt: referenceTime
 		)
 	}

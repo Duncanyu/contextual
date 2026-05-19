@@ -61,6 +61,9 @@ enum GeneratedProposalActivationDiagnostics {
 		candidateCount: Int,
 		visibleCount: Int
 	) -> String {
+		if let cause = llmResult.llmDiagnosticCause {
+			return cause.rawValue
+		}
 		switch llmResult.status {
 		case .modelUnavailable:
 			return "llm_unavailable"

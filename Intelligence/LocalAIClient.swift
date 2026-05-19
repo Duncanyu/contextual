@@ -46,7 +46,12 @@ final class LocalAIClient: @unchecked Sendable {
 			request.httpMethod = "POST"
 			request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-			let payload = OllamaGenerateRequest(model: model, prompt: prompt, stream: false)
+			let payload = OllamaGenerateRequest(
+				model: model,
+				prompt: prompt,
+				stream: false,
+				options: OllamaGenerateOptions(numPredict: 220, temperature: 0.15)
+			)
 			request.httpBody = try JSONEncoder().encode(payload)
 
 			let (data, response) = try await session.data(for: request)
@@ -77,6 +82,17 @@ final class LocalAIClient: @unchecked Sendable {
 		let model: String
 		let prompt: String
 		let stream: Bool
+		let options: OllamaGenerateOptions?
+	}
+
+	private struct OllamaGenerateOptions: Encodable {
+		let numPredict: Int
+		let temperature: Double
+
+		enum CodingKeys: String, CodingKey {
+			case numPredict = "num_predict"
+			case temperature
+		}
 	}
 
 	private struct OllamaGenerateResponse: Decodable {

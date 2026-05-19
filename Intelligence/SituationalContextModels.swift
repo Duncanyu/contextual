@@ -55,6 +55,8 @@ struct ClipboardSituationalSignal: Equatable, Sendable, Codable {
 	let confidence: SituationalConfidenceLevel
 	let reasonCodes: [String]
 	let privacyLevel: SituationalPrivacyLevel
+	let relevance: SituationalClipboardRelevance
+	let canBePrimary: Bool
 }
 
 struct VisualSituationalSignal: Equatable, Sendable, Codable {
@@ -174,15 +176,20 @@ struct SituationalContextSnapshot: Equatable, Sendable, Codable, Identifiable {
 enum SituationalContextDiagnostics {
 
 	static func log(_ situational: SituationalContextSnapshot) {
-		let clipboardSuppressed = situational.clipboardSignal.availability == .suppressed
-			|| situational.clipboardSignal.availability == .stale
+		let clip = situational.clipboardSignal
+		let clipboardSuppressed = clip.availability == .suppressed || clip.availability == .stale
 		let fused = situational.metadata["fused_packet"] == "yes"
+		let appChanged = situational.metadata["app_window_changed_since_clipboard"] ?? "unknown"
+		let clipAge = situational.metadata["clipboard_age_bucket"] ?? clip.lengthBucket.rawValue
+		let clipReason = situational.metadata["clipboard_reason"] ?? clip.reasonCodes.first ?? "none"
 		print(
 			"""
 			[SituationalContext] app=\(situational.activeAppName) workflow=\(situational.inferredWorkflow.rawValue) \
 			primary=\(situational.primaryAvailableSource.rawValue) freshness=\(String(format: "%.2f", situational.contextFreshness)) \
 			missing=\(situational.missingContextReasons.count) perception=\(situational.perceptionRecommendation.rawValue) \
-			clipboard_suppressed=\(clipboardSuppressed ? "yes" : "no") fused_packet=\(fused ? "yes" : "no")
+			clipboard_suppressed=\(clipboardSuppressed ? "yes" : "no") clipboard_reason=\(clipReason) \
+			clipboard_relevance=\(clip.relevance.rawValue) clipboard_age_bucket=\(clipAge) \
+			app_window_changed_since_clipboard=\(appChanged) fused_packet=\(fused ? "yes" : "no")
 			"""
 		)
 	}

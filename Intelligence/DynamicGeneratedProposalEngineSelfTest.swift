@@ -125,6 +125,7 @@ enum DynamicGeneratedProposalEngineSelfTest {
 			requiresVisualContext: false,
 			proposals: parsed.proposals,
 			warnings: [],
+			llmDiagnosticCause: nil,
 			createdAt: Date()
 		)
 		let weakMapped = DynamicGeneratedProposalCandidateMapper.candidates(
