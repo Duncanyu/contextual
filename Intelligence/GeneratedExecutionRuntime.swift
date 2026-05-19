@@ -19,6 +19,11 @@ actor GeneratedExecutionRuntime {
 	private let visualContextScheduler: VisualContextScheduler?
 	/// True when context is supplied via T18.1 canonical snapshot bridge (opt-in only).
 	private let usesBridgedContext: Bool
+	/// Explicit canonical snapshot for sparse visual peek policy (never read from shared app state).
+	private let canonicalSnapshot: CanonicalGeneratedExecutionContextSnapshot?
+	private let sparseVisualPeekGate: SparseVisualPeekGate
+	/// At most one sparse visual peek attempt per execution lifecycle (T18.2).
+	private var sparseVisualPeekAttemptedInLifecycle = false
 
 	private(set) var snapshot: GeneratedExecutionRuntimeSnapshot = .initial
 	private var cancelRequested = false
@@ -33,9 +38,12 @@ actor GeneratedExecutionRuntime {
 		visualContextScheduler: VisualContextScheduler? = nil,
 		canonicalSnapshot: CanonicalGeneratedExecutionContextSnapshot? = nil,
 		contextBridge: GeneratedExecutionContextBridge = GeneratedExecutionContextBridge(),
-		optionalBridgedVisualResult: BoundedVisualContextResult? = nil
+		optionalBridgedVisualResult: BoundedVisualContextResult? = nil,
+		sparseVisualPeekGate: SparseVisualPeekGate = SparseVisualPeekGate()
 	) {
 		self.configuration = configuration
+		self.canonicalSnapshot = canonicalSnapshot
+		self.sparseVisualPeekGate = sparseVisualPeekGate
 		if let canonicalSnapshot {
 			self.contextProvider = BridgedGeneratedExecutionContextProvider(
 				snapshot: canonicalSnapshot,
@@ -70,6 +78,19 @@ actor GeneratedExecutionRuntime {
 		usesBridgedContext
 	}
 
+	/// T18.2 probe: sparse peek requires scheduler + canonical snapshot injection.
+	func phase18SparseVisualPeekProbe() -> (
+		hasScheduler: Bool,
+		hasCanonicalSnapshot: Bool,
+		attemptedPeek: Bool
+	) {
+		(
+			visualContextScheduler != nil,
+			canonicalSnapshot != nil,
+			sparseVisualPeekAttemptedInLifecycle
+		)
+	}
+
 	func start(action: GeneratedExecutionAction) async -> GeneratedExecutionStartOutcome {
 		if isExecutionActive {
 			log(event: "start_rejected", reason: GeneratedExecutionRuntimeError.alreadyRunning.rawValue, actionId: action.id)
@@ -93,6 +114,7 @@ actor GeneratedExecutionRuntime {
 		}
 
 		cancelRequested = false
+		sparseVisualPeekAttemptedInLifecycle = false
 		let startedAt = Date()
 		transition(
 			to: .validating,
@@ -124,6 +146,7 @@ actor GeneratedExecutionRuntime {
 
 	func reset() {
 		cancelRequested = false
+		sparseVisualPeekAttemptedInLifecycle = false
 		snapshot = .initial
 		log(event: "reset", reason: nil, actionId: nil)
 	}
@@ -204,15 +227,21 @@ actor GeneratedExecutionRuntime {
 			warningCodes: []
 		)
 
-		let context: GeneratedExecutionContext
+		let baseContext: GeneratedExecutionContext
 		do {
-			context = try await contextProvider.gatherContext(for: action)
-			log(event: "context_gathered", reason: context.sourceType, actionId: action.id)
+			baseContext = try await contextProvider.gatherContext(for: action)
+			log(event: "context_gathered", reason: baseContext.sourceType, actionId: action.id)
 		} catch let error as GeneratedExecutionRuntimeError {
 			return finishFailed(action: action, startedAt: startedAt, error: error)
 		} catch {
 			return finishFailed(action: action, startedAt: startedAt, error: .missingRequiredContext)
 		}
+
+		let context = await maybeEnrichWithSparseVisualPeek(
+			action: action,
+			baseContext: baseContext,
+			plan: plan
+		)
 
 		if let abort = checkAbort(action: action, startedAt: startedAt, deadline: deadline) {
 			return abort
@@ -512,9 +541,99 @@ actor GeneratedExecutionRuntime {
 		GeneratedExecutionBudgetSnapshot(
 			activeExecutionCount: isExecutionActive ? 1 : 0,
 			runtimeState: snapshot.currentState,
-			permissionAvailability: [:],
+			permissionAvailability: canonicalSnapshot?.permissionAvailability ?? [:],
 			activeSamplingRequested: activeSamplingRequested
 		)
+	}
+
+	// MARK: - Sparse visual peek (T18.2)
+
+	/// One bounded visual peek per lifecycle when policy, gate, budget, and scheduler allow.
+	private func maybeEnrichWithSparseVisualPeek(
+		action: GeneratedExecutionAction,
+		baseContext: GeneratedExecutionContext,
+		plan: ExecutionPlan
+	) async -> GeneratedExecutionContext {
+		guard let scheduler = visualContextScheduler,
+		      let canon = canonicalSnapshot,
+		      !sparseVisualPeekAttemptedInLifecycle
+		else {
+			return baseContext
+		}
+
+		sparseVisualPeekAttemptedInLifecycle = true
+		let referenceTime = Date()
+
+		let gateEval = await sparseVisualPeekGate.evaluate(snapshot: canon, referenceTime: referenceTime)
+		if gateEval.shouldDeny {
+			logSparseVisualPeek(
+				event: "sparse_visual_peek_denied",
+				reason: gateEval.denyReason?.rawValue ?? "gate",
+				actionId: action.id
+			)
+			if gateEval.denyReason == .cooldownWindowActive {
+				logSparseVisualPeek(event: "visual_peek_cooldown_denied", reason: "cooldown", actionId: action.id)
+			}
+			return baseContext
+		}
+
+		let peekDecision = SparseVisualPeekPolicy.shouldRequestVisualPeek(
+			snapshot: canon,
+			action: action,
+			gateEvaluation: gateEval,
+			referenceTime: referenceTime
+		)
+		guard peekDecision.shouldPeek, let request = peekDecision.recommendedRequest else {
+			logSparseVisualPeek(
+				event: "sparse_visual_peek_denied",
+				reason: peekDecision.denyReason?.rawValue ?? "policy",
+				actionId: action.id
+			)
+			return baseContext
+		}
+
+		let budgetSnapshot = makeBudgetSnapshot(
+			activeSamplingRequested: plan.requiresVision || plan.requiresOCR || peekDecision.requiresOCR
+		)
+		let budgetDecision = await budgetManager.canCollectVisualContext(
+			request: request,
+			snapshot: budgetSnapshot
+		)
+		if !budgetDecision.allowed {
+			logSparseVisualPeek(
+				event: "visual_peek_budget_denied",
+				reason: budgetDecision.reason.rawValue,
+				actionId: action.id
+			)
+			return baseContext
+		}
+
+		logSparseVisualPeek(
+			event: "visual_peek_request_started",
+			reason: peekDecision.allowReason?.rawValue,
+			actionId: action.id
+		)
+
+		let visualResult = await scheduler.collect(request: request, budgetSnapshot: budgetSnapshot)
+
+		if visualResult.status == .completed || visualResult.status == .partial {
+			await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
+			logSparseVisualPeek(
+				event: "visual_peek_result_merged",
+				reason: visualResult.status.rawValue,
+				actionId: action.id
+			)
+			return baseContext.merging(visual: visualResult)
+		}
+
+		return baseContext
+	}
+
+	private func logSparseVisualPeek(event: String, reason: String?, actionId: UUID?) {
+		var parts = ["event=\(event)"]
+		if let reason, !reason.isEmpty { parts.append("reason=\(reason)") }
+		if let actionId { parts.append("actionId=\(actionId.uuidString.prefix(8))") }
+		print("[SparseVisualPeek] \(parts.joined(separator: " "))")
 	}
 
 	private func finishBudgetDenied(
