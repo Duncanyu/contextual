@@ -17,6 +17,8 @@ actor GeneratedExecutionRuntime {
 	private let persistenceManager: GeneratedActionPersistenceManager?
 	/// Optional bounded visual scheduler (default nil — no visual collection in T17.8).
 	private let visualContextScheduler: VisualContextScheduler?
+	/// True when context is supplied via T18.1 canonical snapshot bridge (opt-in only).
+	private let usesBridgedContext: Bool
 
 	private(set) var snapshot: GeneratedExecutionRuntimeSnapshot = .initial
 	private var cancelRequested = false
@@ -28,10 +30,23 @@ actor GeneratedExecutionRuntime {
 		budgetManager: GeneratedExecutionBudgetManager = GeneratedExecutionBudgetManager(),
 		workflowPlanner: WorkflowExecutionPlanner = WorkflowExecutionPlanner(),
 		persistenceManager: GeneratedActionPersistenceManager? = nil,
-		visualContextScheduler: VisualContextScheduler? = nil
+		visualContextScheduler: VisualContextScheduler? = nil,
+		canonicalSnapshot: CanonicalGeneratedExecutionContextSnapshot? = nil,
+		contextBridge: GeneratedExecutionContextBridge = GeneratedExecutionContextBridge(),
+		optionalBridgedVisualResult: BoundedVisualContextResult? = nil
 	) {
 		self.configuration = configuration
-		self.contextProvider = contextProvider
+		if let canonicalSnapshot {
+			self.contextProvider = BridgedGeneratedExecutionContextProvider(
+				snapshot: canonicalSnapshot,
+				bridge: contextBridge,
+				optionalVisualResult: optionalBridgedVisualResult
+			)
+			self.usesBridgedContext = true
+		} else {
+			self.contextProvider = contextProvider
+			self.usesBridgedContext = false
+		}
 		self.primitiveRunner = primitiveRunner
 		self.budgetManager = budgetManager
 		self.workflowPlanner = workflowPlanner
@@ -48,6 +63,11 @@ actor GeneratedExecutionRuntime {
 	/// Stability probe for tests (default production init: both false).
 	func phase17StabilityProbe() -> (hasVisualScheduler: Bool, hasPersistenceManager: Bool) {
 		(visualContextScheduler != nil, persistenceManager != nil)
+	}
+
+	/// T18.1 probe: bridged context is opt-in only (default false).
+	func phase18BridgeProbe() -> Bool {
+		usesBridgedContext
 	}
 
 	func start(action: GeneratedExecutionAction) async -> GeneratedExecutionStartOutcome {

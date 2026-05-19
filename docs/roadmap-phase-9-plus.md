@@ -3886,6 +3886,735 @@ After Phase 17:
 
 ---
 
+# Phase 18 Philosophy
+
+Phase 17 established:
+
+Sources
+↓
+Rich Context
+↓
+Workflow + Intent Understanding
+↓
+Generated Executable Actions
+↓
+Bounded Execution Runtime
+↓
+Concrete Assistance Results
+
+Phase 18 evolves this into:
+
+Sources
+↓
+Live Context Fusion
+↓
+Situational Awareness
+↓
+Generated Contextual Proposals
+↓
+Bounded Visual Understanding
+↓
+Workflow-Aware Execution
+↓
+Concrete Interactive Assistance
+
+The assistant should now evolve from:
+
+> “bounded executable cognitive assistant”
+
+into:
+
+> “situationally aware workflow companion.”
+
+---
+
+# Core Philosophy
+
+The assistant should increasingly feel:
+
+- aware
+- proactive
+- workflow-sensitive
+- situationally intelligent
+- adaptive
+- calm
+- contextually useful
+- responsive
+- naturally assistive
+
+while remaining:
+
+- bounded
+- explainable
+- interrupt-safe
+- local-first
+- privacy-first
+- non-autonomous
+- reviewable
+- resource-aware
+- trustworthy
+
+---
+
+# Fundamental Direction
+
+Phase 17 focused on:
+
+- building bounded execution intelligence
+
+Phase 18 focuses on:
+
+- activating contextual intelligence
+
+The system should stop feeling like:
+
+> “a collection of AI-powered utilities”
+
+and start feeling like:
+
+> “a system that understands what is happening and offers meaningful contextual help.”
+
+---
+
+# Behavioral Philosophy
+
+The assistant should increasingly:
+
+- understand what the user is actively doing
+- determine whether intervention is useful
+- synthesize contextual executable assistance
+- dynamically shape proposals
+- react to workflow continuity
+- use richer context when needed
+- remain calm when uncertain
+
+Examples:
+
+User reading lecture slides
+→ “Generate review questions from current material”
+
+User debugging recurring crash
+→ “Trace likely root cause from stacktrace + recent edits”
+
+User comparing products/research
+→ “Extract conflicting claims across tabs”
+
+User editing messy notes repeatedly
+→ “Convert draft into actionable structure”
+
+User watching tutorial while coding
+→ “Generate implementation checklist from current video topic”
+
+The assistant should increasingly produce:
+
+- workflow-sensitive proposals
+- contextually synthesized execution
+- meaningful outputs
+- situationally relevant assistance
+
+instead of repeatedly suggesting:
+
+- summarize
+- explain
+- rewrite
+
+---
+
+# Activation Philosophy
+
+Phase 18 is about:
+
+> activating intelligence safely
+
+The assistant should no longer wait passively for:
+
+- perfect highlighted text
+- manually copied content
+- explicit user prompts
+
+Instead, it should:
+
+- infer likely workflow state
+- evaluate contextual usefulness
+- decide whether assistance is warranted
+- synthesize bounded proposals dynamically
+
+However:
+
+- silence remains acceptable
+- low-confidence interruptions remain discouraged
+- execution remains user-approved
+
+---
+
+# Generated Proposal Philosophy
+
+Generated proposals should increasingly become:
+
+- workflow-specific
+- contextually synthesized
+- execution-aware
+- situationally adaptive
+- interruption-sensitive
+
+Generated proposals should:
+
+- define their own contextual relevance
+- explain why they appeared
+- identify useful assistance opportunities
+- adapt to workflow continuity
+- execute through bounded runtime
+
+Generated proposals should NOT:
+
+- spam suggestions
+- appear constantly
+- interrupt aggressively
+- trigger autonomously
+- bypass ranking/budget systems
+
+---
+
+# Context Philosophy
+
+Phase 18 introduces:
+
+> live contextual activation
+
+The assistant should begin combining:
+
+- selected text
+- clipboard
+- app metadata
+- workflow history
+- lightweight behavioral signals
+- bounded visual context
+- situational continuity
+
+to create:
+
+- meaningful contextual awareness
+
+However:
+
+- context gathering remains bounded
+- expensive context remains sparse
+- visual context remains explicit and budgeted
+- no persistent surveillance exists
+
+---
+
+# Visual Context Philosophy
+
+Visual understanding now becomes:
+
+- situational
+- sparse
+- explicitly triggered
+- bounded
+- budget-aware
+
+Visual context should be used when:
+
+- textual context is insufficient
+- workflow understanding is weak
+- proposals require richer situational awareness
+- the assistant cannot confidently infer context otherwise
+
+Examples:
+
+- diagrams
+- YouTube videos
+- slides
+- IDE layouts
+- stacktraces
+- browser state
+- charts
+- UI structures
+
+Visual context should NEVER become:
+
+- continuous screen surveillance
+- constant OCR polling
+- focus-triggered capture
+- hidden background analysis
+
+---
+
+# Proposal Activation Philosophy
+
+Generated execution should now begin surfacing in:
+
+- proposal cards
+- contextual assistance
+- workflow-aware suggestions
+- dynamic execution opportunities
+
+The assistant should increasingly propose:
+
+- synthesized contextual operations
+- workflow-derived assistance
+- execution-backed help
+
+instead of relying primarily on:
+
+- static predefined actions
+
+Static actions still remain important:
+
+- as stable fallbacks
+- as guaranteed affordances
+- as low-risk utilities
+
+Generated proposals should complement them,
+not completely replace them.
+
+---
+
+# Execution Philosophy
+
+Execution remains:
+
+- bounded
+- explainable
+- interrupt-safe
+- observable
+- cancellable
+- deterministic
+
+Generated execution may now begin:
+
+- using richer context
+- incorporating bounded visual awareness
+- adapting execution plans dynamically
+- surfacing contextual follow-ups
+
+without becoming:
+
+- autonomous
+- unrestricted
+- continuously self-operating
+
+---
+
+# Workflow Philosophy
+
+The assistant should increasingly behave like:
+
+> a workflow-sensitive cognitive layer.
+
+Workflow continuity should influence:
+
+- proposal ranking
+- contextual timing
+- execution confidence
+- generated assistance type
+- interruption sensitivity
+- reusable action selection
+
+Examples:
+
+Repeated debugging workflow
+→ debugging assistance becomes more likely
+
+Repeated research workflow
+→ comparison/synthesis actions become prioritized
+
+Repeated studying workflow
+→ notes/review-question generation becomes more relevant
+
+---
+
+# Proposal Timing Philosophy
+
+The assistant must increasingly decide:
+
+> whether assistance is worth interrupting for.
+
+Factors should include:
+
+- workflow confidence
+- interruption cost
+- contextual richness
+- recent usefulness
+- visual/context confidence
+- user activity state
+- proposal novelty
+- runtime budget state
+
+The assistant should increasingly feel:
+
+- intentional
+- well-timed
+- situationally aware
+
+rather than:
+
+- noisy
+- random
+- reactive
+- repetitive
+
+---
+
+# Runtime Philosophy
+
+The runtime remains:
+
+- isolated
+- bounded
+- lightweight
+- stable
+- deterministic
+
+Phase 18 explicitly rejects:
+
+- recursive execution chains
+- uncontrolled proposal loops
+- runtime/UI entanglement
+- autonomous workflow mutation
+- hidden background execution
+- continuous multimodal polling
+
+The runtime should continue preferring:
+
+- explicit execution paths
+- bounded context requests
+- sparse visual activation
+- deterministic execution plans
+- lightweight presentation updates
+
+---
+
+# UI Philosophy
+
+The UI should increasingly communicate:
+
+- why assistance appeared
+- what workflow was inferred
+- what context influenced the proposal
+- what execution will produce
+- why the proposal matters now
+
+Generated assistance should increasingly feel:
+
+- contextual
+- intelligent
+- relevant
+- trustworthy
+- calm
+
+The UI should NOT become:
+
+- dashboard-heavy
+- overly reactive
+- crowded
+- autonomous-feeling
+
+---
+
+# Explainability Philosophy
+
+Generated proposals should remain:
+
+- explainable
+- suppressible
+- bounded
+- confidence-scored
+- reviewable
+
+The assistant should expose:
+
+- contextual relevance
+- workflow reasoning
+- execution requirements
+- expected results
+- interruption rationale
+
+without exposing:
+
+- hidden reasoning chains
+- sensitive raw context
+- private visual data
+- internal prompts
+
+---
+
+# Memory Philosophy
+
+The assistant may increasingly remember:
+
+- successful reusable execution templates
+- repeated workflow usefulness
+- acceptance patterns
+- execution success patterns
+- bounded workflow continuity
+
+The assistant should NOT build:
+
+- invasive behavioral profiles
+- persistent surveillance histories
+- unrestricted activity tracking
+- hidden user models
+
+Memory remains:
+
+- lightweight
+- usefulness-oriented
+- bounded
+- minimally persistent
+
+---
+
+# Resource Philosophy
+
+The assistant must remain:
+
+- CPU-budget-aware
+- thermally aware
+- responsive
+- interrupt-safe
+- sparse in expensive operations
+
+Phase 18 should increase:
+
+- contextual richness
+- proposal quality
+- workflow sensitivity
+- execution usefulness
+
+without:
+
+- increasing instability
+- creating UI freezes
+- introducing runaway multimodal systems
+- creating constant visual analysis
+
+---
+
+# Stability Philosophy
+
+Phase 18 must continue prioritizing:
+
+- runtime isolation
+- deterministic flows
+- sparse expensive work
+- bounded execution paths
+- stable panel behavior
+- coalesced updates
+
+The assistant should aggressively avoid:
+
+- recursive publish chains
+- continuous visual refresh
+- uncontrolled ranking loops
+- unstable context mutation
+- focus-sensitive execution storms
+- multimodal runaway pipelines
+
+Contextual intelligence must remain:
+
+> architecturally simple and operationally bounded.
+
+---
+
+# Updated System Flow
+
+Sources
+↓
+Live Context Fusion
+↓
+Workflow Continuity
+↓
+Situational Awareness
+↓
+Generated Proposal Synthesis
+↓
+Unified Ranking
+↓
+Budget + Safety Validation
+↓
+Bounded Execution Runtime
+↓
+Result Synthesis
+↓
+Visible Assistance Layer
+↓
+UI / Interaction
+
+---
+
+# Performance Rules
+
+- No unrestricted autonomy
+- No continuous OCR loops
+- No persistent screen surveillance
+- No recursive proposal generation
+- No autonomous execution chains
+- No unrestricted code execution
+- No hidden background workflows
+- No panel lifecycle capture
+- No uncontrolled multimodal polling
+- No excessive UI publish loops
+
+---
+
+# Privacy Rules
+
+The assistant remains:
+
+- local-first
+- privacy-first
+- bounded
+- minimally persistent
+- metadata-oriented
+- explicitly explainable
+
+Richer contextual awareness should improve usefulness,
+not reduce user control.
+
+---
+
+# Tentative Ticket Direction
+
+## T18.1 — Live Context Provider Bridge
+
+Bridge fused/canonical context into GeneratedExecutionContext.
+
+Goals:
+
+- eliminate stale clipboard-driven proposals
+- improve contextual freshness
+- unify runtime context inputs
+- safely expose current workflow state
+
+No UI-triggered loops.
+
+---
+
+## T18.2 — Sparse Visual Peek Activation
+
+Allow bounded one-shot visual context requests.
+
+Requirements:
+
+- explicit trigger conditions
+- sparse execution
+- strict budgeting
+- isolated runtime path
+- no panel lifecycle coupling
+
+Visual context should activate only when:
+- context confidence is weak
+- workflow inference is insufficient
+- richer situational awareness is needed
+
+---
+
+## T18.3 — Generated Proposal Activation
+
+Begin surfacing generated execution proposals in live proposal UI.
+
+Requirements:
+
+- generated proposals compete with static actions
+- unified ranking determines visibility
+- low-confidence proposals suppressed
+- workflow-aware proposal timing
+- calm/non-spammy behavior
+
+---
+
+## T18.4 — Live Generated Execution
+
+Allow accepted generated proposals to execute through the bounded runtime.
+
+Requirements:
+
+- user-approved execution only
+- structured result presentation
+- bounded runtime execution
+- cancellation support
+- workflow-aware outputs
+
+This becomes the first true:
+> “the assistant actually does meaningful contextual work”
+milestone.
+
+---
+
+## T18.5 — Contextual Chime-In Policy
+
+Teach the assistant when to speak.
+
+Factors:
+
+- workflow continuity
+- interruption cost
+- confidence
+- contextual richness
+- visual/context certainty
+- recent usefulness
+- proposal novelty
+
+The assistant should increasingly:
+- decide whether assistance is worth surfacing.
+
+---
+
+## T18.6 — Inline Assistance Foundations
+
+Prepare future inline contextual assistance.
+
+Support future:
+- cursor-adjacent proposals
+- selection-aware inline assistance
+- embedded contextual execution affordances
+
+without creating:
+- UI instability
+- focus-trigger loops
+- aggressive overlays
+
+---
+
+# Out of Scope
+
+Do NOT implement:
+
+- unrestricted autonomous agents
+- persistent visual surveillance
+- unrestricted code synthesis
+- hidden background execution
+- recursive execution chains
+- autonomous app control
+- unrestricted shell execution
+- continuous multimodal polling
+- invasive behavioral profiling
+- cloud-dependent multimodal systems
+
+---
+
+# Success Criteria
+
+After Phase 18:
+
+- generated proposals become visibly useful
+- contextual awareness substantially improves
+- workflow-sensitive assistance feels real
+- generated execution becomes externally obvious
+- proposal quality improves dramatically
+- stale/basic proposals become less dominant
+- visual context safely improves situational awareness
+- the assistant begins feeling proactive
+- runtime stability remains strong
+- responsiveness remains high
+- the assistant still feels calm, bounded, and trustworthy
+- contextual intelligence feels genuinely situational
+- the system begins behaving like a true workflow companion
+
+---
+
 ### Resulting UX
 
 After Phase 9:

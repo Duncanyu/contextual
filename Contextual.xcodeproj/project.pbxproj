@@ -179,6 +179,9 @@
 		AA0001FB000000000000010B /* UnifiedActionRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FB000000000000010B /* UnifiedActionRanker.swift */; };
 		AA0001FC000000000000010C /* UnifiedActionRankingDebug.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FC000000000000010C /* UnifiedActionRankingDebug.swift */; };
 		AA0001FD000000000000010D /* Phase17StabilitySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FD000000000000010D /* Phase17StabilitySelfTest.swift */; };
+		AA0001E7000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E0000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift */; };
+		AA0001E8000000000000010F /* GeneratedExecutionContextBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */; };
+		AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -358,6 +361,9 @@
 		AA0002FB000000000000010B /* UnifiedActionRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedActionRanker.swift; sourceTree = "<group>"; };
 		AA0002FC000000000000010C /* UnifiedActionRankingDebug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedActionRankingDebug.swift; sourceTree = "<group>"; };
 		AA0002FD000000000000010D /* Phase17StabilitySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase17StabilitySelfTest.swift; sourceTree = "<group>"; };
+		AA0003E0000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalGeneratedExecutionContextSnapshot.swift; sourceTree = "<group>"; };
+		AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionContextBridge.swift; sourceTree = "<group>"; };
+		AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgedGeneratedExecutionContextProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -561,6 +567,9 @@
 				AA0002C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift */,
 				AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */,
 				AA0002C5000000000000EB /* GeneratedExecutionContext.swift */,
+				AA0003E0000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift */,
+				AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */,
+				AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -844,6 +853,9 @@
 				AA0001C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift in Sources */,
 				AA0001C4000000000000EA /* GeneratedExecutionRuntime.swift in Sources */,
 				AA0001C5000000000000EB /* GeneratedExecutionContext.swift in Sources */,
+				AA0001E7000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift in Sources */,
+				AA0001E8000000000000010F /* GeneratedExecutionContextBridge.swift in Sources */,
+				AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,
