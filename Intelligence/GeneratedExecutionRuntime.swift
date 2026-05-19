@@ -8,6 +8,7 @@ actor GeneratedExecutionRuntime {
 	private let configuration: GeneratedExecutionRuntimeConfiguration
 	private let contextProvider: any GeneratedExecutionContextProvider
 	private let primitiveRunner: ExecutionPrimitiveRunner
+	private let budgetManager: GeneratedExecutionBudgetManager
 
 	private(set) var snapshot: GeneratedExecutionRuntimeSnapshot = .initial
 	private var cancelRequested = false
@@ -15,11 +16,13 @@ actor GeneratedExecutionRuntime {
 	init(
 		configuration: GeneratedExecutionRuntimeConfiguration = .production,
 		contextProvider: any GeneratedExecutionContextProvider = StaticGeneratedExecutionContextProvider(packet: nil),
-		primitiveRunner: ExecutionPrimitiveRunner = ExecutionPrimitiveRunner()
+		primitiveRunner: ExecutionPrimitiveRunner = ExecutionPrimitiveRunner(),
+		budgetManager: GeneratedExecutionBudgetManager = GeneratedExecutionBudgetManager()
 	) {
 		self.configuration = configuration
 		self.contextProvider = contextProvider
 		self.primitiveRunner = primitiveRunner
+		self.budgetManager = budgetManager
 	}
 
 	// MARK: - Public API
@@ -40,6 +43,16 @@ actor GeneratedExecutionRuntime {
 			return .rejected(validationError)
 		}
 
+		let startBudget = await budgetManager.canStartExecution(
+			action: action,
+			contextSnapshot: makeBudgetSnapshot(activeSamplingRequested: false)
+		)
+		if !startBudget.allowed {
+			await budgetManager.recordExecutionRejected(action: action, reason: startBudget.reason)
+			log(event: "start_rejected", reason: startBudget.reason.rawValue, actionId: action.id)
+			return .rejected(startBudget.runtimeError)
+		}
+
 		cancelRequested = false
 		let startedAt = Date()
 		transition(
@@ -50,8 +63,10 @@ actor GeneratedExecutionRuntime {
 			warningCodes: []
 		)
 		log(event: "start_accepted", reason: nil, actionId: action.id)
+		await budgetManager.recordExecutionStarted(action: action)
 
 		let result = await runLifecycle(action: action, startedAt: startedAt)
+		await budgetManager.recordExecutionCompleted(action: action, result: result)
 		return .completed(result)
 	}
 
@@ -123,6 +138,21 @@ actor GeneratedExecutionRuntime {
 
 		if let abort = checkAbort(action: action, startedAt: startedAt, deadline: deadline) {
 			return abort
+		}
+
+		let plan = action.executionPlan
+		let samplingRequested = plan.requiresVision || plan.requiresOCR
+		let gatherBudget = await budgetManager.canGatherContext(
+			requirements: action.requiredContextTypes,
+			budget: plan.executionBudget,
+			snapshot: makeBudgetSnapshot(activeSamplingRequested: samplingRequested)
+		)
+		if !gatherBudget.allowed {
+			return finishBudgetDenied(
+				action: action,
+				startedAt: startedAt,
+				decision: gatherBudget
+			)
 		}
 
 		transition(
@@ -227,6 +257,32 @@ actor GeneratedExecutionRuntime {
 				)
 			}
 
+			let primitiveBudget = await budgetManager.canRunPrimitive(
+				primitive,
+				action: action,
+				snapshot: makeBudgetSnapshot(activeSamplingRequested: false)
+			)
+			if !primitiveBudget.allowed {
+				let code = "budget_\(primitiveBudget.reason.rawValue)"
+				warnings.append(code)
+				log(event: "primitive_skipped", reason: code, actionId: action.id)
+				if fallback == .failFast {
+					let result = finishBudgetDenied(
+						action: action,
+						startedAt: startedAt,
+						decision: primitiveBudget
+					)
+					return PrimitiveRunOutcome(
+						outputs: outputs,
+						warnings: warnings,
+						status: .failed,
+						abortResult: result
+					)
+				}
+				continue
+			}
+
+			await budgetManager.recordPrimitiveStarted(primitive, action: action)
 			log(event: "primitive_started", reason: primitive.rawValue, actionId: action.id)
 
 			do {
@@ -243,6 +299,7 @@ actor GeneratedExecutionRuntime {
 				warnings.append(code)
 				log(event: "primitive_skipped", reason: code, actionId: action.id)
 				if fallback == .failFast {
+					await budgetManager.recordPrimitiveCompleted(primitive, action: action)
 					let result = finishFailed(
 						action: action,
 						startedAt: startedAt,
@@ -260,6 +317,7 @@ actor GeneratedExecutionRuntime {
 				warnings.append(ExecutionPrimitiveRunnerError.insufficientContext.rawValue)
 				log(event: "primitive_skipped", reason: "error", actionId: action.id)
 				if fallback == .failFast {
+					await budgetManager.recordPrimitiveCompleted(primitive, action: action)
 					let result = finishFailed(
 						action: action,
 						startedAt: startedAt,
@@ -275,6 +333,7 @@ actor GeneratedExecutionRuntime {
 				}
 			}
 
+			await budgetManager.recordPrimitiveCompleted(primitive, action: action)
 			await lifecycleStepPause()
 		}
 
@@ -356,6 +415,28 @@ actor GeneratedExecutionRuntime {
 		)
 		log(event: "timeout", reason: nil, actionId: action.id)
 		return result
+	}
+
+	private func makeBudgetSnapshot(activeSamplingRequested: Bool) -> GeneratedExecutionBudgetSnapshot {
+		GeneratedExecutionBudgetSnapshot(
+			activeExecutionCount: isExecutionActive ? 1 : 0,
+			runtimeState: snapshot.currentState,
+			permissionAvailability: [:],
+			activeSamplingRequested: activeSamplingRequested
+		)
+	}
+
+	private func finishBudgetDenied(
+		action: GeneratedExecutionAction,
+		startedAt: Date,
+		decision: BudgetDecision
+	) -> ExecutionResult {
+		finishFailed(
+			action: action,
+			startedAt: startedAt,
+			error: decision.runtimeError,
+			extraWarnings: [decision.reason.rawValue]
+		)
 	}
 
 	private func finishFailed(
@@ -515,6 +596,19 @@ extension GeneratedExecutionRuntime {
 		)
 		guard case .completed(let timed) = await timeoutRuntime.start(action: timeoutAction),
 		      timed.status == .timedOut else { return false }
+
+		guard await GeneratedExecutionBudgetManager.runSelfTest() else { return false }
+
+		let denyCpu = StaticCpuBudgetSnapshotProvider(
+			snapshot: CpuBudgetSnapshot(systemCPUUsagePercent: 99, thermalStateCode: "nominal")
+		)
+		let budgetDeniedRuntime = GeneratedExecutionRuntime(
+			contextProvider: provider,
+			budgetManager: GeneratedExecutionBudgetManager(cpuProvider: denyCpu)
+		)
+		guard case .rejected(.budgetExceeded) = await budgetDeniedRuntime.start(action: SelfTestFixtures.validAction()) else {
+			return false
+		}
 
 		return true
 	}
