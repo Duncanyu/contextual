@@ -3219,6 +3219,673 @@ After Phase 16:
 
 ---
 
+# Phase 17 Philosophy
+
+Phase 16 established:
+
+Sources
+↓
+Context
+↓
+Workflow Inference
+↓
+Generated Suggestions
+↓
+Visible Assistance
+
+Phase 17 evolves this into:
+
+Sources
+↓
+Rich Context
+↓
+Workflow + Intent Understanding
+↓
+Generated Executable Actions
+↓
+Bounded Execution Runtime
+↓
+Concrete Assistance Results
+
+The assistant should now begin evolving from:
+
+> “contextual suggestion engine”
+
+into:
+
+> “bounded executable cognitive assistant.”
+
+---
+
+# Core Philosophy
+
+The assistant should increasingly feel:
+
+- intelligent
+- situationally aware
+- workflow-aware
+- capable
+- adaptive
+- calm
+- useful
+- responsive
+- intentional
+
+while remaining:
+
+- bounded
+- reviewable
+- local-first
+- privacy-first
+- non-autonomous
+- interrupt-safe
+- resource-aware
+- trustworthy
+
+---
+
+# Fundamental Direction
+
+Phase 16 focused on:
+
+- surfacing intelligence
+
+Phase 17 focuses on:
+
+- executing intelligence
+
+Generated actions should no longer feel like:
+
+> “AI-flavored shortcuts”
+
+Instead they should feel like:
+
+> “small contextual cognitive tools generated for the current situation.”
+
+---
+
+# Behavioral Philosophy
+
+The assistant should increasingly:
+
+- understand what the user is doing
+- infer workflows
+- synthesize useful executable actions
+- gather required context
+- execute bounded assistance
+- return concrete results
+
+Examples:
+
+Firefox + YouTube lecture
+→ Generate:
+“Create timestamped study notes”
+
+Research tabs + copied quotes
+→ Generate:
+“Compare claims across sources”
+
+Xcode + stacktrace + paused typing
+→ Generate:
+“Identify likely crash cause”
+
+Messy notes + repeated edits
+→ Generate:
+“Convert notes into structured checklist”
+
+Large article + idle reading
+→ Generate:
+“Extract arguments and counterarguments”
+
+The assistant should increasingly produce:
+
+- actionable outputs
+- workflow-aware execution
+- contextually synthesized assistance
+- situationally useful results
+
+not just:
+
+- summarize
+- explain
+- rewrite
+
+---
+
+# Generated Action Philosophy
+
+Generated actions are now:
+
+- executable
+- contextual
+- synthesized
+- bounded
+- explainable
+- confidence-scored
+- resource-aware
+- safety-reviewed
+
+Generated actions should:
+
+- define their own execution intent
+- identify required context
+- gather bounded inputs
+- execute through safe primitives
+- produce useful outputs
+
+Generated actions should NOT:
+
+- become unrestricted autonomous agents
+- continuously self-trigger
+- recursively generate actions
+- silently execute
+- bypass safety/runtime constraints
+
+---
+
+# Agentic Philosophy
+
+Phase 17 introduces:
+
+> bounded agentic execution
+
+NOT:
+
+> unrestricted autonomous AI
+
+The assistant may:
+
+- synthesize execution plans
+- choose bounded primitives
+- request contextual inputs
+- chain small deterministic operations
+- cache useful generated actions
+
+The assistant may NOT:
+
+- continuously operate in background
+- independently pursue goals
+- self-modify workflows
+- silently control applications
+- execute unrestricted code
+- create hidden task loops
+- autonomously browse indefinitely
+
+---
+
+# Execution Philosophy
+
+Execution should feel:
+
+- deterministic
+- explainable
+- interrupt-safe
+- lightweight
+- observable
+- controllable
+
+Generated execution should operate through:
+
+- bounded execution primitives
+- structured action plans
+- safe execution contracts
+- runtime budgets
+- explicit execution states
+
+---
+
+# Execution Primitive Philosophy
+
+Generated actions should compile into:
+
+- safe primitives
+- contextual operations
+- deterministic execution steps
+
+Examples:
+
+- summarize_context
+- compare_contexts
+- extract_entities
+- generate_checklist
+- explain_error
+- answer_from_context
+- generate_study_notes
+- synthesize_research_summary
+- identify_action_items
+- organize_information
+
+The assistant should increasingly:
+
+- synthesize combinations of primitives
+- adapt execution flow to context
+- reuse successful execution patterns
+
+without becoming:
+
+- unrestricted code execution
+- arbitrary shell execution
+- hidden automation runtime
+
+---
+
+# Runtime Philosophy
+
+The runtime must remain:
+
+- lightweight
+- bounded
+- observable
+- stable
+- architecturally simple
+
+Phase 17 explicitly rejects:
+
+- deeply reactive UI architecture
+- recursive publish loops
+- uncontrolled state propagation
+- layered runtime patch systems
+- continuously mutating panel pipelines
+
+The runtime should prefer:
+
+- simple deterministic flows
+- explicit execution stages
+- isolated execution paths
+- coalesced UI updates
+- stable cached presentation state
+
+---
+
+# UI Philosophy
+
+The UI should increasingly communicate:
+
+- what the assistant wants to do
+- why the action exists
+- what context influenced it
+- what result will be produced
+- whether execution succeeded
+
+without becoming:
+
+- noisy
+- dashboard-heavy
+- autonomous-feeling
+- overwhelming
+- constantly reactive
+
+Generated assistance should feel:
+
+- calm
+- intentional
+- situational
+- trustworthy
+
+---
+
+# Explainability Philosophy
+
+Generated actions should remain:
+
+- explainable
+- confidence-scored
+- bounded
+- suppressible
+- reviewable
+
+The assistant should expose:
+
+- action purpose
+- contextual relevance
+- workflow influence
+- execution requirements
+- expected outputs
+
+without exposing:
+
+- hidden reasoning chains
+- sensitive raw context
+- internal prompts
+- private data structures
+
+---
+
+# Memory Philosophy
+
+Generated execution memory should remain:
+
+- lightweight
+- bounded
+- minimally persistent
+- usefulness-oriented
+
+The assistant may remember:
+
+- successful action templates
+- repeated workflow usefulness
+- action acceptance frequency
+- execution success patterns
+
+The assistant should NOT build:
+
+- persistent behavioral profiles
+- invasive user modeling
+- hidden preference graphs
+- surveillance-oriented histories
+
+---
+
+# Resource Philosophy
+
+The assistant must remain:
+
+- CPU-budget-aware
+- thermally aware
+- interrupt-safe
+- responsive
+
+Hard requirements:
+
+- bounded execution concurrency
+- execution throttling
+- adaptive sampling
+- explicit runtime budgets
+- coalesced expensive work
+
+Phase 17 should introduce:
+
+- configurable CPU budget
+- execution budgeting
+- generation throttling
+- bounded context gathering
+
+without:
+
+- disabling responsiveness
+- causing panel instability
+- introducing background overload
+
+---
+
+# Visual Context Philosophy
+
+Visual understanding remains valuable.
+
+However:
+
+- no continuous OCR loops
+- no persistent screen surveillance
+- no aggressive visual polling
+- no uncontrolled multimodal pipelines
+
+Visual context should eventually become:
+
+- sparse
+- contextual
+- explicitly bounded
+- budget-aware
+- situationally triggered
+
+Visual systems must remain isolated from:
+
+- unstable UI publish pipelines
+- recursive refresh loops
+- focus-sensitive state mutation
+
+---
+
+# Stability Philosophy
+
+Phase 17 must prioritize:
+
+- architectural simplicity
+- runtime isolation
+- predictable UI behavior
+- bounded execution paths
+
+The system should aggressively avoid:
+
+- cascading publish chains
+- deeply intertwined runtime guards
+- unstable panel lifecycle logic
+- recursive state propagation
+- hidden reactive complexity
+
+Execution intelligence must remain:
+
+> architecturally simple.
+
+---
+
+# Updated System Flow
+
+Sources
+↓
+Rich Context Pipeline
+↓
+Workflow Inference
+↓
+Intent Synthesis
+↓
+Generated Execution Plans
+↓
+Safety + Budget Validation
+↓
+Execution Runtime
+↓
+Result Synthesis
+↓
+Visible Assistance Layer
+↓
+UI / Interaction
+
+---
+
+# Performance Rules
+
+- No unrestricted automation
+- No autonomous workflows
+- No continuous OCR loops
+- No persistent visual surveillance
+- No recursive action execution
+- No hidden execution chains
+- No unrestricted code execution
+- No silent app control
+- No uncontrolled runtime mutation
+- No excessive UI publish loops
+
+---
+
+# Privacy Rules
+
+The assistant remains:
+
+- local-first
+- privacy-first
+- bounded
+- minimally persistent
+- metadata-oriented
+
+Generated execution should improve usefulness,
+not reduce user control.
+
+---
+
+# Tentative Ticket Direction
+
+## T17.1 — Generated Execution Model
+
+Create execution-oriented generated action structures.
+
+Introduce:
+
+- GeneratedExecutionAction
+- ExecutionPlan
+- ExecutionPrimitive
+- ExecutionBudget
+- ExecutionResult
+- ExecutionState
+
+No execution yet.
+
+---
+
+## T17.2 — Execution Runtime Foundations
+
+Create a bounded execution runtime.
+
+Goals:
+
+- deterministic execution
+- isolated execution flow
+- interrupt-safe execution
+- execution lifecycle visibility
+- single active execution
+
+---
+
+## T17.3 — Generated Action Runner
+
+Allow generated actions to execute through safe primitives.
+
+Generated actions should:
+- gather context
+- synthesize bounded execution
+- return concrete outputs
+
+without unrestricted autonomy.
+
+---
+
+## T17.4 — Execution Budget System
+
+Introduce runtime budgets for:
+
+- CPU
+- generation frequency
+- active sampling
+- concurrent execution
+- expensive context gathering
+
+---
+
+## T17.5 — Workflow-Aware Execution
+
+Allow workflows to shape:
+
+- generated execution type
+- primitive selection
+- result composition
+- execution confidence
+
+---
+
+## T17.6 — Generated Action Persistence
+
+Introduce lightweight reusable generated actions.
+
+Track:
+
+- usefulness
+- acceptance
+- repeat usage
+- execution success
+
+without invasive profiling.
+
+---
+
+## T17.7 — Execution Result UI
+
+Improve result presentation for generated execution.
+
+Support:
+
+- richer outputs
+- contextual sections
+- structured results
+- execution summaries
+- follow-up suggestions
+
+without becoming cluttered.
+
+---
+
+## T17.8 — Bounded Visual Context Foundations
+
+Reintroduce visual context safely.
+
+Requirements:
+
+- sparse execution
+- isolated runtime
+- bounded scheduling
+- explicit execution windows
+- no panel lifecycle coupling
+
+---
+
+## T17.9 — Generated Execution Ranking
+
+Create unified ranking across:
+
+- static actions
+- generated actions
+- executable plans
+- workflow continuity
+- usefulness history
+- interruption cost
+- confidence
+
+---
+
+## T17.10 — Stability Hardening
+
+Ensure:
+
+- no recursive publish loops
+- no unstable panel refresh behavior
+- no focus-trigger freezes
+- no cascading runtime mutation
+- no uncontrolled reactive chains
+
+---
+
+# Out of Scope
+
+Do NOT implement:
+
+- unrestricted autonomous agents
+- hidden execution chains
+- unrestricted computer control
+- continuous background automation
+- persistent behavioral profiling
+- cloud-dependent execution
+- unrestricted shell execution
+- self-modifying runtime logic
+- unrestricted code synthesis pipelines
+
+---
+
+# Success Criteria
+
+After Phase 17:
+
+- generated actions execute meaningful assistance
+- contextual usefulness substantially improves
+- workflows influence execution quality
+- generated actions feel intentional
+- execution remains bounded and trustworthy
+- the assistant feels substantially more capable
+- usefulness becomes externally obvious
+- runtime stability remains strong
+- responsiveness remains high
+- the system still feels calm and privacy-first
+- execution intelligence feels real without becoming intrusive
+
+---
+
 ### Resulting UX
 
 After Phase 9:
