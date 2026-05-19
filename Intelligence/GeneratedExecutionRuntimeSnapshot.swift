@@ -31,6 +31,11 @@ enum GeneratedExecutionStartOutcome: Equatable, Sendable {
 struct GeneratedExecutionRuntimeConfiguration: Sendable, Equatable {
 	/// Nanoseconds to await between lifecycle transitions (`0` = yield only).
 	var stepDelayNanoseconds: UInt64
+	/// Self-test only: caps wall-clock execution below plan budget while keeping plan validation unchanged.
+	var maxExecutionTimeOverride: TimeInterval?
 
-	static let production = GeneratedExecutionRuntimeConfiguration(stepDelayNanoseconds: 0)
+	static let production = GeneratedExecutionRuntimeConfiguration(
+		stepDelayNanoseconds: 0,
+		maxExecutionTimeOverride: nil
+	)
 }

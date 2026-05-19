@@ -145,6 +145,11 @@
 		AA0001C2000000000000E8 /* GeneratedExecutionRuntimeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C2000000000000E8 /* GeneratedExecutionRuntimeError.swift */; };
 		AA0001C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift */; };
 		AA0001C4000000000000EA /* GeneratedExecutionRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */; };
+		AA0001C5000000000000EB /* GeneratedExecutionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C5000000000000EB /* GeneratedExecutionContext.swift */; };
+		AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */; };
+		AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */; };
+		AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */; };
+		AA0001C9000000000000EF /* GeneratedExecutionResultSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C9000000000000EF /* GeneratedExecutionResultSynthesizer.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -290,6 +295,11 @@
 		AA0002C2000000000000E8 /* GeneratedExecutionRuntimeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionRuntimeError.swift; sourceTree = "<group>"; };
 		AA0002C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionRuntimeSnapshot.swift; sourceTree = "<group>"; };
 		AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionRuntime.swift; sourceTree = "<group>"; };
+		AA0002C5000000000000EB /* GeneratedExecutionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionContext.swift; sourceTree = "<group>"; };
+		AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionContextProvider.swift; sourceTree = "<group>"; };
+		AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionPrimitiveOutput.swift; sourceTree = "<group>"; };
+		AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionPrimitiveRunner.swift; sourceTree = "<group>"; };
+		AA0002C9000000000000EF /* GeneratedExecutionResultSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionResultSynthesizer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -489,6 +499,11 @@
 				AA0002C2000000000000E8 /* GeneratedExecutionRuntimeError.swift */,
 				AA0002C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift */,
 				AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */,
+				AA0002C5000000000000EB /* GeneratedExecutionContext.swift */,
+				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
+				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
+				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
+				AA0002C9000000000000EF /* GeneratedExecutionResultSynthesizer.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
 				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
@@ -738,6 +753,11 @@
 				AA0001C2000000000000E8 /* GeneratedExecutionRuntimeError.swift in Sources */,
 				AA0001C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift in Sources */,
 				AA0001C4000000000000EA /* GeneratedExecutionRuntime.swift in Sources */,
+				AA0001C5000000000000EB /* GeneratedExecutionContext.swift in Sources */,
+				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
+				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
+				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,
+				AA0001C9000000000000EF /* GeneratedExecutionResultSynthesizer.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
 				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,
