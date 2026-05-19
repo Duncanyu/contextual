@@ -24,6 +24,18 @@ final class ScreenCaptureSource: SystemSource {
 		}
 	}
 
+	/// One-shot screen frame for explicit execution requests (T17.8). Caller must discard `CGImage` immediately.
+	static func captureSingleFrame() -> (image: CGImage, width: Int, height: Int)? {
+		guard isScreenRecordingAuthorized() else { return nil }
+		guard let image = CGWindowListCreateImage(
+			CGRect.infinite,
+			.optionOnScreenOnly,
+			kCGNullWindowID,
+			[.bestResolution]
+		) else { return nil }
+		return (image, image.width, image.height)
+	}
+
 	func captureNow() {
 		print("[ScreenCapture] capture start")
 

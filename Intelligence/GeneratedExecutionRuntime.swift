@@ -11,6 +11,8 @@ actor GeneratedExecutionRuntime {
 	private let budgetManager: GeneratedExecutionBudgetManager
 	private let workflowPlanner: WorkflowExecutionPlanner
 	private let persistenceManager: GeneratedActionPersistenceManager?
+	/// Optional bounded visual scheduler (default nil — no visual collection in T17.8).
+	private let visualContextScheduler: VisualContextScheduler?
 
 	private(set) var snapshot: GeneratedExecutionRuntimeSnapshot = .initial
 	private var cancelRequested = false
@@ -21,7 +23,8 @@ actor GeneratedExecutionRuntime {
 		primitiveRunner: ExecutionPrimitiveRunner = ExecutionPrimitiveRunner(),
 		budgetManager: GeneratedExecutionBudgetManager = GeneratedExecutionBudgetManager(),
 		workflowPlanner: WorkflowExecutionPlanner = WorkflowExecutionPlanner(),
-		persistenceManager: GeneratedActionPersistenceManager? = nil
+		persistenceManager: GeneratedActionPersistenceManager? = nil,
+		visualContextScheduler: VisualContextScheduler? = nil
 	) {
 		self.configuration = configuration
 		self.contextProvider = contextProvider
@@ -29,6 +32,7 @@ actor GeneratedExecutionRuntime {
 		self.budgetManager = budgetManager
 		self.workflowPlanner = workflowPlanner
 		self.persistenceManager = persistenceManager
+		self.visualContextScheduler = visualContextScheduler
 	}
 
 	// MARK: - Public API
@@ -661,6 +665,7 @@ extension GeneratedExecutionRuntime {
 		guard WorkflowExecutionPlanner.runSelfTest() else { return false }
 		guard WorkflowExecutionMapper.workflowType(from: .debugging) == .debugging else { return false }
 		guard await GeneratedActionPersistenceManager.runSelfTest() else { return false }
+		guard await VisualContextScheduler.runSelfTest() else { return false }
 
 		let denyCpu = StaticCpuBudgetSnapshotProvider(
 			snapshot: CpuBudgetSnapshot(systemCPUUsagePercent: 99, thermalStateCode: "nominal")

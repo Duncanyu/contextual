@@ -20,6 +20,11 @@ struct GeneratedExecutionContext: Equatable, Sendable, Codable {
 	let clipboardTextExcerpt: String?
 	let ocrTextExcerpt: String?
 	let contextSummary: String?
+	/// Bounded visual description excerpt (explicit visual context only).
+	let visualSummaryExcerpt: String?
+	let visualTags: [String]
+	let visualContextCapturedAt: Date?
+	let visualContextExpiresAt: Date?
 	let availableContextTypes: [ContextRequirementType]
 	let privacyLevel: GeneratedExecutionPrivacyLevel
 	let createdAt: Date
@@ -35,6 +40,10 @@ struct GeneratedExecutionContext: Equatable, Sendable, Codable {
 		clipboardTextExcerpt: String? = nil,
 		ocrTextExcerpt: String? = nil,
 		contextSummary: String? = nil,
+		visualSummaryExcerpt: String? = nil,
+		visualTags: [String] = [],
+		visualContextCapturedAt: Date? = nil,
+		visualContextExpiresAt: Date? = nil,
 		availableContextTypes: [ContextRequirementType],
 		privacyLevel: GeneratedExecutionPrivacyLevel = .boundedExcerpts,
 		createdAt: Date = Date(),
@@ -49,6 +58,10 @@ struct GeneratedExecutionContext: Equatable, Sendable, Codable {
 		self.clipboardTextExcerpt = Self.cap(clipboardTextExcerpt, max: Self.maxExcerptLength)
 		self.ocrTextExcerpt = Self.cap(ocrTextExcerpt, max: Self.maxExcerptLength)
 		self.contextSummary = Self.cap(contextSummary, max: Self.maxSummaryLength)
+		self.visualSummaryExcerpt = Self.cap(visualSummaryExcerpt, max: Self.maxSummaryLength)
+		self.visualTags = Array(visualTags.prefix(8).map { Self.capTag($0) })
+		self.visualContextCapturedAt = visualContextCapturedAt
+		self.visualContextExpiresAt = visualContextExpiresAt
 		self.availableContextTypes = availableContextTypes
 		self.privacyLevel = privacyLevel
 		self.createdAt = createdAt
@@ -59,9 +72,15 @@ struct GeneratedExecutionContext: Equatable, Sendable, Codable {
 		Date() >= expirationDate
 	}
 
-	/// Best-effort primary text for deterministic primitives (priority: selection → clipboard → OCR → summary).
+	var hasActiveVisualContext: Bool {
+		guard visualContextCapturedAt != nil else { return false }
+		if let expiresAt = visualContextExpiresAt, Date() >= expiresAt { return false }
+		return visualSummaryExcerpt != nil || !visualTags.isEmpty
+	}
+
+	/// Best-effort primary text for deterministic primitives (priority: selection → clipboard → OCR → visual → summary).
 	var primarySourceText: String {
-		let candidates = [selectedTextExcerpt, clipboardTextExcerpt, ocrTextExcerpt, contextSummary]
+		let candidates = [selectedTextExcerpt, clipboardTextExcerpt, ocrTextExcerpt, visualSummaryExcerpt, contextSummary]
 		for raw in candidates {
 			let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 			if !trimmed.isEmpty { return trimmed }
@@ -107,5 +126,39 @@ struct GeneratedExecutionContext: Equatable, Sendable, Codable {
 		guard !trimmed.isEmpty else { return nil }
 		if trimmed.count <= max { return trimmed }
 		return String(trimmed.prefix(max))
+	}
+
+	private static func capTag(_ value: String) -> String {
+		let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard trimmed.count <= 48 else { return String(trimmed.prefix(48)) }
+		return trimmed
+	}
+
+	/// Merges bounded visual context from an explicit scheduler result (no automatic collection).
+	func merging(visual result: BoundedVisualContextResult) -> GeneratedExecutionContext {
+		var types = availableContextTypes
+		if result.status == .completed || result.status == .partial {
+			if !types.contains(.screenCapture) { types.append(.screenCapture) }
+			if result.ocrExcerpt != nil, !types.contains(.fusedVisual) { types.append(.fusedVisual) }
+		}
+		return GeneratedExecutionContext(
+			sourceType: sourceType,
+			appName: appName,
+			windowTitle: windowTitle,
+			workflowType: workflowType,
+			intentType: intentType,
+			selectedTextExcerpt: selectedTextExcerpt,
+			clipboardTextExcerpt: clipboardTextExcerpt,
+			ocrTextExcerpt: result.ocrExcerpt ?? ocrTextExcerpt,
+			contextSummary: contextSummary,
+			visualSummaryExcerpt: result.visualSummary ?? visualSummaryExcerpt,
+			visualTags: result.visualTags.isEmpty ? visualTags : result.visualTags,
+			visualContextCapturedAt: result.capturedAt ?? visualContextCapturedAt,
+			visualContextExpiresAt: result.expiresAt ?? visualContextExpiresAt,
+			availableContextTypes: types,
+			privacyLevel: privacyLevel,
+			createdAt: createdAt,
+			expirationDate: expirationDate
+		)
 	}
 }

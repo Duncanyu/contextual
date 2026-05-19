@@ -129,6 +129,39 @@ actor GeneratedExecutionBudgetManager {
 		return BudgetDecision.allow(priority: budget.budgetPriority, metadata: ["gate": "gather"])
 	}
 
+	/// Explicit bounded visual context collection (T17.8) — never bypasses vision/OCR/sampling gates.
+	func canCollectVisualContext(
+		request: BoundedVisualContextRequest,
+		snapshot: GeneratedExecutionBudgetSnapshot
+	) async -> BudgetDecision {
+		let budget = request.budget
+		if let invalid = validateBudgetShape(budget) {
+			return invalid
+		}
+		if budget.allowsBackgroundWork {
+			return deny(.backgroundWorkNotAllowed, budget: budget, meta: ["gate": "visual"])
+		}
+		if !activeSamplingPermitted(budget: budget, snapshot: snapshot) {
+			return deny(.activeSamplingDenied, budget: budget, meta: ["gate": "visual"])
+		}
+		if request.requiresOCR && !budget.allowsOCR {
+			return deny(.ocrNotAllowed, budget: budget, meta: ["gate": "visual"])
+		}
+		if request.requiresVisualDescription && !budget.allowsVision {
+			return deny(.visionNotAllowed, budget: budget, meta: ["gate": "visual"])
+		}
+		if request.allowedSources.contains(.screenCapture)
+			&& !request.permissionGranted(.screenRecording)
+			&& !snapshot.permissionGranted(.screenRecording)
+		{
+			return deny(.expensiveContextDenied, budget: budget, meta: ["gate": "visual", "perm": "screen"])
+		}
+		if let cpuDecision = evaluateCpuBudget(budget: budget, gate: "visual") {
+			return cpuDecision
+		}
+		return BudgetDecision.allow(priority: budget.budgetPriority, metadata: ["gate": "visual"])
+	}
+
 	func canRunPrimitive(
 		_ primitive: ExecutionPrimitive,
 		action: GeneratedExecutionAction,
@@ -419,6 +452,16 @@ extension GeneratedExecutionBudgetManager {
 			snapshot: GeneratedExecutionBudgetSnapshot(activeExecutionCount: 1, runtimeState: .executing)
 		)
 		guard !primConcurrency.allowed, primConcurrency.reason == .concurrencyLimitReached else { return false }
+
+		let visualReq = BoundedVisualContextRequest(
+			reason: "budget_self_test",
+			workflowType: .debugging,
+			intentType: .explain,
+			requiresOCR: true,
+			budget: ExecutionBudget(allowsVision: true, allowsOCR: false)
+		)
+		let visualDeny = await manager.canCollectVisualContext(request: visualReq, snapshot: .idle)
+		guard !visualDeny.allowed, visualDeny.reason == .ocrNotAllowed else { return false }
 
 		return true
 	}

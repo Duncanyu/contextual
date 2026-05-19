@@ -169,6 +169,11 @@
 		AA0001F30000000000000103 /* GeneratedExecutionResultPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F30000000000000103 /* GeneratedExecutionResultPresentation.swift */; };
 		AA0001F10000000000000101 /* GeneratedExecutionResultPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F10000000000000101 /* GeneratedExecutionResultPresenter.swift */; };
 		AA0001F20000000000000102 /* GeneratedExecutionResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F20000000000000102 /* GeneratedExecutionResultView.swift */; };
+		AA0001F40000000000000104 /* BoundedVisualContextModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F40000000000000104 /* BoundedVisualContextModels.swift */; };
+		AA0001F50000000000000105 /* BoundedVisualContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F50000000000000105 /* BoundedVisualContextProvider.swift */; };
+		AA0001F60000000000000106 /* ScreenCaptureBoundedVisualContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F60000000000000106 /* ScreenCaptureBoundedVisualContextProvider.swift */; };
+		AA0001F70000000000000107 /* BoundedVisualContextDebug.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F70000000000000107 /* BoundedVisualContextDebug.swift */; };
+		AA0001F80000000000000108 /* VisualContextScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F80000000000000108 /* VisualContextScheduler.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -338,6 +343,11 @@
 		AA0002F30000000000000103 /* GeneratedExecutionResultPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionResultPresentation.swift; sourceTree = "<group>"; };
 		AA0002F10000000000000101 /* GeneratedExecutionResultPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionResultPresenter.swift; sourceTree = "<group>"; };
 		AA0002F20000000000000102 /* GeneratedExecutionResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionResultView.swift; sourceTree = "<group>"; };
+		AA0002F40000000000000104 /* BoundedVisualContextModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedVisualContextModels.swift; sourceTree = "<group>"; };
+		AA0002F50000000000000105 /* BoundedVisualContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedVisualContextProvider.swift; sourceTree = "<group>"; };
+		AA0002F60000000000000106 /* ScreenCaptureBoundedVisualContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureBoundedVisualContextProvider.swift; sourceTree = "<group>"; };
+		AA0002F70000000000000107 /* BoundedVisualContextDebug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedVisualContextDebug.swift; sourceTree = "<group>"; };
+		AA0002F80000000000000108 /* VisualContextScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextScheduler.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -561,6 +571,11 @@
 				AA0002ED000000000000FD /* GeneratedActionPersistenceMetadata.swift */,
 				AA0002EE000000000000FE /* GeneratedActionReuseConverter.swift */,
 				AA0002EF000000000000FF /* GeneratedActionPersistenceManager.swift */,
+				AA0002F40000000000000104 /* BoundedVisualContextModels.swift */,
+				AA0002F50000000000000105 /* BoundedVisualContextProvider.swift */,
+				AA0002F60000000000000106 /* ScreenCaptureBoundedVisualContextProvider.swift */,
+				AA0002F70000000000000107 /* BoundedVisualContextDebug.swift */,
+				AA0002F80000000000000108 /* VisualContextScheduler.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
 				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
@@ -834,6 +849,11 @@
 				AA0001E4000000000000FD /* GeneratedActionPersistenceMetadata.swift in Sources */,
 				AA0001E5000000000000FE /* GeneratedActionReuseConverter.swift in Sources */,
 				AA0001E6000000000000FF /* GeneratedActionPersistenceManager.swift in Sources */,
+				AA0001F40000000000000104 /* BoundedVisualContextModels.swift in Sources */,
+				AA0001F50000000000000105 /* BoundedVisualContextProvider.swift in Sources */,
+				AA0001F60000000000000106 /* ScreenCaptureBoundedVisualContextProvider.swift in Sources */,
+				AA0001F70000000000000107 /* BoundedVisualContextDebug.swift in Sources */,
+				AA0001F80000000000000108 /* VisualContextScheduler.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
 				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,
