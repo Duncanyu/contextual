@@ -11,6 +11,7 @@ struct AssistantPanelView: View {
 	@State private var dynamicActionPreviewExpanded: Bool = false
 	@State private var inlineAssistanceDebugExpanded: Bool = false
 	@State private var visibleIntelligenceDebugExpanded: Bool = false
+	@State private var generatedExecutionResultDebugExpanded: Bool = false
 	@State private var dismissedVisibleGeneratedActionIds: Set<UUID> = []
 
 	var body: some View {
@@ -214,6 +215,22 @@ struct AssistantPanelView: View {
 						.padding(.top, 4)
 				} label: {
 					Text("Visible intelligence (internal)")
+						.font(.caption)
+						.fontWeight(.medium)
+				}
+
+				DisclosureGroup(isExpanded: $generatedExecutionResultDebugExpanded) {
+					VStack(alignment: .leading, spacing: 10) {
+						GeneratedExecutionResultView(
+							presentation: GeneratedExecutionResultPresenter.samplePresentation()
+						)
+						GeneratedExecutionResultView(
+							presentation: GeneratedExecutionResultPresenter.sampleFailedPresentation()
+						)
+					}
+					.padding(.top, 4)
+				} label: {
+					Text("Generated execution result (sample)")
 						.font(.caption)
 						.fontWeight(.medium)
 				}

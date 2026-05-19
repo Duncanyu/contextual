@@ -166,6 +166,9 @@
 		AA0001E4000000000000FD /* GeneratedActionPersistenceMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002ED000000000000FD /* GeneratedActionPersistenceMetadata.swift */; };
 		AA0001E5000000000000FE /* GeneratedActionReuseConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002EE000000000000FE /* GeneratedActionReuseConverter.swift */; };
 		AA0001E6000000000000FF /* GeneratedActionPersistenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002EF000000000000FF /* GeneratedActionPersistenceManager.swift */; };
+		AA0001F30000000000000103 /* GeneratedExecutionResultPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F30000000000000103 /* GeneratedExecutionResultPresentation.swift */; };
+		AA0001F10000000000000101 /* GeneratedExecutionResultPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F10000000000000101 /* GeneratedExecutionResultPresenter.swift */; };
+		AA0001F20000000000000102 /* GeneratedExecutionResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F20000000000000102 /* GeneratedExecutionResultView.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -332,6 +335,9 @@
 		AA0002ED000000000000FD /* GeneratedActionPersistenceMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPersistenceMetadata.swift; sourceTree = "<group>"; };
 		AA0002EE000000000000FE /* GeneratedActionReuseConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionReuseConverter.swift; sourceTree = "<group>"; };
 		AA0002EF000000000000FF /* GeneratedActionPersistenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPersistenceManager.swift; sourceTree = "<group>"; };
+		AA0002F30000000000000103 /* GeneratedExecutionResultPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionResultPresentation.swift; sourceTree = "<group>"; };
+		AA0002F10000000000000101 /* GeneratedExecutionResultPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionResultPresenter.swift; sourceTree = "<group>"; };
+		AA0002F20000000000000102 /* GeneratedExecutionResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionResultView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -390,6 +396,9 @@
 				AA0002BA000000000000E1 /* WorkflowContinuityDisplayView.swift */,
 				AA00022F000000000000002D /* SuggestionCard.swift */,
 				AA0002330000000000000031 /* ResultView.swift */,
+				AA0002F30000000000000103 /* GeneratedExecutionResultPresentation.swift */,
+				AA0002F10000000000000101 /* GeneratedExecutionResultPresenter.swift */,
+				AA0002F20000000000000102 /* GeneratedExecutionResultView.swift */,
 				AA0002340000000000000032 /* InputPreviewView.swift */,
 				AA0002360000000000000033 /* PanelLayout.swift */,
 				AA0002370000000000000034 /* SystemStatusView.swift */,
@@ -701,6 +710,9 @@
 				AA0001B00000000000000D0 /* VisibleGeneratedActionsSection.swift in Sources */,
 				AA0001240000000000000024 /* SuggestionCard.swift in Sources */,
 				AA0001280000000000000028 /* ResultView.swift in Sources */,
+				AA0001F30000000000000103 /* GeneratedExecutionResultPresentation.swift in Sources */,
+				AA0001F10000000000000101 /* GeneratedExecutionResultPresenter.swift in Sources */,
+				AA0001F20000000000000102 /* GeneratedExecutionResultView.swift in Sources */,
 				AA0001290000000000000029 /* InputPreviewView.swift in Sources */,
 				AA0001300000000000000030 /* PanelLayout.swift in Sources */,
 				AA0001310000000000000031 /* SystemStatusView.swift in Sources */,
