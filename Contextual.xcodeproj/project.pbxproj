@@ -154,6 +154,11 @@
 		AA0001CB000000000000F1 /* CpuBudgetSnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002CB000000000000F1 /* CpuBudgetSnapshotProvider.swift */; };
 		AA0001CC000000000000F2 /* GeneratedExecutionBudgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002CC000000000000F2 /* GeneratedExecutionBudgetSnapshot.swift */; };
 		AA0001CD000000000000F3 /* GeneratedExecutionBudgetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002CD000000000000F3 /* GeneratedExecutionBudgetManager.swift */; };
+		AA0001CE000000000000F4 /* WorkflowExecutionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002CE000000000000F4 /* WorkflowExecutionTypes.swift */; };
+		AA0001CF000000000000F5 /* WorkflowExecutionMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002CF000000000000F5 /* WorkflowExecutionMapper.swift */; };
+		AA0001D0000000000000F6 /* WorkflowExecutionProfileProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002D00000000000000F6 /* WorkflowExecutionProfileProvider.swift */; };
+		AA0001D1000000000000F7 /* WorkflowExecutionPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002D1000000000000F7 /* WorkflowExecutionPlanner.swift */; };
+		AA0001D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -308,6 +313,11 @@
 		AA0002CB000000000000F1 /* CpuBudgetSnapshotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuBudgetSnapshotProvider.swift; sourceTree = "<group>"; };
 		AA0002CC000000000000F2 /* GeneratedExecutionBudgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionBudgetSnapshot.swift; sourceTree = "<group>"; };
 		AA0002CD000000000000F3 /* GeneratedExecutionBudgetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionBudgetManager.swift; sourceTree = "<group>"; };
+		AA0002CE000000000000F4 /* WorkflowExecutionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowExecutionTypes.swift; sourceTree = "<group>"; };
+		AA0002CF000000000000F5 /* WorkflowExecutionMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowExecutionMapper.swift; sourceTree = "<group>"; };
+		AA0002D00000000000000F6 /* WorkflowExecutionProfileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowExecutionProfileProvider.swift; sourceTree = "<group>"; };
+		AA0002D1000000000000F7 /* WorkflowExecutionPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowExecutionPlanner.swift; sourceTree = "<group>"; };
+		AA0002D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GeneratedExecutionAction+Workflow.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -516,6 +526,11 @@
 				AA0002CB000000000000F1 /* CpuBudgetSnapshotProvider.swift */,
 				AA0002CC000000000000F2 /* GeneratedExecutionBudgetSnapshot.swift */,
 				AA0002CD000000000000F3 /* GeneratedExecutionBudgetManager.swift */,
+				AA0002CE000000000000F4 /* WorkflowExecutionTypes.swift */,
+				AA0002CF000000000000F5 /* WorkflowExecutionMapper.swift */,
+				AA0002D00000000000000F6 /* WorkflowExecutionProfileProvider.swift */,
+				AA0002D1000000000000F7 /* WorkflowExecutionPlanner.swift */,
+				AA0002D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
 				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
@@ -774,6 +789,11 @@
 				AA0001CB000000000000F1 /* CpuBudgetSnapshotProvider.swift in Sources */,
 				AA0001CC000000000000F2 /* GeneratedExecutionBudgetSnapshot.swift in Sources */,
 				AA0001CD000000000000F3 /* GeneratedExecutionBudgetManager.swift in Sources */,
+				AA0001CE000000000000F4 /* WorkflowExecutionTypes.swift in Sources */,
+				AA0001CF000000000000F5 /* WorkflowExecutionMapper.swift in Sources */,
+				AA0001D0000000000000F6 /* WorkflowExecutionProfileProvider.swift in Sources */,
+				AA0001D1000000000000F7 /* WorkflowExecutionPlanner.swift in Sources */,
+				AA0001D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
 				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,

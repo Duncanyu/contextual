@@ -33,9 +33,12 @@ struct GeneratedExecutionRuntimeConfiguration: Sendable, Equatable {
 	var stepDelayNanoseconds: UInt64
 	/// Self-test only: caps wall-clock execution below plan budget while keeping plan validation unchanged.
 	var maxExecutionTimeOverride: TimeInterval?
+	/// When true, shapes execution plans from workflow profile before primitives run.
+	var workflowPlanningEnabled: Bool
 
 	static let production = GeneratedExecutionRuntimeConfiguration(
 		stepDelayNanoseconds: 0,
-		maxExecutionTimeOverride: nil
+		maxExecutionTimeOverride: nil,
+		workflowPlanningEnabled: true
 	)
 }

@@ -9,6 +9,7 @@ actor GeneratedExecutionRuntime {
 	private let contextProvider: any GeneratedExecutionContextProvider
 	private let primitiveRunner: ExecutionPrimitiveRunner
 	private let budgetManager: GeneratedExecutionBudgetManager
+	private let workflowPlanner: WorkflowExecutionPlanner
 
 	private(set) var snapshot: GeneratedExecutionRuntimeSnapshot = .initial
 	private var cancelRequested = false
@@ -17,12 +18,14 @@ actor GeneratedExecutionRuntime {
 		configuration: GeneratedExecutionRuntimeConfiguration = .production,
 		contextProvider: any GeneratedExecutionContextProvider = StaticGeneratedExecutionContextProvider(packet: nil),
 		primitiveRunner: ExecutionPrimitiveRunner = ExecutionPrimitiveRunner(),
-		budgetManager: GeneratedExecutionBudgetManager = GeneratedExecutionBudgetManager()
+		budgetManager: GeneratedExecutionBudgetManager = GeneratedExecutionBudgetManager(),
+		workflowPlanner: WorkflowExecutionPlanner = WorkflowExecutionPlanner()
 	) {
 		self.configuration = configuration
 		self.contextProvider = contextProvider
 		self.primitiveRunner = primitiveRunner
 		self.budgetManager = budgetManager
+		self.workflowPlanner = workflowPlanner
 	}
 
 	// MARK: - Public API
@@ -177,19 +180,23 @@ actor GeneratedExecutionRuntime {
 			return abort
 		}
 
+		let planning = applyWorkflowPlanning(action: action, context: context)
+		let executionAction = planning.action
+
 		transition(
 			to: .executing,
 			actionId: action.id,
 			startedAt: startedAt,
 			failureReason: nil,
-			warningCodes: []
+			warningCodes: planning.planningWarnings
 		)
 
 		let primitiveRun = await executePrimitives(
-			action: action,
+			action: executionAction,
 			context: context,
 			startedAt: startedAt,
-			deadline: deadline
+			deadline: deadline,
+			extraWarnings: planning.planningWarnings
 		)
 
 		if let abort = primitiveRun.abortResult {
@@ -210,12 +217,15 @@ actor GeneratedExecutionRuntime {
 		log(event: "result_synthesized", reason: primitiveRun.status.rawValue, actionId: action.id)
 
 		let result = GeneratedExecutionResultSynthesizer.synthesize(
-			action: action,
+			action: executionAction,
 			outputs: primitiveRun.outputs,
 			warnings: primitiveRun.warnings,
 			startedAt: startedAt,
 			completedAt: Date(),
-			status: primitiveRun.status
+			status: primitiveRun.status,
+			profile: planning.profile,
+			planningWarnings: planning.planningWarnings,
+			shapedConfidence: planning.shapedConfidence
 		)
 
 		transition(
@@ -237,14 +247,47 @@ actor GeneratedExecutionRuntime {
 		var abortResult: ExecutionResult?
 	}
 
+	private struct WorkflowPlanningOutcome {
+		let action: GeneratedExecutionAction
+		let profile: WorkflowExecutionProfile?
+		let planningWarnings: [String]
+		let shapedConfidence: Double?
+	}
+
+	private func applyWorkflowPlanning(
+		action: GeneratedExecutionAction,
+		context: GeneratedExecutionContext
+	) -> WorkflowPlanningOutcome {
+		guard configuration.workflowPlanningEnabled else {
+			return WorkflowPlanningOutcome(
+				action: action,
+				profile: nil,
+				planningWarnings: [],
+				shapedConfidence: nil
+			)
+		}
+		let shaped = workflowPlanner.shape(action: action, context: context)
+		let shapedAction = action.replacing(
+			plan: shaped.plan,
+			confidence: shaped.shapedConfidence
+		)
+		return WorkflowPlanningOutcome(
+			action: shapedAction,
+			profile: shaped.profile,
+			planningWarnings: shaped.planningWarnings,
+			shapedConfidence: shaped.shapedConfidence
+		)
+	}
+
 	private func executePrimitives(
 		action: GeneratedExecutionAction,
 		context: GeneratedExecutionContext,
 		startedAt: Date,
-		deadline: Date
+		deadline: Date,
+		extraWarnings: [String] = []
 	) async -> PrimitiveRunOutcome {
 		var outputs: [ExecutionPrimitiveOutput] = []
-		var warnings: [String] = []
+		var warnings: [String] = extraWarnings
 		let fallback = action.executionPlan.fallbackBehavior
 
 		for primitive in action.executionPlan.primitives {
@@ -540,7 +583,8 @@ actor GeneratedExecutionRuntime {
 
 extension GeneratedExecutionRuntime {
 	static func runSelfTest() async -> Bool {
-		let slowConfig = GeneratedExecutionRuntimeConfiguration(stepDelayNanoseconds: 12_000_000)
+		var slowConfig = GeneratedExecutionRuntimeConfiguration.production
+		slowConfig.stepDelayNanoseconds = 12_000_000
 		let context = SelfTestFixtures.sampleContext()
 		let provider = StaticGeneratedExecutionContextProvider(packet: context)
 
@@ -584,7 +628,8 @@ extension GeneratedExecutionRuntime {
 		try? await Task.sleep(nanoseconds: 2_000_000)
 		guard case .rejected(.alreadyRunning) = await slow.start(action: SelfTestFixtures.validAction()) else { return false }
 		_ = await slow.cancel()
-		guard case .completed(let cancelled) = await inFlight.value, cancelled.status == .cancelled else { return false }
+		let inFlightOutcome = await inFlight.value
+		guard case .completed(let cancelResult) = inFlightOutcome, cancelResult.status == .cancelled else { return false }
 
 		let timeoutAction = SelfTestFixtures.validAction()
 		var timeoutConfig = slowConfig
@@ -598,6 +643,8 @@ extension GeneratedExecutionRuntime {
 		      timed.status == .timedOut else { return false }
 
 		guard await GeneratedExecutionBudgetManager.runSelfTest() else { return false }
+		guard WorkflowExecutionPlanner.runSelfTest() else { return false }
+		guard WorkflowExecutionMapper.workflowType(from: .debugging) == .debugging else { return false }
 
 		let denyCpu = StaticCpuBudgetSnapshotProvider(
 			snapshot: CpuBudgetSnapshot(systemCPUUsagePercent: 99, thermalStateCode: "nominal")
