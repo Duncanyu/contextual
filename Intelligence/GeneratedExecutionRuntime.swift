@@ -10,6 +10,7 @@ actor GeneratedExecutionRuntime {
 	private let primitiveRunner: ExecutionPrimitiveRunner
 	private let budgetManager: GeneratedExecutionBudgetManager
 	private let workflowPlanner: WorkflowExecutionPlanner
+	private let persistenceManager: GeneratedActionPersistenceManager?
 
 	private(set) var snapshot: GeneratedExecutionRuntimeSnapshot = .initial
 	private var cancelRequested = false
@@ -19,13 +20,15 @@ actor GeneratedExecutionRuntime {
 		contextProvider: any GeneratedExecutionContextProvider = StaticGeneratedExecutionContextProvider(packet: nil),
 		primitiveRunner: ExecutionPrimitiveRunner = ExecutionPrimitiveRunner(),
 		budgetManager: GeneratedExecutionBudgetManager = GeneratedExecutionBudgetManager(),
-		workflowPlanner: WorkflowExecutionPlanner = WorkflowExecutionPlanner()
+		workflowPlanner: WorkflowExecutionPlanner = WorkflowExecutionPlanner(),
+		persistenceManager: GeneratedActionPersistenceManager? = nil
 	) {
 		self.configuration = configuration
 		self.contextProvider = contextProvider
 		self.primitiveRunner = primitiveRunner
 		self.budgetManager = budgetManager
 		self.workflowPlanner = workflowPlanner
+		self.persistenceManager = persistenceManager
 	}
 
 	// MARK: - Public API
@@ -67,9 +70,11 @@ actor GeneratedExecutionRuntime {
 		)
 		log(event: "start_accepted", reason: nil, actionId: action.id)
 		await budgetManager.recordExecutionStarted(action: action)
+		await recordPersistenceReuseIfNeeded(action: action)
 
 		let result = await runLifecycle(action: action, startedAt: startedAt)
 		await budgetManager.recordExecutionCompleted(action: action, result: result)
+		await recordPersistenceOutcome(action: action, result: result)
 		return .completed(result)
 	}
 
@@ -460,6 +465,16 @@ actor GeneratedExecutionRuntime {
 		return result
 	}
 
+	private func recordPersistenceReuseIfNeeded(action: GeneratedExecutionAction) async {
+		guard let persistenceManager, action.isReusable || action.reuseScore > 0 else { return }
+		await persistenceManager.record(.from(kind: .reused, action: action))
+	}
+
+	private func recordPersistenceOutcome(action: GeneratedExecutionAction, result: ExecutionResult) async {
+		guard let persistenceManager else { return }
+		await persistenceManager.recordSuccessfulExecution(action: action, result: result)
+	}
+
 	private func makeBudgetSnapshot(activeSamplingRequested: Bool) -> GeneratedExecutionBudgetSnapshot {
 		GeneratedExecutionBudgetSnapshot(
 			activeExecutionCount: isExecutionActive ? 1 : 0,
@@ -645,6 +660,7 @@ extension GeneratedExecutionRuntime {
 		guard await GeneratedExecutionBudgetManager.runSelfTest() else { return false }
 		guard WorkflowExecutionPlanner.runSelfTest() else { return false }
 		guard WorkflowExecutionMapper.workflowType(from: .debugging) == .debugging else { return false }
+		guard await GeneratedActionPersistenceManager.runSelfTest() else { return false }
 
 		let denyCpu = StaticCpuBudgetSnapshotProvider(
 			snapshot: CpuBudgetSnapshot(systemCPUUsagePercent: 99, thermalStateCode: "nominal")

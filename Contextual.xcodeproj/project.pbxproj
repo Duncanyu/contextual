@@ -159,6 +159,13 @@
 		AA0001D0000000000000F6 /* WorkflowExecutionProfileProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002D00000000000000F6 /* WorkflowExecutionProfileProvider.swift */; };
 		AA0001D1000000000000F7 /* WorkflowExecutionPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002D1000000000000F7 /* WorkflowExecutionPlanner.swift */; };
 		AA0001D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift */; };
+		AA0001E0000000000000F9 /* GeneratedActionPrimitiveSignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002E0000000000000F9 /* GeneratedActionPrimitiveSignature.swift */; };
+		AA0001E1000000000000FA /* ReusableGeneratedActionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002EA000000000000FA /* ReusableGeneratedActionRecord.swift */; };
+		AA0001E2000000000000FB /* GeneratedActionPersistencePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002EB000000000000FB /* GeneratedActionPersistencePolicy.swift */; };
+		AA0001E3000000000000FC /* GeneratedActionPersistenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002EC000000000000FC /* GeneratedActionPersistenceStore.swift */; };
+		AA0001E4000000000000FD /* GeneratedActionPersistenceMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002ED000000000000FD /* GeneratedActionPersistenceMetadata.swift */; };
+		AA0001E5000000000000FE /* GeneratedActionReuseConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002EE000000000000FE /* GeneratedActionReuseConverter.swift */; };
+		AA0001E6000000000000FF /* GeneratedActionPersistenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002EF000000000000FF /* GeneratedActionPersistenceManager.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -318,6 +325,13 @@
 		AA0002D00000000000000F6 /* WorkflowExecutionProfileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowExecutionProfileProvider.swift; sourceTree = "<group>"; };
 		AA0002D1000000000000F7 /* WorkflowExecutionPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowExecutionPlanner.swift; sourceTree = "<group>"; };
 		AA0002D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GeneratedExecutionAction+Workflow.swift"; sourceTree = "<group>"; };
+		AA0002E0000000000000F9 /* GeneratedActionPrimitiveSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPrimitiveSignature.swift; sourceTree = "<group>"; };
+		AA0002EA000000000000FA /* ReusableGeneratedActionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReusableGeneratedActionRecord.swift; sourceTree = "<group>"; };
+		AA0002EB000000000000FB /* GeneratedActionPersistencePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPersistencePolicy.swift; sourceTree = "<group>"; };
+		AA0002EC000000000000FC /* GeneratedActionPersistenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPersistenceStore.swift; sourceTree = "<group>"; };
+		AA0002ED000000000000FD /* GeneratedActionPersistenceMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPersistenceMetadata.swift; sourceTree = "<group>"; };
+		AA0002EE000000000000FE /* GeneratedActionReuseConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionReuseConverter.swift; sourceTree = "<group>"; };
+		AA0002EF000000000000FF /* GeneratedActionPersistenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionPersistenceManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -531,6 +545,13 @@
 				AA0002D00000000000000F6 /* WorkflowExecutionProfileProvider.swift */,
 				AA0002D1000000000000F7 /* WorkflowExecutionPlanner.swift */,
 				AA0002D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift */,
+				AA0002E0000000000000F9 /* GeneratedActionPrimitiveSignature.swift */,
+				AA0002EA000000000000FA /* ReusableGeneratedActionRecord.swift */,
+				AA0002EB000000000000FB /* GeneratedActionPersistencePolicy.swift */,
+				AA0002EC000000000000FC /* GeneratedActionPersistenceStore.swift */,
+				AA0002ED000000000000FD /* GeneratedActionPersistenceMetadata.swift */,
+				AA0002EE000000000000FE /* GeneratedActionReuseConverter.swift */,
+				AA0002EF000000000000FF /* GeneratedActionPersistenceManager.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
 				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
@@ -794,6 +815,13 @@
 				AA0001D0000000000000F6 /* WorkflowExecutionProfileProvider.swift in Sources */,
 				AA0001D1000000000000F7 /* WorkflowExecutionPlanner.swift in Sources */,
 				AA0001D2000000000000F8 /* GeneratedExecutionAction+Workflow.swift in Sources */,
+				AA0001E0000000000000F9 /* GeneratedActionPrimitiveSignature.swift in Sources */,
+				AA0001E1000000000000FA /* ReusableGeneratedActionRecord.swift in Sources */,
+				AA0001E2000000000000FB /* GeneratedActionPersistencePolicy.swift in Sources */,
+				AA0001E3000000000000FC /* GeneratedActionPersistenceStore.swift in Sources */,
+				AA0001E4000000000000FD /* GeneratedActionPersistenceMetadata.swift in Sources */,
+				AA0001E5000000000000FE /* GeneratedActionReuseConverter.swift in Sources */,
+				AA0001E6000000000000FF /* GeneratedActionPersistenceManager.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
 				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,
