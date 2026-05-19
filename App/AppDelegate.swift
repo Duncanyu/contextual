@@ -355,19 +355,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		if let packet = triggerPacket {
 			logTriggerPacket(packet, context: context)
-			Task { self.updateAvailableActions(from: packet, context: context, generation: generation) }
+			Task { await self.updateAvailableActions(from: packet, context: context, generation: generation) }
 		} else {
+			if DynamicOnlyProposalMode.isEnabled {
+				GeneratedProposalActivationDiagnostics.logSkip(
+					phase: "skipped_before_situational_synthesis",
+					detail: "no_trigger_packet last=\(context.lastSourceTrigger?.rawValue ?? "none")"
+				)
+			}
 			preserveOrClearAvailableActions(reason: "no trigger packet")
 		}
 	}
 
-	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel, generation: UInt64) {
+	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel, generation: UInt64) async {
 		let decision = ReasoningEngine.shared.evaluate(context: context, triggerPacket: packet)
 		let primary = decision.primaryActionId ?? "none"
 		print("[ReasoningEngine] decision surface=\(decision.shouldSurface) primary=\(primary) confidence=\(decision.confidence) reason=\(decision.reason)")
 
 		guard decision.shouldSurface else {
+			GeneratedProposalActivationDiagnostics.logSkip(
+				phase: "skipped_before_situational_synthesis",
+				detail: "reasoning_shouldSurface=false trigger=\(packet.triggerType.rawValue)"
+			)
 			preserveOrClearAvailableActions(reason: "reasoning shouldSurface=false")
+			return
+		}
+
+		if DynamicOnlyProposalMode.isEnabled {
+			await updateDynamicOnlyProposals(
+				from: packet,
+				context: context,
+				generation: generation,
+				decision: decision
+			)
 			return
 		}
 
@@ -639,15 +659,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		guard generation == contextPipelineGeneration else { return }
 
+		let proposalSnapshot = buildCanonicalSnapshotForProposalActivation(
+			context: context,
+			fused: canonical
+		)
+		let activationHistory = GeneratedExecutionProposalActivationHistory.fromAppState(
+			lastDismissedProposalActionId: appState.lastDismissedProposalActionId,
+			lastDismissedProposalAt: appState.lastDismissedProposalAt
+		)
+		let proposalHistory = ProposalHistoryMetadata.fromActivationHistory(activationHistory)
+
+		let llmResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
+			snapshot: proposalSnapshot,
+			existingStaticActions: ordered.map(\.id),
+			reusableActions: [],
+			budget: .conservative,
+			history: proposalHistory
+		)
+		let llmCandidates = DynamicGeneratedProposalCandidateMapper.candidates(
+			from: llmResult,
+			snapshot: proposalSnapshot,
+			budget: .conservative
+		)
+
+		let activation = GeneratedExecutionProposalActivator.activateProposals(
+			input: GeneratedExecutionProposalActivationInput(
+				staticActionIds: ordered.map(\.id),
+				staticRelevanceScores: workflowRank.adjustedScores,
+				generatedActions: [],
+				generatedExecutionCandidates: llmCandidates,
+				reusableRecords: [],
+				snapshot: proposalSnapshot,
+				history: activationHistory,
+				workflow: WorkflowInferenceEngine.shared.latestResult(),
+				session: ContextualSessionTracker.shared.currentState(),
+				isManualInvocation: packet.triggerType == .manualInvocation,
+				isActionExecuting: appState.isActionExecuting,
+				useLLMGeneratedCandidatesOnly: true
+			)
+		)
+
+		let visibleStaticSet = Set(activation.visibleStaticActionIds)
+		var panelStaticActions = ordered.filter { visibleStaticSet.contains($0.id) }
+		if panelStaticActions.isEmpty {
+			panelStaticActions = ordered
+		}
+
+		var publishedProposal = finalProposal
+		var publishedProposalKey = finalProposalKey
+		if publishedProposal == nil,
+		   activation.timingDecision.allowsFloatingGenerated,
+		   let floatingId = activation.floatingGeneratedProposalId,
+		   let topGenerated = activation.visibleProposals.first
+		{
+			publishedProposal = ActionProposal(
+				title: "Try: \(topGenerated.title)?",
+				sourceCaption: "Generated proposal",
+				primaryActionId: floatingId,
+				secondaryActionIds: [],
+				confidence: topGenerated.confidence,
+				reason: "generated_execution_proposal"
+			)
+			publishedProposalKey = "\(packet.triggerType.rawValue)|\(floatingId)|generated"
+		}
+
 		publishReasonedActions(
-			ordered: ordered,
-			finalProposal: finalProposal,
-			finalProposalKey: finalProposalKey,
+			ordered: panelStaticActions,
+			finalProposal: publishedProposal,
+			finalProposalKey: publishedProposalKey,
 			strength: strength,
 			packet: packet,
 			context: context,
 			generation: generation,
-			proposalGateAllows: proposalGateResult.shouldGenerate
+			proposalGateAllows: proposalGateResult.shouldGenerate,
+			generatedProposalActivation: activation
 		)
 
 		// T12.6 / T12.6.5: async refinement (cache → micro → LLM) must not block heuristic publish above.
@@ -685,6 +770,229 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 	}
 
+	private func buildCanonicalSnapshotForProposalActivation(
+		context: ContextModel,
+		fused: FusedContextPacket?
+	) -> CanonicalGeneratedExecutionContextSnapshot {
+		let selectedText = ActionInputCapture.primaryText(
+			for: context,
+			minimumLength: 0,
+			preference: .selectedText
+		)
+		var clipboardText = ActionInputCapture.primaryText(
+			for: context,
+			minimumLength: 0,
+			preference: .clipboard
+		)
+		var snapshot = CanonicalGeneratedExecutionContextSnapshotExporter.export(
+			model: context,
+			fused: fused,
+			selectedText: selectedText,
+			clipboardText: clipboardText,
+			workflow: WorkflowInferenceEngine.shared.latestResult(),
+			intent: IntentSynthesisEngine.shared.latestResult(),
+			session: ContextualSessionTracker.shared.currentState(),
+			permissionAvailability: [
+				.screenRecording: WindowSnapshotSource.shared.hasScreenRecordingPermission(),
+				.clipboard: true,
+				.accessibility: true,
+			]
+		)
+		let suppression = GeneratedExecutionClipboardFreshnessPolicy.evaluate(snapshot: snapshot)
+		if !suppression.includeClipboard {
+			clipboardText = nil
+			snapshot = CanonicalGeneratedExecutionContextSnapshotExporter.export(
+				model: context,
+				fused: fused,
+				selectedText: selectedText,
+				clipboardText: nil,
+				workflow: WorkflowInferenceEngine.shared.latestResult(),
+				intent: IntentSynthesisEngine.shared.latestResult(),
+				session: ContextualSessionTracker.shared.currentState(),
+				permissionAvailability: [
+					.screenRecording: WindowSnapshotSource.shared.hasScreenRecordingPermission(),
+					.clipboard: true,
+					.accessibility: true,
+				]
+			)
+		}
+		return snapshot
+	}
+
+	/// T18.3.2 — generated proposals only; no static summarize/explain/rewrite fallbacks.
+	private func updateDynamicOnlyProposals(
+		from packet: TriggerPacket,
+		context: ContextModel,
+		generation: UInt64,
+		decision: ReasoningDecision
+	) async {
+		guard generation == contextPipelineGeneration else {
+			GeneratedProposalActivationDiagnostics.logSkip(
+				phase: "skipped_before_situational_synthesis",
+				detail: "stale_generation"
+			)
+			return
+		}
+
+		let canonical = CanonicalContextState.shared.current()
+		let proposalSnapshot = buildCanonicalSnapshotForProposalActivation(
+			context: context,
+			fused: canonical
+		)
+
+		GeneratedProposalActivationDiagnostics.logAttemptStarted(
+			triggerType: packet.triggerType.rawValue,
+			fusedPacket: canonical != nil
+		)
+
+		let prepared = GeneratedProposalActivationBoundary.prepare(snapshot: proposalSnapshot)
+
+		let activationHistory = GeneratedExecutionProposalActivationHistory.fromAppState(
+			lastDismissedProposalActionId: appState.lastDismissedProposalActionId,
+			lastDismissedProposalAt: appState.lastDismissedProposalAt
+		)
+		let proposalHistory = ProposalHistoryMetadata.fromActivationHistory(activationHistory)
+
+		let llmResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
+			snapshot: prepared.snapshot,
+			existingStaticActions: [],
+			reusableActions: [],
+			budget: .conservative,
+			history: proposalHistory,
+			situational: prepared.situational
+		)
+		let llmCandidates = DynamicGeneratedProposalCandidateMapper.candidates(
+			from: llmResult,
+			snapshot: prepared.snapshot,
+			budget: .conservative
+		)
+
+		let activation = GeneratedExecutionProposalActivator.activateProposals(
+			input: GeneratedExecutionProposalActivationInput(
+				staticActionIds: [],
+				staticRelevanceScores: [],
+				generatedActions: [],
+				generatedExecutionCandidates: llmCandidates,
+				reusableRecords: [],
+				snapshot: prepared.snapshot,
+				history: activationHistory,
+				workflow: WorkflowInferenceEngine.shared.latestResult(),
+				session: ContextualSessionTracker.shared.currentState(),
+				isManualInvocation: packet.triggerType == .manualInvocation,
+				isActionExecuting: appState.isActionExecuting,
+				useLLMGeneratedCandidatesOnly: true,
+				suppressStaticProposalFallback: true
+			)
+		)
+
+		let debugStatus = GeneratedProposalDebugStatusBuilder.build(
+			llmResult: llmResult,
+			llmCandidates: llmCandidates,
+			activation: activation,
+			situational: prepared.situational
+		)
+		print("[GeneratedProposal] \(debugStatus.logLine)")
+		GeneratedProposalActivationDiagnostics.logOutcome(
+			llmResult: llmResult,
+			candidateCount: llmCandidates.count,
+			visibleCount: activation.visibleProposals.count,
+			situational: prepared.situational
+		)
+
+		var publishedProposal: ActionProposal?
+		var publishedProposalKey: String?
+		if activation.timingDecision.allowsFloatingGenerated,
+		   let floatingId = activation.floatingGeneratedProposalId,
+		   let topGenerated = activation.visibleProposals.first
+		{
+			publishedProposal = ActionProposal(
+				title: "Try: \(topGenerated.title)?",
+				sourceCaption: "Generated proposal",
+				primaryActionId: floatingId,
+				secondaryActionIds: [],
+				confidence: topGenerated.confidence,
+				reason: "generated_execution_proposal"
+			)
+			publishedProposalKey = "\(packet.triggerType.rawValue)|\(floatingId)|generated"
+		}
+
+		if packet.triggerType != .manualInvocation, let key = publishedProposalKey {
+			if let dismissedAt = appState.lastDismissedProposalAt,
+			   appState.lastDismissedProposalKey == key,
+			   Date().timeIntervalSince(dismissedAt) < 120
+			{
+				print("[ProposalCooldown] suppressed proposal key=\(key) reason=dismissed")
+				publishedProposal = nil
+				publishedProposalKey = nil
+			} else if let acceptedAt = appState.lastAcceptedProposalAt,
+					  appState.lastAcceptedProposalKey == key,
+					  Date().timeIntervalSince(acceptedAt) < 10
+			{
+				print("[ProposalCooldown] suppressed proposal key=\(key) reason=accepted")
+				publishedProposal = nil
+				publishedProposalKey = nil
+			}
+		}
+
+		let toolActions = registeredToolActions(for: packet, context: context)
+		publishDynamicOnlyReasonedActions(
+			toolActions: toolActions,
+			finalProposal: publishedProposal,
+			finalProposalKey: publishedProposalKey,
+			packet: packet,
+			context: context,
+			generation: generation,
+			generatedProposalActivation: activation,
+			debugStatus: debugStatus,
+			decision: decision
+		)
+	}
+
+	private func registeredToolActions(for packet: TriggerPacket, context: ContextModel) -> [any ActionProtocol] {
+		var evalContext = context
+		evalContext.actionInputSourcePreference = appState.selectedInputSourceChoice
+		return actionRouter.matchingActions(for: packet).filter { action in
+			!DynamicOnlyProposalMode.isGenericStaticAction(action.id) && action.canExecute(context: evalContext)
+		}
+	}
+
+	private func publishDynamicOnlyReasonedActions(
+		toolActions: [any ActionProtocol],
+		finalProposal: ActionProposal?,
+		finalProposalKey: String?,
+		packet: TriggerPacket,
+		context: ContextModel,
+		generation: UInt64,
+		generatedProposalActivation: GeneratedExecutionProposalActivationResult,
+		debugStatus: GeneratedProposalDebugStatus,
+		decision: ReasoningDecision
+	) {
+		guard generation == contextPipelineGeneration else { return }
+
+		appState.applyGeneratedProposalActivation(generatedProposalActivation, debugStatus: debugStatus)
+		appState.availableActions = []
+		appState.registeredToolActions = toolActions
+		appState.currentProposal = finalProposal
+		appState.currentProposalKey = finalProposalKey
+		appState.refreshProposalContext(for: finalProposal)
+		lastReasonedActions = []
+		lastReasonedActionsAt = Date()
+		lastReasonedTriggerType = packet.triggerType
+		lastReasonedProposal = finalProposal
+		lastReasonedProposalKey = finalProposalKey
+		print("[AvailableActions] dynamic_only visible_generated=\(generatedProposalActivation.visibleProposals.count) tools=\(toolActions.count) trigger=\(packet.triggerType.rawValue) reason=\(decision.reason)")
+
+		if let p = finalProposal {
+			maybeShowFloatingSuggestion(
+				proposal: p,
+				suggestionStrength: .strong,
+				context: context,
+				packet: packet,
+				proposalGateAllows: true
+			)
+		}
+	}
+
 	private func publishReasonedActions(
 		ordered: [any ActionProtocol],
 		finalProposal: ActionProposal?,
@@ -693,10 +1001,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		packet: TriggerPacket,
 		context: ContextModel,
 		generation: UInt64,
-		proposalGateAllows: Bool
+		proposalGateAllows: Bool,
+		generatedProposalActivation: GeneratedExecutionProposalActivationResult
 	) {
 		guard generation == contextPipelineGeneration else { return }
 
+		appState.applyGeneratedProposalActivation(generatedProposalActivation)
 		appState.availableActions = ordered
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
@@ -933,7 +1243,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			packet: packet,
 			context: context,
 			generation: generation,
-			proposalGateAllows: proposalGateAllowed
+			proposalGateAllows: proposalGateAllowed,
+			generatedProposalActivation: appState.generatedProposalActivationResult
 		)
 	}
 

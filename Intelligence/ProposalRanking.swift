@@ -35,7 +35,7 @@ enum ProposalRanker {
 				if let rp = reasoningPrimary, tied.contains(rp) {
 					primary = rp
 					tieResolved = true
-				} else {
+				} else if !DynamicOnlyProposalMode.isEnabled {
 					let preferred = ["explain_text", "summarize_text", "rewrite_text"]
 					if let picked = preferred.first(where: { tied.contains($0) }) {
 						primary = picked

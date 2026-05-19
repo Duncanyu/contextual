@@ -7,6 +7,8 @@ enum TriggerType: String, Equatable {
 	case selectedTextEligible = "selected_text_eligible"
 	/// User invoked the assistant explicitly (shortcut or UI).
 	case manualInvocation = "manual_invocation"
+	/// App/window metadata changed with no clipboard/selection trigger (T18.3.4 dynamic-only).
+	case contextMetadataEligible = "context_metadata_eligible"
 }
 
 struct TriggerPacket: Equatable {

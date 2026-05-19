@@ -207,12 +207,22 @@ enum CanonicalGeneratedExecutionContextSnapshotExporter {
 
 		let summary = metadataOnlySummary(
 			appName: appName,
+			windowTitle: windowTitle,
 			workflow: wf,
 			fused: fused,
 			available: available
 		)
 
-		let baseFresh = fused.map { min(1, max(0, $0.freshnessScore)) } ?? 0.45
+		let windowHint = !windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let baseFresh: Double = {
+			if let fused {
+				return min(1, max(0, fused.freshnessScore))
+			}
+			if windowHint || wf != .unknown {
+				return 0.52
+			}
+			return 0.45
+		}()
 		let provisional = CanonicalGeneratedExecutionContextSnapshot(
 			activeApp: appName,
 			windowTitle: windowTitle,
@@ -231,7 +241,7 @@ enum CanonicalGeneratedExecutionContextSnapshotExporter {
 			freshnessScore: baseFresh,
 			sourceMetadata: metadata,
 			fusedPacketId: fused?.id,
-			packetIsStale: fused?.isStale ?? false
+			packetIsStale: fused?.isStale == true
 		)
 
 		let scored = GeneratedExecutionContextFreshnessScorer.score(
@@ -388,11 +398,16 @@ enum CanonicalGeneratedExecutionContextSnapshotExporter {
 
 	private static func metadataOnlySummary(
 		appName: String,
+		windowTitle: String = "",
 		workflow: InferredWorkflow,
 		fused: FusedContextPacket?,
 		available: [ContextRequirementType]
 	) -> String? {
 		var parts: [String] = ["app=\(appName)", "workflow=\(workflow.rawValue)"]
+		let trimmedTitle = windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+		if !trimmedTitle.isEmpty {
+			parts.append("window=\(CanonicalGeneratedExecutionContextSnapshot.capSummary(trimmedTitle) ?? trimmedTitle)")
+		}
 		if let fused {
 			parts.append("primary=\(fused.primarySource.rawValue)")
 			parts.append(String(format: "fresh=%.2f", fused.freshnessScore))

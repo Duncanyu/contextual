@@ -14,8 +14,12 @@ final class ReasoningEngine {
 	private init() {}
 
 	func evaluate(context: ContextModel, triggerPacket: TriggerPacket) -> ReasoningDecision {
-		let candidates = triggerPacket.candidateActions
-		guard !candidates.isEmpty else {
+		let candidates = DynamicOnlyProposalMode.filterGenericStaticActions(triggerPacket.candidateActions)
+
+		if candidates.isEmpty {
+			if DynamicOnlyProposalMode.isEnabled {
+				return dynamicOnlySurfaceDecision(triggerType: triggerPacket.triggerType, context: context)
+			}
 			return ReasoningDecision(
 				shouldSurface: false,
 				primaryActionId: nil,
@@ -27,7 +31,19 @@ final class ReasoningEngine {
 
 		switch triggerPacket.triggerType {
 		case .manualInvocation:
-			let ranked = rankActions(candidates: candidates, preferredOrder: ["summarize_text", "explain_text", "rewrite_text"])
+			let preferred = DynamicOnlyProposalMode.isEnabled
+				? ["analyze_screen"]
+				: ["summarize_text", "explain_text", "rewrite_text"]
+			let ranked = rankActions(candidates: candidates, preferredOrder: preferred)
+			if DynamicOnlyProposalMode.isEnabled {
+				return ReasoningDecision(
+					shouldSurface: true,
+					primaryActionId: nil,
+					rankedActionIds: ranked,
+					reason: "Manual invocation (dynamic-only)",
+					confidence: 0.55
+				)
+			}
 			return ReasoningDecision(
 				shouldSurface: !ranked.isEmpty,
 				primaryActionId: ranked.first,
@@ -37,6 +53,9 @@ final class ReasoningEngine {
 			)
 
 		case .selectedTextEligible:
+			if DynamicOnlyProposalMode.isEnabled {
+				return dynamicOnlySurfaceDecision(triggerType: .selectedTextEligible, context: context)
+			}
 			let ranked = rankActions(candidates: candidates, preferredOrder: ["summarize_text", "explain_text", "rewrite_text"])
 			return ReasoningDecision(
 				shouldSurface: !ranked.isEmpty,
@@ -47,6 +66,9 @@ final class ReasoningEngine {
 			)
 
 		case .clipboardTextEligible:
+			if DynamicOnlyProposalMode.isEnabled {
+				return dynamicOnlySurfaceDecision(triggerType: .clipboardTextEligible, context: context)
+			}
 			let looksError = looksErrorLikeClipboard()
 			let preferred: [String]
 			let reason: String
@@ -74,7 +96,37 @@ final class ReasoningEngine {
 				reason: reason,
 				confidence: ranked.isEmpty ? 0.0 : confidence
 			)
+
+		case .contextMetadataEligible:
+			return dynamicOnlySurfaceDecision(triggerType: .contextMetadataEligible, context: context)
 		}
+	}
+
+	private func dynamicOnlySurfaceDecision(triggerType: TriggerType, context: ContextModel) -> ReasoningDecision {
+		let confidence: Double
+		let reason: String
+		switch triggerType {
+		case .selectedTextEligible:
+			confidence = 0.72
+			reason = "dynamic_only_selected_text"
+		case .clipboardTextEligible:
+			confidence = looksErrorLikeClipboard() ? 0.68 : 0.58
+			reason = "dynamic_only_clipboard"
+		case .manualInvocation:
+			confidence = 0.5
+			reason = "dynamic_only_manual"
+		case .contextMetadataEligible:
+			confidence = 0.52
+			reason = "dynamic_only_context_metadata"
+		}
+		_ = context
+		return ReasoningDecision(
+			shouldSurface: true,
+			primaryActionId: nil,
+			rankedActionIds: [],
+			reason: reason,
+			confidence: confidence
+		)
 	}
 
 	private func looksErrorLikeClipboard() -> Bool {

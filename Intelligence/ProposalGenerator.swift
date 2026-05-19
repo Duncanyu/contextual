@@ -23,6 +23,7 @@ final class ProposalGenerator {
 	) -> ActionProposal? {
 		guard decision.shouldSurface else { return nil }
 		guard let primary = decision.primaryActionId, !primary.isEmpty else { return nil }
+		if DynamicOnlyProposalMode.isGenericStaticAction(primary) { return nil }
 
 		let secondary = decision.rankedActionIds.filter { $0 != primary }
 		let channel = resolveCopyChannel(triggerPacket: triggerPacket, inputSourcePreference: inputSourcePreference, context: context)
@@ -80,6 +81,8 @@ final class ProposalGenerator {
 			if context.selectedTextAvailable { return .selectedText }
 			if context.clipboardTextAvailable { return .clipboard }
 			if context.screenOCRAvailable { return .screenText }
+			return .neutral
+		case .contextMetadataEligible:
 			return .neutral
 		}
 	}

@@ -535,6 +535,8 @@ final class IntelligenceProposalSelector {
 				return "selected_text"
 			case .manualInvocation:
 				return "manual"
+			case .contextMetadataEligible:
+				return "context_metadata"
 			}
 		}
 	}

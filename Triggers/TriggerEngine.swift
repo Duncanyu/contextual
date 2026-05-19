@@ -13,9 +13,19 @@ final class TriggerEngine {
 	private let clipboardCooldownInterval: TimeInterval = 6
 	/// Slightly calmer re-triggers on repeated similar selections (T14.11 tuning).
 	private let selectedTextCooldownInterval: TimeInterval = 6.5
+	private let contextMetadataCooldownInterval: TimeInterval = 8
 
-	private static let clipboardCandidateActions = ["summarize_text", "explain_text", "rewrite_text"]
-	private static let selectedTextCandidateActions = ["summarize_text", "explain_text", "rewrite_text"]
+	private static let contextMetadataCooldownPrefix = "context_metadata_eligible"
+
+	private static let clipboardCandidateActions: [String] = {
+		if DynamicOnlyProposalMode.isEnabled { return [] }
+		return ["summarize_text", "explain_text", "rewrite_text"]
+	}()
+
+	private static let selectedTextCandidateActions: [String] = {
+		if DynamicOnlyProposalMode.isEnabled { return [] }
+		return ["summarize_text", "explain_text", "rewrite_text"]
+	}()
 
 	init(cooldownManager: CooldownManager = CooldownManager()) {
 		self.cooldownManager = cooldownManager
@@ -31,7 +41,39 @@ final class TriggerEngine {
 		if let packet = evaluateClipboard(context) {
 			return packet
 		}
-		return evaluateSelectedText(context)
+		if let packet = evaluateSelectedText(context) {
+			return packet
+		}
+		return evaluateContextMetadata(context)
+	}
+
+	/// T18.3.4: metadata-only proposal path when browsing / app focus changes (dynamic-only).
+	private func evaluateContextMetadata(_ context: ContextModel) -> TriggerPacket? {
+		guard DynamicOnlyProposalMode.isEnabled else { return nil }
+		guard context.lastSourceTrigger == .activeAppChanged
+			|| context.lastSourceTrigger == .windowTitleChanged
+		else {
+			return nil
+		}
+
+		let window = (context.activeWindowTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+		let app = (context.activeAppName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !window.isEmpty || !app.isEmpty else { return nil }
+
+		let cooldownKey = "\(Self.contextMetadataCooldownPrefix)|\(context.activeAppBundleIdentifier ?? app)|\(window.prefix(48))"
+		guard cooldownManager.acquireIfEligible(
+			key: cooldownKey,
+			interval: contextMetadataCooldownInterval
+		) else {
+			return nil
+		}
+
+		return TriggerPacket(
+			triggerType: .contextMetadataEligible,
+			reason: "App/window metadata changed; situational proposal path (no fused packet required).",
+			candidateActions: [],
+			createdAt: Date()
+		)
 	}
 
 	private func evaluateScreenOCRReady(_ context: ContextModel) -> TriggerPacket? {
@@ -40,12 +82,12 @@ final class TriggerEngine {
 			  context.screenOCRAvailable,
 			  context.screenOCRTextLength > 30 else { return nil }
 
-		var candidateActions: [String] = []
-		if context.clipboardTextAvailable || context.selectedTextAvailable {
-			candidateActions.append("summarize_text")
+		var candidateActions: [String] = ["analyze_screen"]
+		if !DynamicOnlyProposalMode.isEnabled,
+		   context.clipboardTextAvailable || context.selectedTextAvailable {
+			candidateActions.insert("summarize_text", at: 0)
+			candidateActions.append(contentsOf: ["explain_text", "rewrite_text"])
 		}
-		candidateActions.append("analyze_screen")
-		candidateActions.append(contentsOf: ["explain_text", "rewrite_text"])
 
 		return TriggerPacket(
 			triggerType: .manualInvocation,
@@ -59,13 +101,12 @@ final class TriggerEngine {
 		guard context.lastSourceTrigger == .manualTriggerRequested else { return nil }
 
 		let now = Date()
-		var candidateActions: [String] = []
-		if context.clipboardTextAvailable || context.selectedTextAvailable {
-			candidateActions.append("summarize_text")
+		var candidateActions: [String] = ["analyze_screen"]
+		if !DynamicOnlyProposalMode.isEnabled,
+		   context.clipboardTextAvailable || context.selectedTextAvailable {
+			candidateActions.insert("summarize_text", at: 0)
+			candidateActions.append(contentsOf: ["explain_text", "rewrite_text"])
 		}
-		// Explicit affordance: Analyze Screen is user-chosen; capture/OCR runs only when that action runs (AppDelegate).
-		candidateActions.append("analyze_screen")
-		candidateActions.append(contentsOf: ["explain_text", "rewrite_text"])
 
 		let hasStructuredSnippet = context.clipboardTextAvailable || context.selectedTextAvailable
 		let reason = hasStructuredSnippet

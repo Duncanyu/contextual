@@ -184,6 +184,23 @@
 		AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */; };
 		AA0001EA0000000000000111 /* SparseVisualPeekPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */; };
 		AA0001EB0000000000000112 /* SparseVisualPeekSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E40000000000000112 /* SparseVisualPeekSelfTest.swift */; };
+		AA0001EC0000000000000113 /* GeneratedExecutionProposalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E50000000000000113 /* GeneratedExecutionProposalModels.swift */; };
+		AA0001ED0000000000000114 /* GeneratedExecutionProposalCandidateBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E60000000000000114 /* GeneratedExecutionProposalCandidateBuilder.swift */; };
+		AA0001EE0000000000000115 /* GeneratedExecutionProposalActivator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E70000000000000115 /* GeneratedExecutionProposalActivator.swift */; };
+		AA0001EF0000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E80000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift */; };
+		AA0001FE0000000000000117 /* DynamicGeneratedProposalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E90000000000000117 /* DynamicGeneratedProposalModels.swift */; };
+		AA0001FF0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EA0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift */; };
+		AA0002000000000000000119 /* DynamicGeneratedProposalParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EB0000000000000119 /* DynamicGeneratedProposalParser.swift */; };
+		AA000201000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EC000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift */; };
+		AA000202000000000000011B /* DynamicGeneratedProposalEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003ED000000000000011B /* DynamicGeneratedProposalEngine.swift */; };
+		AA000203000000000000011C /* DynamicGeneratedProposalEngineSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EE000000000000011C /* DynamicGeneratedProposalEngineSelfTest.swift */; };
+		AA000204000000000000011D /* DynamicOnlyProposalMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EF000000000000011D /* DynamicOnlyProposalMode.swift */; };
+		AA000205000000000000011E /* DynamicOnlyProposalModeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F0000000000000011E /* DynamicOnlyProposalModeSelfTest.swift */; };
+		AA000206000000000000011F /* SituationalContextModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F1000000000000011F /* SituationalContextModels.swift */; };
+		AA0002070000000000000120 /* SituationalContextSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F20000000000000120 /* SituationalContextSynthesizer.swift */; };
+		AA0002080000000000000121 /* SituationalContextSynthesizerSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F30000000000000121 /* SituationalContextSynthesizerSelfTest.swift */; };
+		AA0002090000000000000122 /* GeneratedProposalActivationBoundary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F40000000000000122 /* GeneratedProposalActivationBoundary.swift */; };
+		AA00020A0000000000000123 /* GeneratedProposalLivePathSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F50000000000000123 /* GeneratedProposalLivePathSelfTest.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -368,6 +385,23 @@
 		AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgedGeneratedExecutionContextProvider.swift; sourceTree = "<group>"; };
 		AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparseVisualPeekPolicy.swift; sourceTree = "<group>"; };
 		AA0003E40000000000000112 /* SparseVisualPeekSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparseVisualPeekSelfTest.swift; sourceTree = "<group>"; };
+		AA0003E50000000000000113 /* GeneratedExecutionProposalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionProposalModels.swift; sourceTree = "<group>"; };
+		AA0003E60000000000000114 /* GeneratedExecutionProposalCandidateBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionProposalCandidateBuilder.swift; sourceTree = "<group>"; };
+		AA0003E70000000000000115 /* GeneratedExecutionProposalActivator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionProposalActivator.swift; sourceTree = "<group>"; };
+		AA0003E80000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionProposalActivatorSelfTest.swift; sourceTree = "<group>"; };
+		AA0003E90000000000000117 /* DynamicGeneratedProposalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalModels.swift; sourceTree = "<group>"; };
+		AA0003EA0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalPromptBuilder.swift; sourceTree = "<group>"; };
+		AA0003EB0000000000000119 /* DynamicGeneratedProposalParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalParser.swift; sourceTree = "<group>"; };
+		AA0003EC000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalCandidateMapper.swift; sourceTree = "<group>"; };
+		AA0003ED000000000000011B /* DynamicGeneratedProposalEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalEngine.swift; sourceTree = "<group>"; };
+		AA0003EE000000000000011C /* DynamicGeneratedProposalEngineSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalEngineSelfTest.swift; sourceTree = "<group>"; };
+		AA0003EF000000000000011D /* DynamicOnlyProposalMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicOnlyProposalMode.swift; sourceTree = "<group>"; };
+		AA0003F0000000000000011E /* DynamicOnlyProposalModeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicOnlyProposalModeSelfTest.swift; sourceTree = "<group>"; };
+		AA0003F1000000000000011F /* SituationalContextModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SituationalContextModels.swift; sourceTree = "<group>"; };
+		AA0003F20000000000000120 /* SituationalContextSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SituationalContextSynthesizer.swift; sourceTree = "<group>"; };
+		AA0003F30000000000000121 /* SituationalContextSynthesizerSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SituationalContextSynthesizerSelfTest.swift; sourceTree = "<group>"; };
+		AA0003F40000000000000122 /* GeneratedProposalActivationBoundary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedProposalActivationBoundary.swift; sourceTree = "<group>"; };
+		AA0003F50000000000000123 /* GeneratedProposalLivePathSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedProposalLivePathSelfTest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -576,6 +610,23 @@
 				AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */,
 				AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */,
 				AA0003E40000000000000112 /* SparseVisualPeekSelfTest.swift */,
+				AA0003E50000000000000113 /* GeneratedExecutionProposalModels.swift */,
+				AA0003E60000000000000114 /* GeneratedExecutionProposalCandidateBuilder.swift */,
+				AA0003E70000000000000115 /* GeneratedExecutionProposalActivator.swift */,
+				AA0003E80000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift */,
+				AA0003E90000000000000117 /* DynamicGeneratedProposalModels.swift */,
+				AA0003EA0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift */,
+				AA0003EB0000000000000119 /* DynamicGeneratedProposalParser.swift */,
+				AA0003EC000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift */,
+				AA0003ED000000000000011B /* DynamicGeneratedProposalEngine.swift */,
+				AA0003EE000000000000011C /* DynamicGeneratedProposalEngineSelfTest.swift */,
+				AA0003EF000000000000011D /* DynamicOnlyProposalMode.swift */,
+				AA0003F0000000000000011E /* DynamicOnlyProposalModeSelfTest.swift */,
+				AA0003F1000000000000011F /* SituationalContextModels.swift */,
+				AA0003F20000000000000120 /* SituationalContextSynthesizer.swift */,
+				AA0003F30000000000000121 /* SituationalContextSynthesizerSelfTest.swift */,
+				AA0003F40000000000000122 /* GeneratedProposalActivationBoundary.swift */,
+				AA0003F50000000000000123 /* GeneratedProposalLivePathSelfTest.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -864,6 +915,23 @@
 				AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */,
 				AA0001EA0000000000000111 /* SparseVisualPeekPolicy.swift in Sources */,
 				AA0001EB0000000000000112 /* SparseVisualPeekSelfTest.swift in Sources */,
+				AA0001EC0000000000000113 /* GeneratedExecutionProposalModels.swift in Sources */,
+				AA0001ED0000000000000114 /* GeneratedExecutionProposalCandidateBuilder.swift in Sources */,
+				AA0001EE0000000000000115 /* GeneratedExecutionProposalActivator.swift in Sources */,
+				AA0001EF0000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift in Sources */,
+				AA0001FE0000000000000117 /* DynamicGeneratedProposalModels.swift in Sources */,
+				AA0001FF0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift in Sources */,
+				AA0002000000000000000119 /* DynamicGeneratedProposalParser.swift in Sources */,
+				AA000201000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift in Sources */,
+				AA000202000000000000011B /* DynamicGeneratedProposalEngine.swift in Sources */,
+				AA000203000000000000011C /* DynamicGeneratedProposalEngineSelfTest.swift in Sources */,
+				AA000204000000000000011D /* DynamicOnlyProposalMode.swift in Sources */,
+				AA000205000000000000011E /* DynamicOnlyProposalModeSelfTest.swift in Sources */,
+				AA000206000000000000011F /* SituationalContextModels.swift in Sources */,
+				AA0002070000000000000120 /* SituationalContextSynthesizer.swift in Sources */,
+				AA0002080000000000000121 /* SituationalContextSynthesizerSelfTest.swift in Sources */,
+				AA0002090000000000000122 /* GeneratedProposalActivationBoundary.swift in Sources */,
+				AA00020A0000000000000123 /* GeneratedProposalLivePathSelfTest.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,

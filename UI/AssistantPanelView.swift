@@ -34,6 +34,8 @@ struct AssistantPanelView: View {
 
 				availableActionsSection
 
+				generatedExecutionProposalsSection
+
 				VisibleGeneratedActionsSection(
 					summary: appState.dynamicActionDisplaySummary,
 					dismissedIds: $dismissedVisibleGeneratedActionIds
@@ -91,35 +93,81 @@ struct AssistantPanelView: View {
 
 	// MARK: - Actions
 
+	private var generatedExecutionProposalsSection: some View {
+		Group {
+			if !appState.activatedGeneratedProposals.isEmpty {
+				VStack(alignment: .leading, spacing: 10) {
+					SectionHeader(title: "Generated Proposals")
+					VStack(alignment: .leading, spacing: 8) {
+						ForEach(appState.activatedGeneratedProposals) { item in
+							VStack(alignment: .leading, spacing: 4) {
+								HStack {
+									Text(item.title)
+										.font(.subheadline.weight(.semibold))
+									Spacer(minLength: 4)
+									Text("Generated")
+										.font(.caption2.weight(.medium))
+										.foregroundStyle(.secondary)
+								}
+								if !item.subtitle.isEmpty {
+									Text(item.subtitle)
+										.font(.caption)
+										.foregroundStyle(.secondary)
+								}
+								if !item.expectedOutputSummary.isEmpty {
+									Text(item.expectedOutputSummary)
+										.font(.caption2)
+										.foregroundStyle(.tertiary)
+										.lineLimit(2)
+								}
+								Button("Prepare execution") {
+									appState.invokeGeneratedExecutionProposal(id: item.id)
+								}
+								.buttonStyle(.bordered)
+								.frame(maxWidth: .infinity, alignment: .leading)
+								.disabled(appState.isActionExecuting)
+							}
+							.padding(8)
+							.background(Color.primary.opacity(0.04))
+							.clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+						}
+					}
+					.contextualPanelCard()
+				}
+			}
+		}
+	}
+
 	private var availableActionsSection: some View {
 		VStack(alignment: .leading, spacing: 10) {
-			SectionHeader(title: "Available Actions")
+			SectionHeader(title: "Contextual Assistance")
 			VStack(alignment: .leading, spacing: 10) {
-				if appState.availableActions.isEmpty {
-					Text("No actions available")
+				if appState.activatedGeneratedProposals.isEmpty {
+					Text(generatedProposalEmptyLine)
 						.font(.caption)
 						.foregroundStyle(.secondary)
 						.frame(maxWidth: .infinity, alignment: .leading)
 				} else {
-					VStack(spacing: 8) {
-						ForEach(Array(appState.availableActions.enumerated()), id: \.element.id) { _, action in
-							Button(action.name) {
-								appState.invokeAction(id: action.id)
-							}
-							.buttonStyle(.bordered)
-							.frame(maxWidth: .infinity, alignment: .leading)
-							.disabled(appState.isActionExecuting)
-						}
-					}
-					if appState.isActionExecuting {
-						Text(processingLabel)
-							.font(.caption2)
-							.foregroundStyle(.secondary)
-					}
+					Text("Use Generated Proposals below when the assistant has a situational suggestion.")
+						.font(.caption2)
+						.foregroundStyle(.tertiary)
+				}
+				if appState.isActionExecuting {
+					Text(processingLabel)
+						.font(.caption2)
+						.foregroundStyle(.secondary)
 				}
 			}
 			.contextualPanelCard()
 		}
+	}
+
+	private var generatedProposalEmptyLine: String {
+		let status = appState.generatedProposalDebugStatus
+		if status.attempted, let reason = status.zeroVisibleReason, !reason.isEmpty {
+			return "No generated proposal (\(reason.replacingOccurrences(of: "_", with: " ")))."
+		}
+		return "No generated proposal yet — waiting for useful context."
 	}
 
 	// MARK: - Result / loading
@@ -177,6 +225,23 @@ struct AssistantPanelView: View {
 				Text("Screen capture: available=\(debugCtx.screenCaptureAvailable)")
 				Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRTextLength) lines=\(debugCtx.screenOCRLineCount)")
 				Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
+				Text(appState.generatedProposalDebugStatus.logLine)
+					.font(.caption2)
+					.fixedSize(horizontal: false, vertical: true)
+				if !appState.registeredToolActions.isEmpty {
+					VStack(alignment: .leading, spacing: 6) {
+						Text("Tools (debug)")
+							.font(.caption.weight(.medium))
+						ForEach(Array(appState.registeredToolActions.enumerated()), id: \.element.id) { _, action in
+							Button(action.name) {
+								appState.invokeAction(id: action.id)
+							}
+							.buttonStyle(.bordered)
+							.frame(maxWidth: .infinity, alignment: .leading)
+							.disabled(appState.isActionExecuting)
+						}
+					}
+				}
 				Text("Recent apps (max 5): \(recentList(debugCtx.recentAppNames))")
 				Text("Recent triggers (max 5): \(recentList(debugCtx.recentTriggers))")
 

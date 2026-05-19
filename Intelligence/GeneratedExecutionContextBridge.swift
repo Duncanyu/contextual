@@ -220,7 +220,7 @@ enum GeneratedExecutionClipboardFreshnessPolicy {
 			return GeneratedExecutionClipboardSuppressionDecision(includeClipboard: false, reasonCode: "clipboard_stale")
 		}
 
-		if snapshot.packetIsStale {
+		if snapshot.fusedPacketId != nil, snapshot.packetIsStale {
 			logSuppressed(reason: "packet_stale")
 			return GeneratedExecutionClipboardSuppressionDecision(includeClipboard: false, reasonCode: "packet_stale")
 		}

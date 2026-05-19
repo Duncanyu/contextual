@@ -13,7 +13,10 @@ enum ActionRelevanceScorer {
 		contextType: ContextType,
 		features: ContextFeatures
 	) -> [ActionRelevanceScore] {
-		let unique = Array(LinkedHashSet(candidateActionIds))
+		let filtered = DynamicOnlyProposalMode.isEnabled
+			? DynamicOnlyProposalMode.filterGenericStaticActions(candidateActionIds)
+			: candidateActionIds
+		let unique = Array(LinkedHashSet(filtered))
 		var out: [ActionRelevanceScore] = []
 		out.reserveCapacity(unique.count)
 

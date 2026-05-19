@@ -67,6 +67,12 @@ final class AppState: ObservableObject {
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
 	@Published var availableActions: [any ActionProtocol] = []
+	/// Callable tools (e.g. analyze screen) kept for debug/inline use — not shown as default panel actions (T18.3.2).
+	@Published var registeredToolActions: [any ActionProtocol] = []
+	@Published private(set) var generatedProposalDebugStatus: GeneratedProposalDebugStatus = .idle
+	/// Ranked generated execution proposals for panel list (T18.3; preview only — no auto-execution).
+	@Published private(set) var activatedGeneratedProposals: [GeneratedExecutionProposalPanelItem] = []
+	@Published private(set) var generatedProposalActivationResult: GeneratedExecutionProposalActivationResult = .empty
 	@Published var currentProposal: ActionProposal?
 	@Published var currentProposalKey: String?
 	@Published var lastAcceptedProposalActionId: String?
@@ -131,6 +137,11 @@ final class AppState: ObservableObject {
 	var onRevealAssistantPanel: (() -> Void)?
 
 	func invokeAction(id: String) {
+		if id.hasPrefix(GeneratedExecutionProposalActivator.generatedProposalIdPrefix) {
+			let candidateId = String(id.dropFirst(GeneratedExecutionProposalActivator.generatedProposalIdPrefix.count))
+			invokeGeneratedExecutionProposal(id: candidateId)
+			return
+		}
 		GeneratedActionInteractionTracker.shared.considerAcceptedProxy(staticActionId: id)
 		onInvokeActionById?(id)
 	}
@@ -228,10 +239,42 @@ final class AppState: ObservableObject {
 			print("[ProposalCooldown] recorded accept key=\(key)")
 		}
 
-		invokeAction(id: id)
+		if id.hasPrefix(GeneratedExecutionProposalActivator.generatedProposalIdPrefix) {
+			let candidateId = String(id.dropFirst(GeneratedExecutionProposalActivator.generatedProposalIdPrefix.count))
+			invokeGeneratedExecutionProposal(id: candidateId)
+		} else {
+			invokeAction(id: id)
+		}
 		currentProposal = nil
 		currentProposalKey = nil
 		refreshProposalContext(for: nil)
+	}
+
+	func applyGeneratedProposalActivation(
+		_ result: GeneratedExecutionProposalActivationResult,
+		debugStatus: GeneratedProposalDebugStatus? = nil
+	) {
+		generatedProposalActivationResult = result
+		activatedGeneratedProposals = result.visibleProposals
+		if let debugStatus {
+			generatedProposalDebugStatus = debugStatus
+		}
+	}
+
+	/// T18.3: preview-only — does not invoke `GeneratedExecutionRuntime` or static action runners.
+	func invokeGeneratedExecutionProposal(id: String) {
+		guard let item = activatedGeneratedProposals.first(where: { $0.id == id }) else { return }
+		print("[GeneratedProposalActivation] generated_proposal_selected id=\(id.prefix(8)) source=\(item.source.rawValue)")
+		latestActionId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: id)
+		latestActionTimestamp = Date()
+		latestActionResult = """
+		Generated execution is prepared for “\(item.title)”.
+
+		Live bounded execution arrives in T18.4. Nothing was run automatically.
+
+		Expected output: \(item.expectedOutputSummary)
+		Explainability: \(item.explainabilitySummary)
+		"""
 	}
 
 	func dismissCurrentProposal() {

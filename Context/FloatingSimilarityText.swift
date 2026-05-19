@@ -19,6 +19,8 @@ enum FloatingSimilarityText {
 				return ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .selectedText) ?? ""
 			case .manualInvocation:
 				return ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .automatic) ?? ""
+			case .contextMetadataEligible:
+				return ""
 			}
 		}
 	}

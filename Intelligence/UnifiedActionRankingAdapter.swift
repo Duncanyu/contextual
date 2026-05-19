@@ -186,6 +186,54 @@ enum UnifiedActionRankingAdapter {
 		)
 	}
 
+	static func fromProposalCandidate(_ candidate: GeneratedExecutionProposalCandidate) -> UnifiedRankableAction {
+		let sourceType: UnifiedActionSourceType = {
+			switch candidate.source {
+			case .staticAction: .staticAction
+			case .generatedAction: .generatedAction
+			case .generatedExecution: .executableGenerated
+			case .reusableGenerated: .reusableGenerated
+			}
+		}()
+		let candidateType: UnifiedCandidateActionType = {
+			switch candidate.source {
+			case .staticAction: .staticAction
+			case .generatedAction: .generatedPreview
+			case .generatedExecution: .executionAction
+			case .reusableGenerated: .reusableTemplate
+			}
+		}()
+		let requiresVision = candidate.requiredContextTypes.contains(.fusedVisual)
+			|| candidate.requiredContextTypes.contains(.screenCapture)
+		let requiresOCR = candidate.requiredContextTypes.contains(.screenCapture)
+		return UnifiedRankableAction(
+			id: candidate.id,
+			sourceType: sourceType,
+			title: candidate.title,
+			description: candidate.description,
+			workflowType: candidate.workflowType,
+			intentType: candidate.intentType,
+			confidence: candidate.confidence,
+			usefulnessScore: candidate.isGeneratedFamily
+				? min(1, candidate.confidence * 0.85 + 0.1)
+				: 0.58,
+			interruptionCost: candidate.interruptionCost,
+			executionComplexity: candidate.executionAction?.executionPlan.primitives.count ?? 1,
+			estimatedExecutionTime: candidate.executionAction?.executionPlan.estimatedRuntime ?? 12,
+			requiresFreshContext: candidate.isGeneratedFamily,
+			requiresVision: requiresVision,
+			requiresOCR: requiresOCR,
+			isReusable: candidate.source == .reusableGenerated,
+			reuseScore: candidate.executionAction?.reuseScore ?? 0,
+			candidateActionType: candidateType,
+			primitiveSignature: candidate.primitiveSignature,
+			metadata: [
+				"proposalSource": candidate.source.rawValue,
+				"executable": candidate.isExecutableGeneratedProposal ? "1" : "0",
+			]
+		)
+	}
+
 	static func fromReusable(
 		_ record: ReusableGeneratedActionRecord,
 		referenceTime: Date
