@@ -7,6 +7,7 @@ enum IntelligenceDebugStage: String {
 	case llm
 	case cache
 	case budget
+	case execution
 }
 
 /// Safe fields only — no titles, excerpts, prompts, or raw model reasons.

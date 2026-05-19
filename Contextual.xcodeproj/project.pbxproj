@@ -142,6 +142,9 @@
 		AA0001BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift */; };
 		AA0001C0000000000000E6 /* GeneratedExecutionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C0000000000000E6 /* GeneratedExecutionTypes.swift */; };
 		AA0001C1000000000000E7 /* GeneratedExecutionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C1000000000000E7 /* GeneratedExecutionModels.swift */; };
+		AA0001C2000000000000E8 /* GeneratedExecutionRuntimeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C2000000000000E8 /* GeneratedExecutionRuntimeError.swift */; };
+		AA0001C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift */; };
+		AA0001C4000000000000EA /* GeneratedExecutionRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -284,6 +287,9 @@
 		AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleIntelligenceDebugView.swift; sourceTree = "<group>"; };
 		AA0002C0000000000000E6 /* GeneratedExecutionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionTypes.swift; sourceTree = "<group>"; };
 		AA0002C1000000000000E7 /* GeneratedExecutionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionModels.swift; sourceTree = "<group>"; };
+		AA0002C2000000000000E8 /* GeneratedExecutionRuntimeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionRuntimeError.swift; sourceTree = "<group>"; };
+		AA0002C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionRuntimeSnapshot.swift; sourceTree = "<group>"; };
+		AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionRuntime.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -480,6 +486,9 @@
 				AA00029C00000000000000C3 /* GeneratedActionPlanTypes.swift */,
 				AA0002C0000000000000E6 /* GeneratedExecutionTypes.swift */,
 				AA0002C1000000000000E7 /* GeneratedExecutionModels.swift */,
+				AA0002C2000000000000E8 /* GeneratedExecutionRuntimeError.swift */,
+				AA0002C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift */,
+				AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
 				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
@@ -726,6 +735,9 @@
 				AA00019600000000000000C3 /* GeneratedActionPlanTypes.swift in Sources */,
 				AA0001C0000000000000E6 /* GeneratedExecutionTypes.swift in Sources */,
 				AA0001C1000000000000E7 /* GeneratedExecutionModels.swift in Sources */,
+				AA0001C2000000000000E8 /* GeneratedExecutionRuntimeError.swift in Sources */,
+				AA0001C3000000000000E9 /* GeneratedExecutionRuntimeSnapshot.swift in Sources */,
+				AA0001C4000000000000EA /* GeneratedExecutionRuntime.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
 				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,
