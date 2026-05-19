@@ -140,6 +140,8 @@
 		AA0001BB000000000000E2 /* GeneratedActionInteractionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BB000000000000E2 /* GeneratedActionInteractionTracker.swift */; };
 		AA0001BC000000000000E3 /* RichAssistanceRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BC000000000000E3 /* RichAssistanceRanker.swift */; };
 		AA0001BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift */; };
+		AA0001C0000000000000E6 /* GeneratedExecutionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C0000000000000E6 /* GeneratedExecutionTypes.swift */; };
+		AA0001C1000000000000E7 /* GeneratedExecutionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002C1000000000000E7 /* GeneratedExecutionModels.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -280,6 +282,8 @@
 		AA0002BC000000000000E3 /* RichAssistanceRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichAssistanceRanker.swift; sourceTree = "<group>"; };
 		AA0002BD000000000000E4 /* VisibleIntelligenceDebugSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleIntelligenceDebugSummary.swift; sourceTree = "<group>"; };
 		AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibleIntelligenceDebugView.swift; sourceTree = "<group>"; };
+		AA0002C0000000000000E6 /* GeneratedExecutionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionTypes.swift; sourceTree = "<group>"; };
+		AA0002C1000000000000E7 /* GeneratedExecutionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -474,6 +478,8 @@
 				AA00029A00000000000000C1 /* GeneratedActionTypes.swift */,
 				AA00029B00000000000000C2 /* GeneratedActionFactory.swift */,
 				AA00029C00000000000000C3 /* GeneratedActionPlanTypes.swift */,
+				AA0002C0000000000000E6 /* GeneratedExecutionTypes.swift */,
+				AA0002C1000000000000E7 /* GeneratedExecutionModels.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
 				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
@@ -718,6 +724,8 @@
 				AA00019200000000000000C1 /* GeneratedActionTypes.swift in Sources */,
 				AA00019300000000000000C2 /* GeneratedActionFactory.swift in Sources */,
 				AA00019600000000000000C3 /* GeneratedActionPlanTypes.swift in Sources */,
+				AA0001C0000000000000E6 /* GeneratedExecutionTypes.swift in Sources */,
+				AA0001C1000000000000E7 /* GeneratedExecutionModels.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
 				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,
