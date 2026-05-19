@@ -177,6 +177,8 @@
 		AA0001F90000000000000109 /* UnifiedActionRankingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002F90000000000000109 /* UnifiedActionRankingModels.swift */; };
 		AA0001FA000000000000010A /* UnifiedActionRankingAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FA000000000000010A /* UnifiedActionRankingAdapter.swift */; };
 		AA0001FB000000000000010B /* UnifiedActionRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FB000000000000010B /* UnifiedActionRanker.swift */; };
+		AA0001FC000000000000010C /* UnifiedActionRankingDebug.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FC000000000000010C /* UnifiedActionRankingDebug.swift */; };
+		AA0001FD000000000000010D /* Phase17StabilitySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FD000000000000010D /* Phase17StabilitySelfTest.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -354,6 +356,8 @@
 		AA0002F90000000000000109 /* UnifiedActionRankingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedActionRankingModels.swift; sourceTree = "<group>"; };
 		AA0002FA000000000000010A /* UnifiedActionRankingAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedActionRankingAdapter.swift; sourceTree = "<group>"; };
 		AA0002FB000000000000010B /* UnifiedActionRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedActionRanker.swift; sourceTree = "<group>"; };
+		AA0002FC000000000000010C /* UnifiedActionRankingDebug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedActionRankingDebug.swift; sourceTree = "<group>"; };
+		AA0002FD000000000000010D /* Phase17StabilitySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase17StabilitySelfTest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -585,6 +589,8 @@
 				AA0002F90000000000000109 /* UnifiedActionRankingModels.swift */,
 				AA0002FA000000000000010A /* UnifiedActionRankingAdapter.swift */,
 				AA0002FB000000000000010B /* UnifiedActionRanker.swift */,
+				AA0002FC000000000000010C /* UnifiedActionRankingDebug.swift */,
+				AA0002FD000000000000010D /* Phase17StabilitySelfTest.swift */,
 				AA00029D00000000000000C4 /* GeneratedActionPlanBuilder.swift */,
 				AA00029E00000000000000C5 /* WorkflowAwareProposalRanker.swift */,
 				AA00029F00000000000000C6 /* DynamicIntentSuppressionEngine.swift */,
@@ -866,6 +872,8 @@
 				AA0001F90000000000000109 /* UnifiedActionRankingModels.swift in Sources */,
 				AA0001FA000000000000010A /* UnifiedActionRankingAdapter.swift in Sources */,
 				AA0001FB000000000000010B /* UnifiedActionRanker.swift in Sources */,
+				AA0001FC000000000000010C /* UnifiedActionRankingDebug.swift in Sources */,
+				AA0001FD000000000000010D /* Phase17StabilitySelfTest.swift in Sources */,
 				AA00019700000000000000C4 /* GeneratedActionPlanBuilder.swift in Sources */,
 				AA00019800000000000000C5 /* WorkflowAwareProposalRanker.swift in Sources */,
 				AA00019900000000000000C6 /* DynamicIntentSuppressionEngine.swift in Sources */,

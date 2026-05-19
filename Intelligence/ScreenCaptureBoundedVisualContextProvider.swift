@@ -1,7 +1,10 @@
 import CoreGraphics
 import Foundation
 
-/// Explicit one-shot screen capture + optional OCR (off by default; inject only for tests or future runtime).
+/// Explicit one-shot screen capture + optional OCR (T17.8).
+///
+/// **Inject only** — not created by default app paths. Never call from UI/`onAppear`.
+/// Discards `CGImage` after OCR; logs metadata only via `BoundedVisualContextDebug`.
 struct ScreenCaptureBoundedVisualContextProvider: BoundedVisualContextProvider, Sendable {
 	private let ocrProcessor: OCRProcessor
 	private let captureFrame: @Sendable () -> (image: CGImage, width: Int, height: Int)?

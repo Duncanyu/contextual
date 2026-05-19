@@ -247,13 +247,8 @@ enum DynamicIntentDebugSummaryBuilder {
 
 		let interactionLine = GeneratedActionInteractionTracker.shared.debugSummaryLine()
 
-		let unifiedLine: String = {
-			let ranking = UnifiedActionRankingAdapter.buildDebugRanking(inputs: inputs)
-			guard let top = ranking.rankedActions.first else { return "" }
-			let src = top.action.sourceType.rawValue
-			let score = String(format: "%.2f", top.components.finalScore)
-			return "Unified rank: top=\(src) score=\(score) static=\(ranking.staticActionCount) gen=\(ranking.generatedActionCount) reuse=\(ranking.reusableActionCount) \(ranking.rankingReasonSummary)"
-		}()
+		// Cached debug-only path (T17.10) — not used for live proposals.
+		let unifiedLine = UnifiedActionRankingDebug.unifiedRankingLine(inputs: inputs)
 
 		return DynamicIntentDebugSummary(
 			workflowLine: wfLine,

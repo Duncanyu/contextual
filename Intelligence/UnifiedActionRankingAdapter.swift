@@ -64,11 +64,13 @@ enum UnifiedActionRankingAdapter {
 	}
 
 	/// One-shot debug ranking from pipeline inputs (no UI / no persistence side effects).
+	/// Prefer `UnifiedActionRankingDebug.unifiedRankingLine` in debug UI to avoid repeated rank passes.
 	static func buildDebugRanking(
 		inputs: DynamicIntentDebugPipelineInputs,
 		reusableRecords: [ReusableGeneratedActionRecord] = [],
 		staticScores: [ActionRelevanceScore] = [],
-		referenceTime: Date = Date()
+		referenceTime: Date = Date(),
+		emitRankingLog: Bool = true
 	) -> UnifiedActionRankingResult {
 		let actions = rankableActions(
 			staticScores: staticScores,
@@ -78,7 +80,7 @@ enum UnifiedActionRankingAdapter {
 			referenceTime: referenceTime
 		)
 		let ctx = context(workflow: inputs.workflow, session: inputs.session, referenceTime: referenceTime)
-		return UnifiedActionRanker.rank(actions: actions, context: ctx)
+		return UnifiedActionRanker.rank(actions: actions, context: ctx, emitLog: emitRankingLog)
 	}
 
 	// MARK: - Mappers

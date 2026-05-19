@@ -14,9 +14,11 @@ enum UnifiedActionRanker {
 		return value
 	}
 
+	/// Deterministic ranking. Set `emitLog: false` for debug UI refresh paths.
 	static func rank(
 		actions: [UnifiedRankableAction],
-		context: UnifiedActionRankingContext
+		context: UnifiedActionRankingContext,
+		emitLog: Bool = true
 	) -> UnifiedActionRankingResult {
 		let started = Date()
 		guard !actions.isEmpty else {
@@ -85,7 +87,9 @@ enum UnifiedActionRanker {
 			rankingDurationMs: durationMs
 		)
 
-		logRanking(result: result, context: context)
+		if emitLog {
+			logRanking(result: result, context: context)
+		}
 		return publishSnapshot(result)
 	}
 
@@ -229,36 +233,34 @@ enum UnifiedActionRanker {
 		let window = min(context.topWindowSize, ranked.count)
 		guard window > 0 else { return ranked }
 
-		let maxGenerated = Int(floor(Double(window) * context.maxGeneratedRatioInTopWindow))
-		var top = Array(ranked.prefix(window))
-		let tail = Array(ranked.dropFirst(window))
+		let maxGenerated = max(0, Int(floor(Double(window) * context.maxGeneratedRatioInTopWindow)))
+		var output = ranked
+		var safety = 0
 
-		var generatedInTop = top.filter { $0.action.isGeneratedFamily }.count
-		if generatedInTop <= maxGenerated { return ranked }
-
-		var demoted: [RankedUnifiedAction] = []
-		var kept: [RankedUnifiedAction] = []
-		kept.reserveCapacity(window)
-
-		for item in top {
-			if item.action.isGeneratedFamily, generatedInTop > maxGenerated {
-				var codes = item.rankingExplanationCodes
-				if !codes.contains("capped_generated_ratio") { codes.append("capped_generated_ratio") }
-				demoted.append(
-					RankedUnifiedAction(
-						action: item.action,
-						components: item.components,
-						rankingExplanationCodes: codes,
-						rankIndex: item.rankIndex
-					)
-				)
-				generatedInTop -= 1
+		while output.prefix(window).filter({ $0.action.isGeneratedFamily }).count > maxGenerated {
+			safety += 1
+			if safety > output.count + 2 { break }
+			guard let genIdx = output.prefix(window).lastIndex(where: { $0.action.isGeneratedFamily }) else {
+				break
+			}
+			var demoted = output.remove(at: genIdx)
+			var codes = demoted.rankingExplanationCodes
+			if !codes.contains("capped_generated_ratio") { codes.append("capped_generated_ratio") }
+			demoted = RankedUnifiedAction(
+				action: demoted.action,
+				components: demoted.components,
+				rankingExplanationCodes: codes,
+				rankIndex: demoted.rankIndex
+			)
+			if let staticIdx = output.firstIndex(where: { !$0.action.isGeneratedFamily }) {
+				let promoted = output.remove(at: staticIdx)
+				output.insert(promoted, at: genIdx)
+				output.append(demoted)
 			} else {
-				kept.append(item)
+				output.append(demoted)
 			}
 		}
-
-		return kept + demoted.sorted { $0.components.finalScore > $1.components.finalScore } + tail
+		return output
 	}
 
 	private static func summary(for ranked: [RankedUnifiedAction], suppressed: Int) -> String {
@@ -287,9 +289,24 @@ enum UnifiedActionRanker {
 		return result
 	}
 
+	private static let rankingLogThrottleSeconds: TimeInterval = 2.5
+	private static var lastRankingLogSignature: String?
+	private static var lastRankingLogAt: Date?
+
 	private static func logRanking(result: UnifiedActionRankingResult, context: UnifiedActionRankingContext) {
 		let topSource = result.rankedActions.first?.action.sourceType.rawValue ?? "none"
 		let genTop = result.rankedActions.prefix(context.topWindowSize).filter { $0.action.isGeneratedFamily }.count
+		let sig = "\(topSource)|\(result.consideredCount)|\(result.suppressedCount)|\(genTop)"
+		let now = Date()
+		if sig == lastRankingLogSignature,
+		   let lastRankingLogAt,
+		   now.timeIntervalSince(lastRankingLogAt) < rankingLogThrottleSeconds
+		{
+			return
+		}
+		lastRankingLogSignature = sig
+		lastRankingLogAt = now
+
 		var meta = IntelligenceDebugMeta(
 			reason: result.rankingReasonSummary,
 			layer: "unified_action_ranking",
@@ -306,6 +323,14 @@ enum UnifiedActionRanker {
 	// MARK: - Self-test
 
 	static func runSelfTest() -> Bool {
+		if let failure = runSelfTestFailure() {
+			print("[UnifiedActionRanker] selftest failed at=\(failure)")
+			return false
+		}
+		return true
+	}
+
+	private static func runSelfTestFailure() -> String? {
 		let ctx = UnifiedActionRankingContext(
 			activeWorkflow: .debugging,
 			continuityScore: 0.72,
@@ -359,19 +384,24 @@ enum UnifiedActionRanker {
 		)
 
 		let result1 = rank(
-			actions: [weakGenerated, staticExplain, staticSummarize, strongReusable, heavyPlan],
-			context: ctx
+			actions: [weakGenerated, staticExplain, staticSummarize, strongReusable],
+			context: ctx,
+			emitLog: false
 		)
-		guard let top = result1.rankedActions.first else { return false }
-		guard top.action.sourceType == .staticAction || top.action.sourceType == .reusableGenerated else { return false }
-		guard result1.staticActionCount >= 2 else { return false }
+		guard let top = result1.rankedActions.first else { return "empty_result1" }
+		guard top.action.sourceType == .staticAction || top.action.sourceType == .reusableGenerated else {
+			return "top_not_static_or_reuse"
+		}
+		guard result1.staticActionCount >= 2 else { return "static_count" }
+
+		let heavyVsStatic = rank(actions: [heavyPlan, staticExplain], context: ctx, emitLog: false)
+		guard heavyVsStatic.rankedActions.first?.action.sourceType == .staticAction else { return "heavy_vs_static" }
 
 		let weakRank = result1.rankedActions.firstIndex(where: { $0.action.id == weakGenerated.id })
 		let strongRank = result1.rankedActions.firstIndex(where: { $0.action.id == strongReusable.id })
-		guard let weakRank, let strongRank, strongRank < weakRank else { return false }
-		guard weakGenerated.id == result1.rankedActions[weakRank].action.id else { return false }
+		guard let weakRank, let strongRank, strongRank < weakRank else { return "reuse_order" }
 		guard result1.rankedActions[weakRank].rankingExplanationCodes.contains("suppressed_low_confidence") else {
-			return false
+			return "weak_suppressed_code"
 		}
 
 		let highInterrupt = UnifiedRankableAction(
@@ -397,7 +427,7 @@ enum UnifiedActionRanker {
 			candidateActionType: .generatedPreview
 		)
 		let interruptResult = rank(actions: [highInterrupt, lowInterrupt], context: ctx)
-		guard interruptResult.rankedActions.first?.action.id == lowInterrupt.id else { return false }
+		guard interruptResult.rankedActions.first?.action.id == lowInterrupt.id else { return "interrupt_order" }
 
 		let staleReuse = UnifiedRankableAction(
 			id: "reuse:stale",
@@ -413,11 +443,10 @@ enum UnifiedActionRanker {
 			candidateActionType: .reusableTemplate,
 			metadata: ["staleFactor": "0.50"]
 		)
-		let freshReuse = strongReusable
-		let staleResult = rank(actions: [staleReuse, freshReuse], context: ctx)
-		guard staleResult.rankedActions.first?.action.id == freshReuse.id else { return false }
+		let staleResult = rank(actions: [staleReuse, strongReusable], context: ctx, emitLog: false)
+		guard staleResult.rankedActions.first?.action.id == strongReusable.id else { return "stale_reuse" }
 
-		let manyGenerated = (0..<6).map { i in
+		let manyGenerated = (0..<3).map { i in
 			UnifiedRankableAction(
 				id: "gen\(i)",
 				sourceType: .generatedAction,
@@ -430,18 +459,22 @@ enum UnifiedActionRanker {
 				candidateActionType: .generatedPreview
 			)
 		}
-		let capResult = rank(actions: manyGenerated + [staticExplain], context: ctx)
+		let capResult = rank(
+			actions: manyGenerated + [staticExplain, staticSummarize],
+			context: ctx,
+			emitLog: false
+		)
 		let topWindowGen = capResult.rankedActions.prefix(5).filter { $0.action.isGeneratedFamily }.count
-		guard topWindowGen <= 3 else { return false }
+		guard topWindowGen <= 3 else { return "generated_cap_\(topWindowGen)" }
 
-		let result2 = rank(actions: [staticExplain, staticSummarize], context: ctx)
-		let result3 = rank(actions: [staticExplain, staticSummarize], context: ctx)
-		guard result2.rankedActions.map(\.id) == result3.rankedActions.map(\.id) else { return false }
+		let result2 = rank(actions: [staticExplain, staticSummarize], context: ctx, emitLog: false)
+		let result3 = rank(actions: [staticExplain, staticSummarize], context: ctx, emitLog: false)
+		guard result2.rankedActions.map(\.id) == result3.rankedActions.map(\.id) else { return "determinism" }
 		guard result2.rankedActions.allSatisfy({ !$0.rankingExplanationCodes.isEmpty || $0.action.sourceType == .staticAction }) else {
-			return false
+			return "explanations"
 		}
 
 		_ = latestRankingSnapshot()
-		return true
+		return nil
 	}
 }

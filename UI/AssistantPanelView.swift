@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// Static debug samples for generated execution result UI (T17.7/T17.10) — built once, display-only.
+private enum GeneratedExecutionResultDebugSamples {
+	static let partial = GeneratedExecutionResultPresenter.samplePresentation()
+	static let failed = GeneratedExecutionResultPresenter.sampleFailedPresentation()
+}
+
 struct AssistantPanelView: View {
 	@EnvironmentObject private var appState: AppState
 
@@ -221,12 +227,8 @@ struct AssistantPanelView: View {
 
 				DisclosureGroup(isExpanded: $generatedExecutionResultDebugExpanded) {
 					VStack(alignment: .leading, spacing: 10) {
-						GeneratedExecutionResultView(
-							presentation: GeneratedExecutionResultPresenter.samplePresentation()
-						)
-						GeneratedExecutionResultView(
-							presentation: GeneratedExecutionResultPresenter.sampleFailedPresentation()
-						)
+						GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.partial)
+						GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.failed)
 					}
 					.padding(.top, 4)
 				} label: {

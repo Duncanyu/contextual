@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Display-only card for generated execution results (T17.7).
+/// Display-only card for generated execution results (T17.7). No runtime, capture, or AI calls.
 struct GeneratedExecutionResultView: View {
 	let presentation: GeneratedExecutionResultPresentation
 	var onClear: (() -> Void)?

@@ -1,6 +1,9 @@
 import Foundation
 
 /// Bounded coordinator for at-most-one active visual context request (explicit async only).
+///
+/// No timers/polling. Default provider is `NullBoundedVisualContextProvider`.
+/// Do not wire from panel lifecycle; reject overlapping requests.
 actor VisualContextScheduler {
 
 	private let provider: any BoundedVisualContextProvider

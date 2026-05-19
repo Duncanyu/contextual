@@ -2,7 +2,11 @@ import Foundation
 
 /// Bounded lifecycle coordinator for generated execution (T17.3 — deterministic primitives).
 ///
-/// Isolated `actor` with explicit snapshots; no UI coupling, no `@Published`, no background loops.
+/// Stability (T17.10):
+/// - Actor-isolated; does not mutate `AppState` or publish UI state.
+/// - `visualContextScheduler` and `persistenceManager` default to `nil` (opt-in injection only).
+/// - Do not invoke from SwiftUI `body`, `onAppear`, or panel lifecycle hooks.
+/// - Ranking and UI consume snapshots/results; runtime does not own ranking.
 actor GeneratedExecutionRuntime {
 
 	private let configuration: GeneratedExecutionRuntimeConfiguration
@@ -39,6 +43,11 @@ actor GeneratedExecutionRuntime {
 
 	func currentSnapshot() -> GeneratedExecutionRuntimeSnapshot {
 		snapshot
+	}
+
+	/// Stability probe for tests (default production init: both false).
+	func phase17StabilityProbe() -> (hasVisualScheduler: Bool, hasPersistenceManager: Bool) {
+		(visualContextScheduler != nil, persistenceManager != nil)
 	}
 
 	func start(action: GeneratedExecutionAction) async -> GeneratedExecutionStartOutcome {

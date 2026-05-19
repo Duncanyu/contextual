@@ -5,7 +5,7 @@ protocol BoundedVisualContextProvider: Sendable {
 	func collectVisualContext(request: BoundedVisualContextRequest) async throws -> BoundedVisualContextResult
 }
 
-/// Default safe provider — no capture, no OCR, no screen access.
+/// Default safe provider — no capture, no OCR, no screen access (production default for scheduler).
 struct NullBoundedVisualContextProvider: BoundedVisualContextProvider, Sendable {
 	func collectVisualContext(request: BoundedVisualContextRequest) async throws -> BoundedVisualContextResult {
 		BoundedVisualContextDebug.log(event: "provider_unavailable", requestId: request.id)

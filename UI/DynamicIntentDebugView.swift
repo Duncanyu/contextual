@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Internal-only dynamic intent pipeline debug (metadata-only; no raw context).
+/// Read-only snapshot display — does not trigger ranking, capture, or execution (T17.10).
 struct DynamicIntentDebugView: View {
 	let summary: DynamicIntentDebugSummary
 

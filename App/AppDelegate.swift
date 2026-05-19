@@ -1689,6 +1689,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
+		// Phase 17 stability guardrails (T17.10; metadata-only; no UI/capture).
+		// Run with `CONTEXTUAL_RUN_PHASE17_STABILITY_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_PHASE17_STABILITY_SELFTEST"] == "1" {
+			let ok = Phase17StabilitySelfTest.run()
+			print("[Phase17Stability] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
 		// Screen situation + Analyze Screen prompt jargon self-test (synthetic inputs only; no AI, no screenshots).
 		// Run the app with `CONTEXTUAL_RUN_SCREEN_SITUATION_SELFTEST=1` to execute once and exit.
 		if env["CONTEXTUAL_RUN_SCREEN_SITUATION_SELFTEST"] == "1" {
