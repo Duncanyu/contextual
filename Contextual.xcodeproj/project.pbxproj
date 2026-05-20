@@ -204,6 +204,14 @@
 		AA00020B0000000000000124 /* SituationalClipboardRelevance.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F60000000000000124 /* SituationalClipboardRelevance.swift */; };
 		AA00020C0000000000000125 /* SituationalClipboardRelevanceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F70000000000000125 /* SituationalClipboardRelevanceSelfTest.swift */; };
 		AA00020D0000000000000126 /* DynamicGeneratedProposalLLMPathSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F80000000000000126 /* DynamicGeneratedProposalLLMPathSelfTest.swift */; };
+		AA00020E0000000000000127 /* DynamicGeneratedProposalOutputContractSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003F90000000000000127 /* DynamicGeneratedProposalOutputContractSelfTest.swift */; };
+		AA00020F0000000000000128 /* GeneratedProposalFailureDiagnosticsSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FA0000000000000128 /* GeneratedProposalFailureDiagnosticsSelfTest.swift */; };
+		AA0002100000000000000129 /* AgenticProposalDecisionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FB0000000000000129 /* AgenticProposalDecisionTypes.swift */; };
+		AA000211000000000000012A /* AgenticProposalDecisionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FC000000000000012A /* AgenticProposalDecisionEngine.swift */; };
+		AA000212000000000000012B /* AgenticProposalDecisionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FD000000000000012B /* AgenticProposalDecisionSelfTest.swift */; };
+		AA000213000000000000012C /* GeneratedActionTemplateLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FE000000000000012C /* GeneratedActionTemplateLibrary.swift */; };
+		AA000214000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FF000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift */; };
+		AA000215000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000400000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -408,6 +416,14 @@
 		AA0003F60000000000000124 /* SituationalClipboardRelevance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SituationalClipboardRelevance.swift; sourceTree = "<group>"; };
 		AA0003F70000000000000125 /* SituationalClipboardRelevanceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SituationalClipboardRelevanceSelfTest.swift; sourceTree = "<group>"; };
 		AA0003F80000000000000126 /* DynamicGeneratedProposalLLMPathSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalLLMPathSelfTest.swift; sourceTree = "<group>"; };
+		AA0003F90000000000000127 /* DynamicGeneratedProposalOutputContractSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalOutputContractSelfTest.swift; sourceTree = "<group>"; };
+		AA0003FA0000000000000128 /* GeneratedProposalFailureDiagnosticsSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedProposalFailureDiagnosticsSelfTest.swift; sourceTree = "<group>"; };
+		AA0003FB0000000000000129 /* AgenticProposalDecisionTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticProposalDecisionTypes.swift; sourceTree = "<group>"; };
+		AA0003FC000000000000012A /* AgenticProposalDecisionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticProposalDecisionEngine.swift; sourceTree = "<group>"; };
+		AA0003FD000000000000012B /* AgenticProposalDecisionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticProposalDecisionSelfTest.swift; sourceTree = "<group>"; };
+		AA0003FE000000000000012C /* GeneratedActionTemplateLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateLibrary.swift; sourceTree = "<group>"; };
+		AA0003FF000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplatePrewarmQueue.swift; sourceTree = "<group>"; };
+		AA000400000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateLibrarySelfTest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -636,6 +652,14 @@
 				AA0003F60000000000000124 /* SituationalClipboardRelevance.swift */,
 				AA0003F70000000000000125 /* SituationalClipboardRelevanceSelfTest.swift */,
 				AA0003F80000000000000126 /* DynamicGeneratedProposalLLMPathSelfTest.swift */,
+				AA0003F90000000000000127 /* DynamicGeneratedProposalOutputContractSelfTest.swift */,
+				AA0003FA0000000000000128 /* GeneratedProposalFailureDiagnosticsSelfTest.swift */,
+				AA0003FB0000000000000129 /* AgenticProposalDecisionTypes.swift */,
+				AA0003FC000000000000012A /* AgenticProposalDecisionEngine.swift */,
+				AA0003FD000000000000012B /* AgenticProposalDecisionSelfTest.swift */,
+				AA0003FE000000000000012C /* GeneratedActionTemplateLibrary.swift */,
+				AA0003FF000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift */,
+				AA000400000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -944,6 +968,14 @@
 				AA00020B0000000000000124 /* SituationalClipboardRelevance.swift in Sources */,
 				AA00020C0000000000000125 /* SituationalClipboardRelevanceSelfTest.swift in Sources */,
 				AA00020D0000000000000126 /* DynamicGeneratedProposalLLMPathSelfTest.swift in Sources */,
+				AA00020E0000000000000127 /* DynamicGeneratedProposalOutputContractSelfTest.swift in Sources */,
+				AA00020F0000000000000128 /* GeneratedProposalFailureDiagnosticsSelfTest.swift in Sources */,
+				AA0002100000000000000129 /* AgenticProposalDecisionTypes.swift in Sources */,
+				AA000211000000000000012A /* AgenticProposalDecisionEngine.swift in Sources */,
+				AA000212000000000000012B /* AgenticProposalDecisionSelfTest.swift in Sources */,
+				AA000213000000000000012C /* GeneratedActionTemplateLibrary.swift in Sources */,
+				AA000214000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift in Sources */,
+				AA000215000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,

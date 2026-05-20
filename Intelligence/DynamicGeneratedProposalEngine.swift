@@ -15,23 +15,35 @@ protocol DynamicGeneratedProposalAvailabilityChecking: Sendable {
 extension ModelManager: DynamicGeneratedProposalAvailabilityChecking {}
 
 /// LLM-first dynamic generated execution proposal engine (T18.3.1).
+/// Two-stage pipeline (T18.3.4): fast decision stage gates whether the large model runs.
 actor DynamicGeneratedProposalEngine {
 
 	static let shared = DynamicGeneratedProposalEngine()
 
 	private let modelManager: any DynamicGeneratedProposalAvailabilityChecking
 	private let client: any DynamicGeneratedProposalLLMGenerating
+	private let decisionEngine: any AgenticProposalDeciding
+	private let templateLibrary: any GeneratedActionTemplateLibraryProviding
 	private let timeoutNanoseconds: UInt64
 
 	init(
 		modelManager: any DynamicGeneratedProposalAvailabilityChecking = ModelManager.shared,
 		client: any DynamicGeneratedProposalLLMGenerating = LocalAIClient.shared,
+		decisionEngine: any AgenticProposalDeciding = AgenticProposalDecisionEngine.shared,
+		templateLibrary: any GeneratedActionTemplateLibraryProviding = GeneratedActionTemplateLibrary.shared,
 		timeoutSeconds: TimeInterval = 9
 	) {
 		self.modelManager = modelManager
 		self.client = client
+		self.decisionEngine = decisionEngine
+		self.templateLibrary = templateLibrary
 		self.timeoutNanoseconds = UInt64(max(3, timeoutSeconds) * 1_000_000_000)
+		print("[TRACE_INIT] DynamicGeneratedProposalEngine file=\(#file) decisionEngine=\(type(of: decisionEngine)) library=\(type(of: templateLibrary))")
 	}
+
+	/// When `false` (default), the live LLM path in this engine is never executed even if reached.
+	/// Set to `true` only in explicit debug/test scenarios. T18.3.5A defense-in-depth.
+	static var allowLiveLLMForDebug: Bool = false
 
 	func generateProposals(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
@@ -42,6 +54,9 @@ actor DynamicGeneratedProposalEngine {
 		situational: SituationalContextSnapshot? = nil,
 		referenceTime: Date = Date()
 	) async -> DynamicGeneratedProposalResult {
+		// T18.3.5A: Emit architecture mode on every attempt so traces are always unambiguous.
+		print("[ProposalArchitecture] mode=template_library_only live_llm_enabled=no")
+
 		let situationalContext: SituationalContextSnapshot
 		if let situational {
 			situationalContext = situational
@@ -53,29 +68,144 @@ actor DynamicGeneratedProposalEngine {
 			SituationalContextDiagnostics.log(situationalContext)
 		}
 
+		// MARK: - Two-stage decision gate (T18.3.4 / T18.3.4A)
+		// Runs FIRST — before model checks, before preflight. Every attempt logs decision_stage
+		// and large_model_called so diagnostic traces are always complete.
+
+		let decision = await decisionEngine.decide(
+			snapshot: snapshot,
+			situational: situationalContext,
+			referenceTime: referenceTime
+		)
+		logMetadata(
+			event: "decision_stage",
+			value: decision.shouldThink ? "think" : (decision.needsMoreContext ? "needs_context" : "quiet"),
+			extra: "source=\(decision.decisionSource.rawValue) conf=\(String(format: "%.2f", decision.confidence)) reason=\(decision.reason)"
+		)
+
+		if !decision.shouldThink {
+			logMetadata(event: "large_model_called", value: "no", extra: "reason=\(decision.reason)")
+			if decision.needsMoreContext {
+				let contextKind = decision.recommendedContextKind.rawValue
+				let tag = decision.recommendedContextKind == .visual
+					? "diag:decision_needs_more_context:visual"
+					: "diag:decision_needs_more_context:\(contextKind)"
+				return result(
+					status: .quietByGate,
+					reason: "needs_more_context",
+					warnings: [tag],
+					cause: nil,
+					referenceTime: referenceTime
+				)
+			}
+			let tag = decision.reason == "timeout_cooldown"
+				? "diag:decision_timeout_cooldown"
+				: "diag:decision_quiet"
+			return result(
+				status: .quietByGate,
+				reason: decision.reason,
+				warnings: [tag],
+				cause: nil,
+				referenceTime: referenceTime
+			)
+		}
+
+		// MARK: - Template library lookup (T18.3.5)
+		// Runs BEFORE any LLM call. If eligible templates exist, surface them immediately.
+		// If not, enqueue a prewarm request and return explicit no-template status.
+		// The large model is never called just because the library missed.
+
+		let libraryResult = await templateLibrary.retrieve(
+			situational: situationalContext,
+			referenceTime: referenceTime
+		)
+
+		if libraryResult.hasMatch {
+			let records = libraryResult.records
+			logMetadata(
+				event: "template_library_hit",
+				value: "\(records.count)",
+				extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) source=library"
+			)
+			logMetadata(event: "large_model_called", value: "no", extra: "reason=template_library_hit")
+			return DynamicGeneratedProposalResult(
+				status: .synthesized,
+				shouldChimeIn: true,
+				reason: "library_hit",
+				workflowAssessment: "library_match",
+				proposalConfidence: records.map(\.usefulnessScore).max() ?? 0.6,
+				requiresVisualContext: false,
+				proposals: [],
+				warnings: [],
+				llmDiagnosticCause: nil,
+				createdAt: referenceTime,
+				libraryRecords: records
+			)
+		}
+
+		// Library miss — queue prewarm for deferred async design; do NOT call LLM in live path.
+		await templateLibrary.enqueuePrewarm(
+			situational: situationalContext,
+			decision: decision,
+			referenceTime: referenceTime
+		)
+		logMetadata(
+			event: "template_library_miss",
+			value: libraryResult.missReason?.rawValue ?? "unknown",
+			extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) prewarm_queued=yes"
+		)
+		logMetadata(event: "large_model_called", value: "no", extra: "reason=no_template_in_library")
+		return result(
+			status: .quietByGate,
+			reason: "no_template_in_library",
+			warnings: ["diag:no_template_in_library"],
+			cause: nil,
+			referenceTime: referenceTime
+		)
+
+		// Decision approved — check preflight conditions before committing to LLM.
+		// NOTE: The code below is preserved but currently unreachable (library miss returns above).
+		// It will be re-enabled when the prewarm-to-LLM path is introduced (T18.3.6+).
+		//
+		// T18.3.5A: Hard gate — if this point is somehow reached, refuse to call LLM unless
+		// allowLiveLLMForDebug is explicitly set (never true in production).
+		guard DynamicGeneratedProposalEngine.allowLiveLLMForDebug else {
+			print("[ARCHITECTURE ERROR] DynamicGeneratedProposalEngine reached live LLM path — expected library-only mode (T18.3.5A). Suppressing call.")
+			assertionFailure("[ARCHITECTURE ERROR] DynamicGeneratedProposalEngine reached live LLM path — expected library-only mode (T18.3.5A).")
+			return result(
+				status: .quietByGate,
+				reason: "architecture_error_live_llm_suppressed",
+				warnings: ["diag:architecture_error_live_llm_suppressed"],
+				cause: nil,
+				referenceTime: referenceTime
+			)
+		}
+
 		if let gate = preflightGate(
 			snapshot: snapshot,
 			situational: situationalContext,
 			history: history,
 			referenceTime: referenceTime
 		) {
-			logMetadata(event: "llm_should_chime_in", value: "false", extra: "reason=\(gate.reason)")
+			logMetadata(event: "large_model_called", value: "no", extra: "reason=\(gate.reason)")
 			return gate
 		}
 
 		guard LocalAISettings.shared.localAIEnabled else {
-			logMetadata(event: "llm_generation_skipped", value: "disabled", extra: "cause=model_unavailable")
+			logMetadata(event: "large_model_called", value: "no", extra: "reason=local_ai_disabled")
 			return .unavailable(reason: "local_ai_disabled", cause: .modelUnavailable)
 		}
 
 		guard await modelManager.isGenerationAvailable() else {
 			if ModelManager.shared.isWithinStartupGrace() {
-				logMetadata(event: "llm_generation_skipped", value: "grace", extra: "cause=startup_grace")
+				logMetadata(event: "large_model_called", value: "no", extra: "reason=startup_grace")
 				return .unavailable(reason: "startup_grace", cause: .startupGrace)
 			}
-			logMetadata(event: "llm_generation_skipped", value: "unavailable", extra: "cause=model_unavailable")
+			logMetadata(event: "large_model_called", value: "no", extra: "reason=model_unavailable")
 			return .unavailable(reason: "model_unavailable", cause: .modelUnavailable)
 		}
+
+		// Large model approved by decision stage.
 
 		let prompt = DynamicGeneratedProposalPromptBuilder.build(
 			snapshot: snapshot,
@@ -87,7 +217,11 @@ actor DynamicGeneratedProposalEngine {
 		)
 
 		let model = LocalAISettings.shared.modelName
+		logMetadata(event: "large_model_called", value: "yes", extra: "model=\(model) prompt_bytes=\(prompt.utf8.count)")
 		logMetadata(event: "llm_generation_started", value: model, extra: "prompt_bytes=\(prompt.utf8.count)")
+		// T18.3.5A: This line must never be reached in production (library-only mode).
+		// If the app doesn't crash here → wrong file is executing.
+		fatalError("[TRACE] LEGACY LIVE LLM PATH STILL ACTIVE — DynamicGeneratedProposalEngine.swift is not being compiled from the expected source. file=\(#file)")
 
 		let generationStart = Date()
 		let raw: String
@@ -107,7 +241,13 @@ actor DynamicGeneratedProposalEngine {
 		} catch let err as DynamicGeneratedProposalEngineError {
 			switch err {
 			case .appTimeout:
-				logMetadata(event: "llm_generation_timeout", value: "1", extra: "cause=app_timeout")
+				// Record fingerprint so next cycle for this context is skipped by decision stage.
+				let fp = AgenticProposalDecisionEngine.contextFingerprint(
+					snapshot: snapshot,
+					situational: situationalContext
+				)
+				await decisionEngine.recordTimeout(fingerprint: fp, at: referenceTime)
+				logMetadata(event: "llm_generation_timeout", value: "1", extra: "cause=app_timeout fingerprint_recorded=yes")
 				return result(
 					status: .timeout,
 					reason: "app_timeout",
@@ -127,12 +267,25 @@ actor DynamicGeneratedProposalEngine {
 			return .unavailable(reason: cause.rawValue, cause: cause)
 		}
 
-		guard let parsed = DynamicGeneratedProposalParser.parse(from: raw, referenceTime: referenceTime) else {
-			logMetadata(event: "llm_parse_failed", value: "1", extra: "cause=malformed_response")
+		#if DEBUG
+		if ProcessInfo.processInfo.environment["CONTEXTUAL_DEBUG_LLM_OUTPUT"] == "1" {
+			let preview = String(raw.prefix(300))
+			logMetadata(event: "debug_llm_output", value: "1", extra: "preview=\(preview)")
+		}
+		#endif
+
+		let (parsed, hardFailTag) = DynamicGeneratedProposalParser.parseWithReason(from: raw, referenceTime: referenceTime)
+		guard let parsed else {
+			// Parser logs byte bucket, extraction result, and alias diagnostics via parser_diag.
+			logMetadata(
+				event: "llm_parse_failed",
+				value: "1",
+				extra: "cause=malformed_response bytes=\(raw.utf8.count)"
+			)
 			return result(
 				status: .parseFailed,
 				reason: "parse_failed",
-				warnings: ["malformed_response"],
+				warnings: [hardFailTag ?? "diag:parse_failed"],
 				cause: .malformedResponse,
 				referenceTime: referenceTime
 			)
@@ -181,7 +334,8 @@ actor DynamicGeneratedProposalEngine {
 				proposals: [],
 				warnings: ["no_fused_context"],
 				llmDiagnosticCause: nil,
-				createdAt: referenceTime
+				createdAt: referenceTime,
+				libraryRecords: []
 			)
 		}
 		if !freshEnough && !hasText && !hasMetadata && !metadataOnlyUsable {
@@ -195,7 +349,8 @@ actor DynamicGeneratedProposalEngine {
 				proposals: [],
 				warnings: ["stale_context"],
 				llmDiagnosticCause: nil,
-				createdAt: referenceTime
+				createdAt: referenceTime,
+				libraryRecords: []
 			)
 		}
 
@@ -212,7 +367,8 @@ actor DynamicGeneratedProposalEngine {
 				proposals: [],
 				warnings: ["post_dismiss_cooldown"],
 				llmDiagnosticCause: nil,
-				createdAt: referenceTime
+				createdAt: referenceTime,
+				libraryRecords: []
 			)
 		}
 
@@ -243,7 +399,8 @@ actor DynamicGeneratedProposalEngine {
 			proposals: kept,
 			warnings: parsed.warnings + (kept.count < parsed.proposals.count ? ["repetition_filtered"] : []),
 			llmDiagnosticCause: parsed.llmDiagnosticCause,
-			createdAt: parsed.createdAt
+			createdAt: parsed.createdAt,
+			libraryRecords: []
 		)
 	}
 
@@ -264,7 +421,8 @@ actor DynamicGeneratedProposalEngine {
 			proposals: [],
 			warnings: warnings,
 			llmDiagnosticCause: cause,
-			createdAt: referenceTime
+			createdAt: referenceTime,
+			libraryRecords: []
 		)
 	}
 

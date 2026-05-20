@@ -1,10 +1,17 @@
 import Foundation
 
-/// Bounded prompt construction for LLM-first generated execution proposals (T18.3.1+).
+/// Bounded prompt construction for LLM-first generated execution proposals (T18.3.3C: compact schema).
 enum DynamicGeneratedProposalPromptBuilder {
 
-	static let compactPromptByteBudget = 2200
 	static let maxProposalsInPrompt = 1
+	/// Byte ceiling used by self-tests that verify prompt size (T18.3.3C target: < 1500 bytes).
+	static let compactPromptByteBudget = 1500
+
+	// Allowed primitives listed explicitly so small LLMs can copy-paste.
+	static let allowedPrimitives =
+		"answer_from_context, classify_workflow, extract_action_items, compare_contexts, " +
+		"summarize_context, generate_checklist, structure_notes, explain_error, " +
+		"organize_information, generate_study_notes, synthesize_research_summary"
 
 	static func build(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
@@ -22,16 +29,11 @@ enum DynamicGeneratedProposalPromptBuilder {
 				history: history
 			)
 		}
-		return buildLegacy(
-			snapshot: snapshot,
-			existingStaticActions: existingStaticActions,
-			reusableCount: reusableCount,
-			history: history,
-			budget: budget
-		)
+		return buildFallback(snapshot: snapshot, budget: budget)
 	}
 
-	// MARK: - Compact (T18.3.3B)
+	// MARK: - Compact situational prompt (T18.3.3C)
+	// Target: < 1500 bytes. No examples, no prose allowed in response.
 
 	private static func buildCompact(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
@@ -39,51 +41,39 @@ enum DynamicGeneratedProposalPromptBuilder {
 		budget: ExecutionBudget,
 		history: ProposalHistoryMetadata?
 	) -> String {
-		let primitives = "answer_from_context,classify_workflow,extract_action_items,compare_contexts"
-		let guidance = situational.assistantGuidance.prefix(3).joined(separator: "; ")
-		let missing = situational.missingContextReasons.prefix(4).joined(separator: ",")
-		let dismissals = history?.recentDismissedCandidateIds.count ?? 0
+		let guidance = situational.assistantGuidance.prefix(2).joined(separator: "; ")
 		let clip = situational.clipboardSignal
+		let dismissals = history?.recentDismissedCandidateIds.count ?? 0
 
+		// Required schema comment is embedded so the model sees the exact structure it must output.
 		return """
-		Calm macOS assistant. Return ONLY compact JSON. Max \(maxProposalsInPrompt) proposal.
-		Schema: {"shouldChimeIn":bool,"reason":str,"workflowAssessment":str,"proposalConfidence":0-1,"requiresVisualContext":bool,"proposals":[{"title":str,"description":str,"intentType":str,"workflowType":str,"expectedOutcome":str,"requiredContextTypes":[str],"suggestedPrimitives":[str],"interruptionCost":0-1,"confidence":0-1}]}
-		Rules: specific situational titles only; NO summarize/explain/rewrite; weak context => shouldChimeIn=false proposals=[]; primitives in [\(primitives)]; requiresVisualContext is recommendation only.
-		Situation: \(truncate(situational.situationalSummary, max: 220))
-		Guidance: \(guidance.isEmpty ? "stay quiet if unsure" : guidance)
-		App=\(snapshot.activeApp) workflow=\(situational.inferredWorkflow.rawValue) primary=\(situational.primaryAvailableSource.rawValue) fused=\(situational.metadata["fused_packet"] ?? "no")
-		Clipboard: suppressed=\(clip.availability == .suppressed ? "yes" : "no") relevance=\(clip.relevance.rawValue) reason=\(clip.reasonCodes.first ?? "none")
-		Missing: \(missing.isEmpty ? "none" : missing) perception=\(situational.perceptionRecommendation.rawValue)
-		Window_title_len=\(snapshot.windowTitle.count) dismissals=\(dismissals) budget_vision=\(budget.allowsVision)
+		Respond with ONLY a JSON object. No markdown. No prose. No explanation.
+		Schema (use exactly these key names):
+		{"chime":bool,"reason":"short","proposal":{"title":"short action","description":"short","workflow":"browsing","intent":"research","outcome":"what this produces","primitives":["answer_from_context"],"confidence":0.72}}
+		Rules:
+		- chime=false and omit proposal if context is weak or unclear.
+		- title and description must be specific to situation, NOT generic (no "summarize this", "explain selected text", "rewrite text").
+		- primitives must be chosen from: \(allowedPrimitives)
+		- confidence is a float 0-1; use 0 if unsure.
+		- Max 1 proposal.
+		Situation: \(truncate(situational.situationalSummary, max: 200))
+		\(guidance.isEmpty ? "" : "Guidance: \(guidance)")
+		App=\(snapshot.activeApp) workflow=\(situational.inferredWorkflow.rawValue) source=\(situational.primaryAvailableSource.rawValue)
+		Clipboard=\(clip.availability == .suppressed ? "suppressed" : clip.relevance.rawValue) dismissals=\(dismissals)
 		"""
 	}
 
-	// MARK: - Legacy full prompt
+	// MARK: - Minimal fallback (no situational context available)
 
-	private static func buildLegacy(
+	private static func buildFallback(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
-		existingStaticActions: [String],
-		reusableCount: Int,
-		history: ProposalHistoryMetadata?,
 		budget: ExecutionBudget
 	) -> String {
-		let primitives = ExecutionPrimitive.allCases.map(\.rawValue).joined(separator: ", ")
-		let workflows = WorkflowType.allCases.map(\.rawValue).joined(separator: ", ")
-		let intents = IntentType.allCases.map(\.rawValue).joined(separator: ", ")
-
-		let historyLine: String
-		if let history, !history.recentDismissedCandidateIds.isEmpty {
-			historyLine = "recent_dismissals=\(history.recentDismissedCandidateIds.count)"
-		} else {
-			historyLine = "recent_dismissals=0"
-		}
-
 		return """
-		You are a calm macOS contextual assistant. Propose situational, executable cognitive operations — NOT renamed summarize/explain/rewrite buttons.
-		Return STRICT JSON only. Max \(maxProposalsInPrompt) proposal.
-		suggestedPrimitives: [\(primitives)] workflowType: [\(workflows)] intentType: [\(intents)]
-		app=\(snapshot.activeApp) workflow=\(snapshot.inferredWorkflow.rawValue) freshness=\(String(format: "%.2f", snapshot.freshnessScore))
-		\(historyLine) budget_vision=\(budget.allowsVision)
+		Respond with ONLY a JSON object. No markdown. No prose.
+		Schema: {"chime":bool,"reason":"short","proposal":{"title":"short","description":"short","workflow":"browsing","intent":"answer","outcome":"what this produces","primitives":["answer_from_context"],"confidence":0.6}}
+		Rules: chime=false unless strong situational context. Primitives: \(allowedPrimitives)
+		App=\(snapshot.activeApp) workflow=\(snapshot.inferredWorkflow.rawValue) vision=\(budget.allowsVision)
 		"""
 	}
 

@@ -688,7 +688,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				staticRelevanceScores: workflowRank.adjustedScores,
 				generatedActions: [],
 				generatedExecutionCandidates: llmCandidates,
-				reusableRecords: [],
+				reusableRecords: llmResult.libraryRecords,
 				snapshot: proposalSnapshot,
 				history: activationHistory,
 				workflow: WorkflowInferenceEngine.shared.latestResult(),
@@ -744,7 +744,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		   generation == contextPipelineGeneration
 		{
 			let llmIds = Self.llmCandidateActionIds(from: ordered)
-			if !llmIds.isEmpty {
+			// T18.3.5A: DynamicOnlyProposalMode replaces the Phase-12 IntelligenceProposalSelector
+			// pipeline entirely. When enabled, skip applyIntelligenceRefinement — the new
+			// DynamicGeneratedProposalEngine (decision → template library) handles all LLM work.
+			if !llmIds.isEmpty && !DynamicOnlyProposalMode.isEnabled {
 				let gen = generation
 				let snapOrdered = ordered
 				let snapProposalKey = finalProposalKey
@@ -873,7 +876,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				staticRelevanceScores: [],
 				generatedActions: [],
 				generatedExecutionCandidates: llmCandidates,
-				reusableRecords: [],
+				reusableRecords: llmResult.libraryRecords,
 				snapshot: prepared.snapshot,
 				history: activationHistory,
 				workflow: WorkflowInferenceEngine.shared.latestResult(),
@@ -892,6 +895,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			situational: prepared.situational
 		)
 		print("[GeneratedProposal] \(debugStatus.logLine)")
+		print(debugStatus.pipelineStatusLine)
 		GeneratedProposalActivationDiagnostics.logOutcome(
 			llmResult: llmResult,
 			candidateCount: llmCandidates.count,

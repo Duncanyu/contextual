@@ -71,6 +71,12 @@ final class LocalAIClient: @unchecked Sendable {
 			}
 			let outLen = text.utf8.count
 			print("[LocalAI] generate_done model=\(model) outputBytes=\(outLen)")
+			#if DEBUG
+			if ProcessInfo.processInfo.environment["CONTEXTUAL_DEBUG_LLM_OUTPUT"] == "1" {
+				let preview = String(text.prefix(300))
+				print("[LocalAI] debug_raw_output model=\(model) preview=\(preview)")
+			}
+			#endif
 			return text
 		} catch {
 			print("[LocalAI] generate_failed model=\(model)")

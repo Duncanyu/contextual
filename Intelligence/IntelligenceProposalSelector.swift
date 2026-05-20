@@ -13,6 +13,10 @@ final class IntelligenceProposalSelector {
 	private var lastMicroSkipSig: String?
 	private var lastMicroSkipAt: Date?
 
+	init() {
+		print("[TRACE_INIT] IntelligenceProposalSelector active file=\(#file)")
+	}
+
 	/// T12.10: slightly lower so confident micro agreement keeps heuristic without phi3.
 	private static let overrideConfidenceThreshold: Double = 0.74
 	/// Easier to honor micro/cache “stay quiet” without floating churn.
@@ -47,6 +51,12 @@ final class IntelligenceProposalSelector {
 		inputPreference: InputSourceChoice,
 		isActionExecuting: Bool
 	) async -> Result {
+		// T18.3.5A: Hard gate — when DynamicOnlyProposalMode is active the new template-library
+		// pipeline owns all LLM work. This selector must not run.
+		guard !DynamicOnlyProposalMode.isEnabled else {
+			print("[IntelligenceProposalSelector] skipped reason=dynamic_only_mode")
+			return Result(outcome: .unchanged, intelligenceTitle: nil)
+		}
 		guard !candidateLLMActionIds.isEmpty else { return Result(outcome: .unchanged, intelligenceTitle: nil) }
 
 		let trimmed = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
