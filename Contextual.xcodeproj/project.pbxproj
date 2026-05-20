@@ -215,6 +215,8 @@
 		AA000216000000000000012F /* GeneratedActionTemplateSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000401000000000000012F /* GeneratedActionTemplateSeeder.swift */; };
 		AA0002170000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004020000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift */; };
 		AA0002180000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004030000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift */; };
+		AA0002190000000000000132 /* VisualContextWorkflowClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004040000000000000132 /* VisualContextWorkflowClassifier.swift */; };
+		AA00021A0000000000000133 /* VisualContextWorkflowClassifierSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004050000000000000133 /* VisualContextWorkflowClassifierSelfTest.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -430,6 +432,8 @@
 		AA000401000000000000012F /* GeneratedActionTemplateSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateSeeder.swift; sourceTree = "<group>"; };
 		AA0004020000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplatePrewarmConsumer.swift; sourceTree = "<group>"; };
 		AA0004030000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateSeederSelfTest.swift; sourceTree = "<group>"; };
+		AA0004040000000000000132 /* VisualContextWorkflowClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextWorkflowClassifier.swift; sourceTree = "<group>"; };
+		AA0004050000000000000133 /* VisualContextWorkflowClassifierSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextWorkflowClassifierSelfTest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -669,6 +673,8 @@
 				AA000401000000000000012F /* GeneratedActionTemplateSeeder.swift */,
 				AA0004020000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift */,
 				AA0004030000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift */,
+				AA0004040000000000000132 /* VisualContextWorkflowClassifier.swift */,
+				AA0004050000000000000133 /* VisualContextWorkflowClassifierSelfTest.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -988,6 +994,8 @@
 				AA000216000000000000012F /* GeneratedActionTemplateSeeder.swift in Sources */,
 				AA0002170000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift in Sources */,
 				AA0002180000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift in Sources */,
+				AA0002190000000000000132 /* VisualContextWorkflowClassifier.swift in Sources */,
+				AA00021A0000000000000133 /* VisualContextWorkflowClassifierSelfTest.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,

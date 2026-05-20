@@ -75,6 +75,31 @@ enum GeneratedActionTemplateLibrarySelfTest {
 		check("library_hit_records_non_empty", !hitResult.records.isEmpty)
 		check("library_hit_miss_reason_nil", hitResult.missReason == nil)
 
+		// MARK: 4b — Browser contexts suppress debugging templates when workflow is unknown
+
+		let browserDebug = TemplateLibrarySelfTestFixtures.record(
+			workflow: .debugging, intent: .explain,
+			reuseEligibility: .eligible, referenceTime: now
+		)
+		let browserBrowsing = TemplateLibrarySelfTestFixtures.record(
+			workflow: .browsing, intent: .extract,
+			reuseEligibility: .eligible, referenceTime: now
+		)
+		let browserStore = InMemoryGeneratedActionPersistenceStore(records: [browserDebug, browserBrowsing])
+		let browserManager = GeneratedActionPersistenceManager(store: browserStore, policy: .strictTest)
+		let browserLibrary = GeneratedActionTemplateLibrary(
+			manager: browserManager,
+			prewarmQueue: GeneratedActionTemplatePrewarmQueue()
+		)
+		let browserSituational = TemplateLibrarySelfTestFixtures.browserSituationalSnapshot(
+			windowTitle: "YouTube — Example Video",
+			referenceTime: now
+		)
+		let browserResult = await browserLibrary.retrieve(situational: browserSituational, referenceTime: now)
+		check("browser_unknown_has_match", browserResult.hasMatch)
+		let includesDebug = browserResult.records.contains { $0.workflowType == .debugging }
+		check("browser_suppresses_debug_templates", includesDebug == false)
+
 		// MARK: 5 — Prewarm queue deduplicates by (workflowType, intentType)
 
 		let prewarmQueue = GeneratedActionTemplatePrewarmQueue(maxPending: 5)
@@ -218,6 +243,31 @@ private enum TemplateLibrarySelfTestFixtures {
 				workflowConfidence: 0.75,
 				generatedAt: referenceTime,
 				freshnessScore: 0.8
+			),
+			referenceTime: referenceTime
+		)
+	}
+
+	static func browserSituationalSnapshot(
+		windowTitle: String,
+		referenceTime: Date
+	) -> SituationalContextSnapshot {
+		SituationalContextSynthesizer.synthesize(
+			from: CanonicalGeneratedExecutionContextSnapshot(
+				activeApp: "Safari",
+					windowTitle: windowTitle,
+					bundleIdentifier: "com.apple.Safari",
+					inferredWorkflow: .unknown,
+					recentOCRExcerpt: "subscribe comments up next",
+					workflowConfidence: 0.2,
+					visualContextAvailability: GeneratedExecutionVisualContextAvailability(
+						hasVisualDescriptor: true,
+						visualTags: ["video", "player"],
+					visualCapturedAt: referenceTime,
+					visualExpiresAt: referenceTime.addingTimeInterval(8)
+				),
+				generatedAt: referenceTime,
+				freshnessScore: 0.42
 			),
 			referenceTime: referenceTime
 		)

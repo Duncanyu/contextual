@@ -15,6 +15,10 @@ enum SparseVisualPeekAllowReason: String, Hashable, Sendable, Codable {
 enum SparseVisualPeekDenyReason: String, Hashable, Sendable, Codable {
 	case contextAlreadyStrong = "context_already_strong"
 	case selectedTextSufficient = "selected_text_sufficient"
+	/// Clipboard is fresh AND assessed as contextually sufficient for the current situation.
+	/// (Replaces the old `clipboard_fresh_enough` behavior which was too aggressive.)
+	case clipboardContextSufficient = "clipboard_context_sufficient"
+	/// Legacy code path kept for backward compatibility; no longer emitted.
 	case clipboardFreshEnough = "clipboard_fresh_enough"
 	case recentVisualContextStillFresh = "recent_visual_context_still_fresh"
 	case permissionUnavailable = "permission_unavailable"
@@ -207,15 +211,44 @@ enum SparseVisualPeekPolicy {
 			snapshot: snapshot,
 			referenceTime: referenceTime
 		)
+		let appCategory = inferAppCategory(snapshot: snapshot)
+		let clipboardAssessment = SituationalClipboardRelevanceEvaluator.assess(
+			snapshot: snapshot,
+			appCategory: appCategory,
+			referenceTime: referenceTime
+		)
+		let clipboardCountsAsContext = suppression.includeClipboard
+			&& !clipboardAssessment.suppressed
+			&& (clipboardAssessment.relevance == .high || clipboardAssessment.relevance == .medium)
 		let hasSelection = hasSufficientSelectedText(snapshot: snapshot)
 		if hasSelection {
 			logDenied(reason: .selectedTextSufficient)
 			return .deny(.selectedTextSufficient, metadata: ["selection": "1"])
 		}
 
-		if suppression.includeClipboard, clipboardIsFresh(snapshot: snapshot, referenceTime: referenceTime) {
-			logDenied(reason: .clipboardFreshEnough)
-			return .deny(.clipboardFreshEnough, metadata: ["clipboard": "fresh"])
+		// Clipboard should only deny a visual peek when it is both fresh AND contextually sufficient.
+		// This avoids unrelated/stale/suppressed clipboard content blocking ambient perception.
+		if clipboardCountsAsContext,
+		   clipboardIsFresh(snapshot: snapshot, referenceTime: referenceTime),
+		   clipboardAssessment.canBePrimary,
+		   clipboardAssessment.relevance == .high
+		{
+			logDenied(
+				reason: .clipboardContextSufficient,
+				metadata: [
+					"clipboard": "sufficient",
+					"rel": clipboardAssessment.relevance.rawValue,
+					"age": clipboardAssessment.ageBucket
+				]
+			)
+			return .deny(
+				.clipboardContextSufficient,
+				metadata: [
+					"clipboard": "sufficient",
+					"rel": clipboardAssessment.relevance.rawValue,
+					"age": clipboardAssessment.ageBucket
+				]
+			)
 		}
 
 		if contextAlreadyStrong(snapshot: snapshot) {
@@ -238,15 +271,17 @@ enum SparseVisualPeekPolicy {
 			|| snapshot.inferredWorkflow == .unknown {
 			triggers.append(.insufficientWorkflowInference)
 		}
-		if !hasPrimaryText(snapshot: snapshot, suppression: suppression) {
+		if !hasPrimaryText(snapshot: snapshot, includeClipboard: clipboardCountsAsContext) {
 			triggers.append(.missingPrimaryText)
 		}
-		if !suppression.includeClipboard,
+		// Clipboard may be suppressed either by freshness policy OR by situational relevance;
+		// treat it as non-primary for perception triggers in both cases.
+		if !clipboardCountsAsContext,
 		   !(snapshot.clipboardText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 			triggers.append(.staleClipboardSuppressed)
 		}
 		if isVisuallyDependent(snapshot.inferredWorkflow),
-		   !hasPrimaryText(snapshot: snapshot, suppression: suppression) {
+		   !hasPrimaryText(snapshot: snapshot, includeClipboard: clipboardCountsAsContext) {
 			triggers.append(.visualContextLikelyUseful)
 		}
 
@@ -342,10 +377,10 @@ enum SparseVisualPeekPolicy {
 
 	private static func hasPrimaryText(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
-		suppression: GeneratedExecutionClipboardSuppressionDecision
+		includeClipboard: Bool
 	) -> Bool {
 		if !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
-		if suppression.includeClipboard,
+		if includeClipboard,
 		   !(snapshot.clipboardText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 			return true
 		}
@@ -373,6 +408,20 @@ enum SparseVisualPeekPolicy {
 		}
 		// Unknown permission state: allow policy evaluation; budget gate may still deny.
 		return true
+	}
+
+	private static func inferAppCategory(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot
+	) -> SituationalAppCategory {
+		if SituationalContextSynthesizer.isBrowser(snapshot: snapshot) { return .browser }
+		let bundle = (snapshot.bundleIdentifier ?? "").lowercased()
+		let app = snapshot.activeApp.lowercased()
+		if bundle.contains("xcode") || app.contains("xcode") { return .ide }
+		if bundle.contains("terminal") || app.contains("terminal") || bundle.contains("iterm") { return .terminal }
+		if app.contains("notes") || bundle.contains("notes") { return .notes }
+		if app.contains("slack") || app.contains("mail") || app.contains("messages") { return .communication }
+		if app.contains("vlc") || app.contains("quicktime") || app.contains("music") { return .media }
+		return .unknown
 	}
 
 	private static func evaluateBudgetLikelyDenied(

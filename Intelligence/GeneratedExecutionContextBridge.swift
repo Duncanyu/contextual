@@ -28,9 +28,14 @@ struct GeneratedExecutionContextBridge: Sendable {
 			snapshot: snapshot,
 			referenceTime: referenceTime
 		)
+		let workflowTypeFromSnapshot = WorkflowExecutionMapper.workflowType(from: snapshot.inferredWorkflow)
+		let actionWorkflowType = action?.workflowType ?? .unknown
+		let effectiveWorkflowType = workflowTypeFromSnapshot != .unknown ? workflowTypeFromSnapshot : actionWorkflowType
+
 		let primary = resolvePrimarySource(
 			snapshot: snapshot,
 			suppression: suppression,
+			effectiveWorkflowType: effectiveWorkflowType,
 			referenceTime: referenceTime
 		)
 
@@ -39,7 +44,6 @@ struct GeneratedExecutionContextBridge: Sendable {
 		let ocrExcerpt = snapshot.recentOCRExcerpt
 
 		let visual = snapshot.visualContextAvailability
-		let workflowType = WorkflowExecutionMapper.workflowType(from: snapshot.inferredWorkflow)
 		let intentType: IntentType = {
 			if let intent = snapshot.inferredIntent {
 				return WorkflowExecutionMapper.intentType(from: intent)
@@ -52,6 +56,7 @@ struct GeneratedExecutionContextBridge: Sendable {
 
 		let available = mergeAvailableTypes(
 			snapshot: snapshot,
+			effectiveWorkflowType: effectiveWorkflowType,
 			selectedExcerpt: selectedExcerpt,
 			clipboardExcerpt: clipboardExcerpt,
 			ocrExcerpt: ocrExcerpt,
@@ -64,7 +69,7 @@ struct GeneratedExecutionContextBridge: Sendable {
 			sourceType: primary.rawValue,
 			appName: snapshot.activeApp,
 			windowTitle: snapshot.windowTitle,
-			workflowType: workflowType,
+			workflowType: effectiveWorkflowType,
 			intentType: intentType,
 			selectedTextExcerpt: selectedExcerpt,
 			clipboardTextExcerpt: clipboardExcerpt,
@@ -95,13 +100,16 @@ struct GeneratedExecutionContextBridge: Sendable {
 	private func resolvePrimarySource(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
 		suppression: GeneratedExecutionClipboardSuppressionDecision,
+		effectiveWorkflowType: WorkflowType,
 		referenceTime: Date
 	) -> GeneratedExecutionPrimarySource {
 		if !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 			return .selectedText
 		}
 
-		if snapshot.inferredWorkflow != .unknown, snapshot.workflowConfidence >= 0.35 {
+		let hasWorkflowInference = (snapshot.inferredWorkflow != .unknown && snapshot.workflowConfidence >= 0.35)
+			|| effectiveWorkflowType != .unknown
+		if hasWorkflowInference {
 			if snapshot.visualContextAvailability.hasUsableVisual {
 				return .visual
 			}
@@ -132,6 +140,7 @@ struct GeneratedExecutionContextBridge: Sendable {
 
 	private func mergeAvailableTypes(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		effectiveWorkflowType: WorkflowType,
 		selectedExcerpt: String?,
 		clipboardExcerpt: String?,
 		ocrExcerpt: String?,
@@ -146,10 +155,10 @@ struct GeneratedExecutionContextBridge: Sendable {
 		if !(clipboardExcerpt ?? "").isEmpty { add(.textSnippet) }
 		if !(ocrExcerpt ?? "").isEmpty { add(.fusedVisual); add(.textSnippet) }
 		if visual.hasUsableVisual { add(.screenCapture); add(.fusedVisual) }
-		if snapshot.inferredWorkflow != .unknown { add(.workflowContext) }
+		if effectiveWorkflowType != .unknown { add(.workflowContext) }
 		// Add .errorContext for debugging when there is selected text or OCR — error context is
 		// typically present whenever the user has selected an error message or stack trace.
-		if snapshot.inferredWorkflow == .debugging {
+		if effectiveWorkflowType == .debugging {
 			let hasText = !(selectedExcerpt ?? "").isEmpty || !(ocrExcerpt ?? "").isEmpty
 			if hasText { add(.errorContext) }
 		}

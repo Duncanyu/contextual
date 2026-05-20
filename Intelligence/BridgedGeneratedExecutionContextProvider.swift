@@ -26,6 +26,18 @@ struct BridgedGeneratedExecutionContextProvider: GeneratedExecutionContextProvid
 			throw GeneratedExecutionRuntimeError.executionUnavailable
 		}
 		if !context.satisfies(required: action.requiredContextTypes) {
+			let required = Set(action.requiredContextTypes.filter { $0 != .none })
+			let available = Set(context.availableContextTypes)
+			let missing = required.subtracting(available)
+			let reqPart = required.map(\.rawValue).sorted().prefix(8).joined(separator: ",")
+			let availPart = available.map(\.rawValue).sorted().prefix(8).joined(separator: ",")
+			let missPart = missing.map(\.rawValue).sorted().prefix(8).joined(separator: ",")
+			let reqStr = reqPart.isEmpty ? "none" : reqPart
+			let availStr = availPart.isEmpty ? "none" : availPart
+			let missStr = missPart.isEmpty ? "none" : missPart
+			print(
+				"[GeneratedExecutionContext] missing_required_context actionId=\(action.id.uuidString.prefix(8)) required=\(reqStr) available=\(availStr) missing=\(missStr)"
+			)
 			throw GeneratedExecutionRuntimeError.missingRequiredContext
 		}
 		return context

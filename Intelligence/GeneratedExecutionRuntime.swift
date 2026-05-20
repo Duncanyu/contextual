@@ -309,7 +309,7 @@ actor GeneratedExecutionRuntime {
 		)
 		log(event: "result_synthesized", reason: primitiveRun.status.rawValue, actionId: action.id)
 
-		let result = GeneratedExecutionResultSynthesizer.synthesize(
+		var result = GeneratedExecutionResultSynthesizer.synthesize(
 			action: executionAction,
 			outputs: primitiveRun.outputs,
 			warnings: primitiveRun.warnings,
@@ -320,6 +320,7 @@ actor GeneratedExecutionRuntime {
 			planningWarnings: planning.planningWarnings,
 			shapedConfidence: planning.shapedConfidence
 		)
+		result = decorateResultWithRuntimeMetadata(result)
 
 		transition(
 			to: terminalState(for: primitiveRun.status),
@@ -604,7 +605,7 @@ actor GeneratedExecutionRuntime {
 			event: "visual_execution_requested",
 			reason: "plan_requires_visual",
 			actionId: action.id,
-			extra: "vision=\(plan.requiresVision) ocr=\(plan.requiresOCR)"
+			extra: "capture_required=\(plan.requiresVision) ocr_required=\(plan.requiresOCR)"
 		)
 
 
@@ -680,7 +681,15 @@ actor GeneratedExecutionRuntime {
 
 		let visualResult = await scheduler.collect(request: request, budgetSnapshot: budgetSnapshot)
 		visualEnrichmentDecisionInLifecycle = "completed:\(visualResult.status.rawValue)"
-		logVisualExecution(event: "visual_execution_completed", reason: visualResult.status.rawValue, actionId: action.id)
+		let captured = visualResult.capturedAt != nil
+		let ocrPresent = (visualResult.ocrExcerpt ?? "").isEmpty == false
+		let descriptorPresent = (visualResult.visualSummary ?? "").isEmpty == false || visualResult.visualTags.isEmpty == false
+		logVisualExecution(
+			event: "visual_execution_completed",
+			reason: visualResult.status.rawValue,
+			actionId: action.id,
+			extra: "capture=\(captured ? "yes" : "no") ocr=\(ocrPresent ? "yes" : "no") descriptors=\(descriptorPresent ? "yes" : "no")"
+		)
 
 		if visualResult.status == .completed || visualResult.status == .partial {
 			await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
@@ -693,7 +702,14 @@ actor GeneratedExecutionRuntime {
 			visualEnrichmentUsedOCRInLifecycle = (visualResult.ocrExcerpt ?? "").isEmpty == false
 			visualEnrichmentUsedVisionSummaryInLifecycle = (visualResult.visualSummary ?? "").isEmpty == false
 			visualEnrichmentDecisionInLifecycle = "merged"
-			logVisualExecution(event: "visual_execution_merged", reason: "merged", actionId: action.id)
+			let ocrFlag = visualEnrichmentUsedOCRInLifecycle ? "yes" : "no"
+			let descFlag = (visualEnrichmentUsedVisionSummaryInLifecycle || visualResult.visualTags.isEmpty == false) ? "yes" : "no"
+			logVisualExecution(
+				event: "visual_execution_merged",
+				reason: "merged",
+				actionId: action.id,
+				extra: "ocr=\(ocrFlag) descriptors=\(descFlag)"
+			)
 			return baseContext.merging(visual: visualResult)
 		}
 
@@ -793,12 +809,7 @@ actor GeneratedExecutionRuntime {
 		warnings: [String],
 		metadata: [String: String]
 	) -> ExecutionResult {
-		var meta = metadata
-		meta["visual_enrichment_attempted"] = sparseVisualPeekAttemptedInLifecycle ? "1" : "0"
-		meta["visual_enrichment_performed"] = visualEnrichmentPerformedInLifecycle ? "1" : "0"
-		meta["visual_enrichment_used_ocr"] = visualEnrichmentUsedOCRInLifecycle ? "1" : "0"
-		meta["visual_enrichment_used_visual_summary"] = visualEnrichmentUsedVisionSummaryInLifecycle ? "1" : "0"
-		meta["visual_enrichment_decision"] = visualEnrichmentDecisionInLifecycle
+		let meta = runtimeExecutionMetadata(merging: metadata)
 		return ExecutionResult(
 			actionId: action.id,
 			status: status,
@@ -811,6 +822,38 @@ actor GeneratedExecutionRuntime {
 			confidence: action.confidence,
 			followUpSuggestions: []
 		)
+	}
+
+	private func decorateResultWithRuntimeMetadata(_ result: ExecutionResult) -> ExecutionResult {
+		let merged = runtimeExecutionMetadata(merging: result.executionMetadata)
+		// `ExecutionResult` is immutable; return a copy with merged metadata.
+		return ExecutionResult(
+			id: result.id,
+			actionId: result.actionId,
+			status: result.status,
+			startedAt: result.startedAt,
+			completedAt: result.completedAt,
+			generatedContent: result.generatedContent,
+			generatedSections: result.generatedSections,
+			warnings: result.warnings,
+			executionMetadata: merged,
+			confidence: result.confidence,
+			followUpSuggestions: result.followUpSuggestions
+		)
+	}
+
+	private func runtimeExecutionMetadata(merging base: [String: String]) -> [String: String] {
+		var meta = base
+		// Taxonomy: distinguish capture vs OCR vs descriptors; do not imply semantic vision.
+		meta["visual_enrichment_attempted"] = sparseVisualPeekAttemptedInLifecycle ? "1" : "0"
+		meta["visual_enrichment_performed"] = visualEnrichmentPerformedInLifecycle ? "1" : "0"
+		meta["visual_enrichment_ocr_performed"] = visualEnrichmentUsedOCRInLifecycle ? "1" : "0"
+		meta["visual_enrichment_descriptor_present"] = visualEnrichmentUsedVisionSummaryInLifecycle ? "1" : "0"
+		// Backward compatible keys.
+		meta["visual_enrichment_used_ocr"] = visualEnrichmentUsedOCRInLifecycle ? "1" : "0"
+		meta["visual_enrichment_used_visual_summary"] = visualEnrichmentUsedVisionSummaryInLifecycle ? "1" : "0"
+		meta["visual_enrichment_decision"] = visualEnrichmentDecisionInLifecycle
+		return meta
 	}
 
 	private func log(event: String, reason: String?, actionId: UUID?) {

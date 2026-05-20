@@ -178,23 +178,46 @@ actor DynamicGeneratedProposalEngine {
 								permissionAvailability: snapshot.permissionAvailability,
 								activeSamplingRequested: true
 							)
-							let visualResult = await scheduler.collect(
-								request: request,
-								budgetSnapshot: budgetSnapshot
-							)
-							let visualOK = visualResult.status == .completed || visualResult.status == .partial
-							if visualOK {
-								await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
-								let enriched = snapshot.merging(visualResult: visualResult, referenceTime: referenceTime)
-								effectiveSnapshot = enriched
-								effectiveSituational = SituationalContextSynthesizer.synthesize(
-									from: enriched,
-									referenceTime: referenceTime
+						let visualResult = await scheduler.collect(
+							request: request,
+							budgetSnapshot: budgetSnapshot
+						)
+						let visualOK = visualResult.status == .completed || visualResult.status == .partial
+						if visualOK {
+							await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
+								let classification = VisualContextWorkflowClassifier.classify(
+									appCategory: situationalContext.appCategory,
+									windowTitle: situationalContext.windowTitle,
+									visualTags: visualResult.visualTags,
+									ocrExcerpt: visualResult.ocrExcerpt,
+									priorWorkflow: situationalContext.inferredWorkflow,
+									priorConfidence: situationalContext.workflowConfidence
 								)
-								let ocrUsed = (visualResult.ocrExcerpt ?? "").isEmpty ? "no" : "yes"
+								let titleHint = BrowserTitleHeuristics.domainHint(from: situationalContext.windowTitle) ?? "none"
+								let tagsHint = visualResult.visualTags.prefix(4).joined(separator: ",")
+								let tagsPart = tagsHint.isEmpty ? "none" : tagsHint
+								let confPart = String(format: "%.2f", classification.confidence)
 								print(
-									"[VisualContextGathering] merged visual=yes ocr=\(ocrUsed) status=\(visualResult.status.rawValue) fp=\(fingerprint)"
+									"[VisualContextClassification] before_workflow=\(situationalContext.inferredWorkflow.rawValue) after_workflow=\(classification.workflow.rawValue) app=\(situationalContext.activeAppName) title_hint=\(titleHint) tags=\(tagsPart) ocr_hint=\(classification.ocrHint) conf=\(confPart)"
 								)
+
+							let enriched = snapshot.merging(
+								visualResult: visualResult,
+								priorWorkflow: classification.workflow,
+								priorWorkflowConfidence: classification.confidence,
+								referenceTime: referenceTime
+							)
+							effectiveSnapshot = enriched
+							effectiveSituational = SituationalContextSynthesizer.synthesize(
+								from: enriched,
+								referenceTime: referenceTime
+							)
+							let captured = visualResult.capturedAt != nil ? "yes" : "no"
+							let ocrUsed = (visualResult.ocrExcerpt ?? "").isEmpty ? "no" : "yes"
+							let descriptors = ((visualResult.visualSummary ?? "").isEmpty == false || visualResult.visualTags.isEmpty == false) ? "yes" : "no"
+							print(
+								"[VisualContextGathering] merged capture=\(captured) ocr=\(ocrUsed) descriptors=\(descriptors) status=\(visualResult.status.rawValue) fp=\(fingerprint)"
+							)
 							} else {
 								print(
 									"[VisualContextGathering] denied reason=\(visualResult.status.rawValue) fp=\(fingerprint)"
@@ -246,6 +269,7 @@ actor DynamicGeneratedProposalEngine {
 					var updated = record
 					updated.usefulnessScore = max(updated.usefulnessScore, boostedMinUsefulness)
 					updated.averageConfidence = max(updated.averageConfidence, boostedMinConfidence)
+					print("[TemplateRanking] visual_rank_boost template=\(record.actionTemplateId) reason=perception_\(perception.rawValue)")
 					return updated
 				}
 				logMetadata(

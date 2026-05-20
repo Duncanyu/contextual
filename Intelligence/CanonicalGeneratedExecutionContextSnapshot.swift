@@ -426,6 +426,8 @@ extension CanonicalGeneratedExecutionContextSnapshot {
 	/// This is metadata-only: the snapshot never carries raw screenshots.
 	func merging(
 		visualResult: BoundedVisualContextResult,
+		priorWorkflow: InferredWorkflow? = nil,
+		priorWorkflowConfidence: Double? = nil,
 		referenceTime: Date = Date()
 	) -> CanonicalGeneratedExecutionContextSnapshot {
 		guard visualResult.status == .completed || visualResult.status == .partial else { return self }
@@ -470,17 +472,29 @@ extension CanonicalGeneratedExecutionContextSnapshot {
 			sessionDominantWorkflow: sourceMetadata.sessionDominantWorkflow
 		)
 
+		let mergedWorkflow: InferredWorkflow = {
+			guard let priorWorkflow, priorWorkflow != .unknown else { return inferredWorkflow }
+			// Only override when the snapshot doesn't already have a confident workflow.
+			if inferredWorkflow != .unknown, workflowConfidence >= 0.4 { return inferredWorkflow }
+			return priorWorkflow
+		}()
+		let mergedWorkflowConfidence: Double = {
+			guard let priorWorkflowConfidence else { return workflowConfidence }
+			if mergedWorkflow != inferredWorkflow { return max(workflowConfidence, priorWorkflowConfidence) }
+			return max(workflowConfidence, priorWorkflowConfidence)
+		}()
+
 		let provisional = CanonicalGeneratedExecutionContextSnapshot(
 			activeApp: activeApp,
 			windowTitle: windowTitle,
 			bundleIdentifier: bundleIdentifier,
-			inferredWorkflow: inferredWorkflow,
+			inferredWorkflow: mergedWorkflow,
 			inferredIntent: inferredIntent,
 			selectedText: selectedText,
 			clipboardText: clipboardText,
 			recentOCRExcerpt: mergedOCR,
 			contextSummary: contextSummary,
-			workflowConfidence: workflowConfidence,
+			workflowConfidence: mergedWorkflowConfidence,
 			availableContextTypes: mergedTypes,
 			visualContextAvailability: mergedVisualAvailability,
 			permissionAvailability: permissionAvailability,

@@ -108,11 +108,32 @@ actor GeneratedActionTemplateLibrary: GeneratedActionTemplateLibraryProviding {
 			return .empty(reason: reason)
 		}
 
-		let matches = await manager.reusableActions(
+		var matches = await manager.reusableActions(
 			for: workflowType,
 			intentType: intentType,
 			availableContextTypes: contextTypes
 		)
+
+		// T18.3.8: Prevent cross-workflow leakage when workflow inference is unknown/weak in browsers.
+		// In browser-like contexts, suppress debugging templates unless strong debugging signals exist.
+		if situational.appCategory == .browser {
+			let titleLower = situational.windowTitle.lowercased()
+			let debugLikeTitle = titleLower.contains("xcode")
+				|| titleLower.contains("stack trace")
+				|| titleLower.contains("exception")
+				|| titleLower.contains("error:")
+			let allowDebugTemplates = debugLikeTitle
+			let before = matches.count
+			matches = matches.filter { record in
+				if record.workflowType != .debugging { return true }
+				if allowDebugTemplates { return true }
+				print("[TemplateRanking] suppressed_cross_workflow template=\(record.actionTemplateId) reason=browser_context")
+				return false
+			}
+			if before != matches.count {
+				print("[TemplateRanking] workflow_compat workflow=\(workflowType.rawValue) compatible=yes reason=filtered_debugging_templates before=\(before) after=\(matches.count)")
+			}
+		}
 
 		guard !matches.isEmpty else {
 			let reason = TemplateLibraryMissReason.noMatchForContext
@@ -120,6 +141,17 @@ actor GeneratedActionTemplateLibrary: GeneratedActionTemplateLibraryProviding {
 				workflow: workflowType.rawValue, intent: intentType.rawValue)
 			print("[TemplateLibrary] retrieve_finished result=miss reason=\(reason.rawValue)")
 			return .empty(reason: reason)
+		}
+
+		// T18.3.8: Compatibility diagnostics (metadata-only).
+		for record in matches.prefix(5) {
+			let compatible = record.workflowType == .unknown
+				|| workflowType == .unknown
+				|| record.workflowType == workflowType
+			let reason = compatible ? "workflow_ok" : "workflow_mismatch"
+			print(
+				"[TemplateRanking] workflow_compat template=\(record.actionTemplateId) template_workflow=\(record.workflowType.rawValue) query_workflow=\(workflowType.rawValue) compatible=\(compatible ? "yes" : "no") reason=\(reason)"
+			)
 		}
 
 		log(event: "library_hit", reason: "matched=\(matches.count)",

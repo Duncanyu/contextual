@@ -51,6 +51,32 @@ enum SparseVisualPeekSelfTest {
 		)
 		check("weak_workflow_allows", allowWeak.shouldPeek)
 
+		// Fresh but unrelated clipboard should NOT deny visual gathering in metadata-only browser contexts.
+		let browserMetaOnlyWithFreshClipboard = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Safari",
+			windowTitle: "YouTube — Safari",
+			inferredWorkflow: .unknown,
+			clipboardText: "some copied text that is unrelated",
+			workflowConfidence: 0.1,
+			permissionAvailability: [.screenRecording: true],
+			generatedAt: now,
+			freshnessScore: 0.22,
+			sourceMetadata: CanonicalExecutionSourceMetadata(
+				clipboardCapturedAt: now,
+				lastSourceTrigger: LastSourceTrigger.windowTitleChanged.rawValue
+			),
+			packetIsStale: true
+		)
+		let browserDecision = SparseVisualPeekPolicy.shouldRequestVisualPeek(
+			snapshot: browserMetaOnlyWithFreshClipboard,
+			gateEvaluation: SparseVisualPeekGateEvaluation(shouldDeny: false, denyReason: nil),
+			referenceTime: now
+		)
+		check(
+			"browser_fresh_clipboard_not_sufficient",
+			browserDecision.denyReason != SparseVisualPeekDenyReason.clipboardContextSufficient
+		)
+
 		let freshVisualSnap = CanonicalGeneratedExecutionContextSnapshot(
 			activeApp: "Finder",
 			inferredWorkflow: .browsing,
