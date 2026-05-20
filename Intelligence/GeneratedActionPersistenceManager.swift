@@ -207,6 +207,11 @@ actor GeneratedActionPersistenceManager {
 		return Array(recordsByTemplate.values)
 	}
 
+	func record(templateId: String) async -> ReusableGeneratedActionRecord? {
+		await ensureLoaded()
+		return recordsByTemplate[templateId]
+	}
+
 	func clear() async {
 		recordsByTemplate = [:]
 		dirty = true

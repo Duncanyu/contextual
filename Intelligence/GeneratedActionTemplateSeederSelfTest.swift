@@ -23,7 +23,7 @@ enum GeneratedActionTemplateSeederSelfTest {
 		let all1 = await manager1.snapshot()
 		check("seed_inserts_templates", all1.count > 0)
 		check("seed_inserts_at_least_ten", all1.count >= 10)
-		check("seed_inserts_at_least_thirteen", all1.count >= 13)
+		check("seed_inserts_at_least_eighteen", all1.count >= 18)
 
 		// MARK: 2 — Second seed call does NOT duplicate
 
@@ -36,6 +36,17 @@ enum GeneratedActionTemplateSeederSelfTest {
 
 		let allEligible = all1.allSatisfy { $0.reuseEligibility == .eligible }
 		check("seeded_templates_all_eligible", allEligible)
+
+		// MARK: 3b — Visual-aware seeds set requiresVision/requiresOCR in execution plan
+
+		let visualSeed = all1.first(where: { $0.metadata["requires_visual"] == "1" })
+		check("visual_seed_present", visualSeed != nil)
+		if let visualSeed {
+			let reusableCandidate = GeneratedExecutionProposalCandidateBuilder.buildReusable(from: [visualSeed], referenceTime: now).first
+			let plan = reusableCandidate?.executionAction?.executionPlan
+			check("visual_seed_plan_requires_vision", plan?.requiresVision == true)
+			check("visual_seed_plan_requires_ocr", plan?.requiresOCR == true)
+		}
 
 		// MARK: 4 — GeneratedActionTemplateLibrary.shared uses GeneratedActionPersistenceManager.shared
 
@@ -145,7 +156,7 @@ enum GeneratedActionTemplateSeederSelfTest {
 		let satisfiedAll = await satisfiedManager.snapshot()
 		check("prewarm_no_duplicate_when_satisfied", await satisfiedQueue.pendingCount == 0)
 		let debugOnlyCount = satisfiedAll.filter { $0.workflowType == .debugging }.count
-		check("prewarm_no_extra_debug_templates", debugOnlyCount <= 3) // seeder provides ~3 debug templates
+		check("prewarm_no_extra_debug_templates", debugOnlyCount <= 4) // seeder provides ~4 debug templates
 
 		// MARK: 12 — Live proposal path returns libraryRecords without LocalAI call
 

@@ -81,12 +81,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 
 		appState.requestManualInvocation = { [weak self] in
-			self?.dispatchManualTriggerEvent()
-			self?.menuBarController?.revealPopoverIfNeeded()
+			Task { @MainActor in
+				self?.dispatchManualTriggerEvent()
+				self?.menuBarController?.revealPopoverIfNeeded()
+			}
 		}
 
 		appState.onInvokeActionById = { [weak self] actionId in
 			self?.invokeStoredAction(actionId: actionId)
+		}
+
+		appState.onInvokeGeneratedExecutionProposalById = { [weak self] candidateId in
+			self?.invokeGeneratedExecutionProposal(candidateId: candidateId)
 		}
 
 		manualTriggerObserver = NotificationCenter.default.addObserver(
@@ -94,8 +100,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			object: nil,
 			queue: .main
 		) { [weak self] _ in
-			self?.dispatchManualTriggerEvent()
-			self?.menuBarController?.revealPopoverIfNeeded()
+			Task { @MainActor in
+				self?.dispatchManualTriggerEvent()
+				self?.menuBarController?.revealPopoverIfNeeded()
+			}
 		}
 
 		canonicalContextObserver = NotificationCenter.default.addObserver(
@@ -1523,6 +1531,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		lastReasonedProposal = nil
 		lastReasonedProposalKey = nil
 		print("[AvailableActions] cleared cached actions reason=\(reason)")
+	}
+
+	private func invokeGeneratedExecutionProposal(candidateId: String) {
+		// T18.3.7: Execution-scoped generated execution invocation (no UI-layer runtime calls).
+		if appState.isActionExecuting {
+			print("[GeneratedExecution] invoke_ignored reason=already_executing id=\(candidateId.prefix(12))")
+			return
+		}
+
+		let actionId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: candidateId)
+		appState.isActionExecuting = true
+		appState.executingActionId = actionId
+		appState.executingActionTitle = "Generated execution"
+		appState.latestActionResult = nil
+		appState.latestActionId = actionId
+		appState.latestActionTimestamp = Date()
+		print("[GeneratedExecution] execution_started id=\(candidateId.prefix(12))")
+
+		Task { @MainActor in
+			defer {
+				self.appState.isActionExecuting = false
+				self.appState.executingActionId = nil
+				self.appState.executingActionTitle = nil
+				print("[GeneratedExecution] execution_finished id=\(candidateId.prefix(12))")
+			}
+
+			let now = Date()
+			let canonical = CanonicalContextState.shared.current()
+			let snapshot = self.buildCanonicalSnapshotForProposalActivation(context: self.contextBuilder.model, fused: canonical)
+
+			let action: GeneratedExecutionAction?
+			if candidateId.hasPrefix("reuse:") {
+				let templateId = String(candidateId.dropFirst("reuse:".count))
+				let manager = GeneratedActionPersistenceManager.shared
+				let record = await manager.record(templateId: templateId)
+				if let record {
+					let candidate = GeneratedExecutionProposalCandidateBuilder.buildReusable(from: [record], referenceTime: now).first
+					action = candidate?.executionAction
+					self.appState.executingActionTitle = candidate?.title ?? "Generated execution"
+				} else {
+					action = nil
+				}
+			} else {
+				action = nil
+			}
+
+			guard let action else {
+				self.appState.latestActionResult = "Generated execution is unavailable for this proposal yet."
+				return
+			}
+
+			// Visual enrichment is execution-scoped and optional: scheduler is injected only here.
+			let provider = ScreenCaptureBoundedVisualContextProvider()
+			let scheduler = VisualContextScheduler(provider: provider)
+			let runtime = GeneratedExecutionRuntime(
+				persistenceManager: GeneratedActionPersistenceManager.shared,
+				visualContextScheduler: scheduler,
+				canonicalSnapshot: snapshot
+			)
+
+			let outcome = await runtime.start(action: action)
+			switch outcome {
+			case .completed(let result):
+				let status = result.status.rawValue
+				let visual = result.executionMetadata["visual_enrichment_performed"] == "1" ? "yes" : "no"
+				let ocr = result.executionMetadata["visual_enrichment_used_ocr"] == "1" ? "yes" : "no"
+				let body = result.generatedContent ?? "(no generated content)"
+				self.appState.latestActionResult = """
+				Generated execution finished.
+
+				Title: \(action.title)
+				Status: \(status)
+				Visual enrichment used: \(visual) (OCR: \(ocr))
+
+				\(body)
+				"""
+				self.appState.latestActionTimestamp = Date()
+			case .rejected(let reason):
+				self.appState.latestActionResult = "Generated execution rejected: \(reason.rawValue)"
+				self.appState.latestActionTimestamp = Date()
+			}
+		}
 	}
 
 	private func invokeStoredAction(actionId: String) {

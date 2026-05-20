@@ -5,7 +5,7 @@ import Foundation
 /// Increment to trigger re-seeding with new templates on next launch.
 /// Previously seeded records that still exist are preserved (idempotent inserts).
 enum GeneratedActionTemplateSeedVersion {
-	static let current = 1
+	static let current = 2
 }
 
 // MARK: - Seeder
@@ -65,7 +65,7 @@ actor GeneratedActionTemplateSeeder {
 
 	// MARK: - Built-in catalog
 
-	/// The canonical seed set (v1). All templates:
+	/// The canonical seed set (v2). All templates:
 	/// - Use bounded ExecutionPrimitive codes
 	/// - Are NOT static summarize/explain/rewrite actions
 	/// - Start eligible with conservative stats so they survive eligibility re-scoring
@@ -175,6 +175,88 @@ actor GeneratedActionTemplateSeeder {
 				referenceTime: referenceTime
 			),
 
+			// MARK: Visual-aware (execution-scoped sparse peek; never auto-capture)
+
+			makeTemplate(
+				id: "browsing|structure|summarize_context|none|v2",
+				title: "Gather sparse visual context for this page",
+				description: "Take one bounded visual peek (optional OCR) to clarify what is on-screen before organizing",
+				workflow: .browsing,
+				intent: .structure,
+				primitive: ExecutionPrimitive.summarizeContext.rawValue,
+				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime,
+				metadata: [
+					"requires_visual": "1",
+					"requires_ocr": "1",
+				]
+			),
+
+			makeTemplate(
+				id: "browsing|extract|extract_action_items|none|v2",
+				title: "Extract visible key points from this screen",
+				description: "Use a bounded visual peek to extract salient bullets from what is visible",
+				workflow: .browsing,
+				intent: .extract,
+				primitive: ExecutionPrimitive.extractActionItems.rawValue,
+				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime,
+				metadata: [
+					"requires_visual": "1",
+					"requires_ocr": "1",
+				]
+			),
+
+			makeTemplate(
+				id: "debugging|explain|explain_error|none|v2",
+				title: "Analyze visible debugging state",
+				description: "Take one bounded visual peek to capture visible debug signals (errors, stack traces, UI state)",
+				workflow: .debugging,
+				intent: .explain,
+				primitive: ExecutionPrimitive.explainError.rawValue,
+				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime,
+				metadata: [
+					"requires_visual": "1",
+					"requires_ocr": "1",
+				]
+			),
+
+			makeTemplate(
+				id: "studying|structure|structure_notes|none|v2",
+				title: "Inspect visible slide or page structure",
+				description: "Take one bounded visual peek to capture visible sections/headings and structure them",
+				workflow: .studying,
+				intent: .structure,
+				primitive: ExecutionPrimitive.structureNotes.rawValue,
+				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime,
+				metadata: [
+					"requires_visual": "1",
+					"requires_ocr": "1",
+				]
+			),
+
+			makeTemplate(
+				id: "unknown|structure|summarize_context|none|v2",
+				title: "Take a bounded visual peek to clarify the current context",
+				description: "Collect minimal on-screen signals (optional OCR) to improve situational understanding",
+				workflow: .unknown,
+				intent: .structure,
+				primitive: ExecutionPrimitive.summarizeContext.rawValue,
+				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime,
+				metadata: [
+					"requires_visual": "1",
+					"requires_ocr": "1",
+				]
+			),
+
 			// MARK: Studying / Learning
 
 			makeTemplate(
@@ -255,11 +337,14 @@ actor GeneratedActionTemplateSeeder {
 		contextTypes: [ContextRequirementType],
 		expiry: Date,
 		referenceTime: Date,
-		usefulnessScore: Double = 0.65
+		usefulnessScore: Double = 0.65,
+		metadata: [String: String] = [:]
 	) -> ReusableGeneratedActionRecord {
 		// Seed with non-zero stats so eligibility formula survives re-scoring:
 		// successRate = 3/3 = 1.0 > 0.55, acceptedCount=3 >= 1, score=0.65 >= 0.52.
-		ReusableGeneratedActionRecord(
+		var seedMeta: [String: String] = ["source": "seed_v\(GeneratedActionTemplateSeedVersion.current)"]
+		for (k, v) in metadata { seedMeta[k] = v }
+		return ReusableGeneratedActionRecord(
 			actionTemplateId: id,
 			title: title,
 			description: description,
@@ -279,7 +364,7 @@ actor GeneratedActionTemplateSeeder {
 			usefulnessScore: usefulnessScore,
 			averageConfidence: 0.72,
 			reuseEligibility: .eligible,
-			metadata: ["source": "seed_v\(GeneratedActionTemplateSeedVersion.current)"]
+			metadata: seedMeta
 		)
 	}
 }

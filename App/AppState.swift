@@ -125,6 +125,8 @@ final class AppState: ObservableObject {
 
 	/// UI forwards user taps here; app lifecycle resolves execution with current context (UI never reads context).
 	var onInvokeActionById: ((String) -> Void)?
+	/// User-invoked generated proposal execution; wired by app lifecycle (no UI/runtime coupling).
+	var onInvokeGeneratedExecutionProposalById: ((String) -> Void)?
 
 	var onEnableLocalAI: (() -> Void)?
 	var onDisableLocalAI: (() -> Void)?
@@ -261,20 +263,14 @@ final class AppState: ObservableObject {
 		}
 	}
 
-	/// T18.3: preview-only — does not invoke `GeneratedExecutionRuntime` or static action runners.
+	/// User-invoked generated proposal execution (T18.4+) — no automatic execution on proposal generation.
 	func invokeGeneratedExecutionProposal(id: String) {
-		guard let item = activatedGeneratedProposals.first(where: { $0.id == id }) else { return }
-		print("[GeneratedProposalActivation] generated_proposal_selected id=\(id.prefix(8)) source=\(item.source.rawValue)")
+		guard activatedGeneratedProposals.contains(where: { $0.id == id }) else { return }
+		print("[GeneratedProposalActivation] generated_proposal_selected id=\(id.prefix(8))")
 		latestActionId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: id)
 		latestActionTimestamp = Date()
-		latestActionResult = """
-		Generated execution is prepared for “\(item.title)”.
-
-		Live bounded execution arrives in T18.4. Nothing was run automatically.
-
-		Expected output: \(item.expectedOutputSummary)
-		Explainability: \(item.explainabilitySummary)
-		"""
+		latestActionResult = "Executing generated action…"
+		onInvokeGeneratedExecutionProposalById?(id)
 	}
 
 	func dismissCurrentProposal() {

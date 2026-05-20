@@ -196,6 +196,56 @@ enum SparseVisualPeekSelfTest {
 		)
 		check("decision_deterministic", det1 == det2)
 
+
+		// MARK: Runtime handoff — visual peek only on explicit visual-required execution
+
+		let countingProvider = SparseVisualPeekCountingProvider(capturedAt: now)
+		let countingScheduler = VisualContextScheduler(provider: countingProvider)
+		let visualRuntime = GeneratedExecutionRuntime(
+			visualContextScheduler: countingScheduler,
+			canonicalSnapshot: weakSnap
+		)
+		let visualAction = GeneratedExecutionAction(
+			title: "Visual peek action",
+			description: "test",
+			workflowType: .browsing,
+			intentType: .structure,
+			confidence: 0.7,
+			interruptionCost: 0.2,
+			requiredContextTypes: [.none],
+			executionPlan: ExecutionPlan(
+				primitives: [.summarizeContext],
+				estimatedCost: 0.2,
+				estimatedRuntime: 5,
+				requiresVision: true,
+				requiresOCR: true,
+				requiresUserIntent: true,
+				requiredPermissions: [.screenRecording],
+				fallbackBehavior: .failFast,
+				executionBudget: ExecutionBudget(allowsVision: true, allowsOCR: true),
+				planConfidence: 0.7
+			),
+			explainabilitySummary: "test",
+			generationSource: .selfTest,
+			createdAt: now,
+			expirationDate: now.addingTimeInterval(60),
+			isReusable: false,
+			reuseScore: 0
+		)
+		let outcome = await visualRuntime.start(action: visualAction)
+		let callCount = await countingProvider.callCount
+		check("runtime_visual_peek_called_once", callCount == 1)
+		if case .completed(let res) = outcome {
+			check("runtime_visual_meta_performed", res.executionMetadata["visual_enrichment_performed"] == "1")
+		} else {
+			check("runtime_visual_outcome_completed", false)
+		}
+
+		// Second execution within cooldown should not collect visual again.
+		await visualRuntime.reset()
+		_ = await visualRuntime.start(action: visualAction)
+		let callCount2 = await countingProvider.callCount
+		check("runtime_visual_peek_cooldown_blocks_second", callCount2 == 1)
 		await gate.resetForTests()
 		await gate.recordPeekCompleted(at: now)
 		let cooldown = await gate.evaluate(snapshot: weakWorkflow, referenceTime: now.addingTimeInterval(5))
@@ -207,5 +257,29 @@ enum SparseVisualPeekSelfTest {
 		let ok = failures.isEmpty
 		print("[SparseVisualPeek] selftest ok=\(ok) failures=\(failures.count) detail=\(failures.joined(separator: ";"))")
 		return ok
+	}
+}
+
+
+private actor SparseVisualPeekCountingProvider: BoundedVisualContextProvider {
+	private let capturedAt: Date
+	private(set) var callCount: Int = 0
+
+	init(capturedAt: Date) {
+		self.capturedAt = capturedAt
+	}
+
+	func collectVisualContext(request: BoundedVisualContextRequest) async throws -> BoundedVisualContextResult {
+		callCount += 1
+		return BoundedVisualContextResult(
+			requestId: request.id,
+			status: .completed,
+			capturedAt: capturedAt,
+			sourceSummary: "counting",
+			ocrExcerpt: "visible text",
+			visualSummary: "summary",
+			visualTags: ["stub"],
+			expiresAt: request.expiresAt
+		)
 	}
 }

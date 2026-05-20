@@ -113,21 +113,23 @@ enum GeneratedExecutionProposalCandidateBuilder {
 		)
 	}
 
-	private static func executionAction(
+	static func executionAction(
 		from record: ReusableGeneratedActionRecord,
 		referenceTime: Date
 	) -> GeneratedExecutionAction {
 		let primitives: [ExecutionPrimitive] = record.primitiveSignature
 			.split(separator: ",")
 			.compactMap { ExecutionPrimitive(rawValue: String($0)) }
+		let requiresVisual = record.metadata["requires_visual"] == "1"
+		let requiresOCR = record.metadata["requires_ocr"] == "1"
 		let plan = ExecutionPlan(
 			primitives: primitives.isEmpty ? [.summarizeContext] : primitives,
-			estimatedCost: 0.2,
-			estimatedRuntime: 12,
-			requiresVision: false,
-			requiresOCR: false,
+			estimatedCost: requiresVisual || requiresOCR ? 0.28 : 0.2,
+			estimatedRuntime: requiresVisual || requiresOCR ? 18 : 12,
+			requiresVision: requiresVisual,
+			requiresOCR: requiresOCR,
 			requiresUserIntent: true,
-			requiredPermissions: [.none],
+			requiredPermissions: (requiresVisual || requiresOCR) ? [.screenRecording] : [.none],
 			fallbackBehavior: .degradeToSummary,
 			executionBudget: .conservative,
 			planConfidence: record.averageConfidence
