@@ -164,12 +164,14 @@ struct AssistantPanelView: View {
 
 	private var generatedProposalEmptyLine: String {
 		let status = appState.generatedProposalDebugStatus
-		if status.attempted, let reason = status.zeroVisibleReason, !reason.isEmpty {
-			let readable = reason.replacingOccurrences(of: "_", with: " ")
-			if reason == "app_timeout" || reason == "llm_timeout" {
-				return "No generated proposal (LLM timed out — need more context or a faster model)."
+		if status.attempted {
+			if let reason = status.failureReason {
+				return "No generated proposal — \(reason.userFacingLabel)."
 			}
-			return "No generated proposal (\(readable))."
+			if let raw = status.zeroVisibleReason, !raw.isEmpty {
+				let readable = raw.replacingOccurrences(of: "_", with: " ")
+				return "No generated proposal (\(readable))."
+			}
 		}
 		return "No generated proposal yet — waiting for useful context."
 	}

@@ -116,6 +116,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if LocalAISettings.shared.localAIEnabled {
 			scheduleLocalAIPrepare()
 		}
+
+		// T18.3.6: Seed built-in generated action templates and drain the prewarm queue.
+		// Must run after manager/library init so the shared store is ready.
+		// No LLM is called. This is fast and idempotent.
+		Task {
+			let manager = GeneratedActionPersistenceManager.shared
+			let seeder = GeneratedActionTemplateSeeder.shared
+			await seeder.seedIfNeeded(into: manager)
+			await GeneratedActionTemplatePrewarmConsumer.shared.consume(
+				from: GeneratedActionTemplatePrewarmQueue.shared,
+				seeder: seeder,
+				manager: manager
+			)
+		}
 	}
 
 	func applicationWillTerminate(_ notification: Notification) {
@@ -688,7 +702,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				staticRelevanceScores: workflowRank.adjustedScores,
 				generatedActions: [],
 				generatedExecutionCandidates: llmCandidates,
-				reusableRecords: [],
+				reusableRecords: llmResult.libraryRecords,
 				snapshot: proposalSnapshot,
 				history: activationHistory,
 				workflow: WorkflowInferenceEngine.shared.latestResult(),
@@ -744,7 +758,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		   generation == contextPipelineGeneration
 		{
 			let llmIds = Self.llmCandidateActionIds(from: ordered)
-			if !llmIds.isEmpty {
+			// T18.3.5A: DynamicOnlyProposalMode replaces the Phase-12 IntelligenceProposalSelector
+			// pipeline entirely. When enabled, skip applyIntelligenceRefinement — the new
+			// DynamicGeneratedProposalEngine (decision → template library) handles all LLM work.
+			if !llmIds.isEmpty && !DynamicOnlyProposalMode.isEnabled {
 				let gen = generation
 				let snapOrdered = ordered
 				let snapProposalKey = finalProposalKey
@@ -873,7 +890,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				staticRelevanceScores: [],
 				generatedActions: [],
 				generatedExecutionCandidates: llmCandidates,
-				reusableRecords: [],
+				reusableRecords: llmResult.libraryRecords,
 				snapshot: prepared.snapshot,
 				history: activationHistory,
 				workflow: WorkflowInferenceEngine.shared.latestResult(),
@@ -892,6 +909,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			situational: prepared.situational
 		)
 		print("[GeneratedProposal] \(debugStatus.logLine)")
+		print(debugStatus.pipelineStatusLine)
 		GeneratedProposalActivationDiagnostics.logOutcome(
 			llmResult: llmResult,
 			candidateCount: llmCandidates.count,

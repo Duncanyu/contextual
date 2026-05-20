@@ -126,7 +126,8 @@ enum DynamicGeneratedProposalEngineSelfTest {
 			proposals: parsed.proposals,
 			warnings: [],
 			llmDiagnosticCause: nil,
-			createdAt: Date()
+			createdAt: Date(),
+			libraryRecords: []
 		)
 		let weakMapped = DynamicGeneratedProposalCandidateMapper.candidates(
 			from: weakLLM,
@@ -168,6 +169,44 @@ enum DynamicGeneratedProposalEngineSelfTest {
 		)
 		check("timeout_fallback", timeoutResult.status == .timeout)
 
+		// MARK: T18.3.4A — Decision stage isolation tests
+
+		// NeverThinkDecisionEngine forces quiet → LLM must NOT be called.
+		let countingClient = CountingDynamicProposalLLMClient(response: validJSON)
+		let neverThinkEngine = DynamicGeneratedProposalEngine(
+			modelManager: AlwaysAvailableProposalModelGate(),
+			client: countingClient,
+			decisionEngine: NeverThinkDecisionEngine(),
+			timeoutSeconds: 2
+		)
+		let browserSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Safari",
+			windowTitle: "Browser Tab",
+			generatedAt: Date()
+		)
+		let neverThinkResult = await neverThinkEngine.generateProposals(
+			snapshot: browserSnap,
+			existingStaticActions: [],
+			reusableActions: []
+		)
+		check("never_think_llm_not_called", countingClient.callCount == 0)
+		check("never_think_status_quiet", neverThinkResult.status == .quietByGate)
+
+		// AlwaysThinkDecisionEngine forces think → LLM must be called once.
+		let countingClient2 = CountingDynamicProposalLLMClient(response: validJSON)
+		let alwaysThinkEngine = DynamicGeneratedProposalEngine(
+			modelManager: AlwaysAvailableProposalModelGate(),
+			client: countingClient2,
+			decisionEngine: AlwaysThinkDecisionEngine(),
+			timeoutSeconds: 2
+		)
+		_ = await alwaysThinkEngine.generateProposals(
+			snapshot: snap,
+			existingStaticActions: [],
+			reusableActions: []
+		)
+		check("always_think_llm_called_once", countingClient2.callCount == 1)
+
 		check("no_runtime_execution", !SelfTestRuntimeGuard.activationInvokedRuntime)
 
 		let ok = failures.isEmpty
@@ -190,4 +229,49 @@ private struct SlowDynamicProposalLLMClient: DynamicGeneratedProposalLLMGenerati
 		try await Task.sleep(nanoseconds: 500_000_000)
 		return "{}"
 	}
+}
+
+// T18.3.4A stub types
+
+private final class CountingDynamicProposalLLMClient: DynamicGeneratedProposalLLMGenerating, @unchecked Sendable {
+	let response: String
+	private(set) var callCount = 0
+	init(response: String) { self.response = response }
+	func generate(prompt: String, model: String) async throws -> String {
+		callCount += 1
+		return response
+	}
+}
+
+private struct NeverThinkDecisionEngine: AgenticProposalDeciding {
+	func decide(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) async -> AgenticProposalDecision {
+		.quiet(reason: "test_never_think")
+	}
+	func recordTimeout(fingerprint: String, at time: Date) async {}
+}
+
+private struct AlwaysThinkDecisionEngine: AgenticProposalDeciding {
+	func decide(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) async -> AgenticProposalDecision {
+		AgenticProposalDecision(
+			shouldThink: true,
+			shouldChimeIn: true,
+			needsMoreContext: false,
+			recommendedContextKind: .none,
+			workflowType: .unknown,
+			intentType: nil,
+			confidence: 0.9,
+			interruptionCost: 0.2,
+			reason: "test_always_think",
+			decisionSource: .heuristic
+		)
+	}
+	func recordTimeout(fingerprint: String, at time: Date) async {}
 }

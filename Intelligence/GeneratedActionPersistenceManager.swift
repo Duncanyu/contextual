@@ -53,6 +53,10 @@ enum GeneratedActionPersistenceScoring {
 /// Local-only persistence for reusable generated actions (actor-isolated; no UI).
 actor GeneratedActionPersistenceManager {
 
+	/// App-scoped singleton. Use this everywhere — do NOT create separate instances in live code.
+	/// (T18.3.6: single shared store so template library and execution runtime see the same records.)
+	static let shared = GeneratedActionPersistenceManager()
+
 	private let store: GeneratedActionPersistenceStore
 	private let policy: GeneratedActionPersistencePolicy
 	private var recordsByTemplate: [String: ReusableGeneratedActionRecord] = [:]
@@ -65,6 +69,19 @@ actor GeneratedActionPersistenceManager {
 	) {
 		self.store = store
 		self.policy = policy
+	}
+
+	/// Inserts a pre-seeded record without triggering eligibility re-scoring.
+	/// Idempotent: no-op if a record with the same `actionTemplateId` already exists.
+	/// Returns `true` if the record was newly inserted.
+	@discardableResult
+	func insertSeedRecordIfMissing(_ record: ReusableGeneratedActionRecord) async -> Bool {
+		await ensureLoaded()
+		guard recordsByTemplate[record.actionTemplateId] == nil else { return false }
+		recordsByTemplate[record.actionTemplateId] = record
+		dirty = true
+		await persistIfNeeded()
+		return true
 	}
 
 	func record(_ event: GeneratedActionPersistenceEvent) async {
@@ -171,8 +188,12 @@ actor GeneratedActionPersistenceManager {
 		let available = Set(availableContextTypes)
 		return recordsByTemplate.values
 			.filter { $0.reuseEligibility == .eligible && !$0.isExpired }
-			.filter { workflowType == .unknown || $0.workflowType == workflowType }
-			.filter { intentType == .unknown || $0.intentType == intentType }
+			// A template with .unknown workflow is a generic/fallback — matches any query workflow.
+			// A template with a specific workflow only matches the same query workflow.
+			.filter { workflowType == .unknown || $0.workflowType == .unknown || $0.workflowType == workflowType }
+			// Same logic for intent: .unknown template matches any intent.
+			.filter { intentType == .unknown || $0.intentType == .unknown || $0.intentType == intentType }
+			// Context: template requirements must be satisfiable by what's available, or template needs nothing.
 			.filter { record in
 				let required = Set(record.requiredContextTypes.filter { $0 != .none })
 				return required.isSubset(of: available) || required.isEmpty
