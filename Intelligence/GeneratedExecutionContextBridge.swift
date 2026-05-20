@@ -147,6 +147,12 @@ struct GeneratedExecutionContextBridge: Sendable {
 		if !(ocrExcerpt ?? "").isEmpty { add(.fusedVisual); add(.textSnippet) }
 		if visual.hasUsableVisual { add(.screenCapture); add(.fusedVisual) }
 		if snapshot.inferredWorkflow != .unknown { add(.workflowContext) }
+		// Add .errorContext for debugging when there is selected text or OCR — error context is
+		// typically present whenever the user has selected an error message or stack trace.
+		if snapshot.inferredWorkflow == .debugging {
+			let hasText = !(selectedExcerpt ?? "").isEmpty || !(ocrExcerpt ?? "").isEmpty
+			if hasText { add(.errorContext) }
+		}
 
 		let channels = [
 			!(selectedExcerpt ?? "").isEmpty,

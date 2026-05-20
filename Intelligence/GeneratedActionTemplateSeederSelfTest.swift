@@ -23,6 +23,7 @@ enum GeneratedActionTemplateSeederSelfTest {
 		let all1 = await manager1.snapshot()
 		check("seed_inserts_templates", all1.count > 0)
 		check("seed_inserts_at_least_ten", all1.count >= 10)
+		check("seed_inserts_at_least_thirteen", all1.count >= 13)
 
 		// MARK: 2 — Second seed call does NOT duplicate
 
@@ -177,6 +178,135 @@ enum GeneratedActionTemplateSeederSelfTest {
 		check("live_path_library_records_populated", !result.libraryRecords.isEmpty)
 		check("live_path_should_chime", result.shouldChimeIn)
 
+		// MARK: 12b — Library lookup bypasses decision gate even when gate returns needsContext
+		// Simulates browser metadata-only: decision gate says "needs visual context"
+		// but the library should be consulted FIRST and hit immediately.
+
+		let browsingMetaStubLibrary = SeederSelfTestStubLibrary(manager: manager1)
+		let countingClient2 = SeederSelfTestCountingLLMClient()
+		let engineWithNeedsContextGate = DynamicGeneratedProposalEngine(
+			modelManager: SeederSelfTestAlwaysAvailableGate(),
+			client: countingClient2,
+			decisionEngine: SeederSelfTestNeedsVisualDecision(),
+			templateLibrary: browsingMetaStubLibrary,
+			timeoutSeconds: 2
+		)
+		let browsingMetaSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Firefox",
+			inferredWorkflow: .browsing,
+			workflowConfidence: 0.75,
+			generatedAt: now,
+			freshnessScore: 0.80
+		)
+		let browsingResult = await engineWithNeedsContextGate.generateProposals(
+			snapshot: browsingMetaSnap,
+			existingStaticActions: [],
+			reusableActions: []
+		)
+		check("browser_meta_no_llm_call", countingClient2.callCount == 0)
+		// Library hit must surface even though decision gate recommends visual context.
+		check("browser_meta_status_synthesized", browsingResult.status == .synthesized)
+		check("browser_meta_library_records_populated", !browsingResult.libraryRecords.isEmpty)
+		check("browser_meta_should_chime", browsingResult.shouldChimeIn)
+
+		// MARK: 13 — GeneratedExecutionContext.satisfies: workflowContext passes without text
+
+		let metadataOnlyCtx = GeneratedExecutionContext(
+			sourceType: "workflow_app",
+			appName: "Firefox",
+			windowTitle: "Example Page",
+			workflowType: .browsing,
+			intentType: .unknown,
+			selectedTextExcerpt: nil,
+			clipboardTextExcerpt: nil,
+			availableContextTypes: [.workflowContext],
+			createdAt: now,
+			expirationDate: now.addingTimeInterval(120)
+		)
+		check("workflowContext_passes_without_text", metadataOnlyCtx.satisfies(required: [.workflowContext]))
+		check("workflowContext_empty_required_passes", metadataOnlyCtx.satisfies(required: [.none]))
+
+		// MARK: 14 — GeneratedExecutionContext.satisfies: errorContext still requires text
+
+		let errorCtxNoText = GeneratedExecutionContext(
+			sourceType: "workflow_app",
+			appName: "Xcode",
+			windowTitle: "Project",
+			workflowType: .debugging,
+			intentType: .unknown,
+			selectedTextExcerpt: nil,
+			availableContextTypes: [.workflowContext, .errorContext],
+			createdAt: now,
+			expirationDate: now.addingTimeInterval(120)
+		)
+		check("errorContext_requires_text_when_no_text", !errorCtxNoText.satisfies(required: [.errorContext]))
+
+		let errorCtxWithText = GeneratedExecutionContext(
+			sourceType: "selected_text",
+			appName: "Xcode",
+			windowTitle: "Project",
+			workflowType: .debugging,
+			intentType: .unknown,
+			selectedTextExcerpt: "fatal error: unexpectedly found nil",
+			availableContextTypes: [.workflowContext, .errorContext, .selectedText, .textSnippet],
+			createdAt: now,
+			expirationDate: now.addingTimeInterval(120)
+		)
+		check("errorContext_passes_with_text", errorCtxWithText.satisfies(required: [.errorContext]))
+		check("selectedText_and_errorContext_passes", errorCtxWithText.satisfies(required: [.selectedText, .errorContext]))
+
+		// MARK: 15 — Bridge adds .errorContext for debugging workflow + selected text
+
+		let debugSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Xcode",
+			inferredWorkflow: .debugging,
+			selectedText: "error: nil pointer dereference",
+			workflowConfidence: 0.8,
+			generatedAt: now,
+			freshnessScore: 0.85
+		)
+		let bridge = GeneratedExecutionContextBridge()
+		let debugCtx = bridge.buildContext(from: debugSnap)
+		check("bridge_adds_errorContext_for_debugging", debugCtx.availableContextTypes.contains(.errorContext))
+		check("bridge_adds_workflowContext_for_debugging", debugCtx.availableContextTypes.contains(.workflowContext))
+		check("bridge_adds_selectedText_for_debugging", debugCtx.availableContextTypes.contains(.selectedText))
+
+		// MARK: 16 — Bridge does NOT add .errorContext for debugging without text
+
+		let debugSnapNoText = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Xcode",
+			inferredWorkflow: .debugging,
+			workflowConfidence: 0.8,
+			generatedAt: now,
+			freshnessScore: 0.75
+		)
+		let debugCtxNoText = bridge.buildContext(from: debugSnapNoText)
+		check("bridge_no_errorContext_without_text", !debugCtxNoText.availableContextTypes.contains(.errorContext))
+		check("bridge_adds_workflowContext_without_text", debugCtxNoText.availableContextTypes.contains(.workflowContext))
+
+		// MARK: 17 — Browsing metadata-only: workflowContext template retrieves and validates
+
+		let browsingMetaResults = await manager1.reusableActions(
+			for: .browsing,
+			intentType: .unknown,
+			availableContextTypes: [.workflowContext]
+		)
+		check("browsing_metadata_retrieves_template", !browsingMetaResults.isEmpty)
+		// The browsing|organize and browsing|extract templates require .workflowContext only —
+		// after fix, ctx.satisfies([.workflowContext]) passes even without text.
+		let browsingSnap17 = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Firefox",
+			inferredWorkflow: .browsing,
+			workflowConfidence: 0.75,
+			generatedAt: now,
+			freshnessScore: 0.80
+		)
+		let browsingCtx17 = bridge.buildContext(from: browsingSnap17)
+		check("browsing_workflowContext_in_bridge", browsingCtx17.availableContextTypes.contains(.workflowContext))
+		check("browsing_workflowContext_satisfies_without_text", browsingCtx17.satisfies(required: [ContextRequirementType.workflowContext]))
+		// The browsing none-context template also works
+		check("browsing_none_satisfies_always", browsingCtx17.satisfies(required: [ContextRequirementType.none]))
+
 		let ok = failures.isEmpty
 		print("[TemplateSeederSelfTest] ok=\(ok) failures=\(failures.count) detail=\(failures.joined(separator: ";"))")
 		return ok
@@ -244,6 +374,32 @@ private struct SeederSelfTestAlwaysThinkDecision: AgenticProposalDeciding {
 			confidence: 0.85,
 			interruptionCost: 0.2,
 			reason: "test_always_think",
+			decisionSource: .heuristic
+		)
+	}
+	func recordTimeout(fingerprint: String, at time: Date) async {}
+}
+
+/// Simulates the AgenticProposalDecisionEngine response for browser metadata-only:
+/// shouldThink=false, needsMoreContext=true, recommendedContextKind=.visual.
+/// This is what fires for Firefox with titleOnly=true and no text.
+/// The library should still be consulted BEFORE this gate decision takes effect (T18.3.6B).
+private struct SeederSelfTestNeedsVisualDecision: AgenticProposalDeciding {
+	func decide(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) async -> AgenticProposalDecision {
+		AgenticProposalDecision(
+			shouldThink: false,
+			shouldChimeIn: false,
+			needsMoreContext: true,
+			recommendedContextKind: .visual,
+			workflowType: .browsing,
+			intentType: nil,
+			confidence: 0.4,
+			interruptionCost: 0.55,
+			reason: "visual_context_recommended",
 			decisionSource: .heuristic
 		)
 	}

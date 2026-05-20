@@ -206,6 +206,30 @@ enum UnifiedActionRankingAdapter {
 		let requiresVision = candidate.requiredContextTypes.contains(.fusedVisual)
 			|| candidate.requiredContextTypes.contains(.screenCapture)
 		let requiresOCR = candidate.requiredContextTypes.contains(.screenCapture)
+		let isReusable = candidate.source == .reusableGenerated
+		let reuseScore = candidate.executionAction?.reuseScore ?? 0
+
+		// T18.3.6C: For library-sourced reusable candidates, use the reuseScore directly for
+		// usefulnessScore (it already encodes acceptance + execution success from the record).
+		// requiresFreshContext = false — seeded templates work on workflow metadata and are not
+		// penalised by stale fused-packet freshness.
+		// recentSuccessRate uses reuseScore as a proxy (seeded templates have successRate=1.0,
+		// giving reuseScore ≥ 0.65, so recentSuccessBoost = min(0.08, 0.65×0.1) = 0.065).
+		let usefulnessScore: Double
+		let requiresFreshContext: Bool
+		let recentSuccessRate: Double
+		if isReusable {
+			usefulnessScore = min(1.0, reuseScore + 0.15)  // reuseScore(0.65) + 0.15 → 0.80
+			requiresFreshContext = false
+			recentSuccessRate = min(1.0, reuseScore)        // 0.65 → recentSuccessBoost ≈ 0.065
+		} else {
+			usefulnessScore = candidate.isGeneratedFamily
+				? min(1, candidate.confidence * 0.85 + 0.1)
+				: 0.58
+			requiresFreshContext = candidate.isGeneratedFamily
+			recentSuccessRate = 0
+		}
+
 		return UnifiedRankableAction(
 			id: candidate.id,
 			sourceType: sourceType,
@@ -214,17 +238,16 @@ enum UnifiedActionRankingAdapter {
 			workflowType: candidate.workflowType,
 			intentType: candidate.intentType,
 			confidence: candidate.confidence,
-			usefulnessScore: candidate.isGeneratedFamily
-				? min(1, candidate.confidence * 0.85 + 0.1)
-				: 0.58,
+			usefulnessScore: usefulnessScore,
 			interruptionCost: candidate.interruptionCost,
 			executionComplexity: candidate.executionAction?.executionPlan.primitives.count ?? 1,
 			estimatedExecutionTime: candidate.executionAction?.executionPlan.estimatedRuntime ?? 12,
-			requiresFreshContext: candidate.isGeneratedFamily,
+			requiresFreshContext: requiresFreshContext,
 			requiresVision: requiresVision,
 			requiresOCR: requiresOCR,
-			isReusable: candidate.source == .reusableGenerated,
-			reuseScore: candidate.executionAction?.reuseScore ?? 0,
+			isReusable: isReusable,
+			reuseScore: reuseScore,
+			recentSuccessRate: recentSuccessRate,
 			candidateActionType: candidateType,
 			primitiveSignature: candidate.primitiveSignature,
 			metadata: [

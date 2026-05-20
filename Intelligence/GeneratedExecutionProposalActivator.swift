@@ -83,15 +83,18 @@ enum GeneratedExecutionProposalActivator {
 			}
 		}
 
-		for reusable in GeneratedExecutionProposalCandidateBuilder.buildReusable(
+		let reusableCandidates = GeneratedExecutionProposalCandidateBuilder.buildReusable(
 			from: input.reusableRecords,
 			referenceTime: referenceTime
-		) {
+		)
+		print("[GeneratedProposalActivation] reusable_candidates count=\(reusableCandidates.count) input_records=\(input.reusableRecords.count) workflow=\(input.snapshot.inferredWorkflow.rawValue) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) workflow_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence))")
+		for reusable in reusableCandidates {
 			if let reason = preSuppressReason(candidate: reusable, input: input) {
 				preSuppressedGenerated += 1
 				logSuppressed(id: reusable.id, reason: reason)
 				continue
 			}
+			print("[GeneratedProposalActivation] reusable_passed_presuppress id=\(String(reusable.id.prefix(40))) title=\(reusable.title)")
 			candidates.append(reusable)
 		}
 
@@ -232,7 +235,11 @@ enum GeneratedExecutionProposalActivator {
 			return "low_freshness"
 		}
 
-		if clipboardOnlyStaleContext(snapshot: input.snapshot, referenceTime: input.referenceTime) {
+		// Reusable / library-sourced templates work on workflow metadata — a stale clipboard is
+		// irrelevant to them and must not suppress a valid library hit (T18.3.6C).
+		if candidate.source != .reusableGenerated,
+		   clipboardOnlyStaleContext(snapshot: input.snapshot, referenceTime: input.referenceTime)
+		{
 			return "stale_clipboard_only"
 		}
 
@@ -290,22 +297,59 @@ enum GeneratedExecutionProposalActivator {
 		snapshot: CanonicalGeneratedExecutionContextSnapshot
 	) -> Bool {
 		let required = Set(candidate.requiredContextTypes.filter { $0 != .none })
-		if required.isEmpty { return true }
+		if required.isEmpty {
+			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=[] path=trivial passed=true")
+			return true
+		}
 
+		// MARK: Reusable / library-sourced candidates (T18.3.6C)
+		// The template library already verified context requirements at retrieval time using the
+		// situational context (which correctly infers workflow from browser title heuristics etc.).
+		// Rebuilding via GeneratedExecutionContextBridge here uses the raw canonical snapshot which
+		// may have inferredWorkflow=.unknown even when the situational context resolved .browsing.
+		// For reusable candidates only check hard physical constraints that absolutely require
+		// live sensor data: text presence for selectedText/textSnippet, visual for fusedVisual.
+		// Trust the library's retrieval decision for .workflowContext and .errorContext.
+		if candidate.source == .reusableGenerated {
+			var passed = true
+			if required.contains(.selectedText) || required.contains(.textSnippet) {
+				let hasText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+					|| !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+				if !hasText { passed = false }
+			}
+			if passed, required.contains(.fusedVisual) || required.contains(.screenCapture) {
+				if !snapshot.visualContextAvailability.hasUsableVisual { passed = false }
+			}
+			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=reusable_trust_library passed=\(passed)")
+			return passed
+		}
+
+		// MARK: LLM-generated candidates — rebuild via bridge for full context check
 		if let execution = candidate.executionAction {
 			let bridge = GeneratedExecutionContextBridge()
 			let ctx = bridge.buildContext(from: snapshot, action: execution)
-			return ctx.satisfies(required: Array(required))
+			let passed = ctx.satisfies(required: Array(required))
+			let available = ctx.availableContextTypes.map(\.rawValue).sorted().joined(separator: ",")
+			let missing = required.filter { !ctx.availableContextTypes.contains($0) }.map(\.rawValue).sorted().joined(separator: ",")
+			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=bridge available=\(available) missing=\(missing.isEmpty ? "none" : missing) hasText=\(ctx.hasUsableText) passed=\(passed)")
+			return passed
 		}
 
 		if required.contains(.textSnippet) || required.contains(.selectedText) {
 			let hasText = !(snapshot.selectedText ?? "").isEmpty
 				|| !(snapshot.recentOCRExcerpt ?? "").isEmpty
-			if !hasText { return false }
+			if !hasText {
+				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_text")
+				return false
+			}
 		}
 		if required.contains(.fusedVisual) || required.contains(.screenCapture) {
-			if !snapshot.visualContextAvailability.hasUsableVisual { return false }
+			if !snapshot.visualContextAvailability.hasUsableVisual {
+				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_visual")
+				return false
+			}
 		}
+		print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=true")
 		return true
 	}
 
@@ -349,6 +393,9 @@ enum GeneratedExecutionProposalActivator {
 
 		let allowsPanel = topScore >= panelMediumScoreThreshold
 			|| input.isManualInvocation
+
+		// T18.3.6C: Explicit timing decision log so suppression reason is always visible.
+		print("[GeneratedProposalActivation] timing_score topScore=\(String(format: "%.3f", topScore)) panel_threshold=\(panelMediumScoreThreshold) float_threshold=\(floatingStrongScoreThreshold) allows_panel=\(topScore >= panelMediumScoreThreshold) allows_float=\(allowsFloating) is_manual=\(input.isManualInvocation) wf_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence)) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) stale=\(input.snapshot.packetIsStale)")
 
 		let outcome: GeneratedProposalTimingOutcome
 		if allowsFloating {

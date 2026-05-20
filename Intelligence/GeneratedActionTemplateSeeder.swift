@@ -163,6 +163,18 @@ actor GeneratedActionTemplateSeeder {
 				referenceTime: referenceTime
 			),
 
+			makeTemplate(
+				id: "browsing|structure|organize_information|none|v1",
+				title: "Gather context from this page to start organizing",
+				description: "Collect visible page signals and propose a structured summary or comparison plan",
+				workflow: .browsing,
+				intent: .structure,
+				primitive: ExecutionPrimitive.organizeInformation.rawValue,
+				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
 			// MARK: Studying / Learning
 
 			makeTemplate(

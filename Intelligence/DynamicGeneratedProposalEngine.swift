@@ -68,64 +68,36 @@ actor DynamicGeneratedProposalEngine {
 			SituationalContextDiagnostics.log(situationalContext)
 		}
 
-		// MARK: - Two-stage decision gate (T18.3.4 / T18.3.4A)
-		// Runs FIRST — before model checks, before preflight. Every attempt logs decision_stage
-		// and large_model_called so diagnostic traces are always complete.
+		// MARK: - Template library lookup (T18.3.5 / T18.3.6B)
+		// Runs BEFORE decision gate and BEFORE any LLM call.
+		// If eligible seeded templates exist, surface them immediately regardless of perception
+		// recommendation — the library is a fast, deterministic path that requires no LLM and
+		// no visual context.  Decision gate only matters when the library misses.
 
-		let decision = await decisionEngine.decide(
-			snapshot: snapshot,
-			situational: situationalContext,
-			referenceTime: referenceTime
-		)
 		logMetadata(
-			event: "decision_stage",
-			value: decision.shouldThink ? "think" : (decision.needsMoreContext ? "needs_context" : "quiet"),
-			extra: "source=\(decision.decisionSource.rawValue) conf=\(String(format: "%.2f", decision.confidence)) reason=\(decision.reason)"
+			event: "pipeline_stage",
+			value: "library_lookup",
+			extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) perception=\(situationalContext.perceptionRecommendation.rawValue) primary=\(situationalContext.primaryAvailableSource.rawValue)"
 		)
-
-		if !decision.shouldThink {
-			logMetadata(event: "large_model_called", value: "no", extra: "reason=\(decision.reason)")
-			if decision.needsMoreContext {
-				let contextKind = decision.recommendedContextKind.rawValue
-				let tag = decision.recommendedContextKind == .visual
-					? "diag:decision_needs_more_context:visual"
-					: "diag:decision_needs_more_context:\(contextKind)"
-				return result(
-					status: .quietByGate,
-					reason: "needs_more_context",
-					warnings: [tag],
-					cause: nil,
-					referenceTime: referenceTime
-				)
-			}
-			let tag = decision.reason == "timeout_cooldown"
-				? "diag:decision_timeout_cooldown"
-				: "diag:decision_quiet"
-			return result(
-				status: .quietByGate,
-				reason: decision.reason,
-				warnings: [tag],
-				cause: nil,
-				referenceTime: referenceTime
-			)
-		}
-
-		// MARK: - Template library lookup (T18.3.5)
-		// Runs BEFORE any LLM call. If eligible templates exist, surface them immediately.
-		// If not, enqueue a prewarm request and return explicit no-template status.
-		// The large model is never called just because the library missed.
 
 		let libraryResult = await templateLibrary.retrieve(
 			situational: situationalContext,
 			referenceTime: referenceTime
 		)
 
+		logMetadata(
+			event: "library_lookup_result",
+			value: libraryResult.hasMatch ? "hit" : "miss",
+			extra: "count=\(libraryResult.records.count) miss_reason=\(libraryResult.missReason?.rawValue ?? "none") workflow=\(situationalContext.inferredWorkflow.rawValue)"
+		)
+
 		if libraryResult.hasMatch {
 			let records = libraryResult.records
+			let titles = records.prefix(3).map(\.title).joined(separator: "|")
 			logMetadata(
 				event: "template_library_hit",
 				value: "\(records.count)",
-				extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) source=library"
+				extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) source=library top_titles=\(titles)"
 			)
 			logMetadata(event: "large_model_called", value: "no", extra: "reason=template_library_hit")
 			return DynamicGeneratedProposalResult(
@@ -143,7 +115,22 @@ actor DynamicGeneratedProposalEngine {
 			)
 		}
 
-		// Library miss — queue prewarm for deferred async design; do NOT call LLM in live path.
+		// MARK: - Two-stage decision gate (T18.3.4 / T18.3.4A)
+		// Only consulted after a library miss. The gate decides whether to queue prewarm or
+		// recommend more context. The LLM is never called (unreachable in production).
+
+		let decision = await decisionEngine.decide(
+			snapshot: snapshot,
+			situational: situationalContext,
+			referenceTime: referenceTime
+		)
+		logMetadata(
+			event: "decision_stage",
+			value: decision.shouldThink ? "think" : (decision.needsMoreContext ? "needs_context" : "quiet"),
+			extra: "source=\(decision.decisionSource.rawValue) conf=\(String(format: "%.2f", decision.confidence)) reason=\(decision.reason)"
+		)
+
+		// Library missed — queue prewarm then evaluate decision gate for final return code.
 		await templateLibrary.enqueuePrewarm(
 			situational: situationalContext,
 			decision: decision,
@@ -152,9 +139,44 @@ actor DynamicGeneratedProposalEngine {
 		logMetadata(
 			event: "template_library_miss",
 			value: libraryResult.missReason?.rawValue ?? "unknown",
-			extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) prewarm_queued=yes"
+			extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) prewarm_queued=yes perception=\(situationalContext.perceptionRecommendation.rawValue)"
 		)
+
+		if !decision.shouldThink {
+			logMetadata(event: "large_model_called", value: "no", extra: "reason=\(decision.reason)")
+			if decision.needsMoreContext {
+				let contextKind = decision.recommendedContextKind.rawValue
+				let tag = decision.recommendedContextKind == .visual
+					? "diag:decision_needs_more_context:visual"
+					: "diag:decision_needs_more_context:\(contextKind)"
+				logMetadata(
+					event: "library_miss_gate_result",
+					value: "needs_more_context",
+					extra: "kind=\(contextKind) miss_reason=\(libraryResult.missReason?.rawValue ?? "unknown")"
+				)
+				return result(
+					status: .quietByGate,
+					reason: "needs_more_context",
+					warnings: [tag],
+					cause: nil,
+					referenceTime: referenceTime
+				)
+			}
+			let tag = decision.reason == "timeout_cooldown"
+				? "diag:decision_timeout_cooldown"
+				: "diag:decision_quiet"
+			logMetadata(event: "library_miss_gate_result", value: "quiet", extra: "reason=\(decision.reason)")
+			return result(
+				status: .quietByGate,
+				reason: decision.reason,
+				warnings: [tag],
+				cause: nil,
+				referenceTime: referenceTime
+			)
+		}
+
 		logMetadata(event: "large_model_called", value: "no", extra: "reason=no_template_in_library")
+		logMetadata(event: "library_miss_gate_result", value: "no_template", extra: "prewarm_already_queued=yes")
 		return result(
 			status: .quietByGate,
 			reason: "no_template_in_library",

@@ -111,7 +111,12 @@ struct GeneratedExecutionContext: Equatable, Sendable, Codable {
 					.filter { !$0.isEmpty }
 					.count
 				guard count >= 2 else { return false }
-			case .workflowContext, .errorContext, .notesContext:
+			case .workflowContext:
+				// Workflow metadata alone satisfies this — no text required.
+				// A detected workflow (app + metadata) is sufficient context for workflow-scoped templates.
+				guard availableContextTypes.contains(req) else { return false }
+			case .errorContext, .notesContext:
+				// Error / notes context also requires usable text (error message or note body).
 				guard availableContextTypes.contains(req), hasUsableText else { return false }
 			case .none:
 				break

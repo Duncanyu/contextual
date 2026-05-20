@@ -690,11 +690,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			budget: .conservative,
 			history: proposalHistory
 		)
+		// T18.3.6B: Explicit pipeline trace — log engine result and library record count before activator.
+		print("[ProposalPipeline] engine_result status=\(llmResult.status.rawValue) library_records=\(llmResult.libraryRecords.count) should_chime=\(llmResult.shouldChimeIn) reason=\(llmResult.reason)")
+		if !llmResult.libraryRecords.isEmpty {
+			let titles = llmResult.libraryRecords.prefix(3).map(\.title).joined(separator: "|")
+			print("[ProposalPipeline] library_records_detail count=\(llmResult.libraryRecords.count) top_titles=\(titles)")
+		}
+
 		let llmCandidates = DynamicGeneratedProposalCandidateMapper.candidates(
 			from: llmResult,
 			snapshot: proposalSnapshot,
 			budget: .conservative
 		)
+
+		let reusableCandidatesForLog = GeneratedExecutionProposalCandidateBuilder.buildReusable(
+			from: llmResult.libraryRecords,
+			referenceTime: Date()
+		)
+		print("[ProposalPipeline] candidates_pre_activation llm=\(llmCandidates.count) reusable=\(reusableCandidatesForLog.count) total=\(llmCandidates.count + reusableCandidatesForLog.count)")
+		if reusableCandidatesForLog.isEmpty && !llmResult.libraryRecords.isEmpty {
+			print("[ProposalPipeline] WARNING reusable_candidates_empty despite library_records=\(llmResult.libraryRecords.count) — check eligibility/expiry filters in buildReusable")
+		}
 
 		let activation = GeneratedExecutionProposalActivator.activateProposals(
 			input: GeneratedExecutionProposalActivationInput(
@@ -712,6 +728,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				useLLMGeneratedCandidatesOnly: true
 			)
 		)
+		// T18.3.6B: Explicit activation trace.
+		print("[ProposalPipeline] activation_result visible_generated=\(activation.visibleProposals.count) suppressed_generated=\(activation.suppressedGeneratedCount) timing=\(activation.timingDecision.outcome.rawValue) allows_panel=\(activation.timingDecision.allowsPanelGenerated)")
 
 		let visibleStaticSet = Set(activation.visibleStaticActionIds)
 		var panelStaticActions = ordered.filter { visibleStaticSet.contains($0.id) }
@@ -878,11 +896,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			history: proposalHistory,
 			situational: prepared.situational
 		)
+		// T18.3.6B: Explicit pipeline trace — log engine result and library record count before activator.
+		print("[ProposalPipeline] engine_result status=\(llmResult.status.rawValue) library_records=\(llmResult.libraryRecords.count) should_chime=\(llmResult.shouldChimeIn) reason=\(llmResult.reason)")
+		if !llmResult.libraryRecords.isEmpty {
+			let titles = llmResult.libraryRecords.prefix(3).map(\.title).joined(separator: "|")
+			print("[ProposalPipeline] library_records_detail count=\(llmResult.libraryRecords.count) top_titles=\(titles)")
+		}
+
 		let llmCandidates = DynamicGeneratedProposalCandidateMapper.candidates(
 			from: llmResult,
 			snapshot: prepared.snapshot,
 			budget: .conservative
 		)
+
+		let reusableCandidatesForLog2 = GeneratedExecutionProposalCandidateBuilder.buildReusable(
+			from: llmResult.libraryRecords,
+			referenceTime: Date()
+		)
+		print("[ProposalPipeline] candidates_pre_activation llm=\(llmCandidates.count) reusable=\(reusableCandidatesForLog2.count) total=\(llmCandidates.count + reusableCandidatesForLog2.count)")
+		if reusableCandidatesForLog2.isEmpty && !llmResult.libraryRecords.isEmpty {
+			print("[ProposalPipeline] WARNING reusable_candidates_empty despite library_records=\(llmResult.libraryRecords.count) — check eligibility/expiry filters in buildReusable")
+		}
 
 		let activation = GeneratedExecutionProposalActivator.activateProposals(
 			input: GeneratedExecutionProposalActivationInput(
@@ -901,6 +935,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				suppressStaticProposalFallback: true
 			)
 		)
+		// T18.3.6B: Explicit activation trace.
+		print("[ProposalPipeline] activation_result visible_generated=\(activation.visibleProposals.count) suppressed_generated=\(activation.suppressedGeneratedCount) timing=\(activation.timingDecision.outcome.rawValue) allows_panel=\(activation.timingDecision.allowsPanelGenerated)")
 
 		let debugStatus = GeneratedProposalDebugStatusBuilder.build(
 			llmResult: llmResult,
