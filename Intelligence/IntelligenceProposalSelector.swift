@@ -14,7 +14,11 @@ final class IntelligenceProposalSelector {
 	private var lastMicroSkipAt: Date?
 
 	init() {
-		print("[TRACE_INIT] IntelligenceProposalSelector active file=\(#file)")
+		#if DEBUG
+		if ProposalLoggingFlags.traceInitEnabled {
+			print("[TRACE_INIT] IntelligenceProposalSelector active file=\(#file)")
+		}
+		#endif
 	}
 
 	/// T12.10: slightly lower so confident micro agreement keeps heuristic without phi3.

@@ -11,7 +11,11 @@ final class LocalIntelligenceDecisionEngine {
 	init(modelManager: ModelManager = .shared, client: LocalAIClient = .shared) {
 		self.modelManager = modelManager
 		self.client = client
-		print("[TRACE_INIT] LocalIntelligenceDecisionEngine active file=\(#file)")
+		#if DEBUG
+		if ProposalLoggingFlags.traceInitEnabled {
+			print("[TRACE_INIT] LocalIntelligenceDecisionEngine active file=\(#file)")
+		}
+		#endif
 	}
 
 	/// LLM proposal intelligence with ~1.5s ceiling; late completions may be discarded by the caller via generation guards.
@@ -298,4 +302,3 @@ compressedText:
 		)
 	}
 }
-

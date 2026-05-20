@@ -116,6 +116,7 @@ actor GeneratedActionTemplateLibrary: GeneratedActionTemplateLibraryProviding {
 
 		// T18.3.8: Prevent cross-workflow leakage when workflow inference is unknown/weak in browsers.
 		// In browser-like contexts, suppress debugging templates unless strong debugging signals exist.
+		var suppressedCrossWorkflow = 0
 		if situational.appCategory == .browser {
 			let titleLower = situational.windowTitle.lowercased()
 			let debugLikeTitle = titleLower.contains("xcode")
@@ -127,10 +128,13 @@ actor GeneratedActionTemplateLibrary: GeneratedActionTemplateLibraryProviding {
 			matches = matches.filter { record in
 				if record.workflowType != .debugging { return true }
 				if allowDebugTemplates { return true }
-				print("[TemplateRanking] suppressed_cross_workflow template=\(record.actionTemplateId) reason=browser_context")
+				suppressedCrossWorkflow += 1
+				if ProposalLoggingFlags.verboseProposalLogsEnabled {
+					print("[TemplateRanking] suppressed_cross_workflow template=\(record.actionTemplateId) reason=browser_context")
+				}
 				return false
 			}
-			if before != matches.count {
+			if before != matches.count, ProposalLoggingFlags.verboseProposalLogsEnabled {
 				print("[TemplateRanking] workflow_compat workflow=\(workflowType.rawValue) compatible=yes reason=filtered_debugging_templates before=\(before) after=\(matches.count)")
 			}
 		}
@@ -143,15 +147,23 @@ actor GeneratedActionTemplateLibrary: GeneratedActionTemplateLibraryProviding {
 			return .empty(reason: reason)
 		}
 
-		// T18.3.8: Compatibility diagnostics (metadata-only).
-		for record in matches.prefix(5) {
-			let compatible = record.workflowType == .unknown
-				|| workflowType == .unknown
-				|| record.workflowType == workflowType
-			let reason = compatible ? "workflow_ok" : "workflow_mismatch"
-			print(
-				"[TemplateRanking] workflow_compat template=\(record.actionTemplateId) template_workflow=\(record.workflowType.rawValue) query_workflow=\(workflowType.rawValue) compatible=\(compatible ? "yes" : "no") reason=\(reason)"
-			)
+		// T18.3.10A: Aggregate log by default; per-template compatibility logs require verbose flag.
+		let compatibleCount = matches.filter {
+			$0.workflowType == .unknown || workflowType == .unknown || $0.workflowType == workflowType
+		}.count
+		print(
+			"[TemplateRanking] summary workflow=\(workflowType.rawValue) candidates=\(matches.count) compatible=\(compatibleCount) suppressed_cross_workflow=\(suppressedCrossWorkflow)"
+		)
+		if ProposalLoggingFlags.verboseProposalLogsEnabled {
+			for record in matches.prefix(5) {
+				let compatible = record.workflowType == .unknown
+					|| workflowType == .unknown
+					|| record.workflowType == workflowType
+				let reason = compatible ? "workflow_ok" : "workflow_mismatch"
+				print(
+					"[TemplateRanking] workflow_compat template=\(record.actionTemplateId) template_workflow=\(record.workflowType.rawValue) query_workflow=\(workflowType.rawValue) compatible=\(compatible ? "yes" : "no") reason=\(reason)"
+				)
+			}
 		}
 
 		log(event: "library_hit", reason: "matched=\(matches.count)",

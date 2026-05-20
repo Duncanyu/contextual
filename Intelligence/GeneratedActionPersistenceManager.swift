@@ -226,8 +226,10 @@ actor GeneratedActionPersistenceManager {
 		let loadedRecords = await store.loadRecords()
 		recordsByTemplate = Dictionary(uniqueKeysWithValues: loadedRecords.map { ($0.actionTemplateId, $0) })
 		loaded = true
+		repairBadTitlesIfNeeded()
 		pruneExpired()
 		enforceCap()
+		await persistIfNeeded()
 	}
 
 	private func persistIfNeeded() async {
@@ -241,10 +243,17 @@ actor GeneratedActionPersistenceManager {
 	}
 
 	private func makeSeedRecord(from event: GeneratedActionPersistenceEvent) -> ReusableGeneratedActionRecord {
-		ReusableGeneratedActionRecord(
+		let synthesized = GeneratedProposalTitleSynthesizer.synthesize(
+			workflowType: event.workflowType,
+			intentType: event.intentType,
+			primitiveSignature: event.primitiveSignature,
+			requiredContextTypes: [],
+			metadata: event.metadata
+		)
+		return ReusableGeneratedActionRecord(
 			actionTemplateId: event.actionTemplateId,
-			title: "Reusable action",
-			description: "Reusable generated execution template",
+			title: synthesized.title,
+			description: synthesized.description,
 			workflowType: event.workflowType,
 			intentType: event.intentType,
 			primitiveSignature: event.primitiveSignature,
@@ -253,6 +262,51 @@ actor GeneratedActionPersistenceManager {
 			lastUsedAt: event.timestamp,
 			expiresAt: event.timestamp.addingTimeInterval(policy.expirationInterval)
 		)
+	}
+
+	private func repairBadTitlesIfNeeded() {
+		var repaired = 0
+		for (key, record) in recordsByTemplate {
+			if !GeneratedProposalTitleSynthesizer.needsRepair(title: record.title, templateId: record.actionTemplateId) {
+				continue
+			}
+			let synthesized = GeneratedProposalTitleSynthesizer.synthesize(
+				workflowType: record.workflowType,
+				intentType: record.intentType,
+				primitiveSignature: record.primitiveSignature,
+				requiredContextTypes: record.requiredContextTypes,
+				metadata: record.metadata
+			)
+			print("[GeneratedProposalTitle] repaired record=\(record.actionTemplateId.prefix(80)) reason=loaded_bad_title")
+			recordsByTemplate[key] = ReusableGeneratedActionRecord(
+				id: record.id,
+				actionTemplateId: record.actionTemplateId,
+				title: synthesized.title,
+				description: record.description == "Reusable generated execution template" ? synthesized.description : record.description,
+				workflowType: record.workflowType,
+				intentType: record.intentType,
+				primitiveSignature: record.primitiveSignature,
+				requiredContextTypes: record.requiredContextTypes,
+				createdAt: record.createdAt,
+				lastUsedAt: record.lastUsedAt,
+				expiresAt: record.expiresAt,
+				acceptedCount: record.acceptedCount,
+				dismissedCount: record.dismissedCount,
+				executedCount: record.executedCount,
+				successfulExecutionCount: record.successfulExecutionCount,
+				failedExecutionCount: record.failedExecutionCount,
+				repeatedUseCount: record.repeatedUseCount,
+				usefulnessScore: record.usefulnessScore,
+				averageConfidence: record.averageConfidence,
+				reuseEligibility: record.reuseEligibility,
+				safetyVersion: record.safetyVersion,
+				metadata: record.metadata
+			)
+			repaired += 1
+		}
+		if repaired > 0 {
+			dirty = true
+		}
 	}
 
 	private func pruneExpired(now: Date = Date()) {

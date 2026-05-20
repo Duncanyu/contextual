@@ -20,10 +20,27 @@ struct GeneratedExecutionContextBridge: Sendable {
 		action: GeneratedExecutionAction? = nil,
 		referenceTime: Date = Date()
 	) -> GeneratedExecutionContext {
-		let suppression = GeneratedExecutionClipboardFreshnessPolicy.evaluate(
+		var suppression = GeneratedExecutionClipboardFreshnessPolicy.evaluate(
 			snapshot: snapshot,
 			referenceTime: referenceTime
 		)
+		// T18.3.10C: Even if clipboard is "fresh enough", treat it as suppressed when situational
+		// relevance is low/unproven. This prevents clipboard from becoming primary after it was
+		// suppressed earlier in the perception pipeline.
+		if suppression.includeClipboard {
+			let assessment = SituationalClipboardRelevanceEvaluator.assess(
+				snapshot: snapshot,
+				appCategory: Self.inferAppCategory(snapshot: snapshot),
+				referenceTime: referenceTime
+			)
+			if assessment.suppressed || assessment.relevance == .low || !assessment.canBePrimary {
+				print("[GeneratedExecutionContextBridge] clipboard_ignored reason=proposal_supp detail=\(assessment.reasonCode)")
+				suppression = GeneratedExecutionClipboardSuppressionDecision(
+					includeClipboard: false,
+					reasonCode: "situational:\(assessment.reasonCode)"
+				)
+			}
+		}
 		let freshness = GeneratedExecutionContextFreshnessScorer.score(
 			snapshot: snapshot,
 			referenceTime: referenceTime
@@ -171,6 +188,18 @@ struct GeneratedExecutionContextBridge: Sendable {
 		if channels >= 2 { add(.multiSource) }
 
 		return types
+	}
+
+	private static func inferAppCategory(snapshot: CanonicalGeneratedExecutionContextSnapshot) -> SituationalAppCategory {
+		if SituationalContextSynthesizer.isBrowser(snapshot: snapshot) { return .browser }
+		let bundle = (snapshot.bundleIdentifier ?? "").lowercased()
+		let app = snapshot.activeApp.lowercased()
+		if bundle.contains("xcode") || app.contains("xcode") { return .ide }
+		if bundle.contains("terminal") || app.contains("terminal") || bundle.contains("iterm") { return .terminal }
+		if app.contains("notes") || bundle.contains("notes") { return .notes }
+		if app.contains("slack") || app.contains("mail") || app.contains("messages") { return .communication }
+		if app.contains("vlc") || app.contains("quicktime") || app.contains("music") { return .media }
+		return .unknown
 	}
 
 	// MARK: - Logging (metadata only)

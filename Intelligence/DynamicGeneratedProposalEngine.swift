@@ -58,7 +58,11 @@ actor DynamicGeneratedProposalEngine {
 		self.visualScheduler = visualScheduler
 		self.sparseVisualPeekGate = SparseVisualPeekGate()
 		self.timeoutNanoseconds = UInt64(max(3, timeoutSeconds) * 1_000_000_000)
-		print("[TRACE_INIT] DynamicGeneratedProposalEngine file=\(#file) decisionEngine=\(type(of: decisionEngine)) library=\(type(of: templateLibrary))")
+		#if DEBUG
+		if ProposalLoggingFlags.traceInitEnabled {
+			print("[TRACE_INIT] DynamicGeneratedProposalEngine file=\(#file) decisionEngine=\(type(of: decisionEngine)) library=\(type(of: templateLibrary))")
+		}
+		#endif
 	}
 
 	/// When `false` (default), the live LLM path in this engine is never executed even if reached.
@@ -269,7 +273,9 @@ actor DynamicGeneratedProposalEngine {
 					var updated = record
 					updated.usefulnessScore = max(updated.usefulnessScore, boostedMinUsefulness)
 					updated.averageConfidence = max(updated.averageConfidence, boostedMinConfidence)
-					print("[TemplateRanking] visual_rank_boost template=\(record.actionTemplateId) reason=perception_\(perception.rawValue)")
+					if ProposalLoggingFlags.verboseProposalLogsEnabled {
+						print("[TemplateRanking] visual_rank_boost template=\(record.actionTemplateId) reason=perception_\(perception.rawValue)")
+					}
 					return updated
 				}
 				logMetadata(
@@ -428,7 +434,7 @@ actor DynamicGeneratedProposalEngine {
 		logMetadata(event: "llm_generation_started", value: model, extra: "prompt_bytes=\(prompt.utf8.count)")
 		// T18.3.5A: This line must never be reached in production (library-only mode).
 		// If the app doesn't crash here → wrong file is executing.
-		fatalError("[TRACE] LEGACY LIVE LLM PATH STILL ACTIVE — DynamicGeneratedProposalEngine.swift is not being compiled from the expected source. file=\(#file)")
+		// T18.3.5A legacy fatal sentinel removed (T18.3.10A).
 
 		let generationStart = Date()
 		let raw: String

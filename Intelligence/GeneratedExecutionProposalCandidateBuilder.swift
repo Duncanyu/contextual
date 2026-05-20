@@ -22,11 +22,12 @@ enum GeneratedExecutionProposalCandidateBuilder {
 		records
 			.filter { $0.reuseEligibility == .eligible && !$0.isExpired }
 			.map { record in
+				let fallback = reusableTitleAndDescriptionIfNeeded(record: record)
 				let execution = executionAction(from: record, referenceTime: referenceTime)
 				return GeneratedExecutionProposalCandidate(
 					id: "reuse:\(record.actionTemplateId)",
-					title: record.title,
-					description: record.description,
+					title: fallback.title,
+					description: fallback.description,
 					source: .reusableGenerated,
 					workflowType: record.workflowType,
 					intentType: record.intentType,
@@ -138,6 +139,7 @@ enum GeneratedExecutionProposalCandidateBuilder {
 				budgetPriority: .userInitiated
 			)
 		}()
+		let fallback = reusableTitleAndDescriptionIfNeeded(record: record)
 		let plan = ExecutionPlan(
 			primitives: primitives.isEmpty ? [.summarizeContext] : primitives,
 			estimatedCost: requiresVisual || requiresOCR ? 0.28 : 0.2,
@@ -151,8 +153,8 @@ enum GeneratedExecutionProposalCandidateBuilder {
 			planConfidence: record.averageConfidence
 		)
 		return GeneratedExecutionAction(
-			title: record.title,
-			description: record.description,
+			title: fallback.title,
+			description: fallback.description,
 			workflowType: record.workflowType,
 			intentType: record.intentType,
 			confidence: record.averageConfidence,
@@ -165,6 +167,56 @@ enum GeneratedExecutionProposalCandidateBuilder {
 			expirationDate: record.expiresAt,
 			isReusable: true,
 			reuseScore: record.usefulnessScore
+		)
+	}
+
+	private struct ReusableTitleFallback {
+		let title: String
+		let description: String
+		let usedFallbackTitle: Bool
+		let reason: String
+	}
+
+	private static func reusableTitleAndDescriptionIfNeeded(
+		record: ReusableGeneratedActionRecord
+	) -> ReusableTitleFallback {
+		let rawTitle = record.title.trimmingCharacters(in: .whitespacesAndNewlines)
+		let rawDescription = record.description.trimmingCharacters(in: .whitespacesAndNewlines)
+		let titleNeedsRepair = GeneratedProposalTitleSynthesizer.needsRepair(
+			title: rawTitle,
+			templateId: record.actionTemplateId
+		)
+		let descMissing = rawDescription.isEmpty || rawDescription == "Reusable generated execution template"
+
+		guard titleNeedsRepair || descMissing else {
+			return ReusableTitleFallback(
+				title: record.title,
+				description: record.description,
+				usedFallbackTitle: false,
+				reason: "none"
+			)
+		}
+
+		let synthesized = GeneratedProposalTitleSynthesizer.synthesize(
+			workflowType: record.workflowType,
+			intentType: record.intentType,
+			primitiveSignature: record.primitiveSignature,
+			requiredContextTypes: record.requiredContextTypes,
+			metadata: record.metadata
+		)
+		let title = titleNeedsRepair ? synthesized.title : record.title
+		let description = descMissing ? synthesized.description : record.description
+		let reason = titleNeedsRepair ? "repaired_title" : "placeholder_description"
+		if titleNeedsRepair {
+			print(
+				"[GeneratedProposalTitle] repaired record=\(record.actionTemplateId.prefix(80)) reason=\(reason)"
+			)
+		}
+		return ReusableTitleFallback(
+			title: title,
+			description: description,
+			usedFallbackTitle: titleNeedsRepair,
+			reason: reason
 		)
 	}
 

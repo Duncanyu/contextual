@@ -87,16 +87,30 @@ enum GeneratedExecutionProposalActivator {
 			from: input.reusableRecords,
 			referenceTime: referenceTime
 		)
-		print("[GeneratedProposalActivation] reusable_candidates count=\(reusableCandidates.count) input_records=\(input.reusableRecords.count) workflow=\(input.snapshot.inferredWorkflow.rawValue) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) workflow_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence))")
+		let workflowResolution = resolveEffectiveWorkflow(input: input, reusableCandidates: reusableCandidates)
+		print(
+			"[GeneratedProposalActivation] reusable_candidates count=\(reusableCandidates.count) input_records=\(input.reusableRecords.count) effective_workflow=\(workflowResolution.workflow.rawValue) wf_source=\(workflowResolution.source) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) canonical_workflow=\(input.snapshot.inferredWorkflow.rawValue) canonical_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence))"
+		)
+		var reusablePassed = 0
 		for reusable in reusableCandidates {
 			if let reason = preSuppressReason(candidate: reusable, input: input) {
 				preSuppressedGenerated += 1
 				logSuppressed(id: reusable.id, reason: reason)
 				continue
 			}
-			print("[GeneratedProposalActivation] reusable_passed_presuppress id=\(String(reusable.id.prefix(40))) title=\(reusable.title)")
+			reusablePassed += 1
+			if ProposalLoggingFlags.verboseProposalLogsEnabled {
+				print("[GeneratedProposalActivation] reusable_passed_presuppress id=\(String(reusable.id.prefix(40))) title=\(reusable.title)")
+			}
 			candidates.append(reusable)
 		}
+		let topTitles = reusableCandidates
+			.prefix(2)
+			.map(\.title)
+			.joined(separator: "|")
+		print(
+			"[GeneratedProposalActivation] summary reusable_total=\(reusableCandidates.count) reusable_passed=\(reusablePassed) pre_suppressed_generated=\(preSuppressedGenerated) top_titles=\(topTitles)"
+		)
 
 		let rankables = candidates.map { UnifiedActionRankingAdapter.fromProposalCandidate($0) }
 		let fusedStale = input.snapshot.packetIsStale
@@ -106,6 +120,21 @@ enum GeneratedExecutionProposalActivator {
 			fusedStale: fusedStale,
 			referenceTime: referenceTime
 		)
+		// If the workflow inference engine is unknown/weak, prefer the effective workflow derived from
+		// canonical snapshot or template-library records (T18.3.10B).
+		if rankingContext.activeWorkflow == .unknown || rankingContext.workflowConfidence < 0.35 {
+			rankingContext = UnifiedActionRankingContext(
+				activeWorkflow: workflowResolution.workflow,
+				continuityScore: rankingContext.continuityScore,
+				workflowConfidence: max(rankingContext.workflowConfidence, workflowResolution.confidence),
+				contextIsStale: rankingContext.contextIsStale,
+				referenceTime: referenceTime,
+				lowConfidenceGeneratedThreshold: rankingContext.lowConfidenceGeneratedThreshold,
+				maxGeneratedRatioInTopWindow: rankingContext.maxGeneratedRatioInTopWindow,
+				topWindowSize: rankingContext.topWindowSize,
+				staticCompetitivenessBoost: rankingContext.staticCompetitivenessBoost
+			)
+		}
 		rankingContext = UnifiedActionRankingContext(
 			activeWorkflow: rankingContext.activeWorkflow,
 			continuityScore: rankingContext.continuityScore,
@@ -219,6 +248,53 @@ enum GeneratedExecutionProposalActivator {
 		)
 	}
 
+	private struct EffectiveWorkflowResolution {
+		let workflow: WorkflowType
+		let confidence: Double
+		let source: String
+	}
+
+	private static func resolveEffectiveWorkflow(
+		input: GeneratedExecutionProposalActivationInput,
+		reusableCandidates: [GeneratedExecutionProposalCandidate]
+	) -> EffectiveWorkflowResolution {
+		// 1) Workflow engine (if available)
+		if let wf = input.workflow {
+			let mapped = WorkflowExecutionMapper.workflowType(from: wf.workflow)
+			if mapped != .unknown, wf.confidence >= 0.35 {
+				return EffectiveWorkflowResolution(
+					workflow: mapped,
+					confidence: wf.confidence,
+					source: "workflow_engine"
+				)
+			}
+		}
+
+		// 2) Canonical snapshot
+		let snapMapped = WorkflowExecutionMapper.workflowType(from: input.snapshot.inferredWorkflow)
+		if snapMapped != .unknown, input.snapshot.workflowConfidence >= 0.35 {
+			return EffectiveWorkflowResolution(
+				workflow: snapMapped,
+				confidence: input.snapshot.workflowConfidence,
+				source: "canonical"
+			)
+		}
+
+		// 3) Template-library records (reusable candidates)
+		if let best = reusableCandidates
+			.filter({ $0.workflowType != .unknown })
+			.max(by: { $0.confidence < $1.confidence })
+		{
+			return EffectiveWorkflowResolution(
+				workflow: best.workflowType,
+				confidence: max(0.42, min(0.75, best.confidence)),
+				source: "template_library"
+			)
+		}
+
+		return EffectiveWorkflowResolution(workflow: .unknown, confidence: 0, source: "fallback")
+	}
+
 	// MARK: - Pre-suppression
 
 	private static func preSuppressReason(
@@ -298,7 +374,9 @@ enum GeneratedExecutionProposalActivator {
 	) -> Bool {
 		let required = Set(candidate.requiredContextTypes.filter { $0 != .none })
 		if required.isEmpty {
-			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=[] path=trivial passed=true")
+			if ProposalLoggingFlags.verboseProposalLogsEnabled {
+				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=[] path=trivial passed=true")
+			}
 			return true
 		}
 
@@ -320,7 +398,9 @@ enum GeneratedExecutionProposalActivator {
 			if passed, required.contains(.fusedVisual) || required.contains(.screenCapture) {
 				if !snapshot.visualContextAvailability.hasUsableVisual { passed = false }
 			}
-			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=reusable_trust_library passed=\(passed)")
+			if ProposalLoggingFlags.verboseProposalLogsEnabled {
+				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=reusable_trust_library passed=\(passed)")
+			}
 			return passed
 		}
 
@@ -331,7 +411,9 @@ enum GeneratedExecutionProposalActivator {
 			let passed = ctx.satisfies(required: Array(required))
 			let available = ctx.availableContextTypes.map(\.rawValue).sorted().joined(separator: ",")
 			let missing = required.filter { !ctx.availableContextTypes.contains($0) }.map(\.rawValue).sorted().joined(separator: ",")
-			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=bridge available=\(available) missing=\(missing.isEmpty ? "none" : missing) hasText=\(ctx.hasUsableText) passed=\(passed)")
+			if ProposalLoggingFlags.verboseProposalLogsEnabled {
+				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=bridge available=\(available) missing=\(missing.isEmpty ? "none" : missing) hasText=\(ctx.hasUsableText) passed=\(passed)")
+			}
 			return passed
 		}
 
@@ -339,17 +421,23 @@ enum GeneratedExecutionProposalActivator {
 			let hasText = !(snapshot.selectedText ?? "").isEmpty
 				|| !(snapshot.recentOCRExcerpt ?? "").isEmpty
 			if !hasText {
-				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_text")
+				if ProposalLoggingFlags.verboseProposalLogsEnabled {
+					print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_text")
+				}
 				return false
 			}
 		}
 		if required.contains(.fusedVisual) || required.contains(.screenCapture) {
 			if !snapshot.visualContextAvailability.hasUsableVisual {
-				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_visual")
+				if ProposalLoggingFlags.verboseProposalLogsEnabled {
+					print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_visual")
+				}
 				return false
 			}
 		}
-		print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=true")
+		if ProposalLoggingFlags.verboseProposalLogsEnabled {
+			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=true")
+		}
 		return true
 	}
 

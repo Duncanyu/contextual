@@ -704,6 +704,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			let titles = llmResult.libraryRecords.prefix(3).map(\.title).joined(separator: "|")
 			print("[ProposalPipeline] library_records_detail count=\(llmResult.libraryRecords.count) top_titles=\(titles)")
 		}
+		// T18.3.10B: Preserve effective workflow through activation/ranking.
+		do {
+			let wfEngine = WorkflowInferenceEngine.shared.latestResult()
+			let mappedEngine = wfEngine.map { WorkflowExecutionMapper.workflowType(from: $0.workflow) } ?? .unknown
+			let engineConf = wfEngine?.confidence ?? 0
+			let snapMapped = WorkflowExecutionMapper.workflowType(from: proposalSnapshot.inferredWorkflow)
+			let snapConf = proposalSnapshot.workflowConfidence
+			let libBest = llmResult.libraryRecords
+				.filter { $0.workflowType != .unknown }
+				.max(by: { $0.usefulnessScore < $1.usefulnessScore })
+			let (effective, source): (WorkflowType, String) = {
+				if mappedEngine != .unknown, engineConf >= 0.35 { return (mappedEngine, "workflow_engine") }
+				if snapMapped != .unknown, snapConf >= 0.35 { return (snapMapped, "canonical") }
+				if let libBest { return (libBest.workflowType, "template_library") }
+				return (.unknown, "fallback")
+			}()
+			print("[ProposalPipeline] effective_workflow=\(effective.rawValue) source=\(source)")
+		}
 
 		let llmCandidates = DynamicGeneratedProposalCandidateMapper.candidates(
 			from: llmResult,
@@ -909,6 +927,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if !llmResult.libraryRecords.isEmpty {
 			let titles = llmResult.libraryRecords.prefix(3).map(\.title).joined(separator: "|")
 			print("[ProposalPipeline] library_records_detail count=\(llmResult.libraryRecords.count) top_titles=\(titles)")
+		}
+		// T18.3.10B: Preserve effective workflow through activation/ranking.
+		do {
+			let situationalMapped = WorkflowExecutionMapper.workflowType(from: prepared.situational.inferredWorkflow)
+			let situationalConf = prepared.situational.workflowConfidence
+			let wfEngine = WorkflowInferenceEngine.shared.latestResult()
+			let mappedEngine = wfEngine.map { WorkflowExecutionMapper.workflowType(from: $0.workflow) } ?? .unknown
+			let engineConf = wfEngine?.confidence ?? 0
+			let snapMapped = WorkflowExecutionMapper.workflowType(from: prepared.snapshot.inferredWorkflow)
+			let snapConf = prepared.snapshot.workflowConfidence
+			let libBest = llmResult.libraryRecords
+				.filter { $0.workflowType != .unknown }
+				.max(by: { $0.usefulnessScore < $1.usefulnessScore })
+			let (effective, source): (WorkflowType, String) = {
+				if situationalMapped != .unknown, situationalConf >= 0.35 { return (situationalMapped, "situational") }
+				if mappedEngine != .unknown, engineConf >= 0.35 { return (mappedEngine, "workflow_engine") }
+				if snapMapped != .unknown, snapConf >= 0.35 { return (snapMapped, "canonical") }
+				if let libBest { return (libBest.workflowType, "template_library") }
+				return (.unknown, "fallback")
+			}()
+			print("[ProposalPipeline] effective_workflow=\(effective.rawValue) source=\(source)")
 		}
 
 		let llmCandidates = DynamicGeneratedProposalCandidateMapper.candidates(
