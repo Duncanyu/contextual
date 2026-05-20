@@ -46,6 +46,8 @@ enum GeneratedActionTemplateSeederSelfTest {
 			let plan = reusableCandidate?.executionAction?.executionPlan
 			check("visual_seed_plan_requires_vision", plan?.requiresVision == true)
 			check("visual_seed_plan_requires_ocr", plan?.requiresOCR == true)
+			check("visual_seed_budget_allows_vision", plan?.executionBudget.allowsVision == true)
+			check("visual_seed_budget_allows_ocr", plan?.executionBudget.allowsOCR == true)
 		}
 
 		// MARK: 4 — GeneratedActionTemplateLibrary.shared uses GeneratedActionPersistenceManager.shared

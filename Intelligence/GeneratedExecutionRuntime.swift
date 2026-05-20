@@ -27,6 +27,7 @@ actor GeneratedExecutionRuntime {
 	private var visualEnrichmentPerformedInLifecycle = false
 	private var visualEnrichmentUsedOCRInLifecycle = false
 	private var visualEnrichmentUsedVisionSummaryInLifecycle = false
+	private var visualEnrichmentDecisionInLifecycle: String = "none"
 
 	private(set) var snapshot: GeneratedExecutionRuntimeSnapshot = .initial
 	private var cancelRequested = false
@@ -110,17 +111,24 @@ actor GeneratedExecutionRuntime {
 			action: action,
 			contextSnapshot: makeBudgetSnapshot(activeSamplingRequested: false)
 		)
-		if !startBudget.allowed {
-			await budgetManager.recordExecutionRejected(action: action, reason: startBudget.reason)
-			log(event: "start_rejected", reason: startBudget.reason.rawValue, actionId: action.id)
-			return .rejected(startBudget.runtimeError)
-		}
+			if !startBudget.allowed {
+				await budgetManager.recordExecutionRejected(action: action, reason: startBudget.reason)
+				let meta = startBudget.metadata
+					.prefix(6)
+					.map { "\($0.key)=\($0.value)" }
+					.joined(separator: ",")
+				let metaPart = meta.isEmpty ? "" : " meta=\(meta)"
+				print("[GeneratedExecutionBudget] denied gate=start reason=\(startBudget.reason.rawValue) actionId=\(action.id.uuidString.prefix(8))\(metaPart)")
+				log(event: "start_rejected", reason: startBudget.reason.rawValue, actionId: action.id)
+				return .rejected(startBudget.runtimeError)
+			}
 
 		cancelRequested = false
 		sparseVisualPeekAttemptedInLifecycle = false
 		visualEnrichmentPerformedInLifecycle = false
 		visualEnrichmentUsedOCRInLifecycle = false
 		visualEnrichmentUsedVisionSummaryInLifecycle = false
+		visualEnrichmentDecisionInLifecycle = "none"
 		let startedAt = Date()
 		transition(
 			to: .validating,
@@ -156,6 +164,7 @@ actor GeneratedExecutionRuntime {
 		visualEnrichmentPerformedInLifecycle = false
 		visualEnrichmentUsedOCRInLifecycle = false
 		visualEnrichmentUsedVisionSummaryInLifecycle = false
+		visualEnrichmentDecisionInLifecycle = "none"
 		snapshot = .initial
 		log(event: "reset", reason: nil, actionId: nil)
 	}
@@ -192,9 +201,11 @@ actor GeneratedExecutionRuntime {
 			return .budgetExceeded
 		}
 		if plan.requiresVision && !budget.allowsVision {
+			print("[VisualExecution] event=visual_execution_denied reason=vision_not_allowed_preflight actionId=\(action.id.uuidString.prefix(8))")
 			return .budgetExceeded
 		}
 		if plan.requiresOCR && !budget.allowsOCR {
+			print("[VisualExecution] event=visual_execution_denied reason=ocr_not_allowed_preflight actionId=\(action.id.uuidString.prefix(8))")
 			return .budgetExceeded
 		}
 		if plan.estimatedRuntime > budget.maxExecutionTime {
@@ -220,11 +231,17 @@ actor GeneratedExecutionRuntime {
 			budget: plan.executionBudget,
 			snapshot: makeBudgetSnapshot(activeSamplingRequested: samplingRequested)
 		)
-		if !gatherBudget.allowed {
-			return finishBudgetDenied(
-				action: action,
-				startedAt: startedAt,
-				decision: gatherBudget
+			if !gatherBudget.allowed {
+				let meta = gatherBudget.metadata
+					.prefix(6)
+					.map { "\($0.key)=\($0.value)" }
+					.joined(separator: ",")
+				let metaPart = meta.isEmpty ? "" : " meta=\(meta)"
+				print("[GeneratedExecutionBudget] denied gate=gather reason=\(gatherBudget.reason.rawValue) actionId=\(action.id.uuidString.prefix(8))\(metaPart)")
+				return finishBudgetDenied(
+					action: action,
+					startedAt: startedAt,
+					decision: gatherBudget
 			)
 		}
 
@@ -567,10 +584,18 @@ actor GeneratedExecutionRuntime {
 		      let canon = canonicalSnapshot,
 		      !sparseVisualPeekAttemptedInLifecycle
 		else {
+			if visualContextScheduler == nil {
+				visualEnrichmentDecisionInLifecycle = "skipped:no_scheduler"
+			} else if canonicalSnapshot == nil {
+				visualEnrichmentDecisionInLifecycle = "skipped:no_canonical_snapshot"
+			} else {
+				visualEnrichmentDecisionInLifecycle = "skipped:already_attempted"
+			}
 			return baseContext
 		}
 		// Only attempt visual enrichment when the action explicitly requests vision/OCR (T18.3.7).
 		if plan.requiresVision == false && plan.requiresOCR == false {
+			visualEnrichmentDecisionInLifecycle = "skipped:action_not_visual"
 			logVisualExecution(event: "visual_execution_skipped", reason: "action_not_visual", actionId: action.id)
 			return baseContext
 		}
@@ -588,6 +613,7 @@ actor GeneratedExecutionRuntime {
 
 		let gateEval = await sparseVisualPeekGate.evaluate(snapshot: canon, referenceTime: referenceTime)
 		if gateEval.shouldDeny {
+			visualEnrichmentDecisionInLifecycle = "denied:\(gateEval.denyReason?.rawValue ?? "gate")"
 			logVisualExecution(event: "visual_execution_denied", reason: gateEval.denyReason?.rawValue ?? "gate", actionId: action.id)
 			logSparseVisualPeek(
 				event: "sparse_visual_peek_denied",
@@ -607,6 +633,7 @@ actor GeneratedExecutionRuntime {
 			referenceTime: referenceTime
 		)
 		guard peekDecision.shouldPeek, let request = peekDecision.recommendedRequest else {
+			visualEnrichmentDecisionInLifecycle = "denied:\(peekDecision.denyReason?.rawValue ?? "policy")"
 			logVisualExecution(event: "visual_execution_denied", reason: peekDecision.denyReason?.rawValue ?? "policy", actionId: action.id)
 			logSparseVisualPeek(
 				event: "sparse_visual_peek_denied",
@@ -624,7 +651,17 @@ actor GeneratedExecutionRuntime {
 			snapshot: budgetSnapshot
 		)
 		if !budgetDecision.allowed {
-			logVisualExecution(event: "visual_execution_denied", reason: budgetDecision.reason.rawValue, actionId: action.id)
+			visualEnrichmentDecisionInLifecycle = "denied:\(budgetDecision.reason.rawValue)"
+			let meta = budgetDecision.metadata
+				.prefix(6)
+				.map { "\($0.key)=\($0.value)" }
+				.joined(separator: ",")
+			logVisualExecution(
+				event: "visual_execution_denied",
+				reason: budgetDecision.reason.rawValue,
+				actionId: action.id,
+				extra: meta.isEmpty ? nil : "meta=\(meta)"
+			)
 			logSparseVisualPeek(
 				event: "visual_peek_budget_denied",
 				reason: budgetDecision.reason.rawValue,
@@ -634,6 +671,7 @@ actor GeneratedExecutionRuntime {
 		}
 
 		logVisualExecution(event: "visual_execution_allowed", reason: peekDecision.allowReason?.rawValue ?? "allowed", actionId: action.id)
+		visualEnrichmentDecisionInLifecycle = "allowed:\(peekDecision.allowReason?.rawValue ?? "allowed")"
 		logSparseVisualPeek(
 			event: "visual_peek_request_started",
 			reason: peekDecision.allowReason?.rawValue,
@@ -641,6 +679,7 @@ actor GeneratedExecutionRuntime {
 		)
 
 		let visualResult = await scheduler.collect(request: request, budgetSnapshot: budgetSnapshot)
+		visualEnrichmentDecisionInLifecycle = "completed:\(visualResult.status.rawValue)"
 		logVisualExecution(event: "visual_execution_completed", reason: visualResult.status.rawValue, actionId: action.id)
 
 		if visualResult.status == .completed || visualResult.status == .partial {
@@ -653,6 +692,7 @@ actor GeneratedExecutionRuntime {
 			visualEnrichmentPerformedInLifecycle = true
 			visualEnrichmentUsedOCRInLifecycle = (visualResult.ocrExcerpt ?? "").isEmpty == false
 			visualEnrichmentUsedVisionSummaryInLifecycle = (visualResult.visualSummary ?? "").isEmpty == false
+			visualEnrichmentDecisionInLifecycle = "merged"
 			logVisualExecution(event: "visual_execution_merged", reason: "merged", actionId: action.id)
 			return baseContext.merging(visual: visualResult)
 		}
@@ -758,6 +798,7 @@ actor GeneratedExecutionRuntime {
 		meta["visual_enrichment_performed"] = visualEnrichmentPerformedInLifecycle ? "1" : "0"
 		meta["visual_enrichment_used_ocr"] = visualEnrichmentUsedOCRInLifecycle ? "1" : "0"
 		meta["visual_enrichment_used_visual_summary"] = visualEnrichmentUsedVisionSummaryInLifecycle ? "1" : "0"
+		meta["visual_enrichment_decision"] = visualEnrichmentDecisionInLifecycle
 		return ExecutionResult(
 			actionId: action.id,
 			status: status,

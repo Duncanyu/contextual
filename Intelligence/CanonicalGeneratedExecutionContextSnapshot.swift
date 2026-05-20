@@ -418,3 +418,102 @@ enum CanonicalGeneratedExecutionContextSnapshotExporter {
 		return CanonicalGeneratedExecutionContextSnapshot.capSummary(parts.joined(separator: " | "))
 	}
 }
+
+// MARK: - Visual enrichment (proposal-scoped)
+
+extension CanonicalGeneratedExecutionContextSnapshot {
+	/// Returns a copy of the snapshot enriched with a bounded visual context result.
+	/// This is metadata-only: the snapshot never carries raw screenshots.
+	func merging(
+		visualResult: BoundedVisualContextResult,
+		referenceTime: Date = Date()
+	) -> CanonicalGeneratedExecutionContextSnapshot {
+		guard visualResult.status == .completed || visualResult.status == .partial else { return self }
+
+		let capturedAt = visualResult.capturedAt ?? referenceTime
+		let expiresAt = visualResult.expiresAt ?? capturedAt.addingTimeInterval(BoundedVisualContextBounds.defaultMaxWindowSeconds)
+
+		let mergedVisualAvailability = GeneratedExecutionVisualContextAvailability(
+			hasVisualDescriptor: true,
+			hasWindowSnapshot: visualContextAvailability.hasWindowSnapshot
+				|| (visualResult.metadata["captureCount"] ?? "").isEmpty == false,
+			visualSummaryExcerpt: (visualResult.visualSummary ?? visualContextAvailability.visualSummaryExcerpt),
+			visualTags: !visualResult.visualTags.isEmpty ? visualResult.visualTags : visualContextAvailability.visualTags,
+			visualCapturedAt: capturedAt,
+			visualExpiresAt: expiresAt
+		)
+
+		let mergedOCR = (visualResult.ocrExcerpt ?? recentOCRExcerpt)
+
+		var mergedTypes = availableContextTypes
+		var seen = Set(mergedTypes)
+		if let mergedOCR, !mergedOCR.isEmpty {
+			if seen.insert(.textSnippet).inserted { mergedTypes.append(.textSnippet) }
+		}
+		if mergedVisualAvailability.hasUsableVisual {
+			if seen.insert(.fusedVisual).inserted { mergedTypes.append(.fusedVisual) }
+			if seen.insert(.screenCapture).inserted { mergedTypes.append(.screenCapture) }
+		}
+
+		let mergedMetadata = CanonicalExecutionSourceMetadata(
+			selectedTextCapturedAt: sourceMetadata.selectedTextCapturedAt,
+			clipboardCapturedAt: sourceMetadata.clipboardCapturedAt,
+			ocrCapturedAt: capturedAt,
+			contextUpdatedAt: sourceMetadata.contextUpdatedAt,
+			lastSourceTrigger: sourceMetadata.lastSourceTrigger,
+			fusedConfidence: sourceMetadata.fusedConfidence,
+			fusedConflictScore: sourceMetadata.fusedConflictScore,
+			fusedSuppressedSources: sourceMetadata.fusedSuppressedSources,
+			fusedArbitrationReasons: sourceMetadata.fusedArbitrationReasons,
+			fusedPrimarySource: sourceMetadata.fusedPrimarySource,
+			sessionContinuityScore: sourceMetadata.sessionContinuityScore,
+			sessionDominantWorkflow: sourceMetadata.sessionDominantWorkflow
+		)
+
+		let provisional = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: activeApp,
+			windowTitle: windowTitle,
+			bundleIdentifier: bundleIdentifier,
+			inferredWorkflow: inferredWorkflow,
+			inferredIntent: inferredIntent,
+			selectedText: selectedText,
+			clipboardText: clipboardText,
+			recentOCRExcerpt: mergedOCR,
+			contextSummary: contextSummary,
+			workflowConfidence: workflowConfidence,
+			availableContextTypes: mergedTypes,
+			visualContextAvailability: mergedVisualAvailability,
+			permissionAvailability: permissionAvailability,
+			generatedAt: referenceTime,
+			freshnessScore: freshnessScore,
+			sourceMetadata: mergedMetadata,
+			fusedPacketId: fusedPacketId,
+			packetIsStale: packetIsStale
+		)
+
+		let scored = GeneratedExecutionContextFreshnessScorer.score(
+			snapshot: provisional,
+			referenceTime: referenceTime
+		)
+		return CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: provisional.activeApp,
+			windowTitle: provisional.windowTitle,
+			bundleIdentifier: provisional.bundleIdentifier,
+			inferredWorkflow: provisional.inferredWorkflow,
+			inferredIntent: provisional.inferredIntent,
+			selectedText: provisional.selectedText,
+			clipboardText: provisional.clipboardText,
+			recentOCRExcerpt: provisional.recentOCRExcerpt,
+			contextSummary: provisional.contextSummary,
+			workflowConfidence: provisional.workflowConfidence,
+			availableContextTypes: provisional.availableContextTypes,
+			visualContextAvailability: provisional.visualContextAvailability,
+			permissionAvailability: provisional.permissionAvailability,
+			generatedAt: provisional.generatedAt,
+			freshnessScore: scored,
+			sourceMetadata: provisional.sourceMetadata,
+			fusedPacketId: provisional.fusedPacketId,
+			packetIsStale: provisional.packetIsStale
+		)
+	}
+}

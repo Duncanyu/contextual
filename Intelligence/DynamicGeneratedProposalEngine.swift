@@ -14,29 +14,49 @@ protocol DynamicGeneratedProposalAvailabilityChecking: Sendable {
 
 extension ModelManager: DynamicGeneratedProposalAvailabilityChecking {}
 
+/// Injectable visual context scheduler abstraction (enables deterministic tests).
+protocol VisualContextScheduling: Sendable {
+	func collect(
+		request: BoundedVisualContextRequest,
+		budgetSnapshot: GeneratedExecutionBudgetSnapshot
+	) async -> BoundedVisualContextResult
+}
+
+extension VisualContextScheduler: VisualContextScheduling {}
+
 /// LLM-first dynamic generated execution proposal engine (T18.3.1).
 /// Two-stage pipeline (T18.3.4): fast decision stage gates whether the large model runs.
 actor DynamicGeneratedProposalEngine {
 
-	static let shared = DynamicGeneratedProposalEngine()
+	static let shared = DynamicGeneratedProposalEngine(
+		visualScheduler: VisualContextScheduler(provider: ScreenCaptureBoundedVisualContextProvider())
+	)
 
 	private let modelManager: any DynamicGeneratedProposalAvailabilityChecking
 	private let client: any DynamicGeneratedProposalLLMGenerating
 	private let decisionEngine: any AgenticProposalDeciding
 	private let templateLibrary: any GeneratedActionTemplateLibraryProviding
+	private let visualScheduler: (any VisualContextScheduling)?
+	private let sparseVisualPeekGate: SparseVisualPeekGate
 	private let timeoutNanoseconds: UInt64
+	private var autoVisualGatheredAtByFingerprint: [String: Date] = [:]
+
+	private static let autoVisualGatherCooldownSeconds: TimeInterval = 70
 
 	init(
 		modelManager: any DynamicGeneratedProposalAvailabilityChecking = ModelManager.shared,
 		client: any DynamicGeneratedProposalLLMGenerating = LocalAIClient.shared,
 		decisionEngine: any AgenticProposalDeciding = AgenticProposalDecisionEngine.shared,
 		templateLibrary: any GeneratedActionTemplateLibraryProviding = GeneratedActionTemplateLibrary.shared,
+		visualScheduler: (any VisualContextScheduling)? = nil,
 		timeoutSeconds: TimeInterval = 9
 	) {
 		self.modelManager = modelManager
 		self.client = client
 		self.decisionEngine = decisionEngine
 		self.templateLibrary = templateLibrary
+		self.visualScheduler = visualScheduler
+		self.sparseVisualPeekGate = SparseVisualPeekGate()
 		self.timeoutNanoseconds = UInt64(max(3, timeoutSeconds) * 1_000_000_000)
 		print("[TRACE_INIT] DynamicGeneratedProposalEngine file=\(#file) decisionEngine=\(type(of: decisionEngine)) library=\(type(of: templateLibrary))")
 	}
@@ -68,6 +88,128 @@ actor DynamicGeneratedProposalEngine {
 			SituationalContextDiagnostics.log(situationalContext)
 		}
 
+		// MARK: - Automatic bounded visual context enrichment (T18.3.7B)
+		// When context is metadata-only and perception says visual is useful/recommended, attempt a
+		// single bounded visual peek BEFORE library retrieval. This is gated (cooldown, permission,
+		// budget, thermal) and never loops/polls. If denied, continue with metadata-only proposals.
+
+		var effectiveSnapshot = snapshot
+		var effectiveSituational = situationalContext
+		if shouldAttemptAutoVisualGather(
+			snapshot: snapshot,
+			situational: situationalContext,
+			referenceTime: referenceTime
+		) {
+			let fingerprint = Self.autoVisualGatherFingerprint(snapshot: snapshot, situational: situationalContext)
+			if shouldAttemptAutoVisualGatherForFingerprint(fingerprint, referenceTime: referenceTime) {
+				recordAutoVisualGatherAttempt(fingerprint, at: referenceTime)
+				let workflow = situationalContext.inferredWorkflow.rawValue
+				print(
+					"[VisualContextGathering] requested reason=metadata_only_perception_recommended workflow=\(workflow) fp=\(fingerprint)"
+				)
+
+				let gateEval = await sparseVisualPeekGate.evaluate(
+					snapshot: snapshot,
+					referenceTime: referenceTime
+				)
+				if gateEval.shouldDeny {
+					print(
+						"[VisualContextGathering] denied reason=\(gateEval.denyReason?.rawValue ?? "gate") fp=\(fingerprint)"
+					)
+				} else {
+					let peekDecision = SparseVisualPeekPolicy.shouldRequestVisualPeek(
+						snapshot: snapshot,
+						action: nil,
+						explicitManualRequest: false,
+						gateEvaluation: gateEval,
+						referenceTime: referenceTime
+					)
+					if !peekDecision.shouldPeek || peekDecision.recommendedRequest == nil {
+						print(
+							"[VisualContextGathering] denied reason=\(peekDecision.denyReason?.rawValue ?? "policy") fp=\(fingerprint)"
+						)
+					} else {
+						let wf = WorkflowExecutionMapper.workflowType(from: situationalContext.inferredWorkflow)
+						let intent: IntentType = {
+							if let it = situationalContext.inferredIntent {
+								return WorkflowExecutionMapper.intentType(from: it)
+							}
+							return .unknown
+						}()
+						let autoBudget = ExecutionBudget(
+							maxCPUPercent: 30,
+							maxConcurrentTasks: 1,
+							maxExecutionTime: 18,
+							allowsVision: true,
+							allowsOCR: true,
+							allowsLLM: false,
+							allowsBackgroundWork: false,
+							thermalStateSensitivity: 0.55,
+							budgetPriority: .low
+						)
+						let request = BoundedVisualContextRequest(
+							reason: "proposal_auto_visual_gather:metadata_only_perception_recommended",
+							workflowType: wf,
+							intentType: intent,
+							requiresOCR: true,
+							requiresVisualDescription: true,
+							maxWindowSeconds: 6,
+							maxOCRCharacters: min(
+								BoundedVisualContextBounds.defaultMaxOCRCharacters,
+								520
+							),
+							maxDescriptionCharacters: min(
+								BoundedVisualContextBounds.defaultMaxDescriptionCharacters,
+								240
+							),
+							budget: autoBudget,
+							permissionAvailability: snapshot.permissionAvailability,
+							createdAt: referenceTime,
+							expiresAt: referenceTime.addingTimeInterval(6)
+						)
+
+						if let scheduler = visualScheduler {
+							print(
+								"[VisualContextGathering] allowed reason=\(peekDecision.allowReason?.rawValue ?? "allowed") fp=\(fingerprint)"
+							)
+							let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
+								activeExecutionCount: 0,
+								runtimeState: .idle,
+								permissionAvailability: snapshot.permissionAvailability,
+								activeSamplingRequested: true
+							)
+							let visualResult = await scheduler.collect(
+								request: request,
+								budgetSnapshot: budgetSnapshot
+							)
+							let visualOK = visualResult.status == .completed || visualResult.status == .partial
+							if visualOK {
+								await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
+								let enriched = snapshot.merging(visualResult: visualResult, referenceTime: referenceTime)
+								effectiveSnapshot = enriched
+								effectiveSituational = SituationalContextSynthesizer.synthesize(
+									from: enriched,
+									referenceTime: referenceTime
+								)
+								let ocrUsed = (visualResult.ocrExcerpt ?? "").isEmpty ? "no" : "yes"
+								print(
+									"[VisualContextGathering] merged visual=yes ocr=\(ocrUsed) status=\(visualResult.status.rawValue) fp=\(fingerprint)"
+								)
+							} else {
+								print(
+									"[VisualContextGathering] denied reason=\(visualResult.status.rawValue) fp=\(fingerprint)"
+								)
+							}
+						} else {
+							print("[VisualContextGathering] denied reason=scheduler_unavailable fp=\(fingerprint)")
+						}
+					}
+				}
+			} else {
+				print("[VisualContextGathering] skipped reason=already_attempted fp=\(fingerprint)")
+			}
+		}
+
 		// MARK: - Template library lookup (T18.3.5 / T18.3.6B)
 		// Runs BEFORE decision gate and BEFORE any LLM call.
 		// If eligible seeded templates exist, surface them immediately regardless of perception
@@ -77,27 +219,46 @@ actor DynamicGeneratedProposalEngine {
 		logMetadata(
 			event: "pipeline_stage",
 			value: "library_lookup",
-			extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) perception=\(situationalContext.perceptionRecommendation.rawValue) primary=\(situationalContext.primaryAvailableSource.rawValue)"
+			extra: "workflow=\(effectiveSituational.inferredWorkflow.rawValue) perception=\(effectiveSituational.perceptionRecommendation.rawValue) primary=\(effectiveSituational.primaryAvailableSource.rawValue) context_types=\(Self.contextTypesLog(from: effectiveSituational))"
 		)
 
 		let libraryResult = await templateLibrary.retrieve(
-			situational: situationalContext,
+			situational: effectiveSituational,
 			referenceTime: referenceTime
 		)
 
 		logMetadata(
 			event: "library_lookup_result",
 			value: libraryResult.hasMatch ? "hit" : "miss",
-			extra: "count=\(libraryResult.records.count) miss_reason=\(libraryResult.missReason?.rawValue ?? "none") workflow=\(situationalContext.inferredWorkflow.rawValue)"
+			extra: "count=\(libraryResult.records.count) miss_reason=\(libraryResult.missReason?.rawValue ?? "none") workflow=\(effectiveSituational.inferredWorkflow.rawValue)"
 		)
 
 		if libraryResult.hasMatch {
-			let records = libraryResult.records
+			var records = libraryResult.records
+			let perception = effectiveSituational.perceptionRecommendation
+			let visualCount = records.filter { $0.metadata["requires_visual"] == "1" }.count
+			if visualCount > 0 && (perception == .useful || perception == .recommended || perception == .requiredBeforeSpecificProposal) {
+				let boostedMinUsefulness: Double = (perception == .requiredBeforeSpecificProposal || perception == .recommended) ? 0.90 : 0.85
+				let boostedMinConfidence: Double = (perception == .requiredBeforeSpecificProposal || perception == .recommended) ? 0.78 : 0.75
+				let boostedUsefulnessString = String(format: "%.2f", boostedMinUsefulness)
+				records = records.map { record in
+					guard record.metadata["requires_visual"] == "1" else { return record }
+					var updated = record
+					updated.usefulnessScore = max(updated.usefulnessScore, boostedMinUsefulness)
+					updated.averageConfidence = max(updated.averageConfidence, boostedMinConfidence)
+					return updated
+				}
+				logMetadata(
+					event: "visual_template_priority",
+					value: "applied",
+					extra: "perception=\(perception.rawValue) visual=\(visualCount) boosted_usefulness_min=\(boostedUsefulnessString)"
+				)
+			}
 			let titles = records.prefix(3).map(\.title).joined(separator: "|")
 			logMetadata(
 				event: "template_library_hit",
 				value: "\(records.count)",
-				extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) source=library top_titles=\(titles)"
+				extra: "workflow=\(effectiveSituational.inferredWorkflow.rawValue) source=library top_titles=\(titles)"
 			)
 			logMetadata(event: "large_model_called", value: "no", extra: "reason=template_library_hit")
 			return DynamicGeneratedProposalResult(
@@ -120,8 +281,8 @@ actor DynamicGeneratedProposalEngine {
 		// recommend more context. The LLM is never called (unreachable in production).
 
 		let decision = await decisionEngine.decide(
-			snapshot: snapshot,
-			situational: situationalContext,
+			snapshot: effectiveSnapshot,
+			situational: effectiveSituational,
 			referenceTime: referenceTime
 		)
 		logMetadata(
@@ -132,14 +293,14 @@ actor DynamicGeneratedProposalEngine {
 
 		// Library missed — queue prewarm then evaluate decision gate for final return code.
 		await templateLibrary.enqueuePrewarm(
-			situational: situationalContext,
+			situational: effectiveSituational,
 			decision: decision,
 			referenceTime: referenceTime
 		)
 		logMetadata(
 			event: "template_library_miss",
 			value: libraryResult.missReason?.rawValue ?? "unknown",
-			extra: "workflow=\(situationalContext.inferredWorkflow.rawValue) prewarm_queued=yes perception=\(situationalContext.perceptionRecommendation.rawValue)"
+			extra: "workflow=\(effectiveSituational.inferredWorkflow.rawValue) prewarm_queued=yes perception=\(effectiveSituational.perceptionRecommendation.rawValue)"
 		)
 
 		if !decision.shouldThink {
@@ -424,6 +585,81 @@ actor DynamicGeneratedProposalEngine {
 			createdAt: parsed.createdAt,
 			libraryRecords: []
 		)
+	}
+
+	// MARK: - Automatic visual context gathering helpers (T18.3.7B)
+
+	private func shouldAttemptAutoVisualGather(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) -> Bool {
+		let perception = situational.perceptionRecommendation
+		let perceptionAllows = perception == .useful
+			|| perception == .recommended
+			|| perception == .requiredBeforeSpecificProposal
+		guard perceptionAllows else { return false }
+		guard situational.primaryAvailableSource == .metadataOnly else { return false }
+
+		let hasExistingVisual = snapshot.visualContextAvailability.hasUsableVisual
+		let hasExistingOCR = !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		if hasExistingVisual || hasExistingOCR { return false }
+
+		// If screen recording is explicitly denied, skip. Unknown state is allowed to proceed to policy.
+		if snapshot.permissionAvailability[.screenRecording] == false { return false }
+
+		return true
+	}
+
+	private func shouldAttemptAutoVisualGatherForFingerprint(
+		_ fingerprint: String,
+		referenceTime: Date
+	) -> Bool {
+		if let last = autoVisualGatheredAtByFingerprint[fingerprint],
+		   referenceTime.timeIntervalSince(last) < Self.autoVisualGatherCooldownSeconds {
+			return false
+		}
+		// Opportunistic prune (no timers/polling).
+		let cutoff = referenceTime.addingTimeInterval(-Self.autoVisualGatherCooldownSeconds * 2)
+		autoVisualGatheredAtByFingerprint = autoVisualGatheredAtByFingerprint.filter { $0.value > cutoff }
+		return true
+	}
+
+	private func recordAutoVisualGatherAttempt(_ fingerprint: String, at time: Date) {
+		autoVisualGatheredAtByFingerprint[fingerprint] = time
+	}
+
+	/// Privacy-safe fingerprint hint for per-window auto-visual gating (process-local).
+	private static func autoVisualGatherFingerprint(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot
+	) -> String {
+		let raw = "\(snapshot.bundleIdentifier ?? snapshot.activeApp)|\(situational.windowTitle)|\(situational.inferredWorkflow.rawValue)"
+		let hint = abs(raw.hashValue)
+		return String(hint, radix: 16)
+	}
+
+	private static func contextTypesLog(from situational: SituationalContextSnapshot) -> String {
+		var types: [ContextRequirementType] = []
+		if situational.selectedTextSignal.availability == .available {
+			types += [.textSnippet, .selectedText]
+		}
+		if situational.clipboardSignal.availability == .available {
+			types.append(.textSnippet)
+		}
+		if situational.ocrSignal.availability == .available {
+			types.append(.fusedVisual)
+		}
+		if situational.visualSignal.availability == .available {
+			types += [.fusedVisual, .screenCapture]
+		}
+		if situational.inferredWorkflow != .unknown {
+			types.append(.workflowContext)
+		}
+		if types.isEmpty { types = [.none] }
+		var seen = Set<ContextRequirementType>()
+		let deduped = types.filter { seen.insert($0).inserted }
+		return deduped.map(\.rawValue).joined(separator: ",")
 	}
 
 	private func result(

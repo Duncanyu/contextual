@@ -9,6 +9,8 @@ enum DynamicGeneratedProposalEngineSelfTest {
 			if !ok { failures.append(name) }
 		}
 
+		let now = Date()
+
 		let validJSON = """
 		{
 		  "shouldChimeIn": true,
@@ -169,6 +171,52 @@ enum DynamicGeneratedProposalEngineSelfTest {
 		)
 		check("timeout_fallback", timeoutResult.status == .timeout)
 
+		// MARK: T18.3.7B — Auto visual gather is bounded (at most once per context window)
+
+		let visualScheduler = CountingVisualContextScheduler(
+			result: BoundedVisualContextResult(
+				requestId: UUID(),
+				status: .completed,
+				capturedAt: now,
+				sourceSummary: "selftest",
+				ocrExcerpt: "visible: youtube",
+				visualSummary: "A page with a video player and sidebar",
+				visualTags: ["video", "player"],
+				warnings: [],
+				metadata: ["captureCount": "1"],
+				expiresAt: now.addingTimeInterval(8)
+			)
+		)
+		let missLibrary = AlwaysMissTemplateLibrary()
+		let autoVisualEngine = DynamicGeneratedProposalEngine(
+			modelManager: AlwaysAvailableProposalModelGate(),
+			client: StubDynamicProposalLLMClient(response: validJSON),
+			templateLibrary: missLibrary,
+			visualScheduler: visualScheduler,
+			timeoutSeconds: 2
+		)
+		let metadataOnlyBrowserSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Safari",
+			windowTitle: "YouTube — Video",
+			bundleIdentifier: "com.apple.Safari",
+			inferredWorkflow: .browsing,
+			workflowConfidence: 0.6,
+			permissionAvailability: [.screenRecording: true],
+			generatedAt: now,
+			freshnessScore: 0.42
+		)
+		_ = await autoVisualEngine.generateProposals(
+			snapshot: metadataOnlyBrowserSnap,
+			existingStaticActions: [],
+			reusableActions: []
+		)
+		_ = await autoVisualEngine.generateProposals(
+			snapshot: metadataOnlyBrowserSnap,
+			existingStaticActions: [],
+			reusableActions: []
+		)
+		check("auto_visual_gather_called_once", visualScheduler.callCount == 1)
+
 		// MARK: T18.3.4A — Decision stage isolation tests
 
 		// NeverThinkDecisionEngine forces quiet → LLM must NOT be called.
@@ -228,6 +276,48 @@ private struct SlowDynamicProposalLLMClient: DynamicGeneratedProposalLLMGenerati
 	func generate(prompt: String, model: String) async throws -> String {
 		try await Task.sleep(nanoseconds: 500_000_000)
 		return "{}"
+	}
+}
+
+// MARK: - T18.3.7B stubs
+
+private final class CountingVisualContextScheduler: VisualContextScheduling, @unchecked Sendable {
+	private(set) var callCount = 0
+	let result: BoundedVisualContextResult
+
+	init(result: BoundedVisualContextResult) {
+		self.result = result
+	}
+
+	func collect(
+		request: BoundedVisualContextRequest,
+		budgetSnapshot: GeneratedExecutionBudgetSnapshot
+	) async -> BoundedVisualContextResult {
+		callCount += 1
+		_ = request
+		_ = budgetSnapshot
+		return result
+	}
+}
+
+private struct AlwaysMissTemplateLibrary: GeneratedActionTemplateLibraryProviding {
+	func retrieve(
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) async -> GeneratedActionTemplateLibraryResult {
+		_ = situational
+		_ = referenceTime
+		return .empty(reason: .noMatchForContext)
+	}
+
+	func enqueuePrewarm(
+		situational: SituationalContextSnapshot,
+		decision: AgenticProposalDecision,
+		referenceTime: Date
+	) async {
+		_ = situational
+		_ = decision
+		_ = referenceTime
 	}
 }
 

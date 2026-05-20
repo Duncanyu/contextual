@@ -265,8 +265,8 @@ final class AppState: ObservableObject {
 
 	/// User-invoked generated proposal execution (T18.4+) — no automatic execution on proposal generation.
 	func invokeGeneratedExecutionProposal(id: String) {
-		guard activatedGeneratedProposals.contains(where: { $0.id == id }) else { return }
-		print("[GeneratedProposalActivation] generated_proposal_selected id=\(id.prefix(8))")
+		guard let item = activatedGeneratedProposals.first(where: { $0.id == id }) else { return }
+		print("[GeneratedProposalExecution] selected id=\(id.prefix(12)) source=\(item.source.rawValue)")
 		latestActionId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: id)
 		latestActionTimestamp = Date()
 		latestActionResult = "Executing generated action…"

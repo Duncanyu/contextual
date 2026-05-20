@@ -1536,7 +1536,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private func invokeGeneratedExecutionProposal(candidateId: String) {
 		// T18.3.7: Execution-scoped generated execution invocation (no UI-layer runtime calls).
 		if appState.isActionExecuting {
-			print("[GeneratedExecution] invoke_ignored reason=already_executing id=\(candidateId.prefix(12))")
+			print("[GeneratedProposalExecution] invoke_ignored reason=already_executing id=\(candidateId.prefix(12))")
 			return
 		}
 
@@ -1547,14 +1547,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		appState.latestActionResult = nil
 		appState.latestActionId = actionId
 		appState.latestActionTimestamp = Date()
-		print("[GeneratedExecution] execution_started id=\(candidateId.prefix(12))")
+		print("[GeneratedProposalExecution] runtime_prepare id=\(candidateId.prefix(12))")
 
 		Task { @MainActor in
 			defer {
 				self.appState.isActionExecuting = false
 				self.appState.executingActionId = nil
 				self.appState.executingActionTitle = nil
-				print("[GeneratedExecution] execution_finished id=\(candidateId.prefix(12))")
+				print("[GeneratedProposalExecution] runtime_finished id=\(candidateId.prefix(12))")
 			}
 
 			let now = Date()
@@ -1562,8 +1562,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			let snapshot = self.buildCanonicalSnapshotForProposalActivation(context: self.contextBuilder.model, fused: canonical)
 
 			let action: GeneratedExecutionAction?
+			var resolvedTemplateId: String?
 			if candidateId.hasPrefix("reuse:") {
 				let templateId = String(candidateId.dropFirst("reuse:".count))
+				resolvedTemplateId = templateId
 				let manager = GeneratedActionPersistenceManager.shared
 				let record = await manager.record(templateId: templateId)
 				if let record {
@@ -1578,9 +1580,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 
 			guard let action else {
+				print("[GeneratedProposalExecution] runtime_unavailable id=\(candidateId.prefix(12)) reason=missing_execution_action")
 				self.appState.latestActionResult = "Generated execution is unavailable for this proposal yet."
 				return
 			}
+
+			let visualRequired = action.executionPlan.requiresVision || action.executionPlan.requiresOCR
+			print(
+				"[GeneratedProposalExecution] selected id=\(candidateId.prefix(12)) template=\(resolvedTemplateId ?? "unknown") visual_required=\(visualRequired ? "yes" : "no")"
+			)
 
 			// Visual enrichment is execution-scoped and optional: scheduler is injected only here.
 			let provider = ScreenCaptureBoundedVisualContextProvider()
@@ -1591,24 +1599,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				canonicalSnapshot: snapshot
 			)
 
+			print("[GeneratedProposalExecution] runtime_start id=\(candidateId.prefix(12))")
 			let outcome = await runtime.start(action: action)
 			switch outcome {
 			case .completed(let result):
 				let status = result.status.rawValue
 				let visual = result.executionMetadata["visual_enrichment_performed"] == "1" ? "yes" : "no"
 				let ocr = result.executionMetadata["visual_enrichment_used_ocr"] == "1" ? "yes" : "no"
+				let visualDecision = result.executionMetadata["visual_enrichment_decision"] ?? "unknown"
 				let body = result.generatedContent ?? "(no generated content)"
+				print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=\(status) visual=\(visual) decision=\(visualDecision)")
 				self.appState.latestActionResult = """
 				Generated execution finished.
 
 				Title: \(action.title)
 				Status: \(status)
+				Visual required: \(visualRequired ? "yes" : "no")
 				Visual enrichment used: \(visual) (OCR: \(ocr))
+				Visual decision: \(visualDecision)
 
 				\(body)
 				"""
 				self.appState.latestActionTimestamp = Date()
 			case .rejected(let reason):
+				print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=rejected reason=\(reason.rawValue)")
 				self.appState.latestActionResult = "Generated execution rejected: \(reason.rawValue)"
 				self.appState.latestActionTimestamp = Date()
 			}

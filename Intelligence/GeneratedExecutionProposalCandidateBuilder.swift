@@ -122,6 +122,22 @@ enum GeneratedExecutionProposalCandidateBuilder {
 			.compactMap { ExecutionPrimitive(rawValue: String($0)) }
 		let requiresVisual = record.metadata["requires_visual"] == "1"
 		let requiresOCR = record.metadata["requires_ocr"] == "1"
+		let executionBudget: ExecutionBudget = {
+			guard requiresVisual || requiresOCR else { return .conservative }
+			// User-initiated reusable execution may perform a single bounded visual peek.
+			// Keep CPU/concurrency conservative; explicitly allow vision/OCR for this plan.
+			return ExecutionBudget(
+				maxCPUPercent: 35,
+				maxConcurrentTasks: 1,
+				maxExecutionTime: 45,
+				allowsVision: requiresVisual,
+				allowsOCR: requiresOCR,
+				allowsLLM: true,
+				allowsBackgroundWork: false,
+				thermalStateSensitivity: 0.6,
+				budgetPriority: .userInitiated
+			)
+		}()
 		let plan = ExecutionPlan(
 			primitives: primitives.isEmpty ? [.summarizeContext] : primitives,
 			estimatedCost: requiresVisual || requiresOCR ? 0.28 : 0.2,
@@ -131,7 +147,7 @@ enum GeneratedExecutionProposalCandidateBuilder {
 			requiresUserIntent: true,
 			requiredPermissions: (requiresVisual || requiresOCR) ? [.screenRecording] : [.none],
 			fallbackBehavior: .degradeToSummary,
-			executionBudget: .conservative,
+			executionBudget: executionBudget,
 			planConfidence: record.averageConfidence
 		)
 		return GeneratedExecutionAction(
