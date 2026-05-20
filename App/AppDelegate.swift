@@ -116,6 +116,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if LocalAISettings.shared.localAIEnabled {
 			scheduleLocalAIPrepare()
 		}
+
+		// T18.3.6: Seed built-in generated action templates and drain the prewarm queue.
+		// Must run after manager/library init so the shared store is ready.
+		// No LLM is called. This is fast and idempotent.
+		Task {
+			let manager = GeneratedActionPersistenceManager.shared
+			let seeder = GeneratedActionTemplateSeeder.shared
+			await seeder.seedIfNeeded(into: manager)
+			await GeneratedActionTemplatePrewarmConsumer.shared.consume(
+				from: GeneratedActionTemplatePrewarmQueue.shared,
+				seeder: seeder,
+				manager: manager
+			)
+		}
 	}
 
 	func applicationWillTerminate(_ notification: Notification) {

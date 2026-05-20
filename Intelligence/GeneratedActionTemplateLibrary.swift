@@ -70,7 +70,7 @@ actor GeneratedActionTemplateLibrary: GeneratedActionTemplateLibraryProviding {
 	private let prewarmQueue: GeneratedActionTemplatePrewarmQueue
 
 	init(
-		manager: GeneratedActionPersistenceManager = GeneratedActionPersistenceManager(),
+		manager: GeneratedActionPersistenceManager = .shared,
 		prewarmQueue: GeneratedActionTemplatePrewarmQueue = .shared
 	) {
 		self.manager = manager

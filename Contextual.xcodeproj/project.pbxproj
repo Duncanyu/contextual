@@ -212,6 +212,9 @@
 		AA000213000000000000012C /* GeneratedActionTemplateLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FE000000000000012C /* GeneratedActionTemplateLibrary.swift */; };
 		AA000214000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003FF000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift */; };
 		AA000215000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000400000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift */; };
+		AA000216000000000000012F /* GeneratedActionTemplateSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000401000000000000012F /* GeneratedActionTemplateSeeder.swift */; };
+		AA0002170000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004020000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift */; };
+		AA0002180000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004030000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -424,6 +427,9 @@
 		AA0003FE000000000000012C /* GeneratedActionTemplateLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateLibrary.swift; sourceTree = "<group>"; };
 		AA0003FF000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplatePrewarmQueue.swift; sourceTree = "<group>"; };
 		AA000400000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateLibrarySelfTest.swift; sourceTree = "<group>"; };
+		AA000401000000000000012F /* GeneratedActionTemplateSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateSeeder.swift; sourceTree = "<group>"; };
+		AA0004020000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplatePrewarmConsumer.swift; sourceTree = "<group>"; };
+		AA0004030000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionTemplateSeederSelfTest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -660,6 +666,9 @@
 				AA0003FE000000000000012C /* GeneratedActionTemplateLibrary.swift */,
 				AA0003FF000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift */,
 				AA000400000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift */,
+				AA000401000000000000012F /* GeneratedActionTemplateSeeder.swift */,
+				AA0004020000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift */,
+				AA0004030000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -976,6 +985,9 @@
 				AA000213000000000000012C /* GeneratedActionTemplateLibrary.swift in Sources */,
 				AA000214000000000000012D /* GeneratedActionTemplatePrewarmQueue.swift in Sources */,
 				AA000215000000000000012E /* GeneratedActionTemplateLibrarySelfTest.swift in Sources */,
+				AA000216000000000000012F /* GeneratedActionTemplateSeeder.swift in Sources */,
+				AA0002170000000000000130 /* GeneratedActionTemplatePrewarmConsumer.swift in Sources */,
+				AA0002180000000000000131 /* GeneratedActionTemplateSeederSelfTest.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,
