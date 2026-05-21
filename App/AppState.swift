@@ -83,6 +83,11 @@ final class AppState: ObservableObject {
 	var lastAcceptedProposalKey: String?
 	var lastAcceptedProposalAt: Date?
 
+	/// T18.6 — Proposal pipeline visibility outcome (metadata only; updated after every publication cycle).
+	@Published private(set) var proposalVisibilityState: ProposalVisibilityState = .empty
+	/// When the last visible generated proposal was published; used for resurfacing guarantee.
+	var lastVisibleProposalAt: Date?
+
 	private let dismissedSuggestionCooldown = CooldownManager()
 	private let acceptedSuggestionCooldown = CooldownManager()
 	private let dismissedSuggestionCooldownSeconds: TimeInterval = 120
@@ -97,6 +102,14 @@ final class AppState: ObservableObject {
 	@Published var latestActionResult: String?
 	@Published var latestActionId: String?
 	@Published var latestActionTimestamp: Date?
+
+	// MARK: - T18.4 — Structured generated execution result
+	/// Structured result card for generated execution (replaces raw text in latestActionResult).
+	@Published var latestGeneratedExecutionPresentation: GeneratedExecutionResultPresentation?
+	/// Calm in-flight label during generated execution ("Preparing context…", "Running…", etc.).
+	@Published var generatedExecutionPhaseLabel: String?
+	/// Wired by app lifecycle — user-initiated cancel; do NOT call from UI directly.
+	var onCancelGeneratedExecution: (() -> Void)?
 
 	/// Mirrors in-flight action execution for UI (updated only by app lifecycle).
 	@Published var isActionExecuting: Bool = false
@@ -263,14 +276,38 @@ final class AppState: ObservableObject {
 		}
 	}
 
+	/// T18.6 — Update proposal visibility state after a publication cycle.
+	func applyProposalVisibilityState(_ state: ProposalVisibilityState) {
+		proposalVisibilityState = state
+		if state.visibleCount > 0 {
+			lastVisibleProposalAt = state.updatedAt
+		}
+	}
+
 	/// User-invoked generated proposal execution (T18.4+) — no automatic execution on proposal generation.
 	func invokeGeneratedExecutionProposal(id: String) {
 		guard let item = activatedGeneratedProposals.first(where: { $0.id == id }) else { return }
-		print("[GeneratedProposalExecution] selected id=\(id.prefix(12)) source=\(item.source.rawValue)")
+		print("[GeneratedExecutionUI] run_requested id=\(id.prefix(12)) source=\(item.source.rawValue)")
 		latestActionId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: id)
 		latestActionTimestamp = Date()
-		latestActionResult = "Executing generated action…"
+		latestActionResult = nil
+		latestGeneratedExecutionPresentation = nil
+		generatedExecutionPhaseLabel = "Preparing context…"
 		onInvokeGeneratedExecutionProposalById?(id)
+	}
+
+	/// User-initiated cancel of in-flight generated execution (T18.4).
+	func cancelGeneratedExecution() {
+		print("[GeneratedExecutionUI] cancel_requested")
+		onCancelGeneratedExecution?()
+	}
+
+	/// Clears the structured generated result card (user taps Clear).
+	func clearGeneratedResult() {
+		latestGeneratedExecutionPresentation = nil
+		latestActionResult = nil
+		latestActionTimestamp = nil
+		latestActionId = nil
 	}
 
 	func dismissCurrentProposal() {

@@ -120,10 +120,11 @@ struct AssistantPanelView: View {
 										.foregroundStyle(.tertiary)
 										.lineLimit(2)
 								}
-								Button("Prepare execution") {
+								Button(item.source == .reusableGenerated ? "Run" : "Prepare execution") {
 									appState.invokeGeneratedExecutionProposal(id: item.id)
+									print("[GeneratedExecutionUI] run_requested id=\(item.id.prefix(12)) title=\(item.title.prefix(40))")
 								}
-								.buttonStyle(.bordered)
+								.buttonStyle(.borderedProminent)
 								.frame(maxWidth: .infinity, alignment: .leading)
 								.disabled(appState.isActionExecuting)
 							}
@@ -179,7 +180,13 @@ struct AssistantPanelView: View {
 	// MARK: - Result / loading
 
 	@ViewBuilder private var resultSection: some View {
-		if let text = appState.latestActionResult, !text.isEmpty {
+		// T18.4: structured generated execution result card takes priority over raw text.
+		if let presentation = appState.latestGeneratedExecutionPresentation {
+			GeneratedExecutionResultView(
+				presentation: presentation,
+				onClear: { appState.clearGeneratedResult() }
+			)
+		} else if let text = appState.latestActionResult, !text.isEmpty {
 			ResultView(
 				isLoading: false,
 				loadingTitle: "",
@@ -189,15 +196,52 @@ struct AssistantPanelView: View {
 				onClear: { appState.clearResult() }
 			)
 		} else if appState.isActionExecuting {
-			ResultView(
-				isLoading: true,
-				loadingTitle: processingLabel,
-				resultText: "",
-				actionId: appState.executingActionId,
-				timestamp: nil,
-				onClear: {}
-			)
+			if appState.executingActionId?.hasPrefix(GeneratedExecutionProposalActivator.generatedProposalIdPrefix) == true {
+				generatedExecutionLoadingView
+			} else {
+				ResultView(
+					isLoading: true,
+					loadingTitle: processingLabel,
+					resultText: "",
+					actionId: appState.executingActionId,
+					timestamp: nil,
+					onClear: {}
+				)
+			}
 		}
+	}
+
+	/// Calm loading indicator for in-flight generated execution with phase label and Cancel button.
+	private var generatedExecutionLoadingView: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			HStack(spacing: 8) {
+				ProgressView().scaleEffect(0.75)
+				Text(appState.generatedExecutionPhaseLabel ?? "Running generated action…")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+				Spacer()
+				Button("Cancel") {
+					appState.cancelGeneratedExecution()
+				}
+				.buttonStyle(.bordered)
+				.font(.caption)
+			}
+			if let title = appState.executingActionTitle, !title.isEmpty, title != "Generated execution" {
+				Text(title)
+					.font(.caption2)
+					.foregroundStyle(.tertiary)
+					.lineLimit(2)
+			}
+		}
+		.padding(12)
+		.background(
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.fill(Color(nsColor: .controlBackgroundColor))
+		)
+		.overlay(
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
+		)
 	}
 
 	// MARK: - Controls
@@ -221,6 +265,23 @@ struct AssistantPanelView: View {
 
 	// MARK: - Debug
 
+	/// T18.6 — Lightweight pipeline visibility footer shown inside the debug panel.
+	@ViewBuilder private var proposalVisibilityDebugFooter: some View {
+		let state = appState.proposalVisibilityState
+		if !state.isIdle || state.suppressedCount > 0 {
+			HStack(spacing: 4) {
+				Image(systemName: state.isFullySuppressed ? "eye.slash" : "eye")
+					.font(.caption2)
+					.foregroundStyle(state.isFullySuppressed ? Color.orange : Color.secondary)
+				Text(state.debugFooterLine)
+					.font(.caption2)
+					.foregroundStyle(state.isFullySuppressed ? Color.orange : Color.secondary)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+			.padding(.vertical, 2)
+		}
+	}
+
 	private var debugSection: some View {
 		DisclosureGroup(isExpanded: $debugExpanded) {
 			VStack(alignment: .leading, spacing: 8) {
@@ -234,6 +295,8 @@ struct AssistantPanelView: View {
 				Text(appState.generatedProposalDebugStatus.logLine)
 					.font(.caption2)
 					.fixedSize(horizontal: false, vertical: true)
+				// T18.6 — Proposal pipeline visibility footer.
+				proposalVisibilityDebugFooter
 				if !appState.registeredToolActions.isEmpty {
 					VStack(alignment: .leading, spacing: 6) {
 						Text("Tools (debug)")

@@ -220,6 +220,9 @@
 		AA00021B0000000000000134 /* ProposalLoggingFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004060000000000000134 /* ProposalLoggingFlags.swift */; };
 		AA00021C0000000000000135 /* GeneratedProposalTitleSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004070000000000000135 /* GeneratedProposalTitleSynthesizer.swift */; };
 		AA00021D0000000000000136 /* GeneratedProposalTitleSynthesizerSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004080000000000000136 /* GeneratedProposalTitleSynthesizerSelfTest.swift */; };
+		AA00021E0000000000000137 /* ContextualChimeInPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004090000000000000137 /* ContextualChimeInPolicy.swift */; };
+		AA00021F0000000000000138 /* ProposalNoveltyTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000409A000000000000138 /* ProposalNoveltyTracker.swift */; };
+		AA000220000000000000139 /* ProposalVisibilityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040A000000000000139 /* ProposalVisibilityState.swift */; };
 		AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -440,6 +443,9 @@
 		AA0004060000000000000134 /* ProposalLoggingFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalLoggingFlags.swift; sourceTree = "<group>"; };
 		AA0004070000000000000135 /* GeneratedProposalTitleSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedProposalTitleSynthesizer.swift; sourceTree = "<group>"; };
 		AA0004080000000000000136 /* GeneratedProposalTitleSynthesizerSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedProposalTitleSynthesizerSelfTest.swift; sourceTree = "<group>"; };
+		AA0004090000000000000137 /* ContextualChimeInPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualChimeInPolicy.swift; sourceTree = "<group>"; };
+		AA000409A000000000000138 /* ProposalNoveltyTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalNoveltyTracker.swift; sourceTree = "<group>"; };
+		AA00040A000000000000139 /* ProposalVisibilityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalVisibilityState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -684,6 +690,9 @@
 				AA0004060000000000000134 /* ProposalLoggingFlags.swift */,
 				AA0004070000000000000135 /* GeneratedProposalTitleSynthesizer.swift */,
 				AA0004080000000000000136 /* GeneratedProposalTitleSynthesizerSelfTest.swift */,
+				AA0004090000000000000137 /* ContextualChimeInPolicy.swift */,
+				AA000409A000000000000138 /* ProposalNoveltyTracker.swift */,
+				AA00040A000000000000139 /* ProposalVisibilityState.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -1008,6 +1017,9 @@
 				AA00021B0000000000000134 /* ProposalLoggingFlags.swift in Sources */,
 				AA00021C0000000000000135 /* GeneratedProposalTitleSynthesizer.swift in Sources */,
 				AA00021D0000000000000136 /* GeneratedProposalTitleSynthesizerSelfTest.swift in Sources */,
+				AA00021E0000000000000137 /* ContextualChimeInPolicy.swift in Sources */,
+				AA00021F0000000000000138 /* ProposalNoveltyTracker.swift in Sources */,
+				AA000220000000000000139 /* ProposalVisibilityState.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,

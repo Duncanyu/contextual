@@ -54,6 +54,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastProposalTimingSignature: String?
 	private var lastProposalTimingLogAt: Date?
 
+	/// Holds the active generated execution runtime so cancel can reach it (T18.4).
+	private var activeGeneratedExecutionRuntime: GeneratedExecutionRuntime?
+
+	/// T18.6A — Tracks the previous context fingerprint components so we can detect meaningful
+	/// context changes (page nav, app switch, workflow change) and log them.
+	private struct ChimeInContextSnapshot: Equatable {
+		let bundle: String      // bundle ID or app name slug
+		let titlePrefix: String // first 40 chars of window title
+		let workflow: String    // WorkflowType rawValue
+		let hasOCR: Bool
+		let hasSelectedText: Bool
+	}
+	private var lastChimeInContext: ChimeInContextSnapshot?
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
@@ -93,6 +107,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		appState.onInvokeGeneratedExecutionProposalById = { [weak self] candidateId in
 			self?.invokeGeneratedExecutionProposal(candidateId: candidateId)
+		}
+
+		// T18.4: cancel wiring — routes UI cancel tap to actor-isolated runtime.
+		appState.onCancelGeneratedExecution = { [weak self] in
+			Task {
+				await self?.activeGeneratedExecutionRuntime?.cancel()
+			}
 		}
 
 		manualTriggerObserver = NotificationCenter.default.addObserver(
@@ -781,6 +802,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			publishedProposalKey = "\(packet.triggerType.rawValue)|\(floatingId)|generated"
 		}
 
+		// T18.5: Apply chime-in policy before publishing (static-path).
+		let chimeFilteredActivationStatic = applyChimeInPolicy(to: activation, packet: packet, snapshot: proposalSnapshot)
+		if !chimeFilteredActivationStatic.timingDecision.allowsFloatingGenerated,
+		   publishedProposal?.reason == "generated_execution_proposal"
+		{
+			publishedProposal = nil
+			publishedProposalKey = nil
+		}
+
 		publishReasonedActions(
 			ordered: panelStaticActions,
 			finalProposal: publishedProposal,
@@ -790,7 +820,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			context: context,
 			generation: generation,
 			proposalGateAllows: proposalGateResult.shouldGenerate,
-			generatedProposalActivation: activation
+			generatedProposalActivation: chimeFilteredActivationStatic
 		)
 
 		// T12.6 / T12.6.5: async refinement (cache → micro → LLM) must not block heuristic publish above.
@@ -1035,18 +1065,232 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			}
 		}
 
+		// T18.5: Apply chime-in policy before publishing.
+		let chimeFilteredActivation = applyChimeInPolicy(to: activation, packet: packet, snapshot: proposalSnapshot)
+		let chimeFilteredProposal: ActionProposal?
+		let chimeFilteredProposalKey: String?
+		if chimeFilteredActivation.timingDecision.allowsFloatingGenerated {
+			chimeFilteredProposal = publishedProposal
+			chimeFilteredProposalKey = publishedProposalKey
+		} else if publishedProposal?.reason == "generated_execution_proposal" {
+			chimeFilteredProposal = nil
+			chimeFilteredProposalKey = nil
+		} else {
+			chimeFilteredProposal = publishedProposal
+			chimeFilteredProposalKey = publishedProposalKey
+		}
+
 		let toolActions = registeredToolActions(for: packet, context: context)
 		publishDynamicOnlyReasonedActions(
 			toolActions: toolActions,
-			finalProposal: publishedProposal,
-			finalProposalKey: publishedProposalKey,
+			finalProposal: chimeFilteredProposal,
+			finalProposalKey: chimeFilteredProposalKey,
 			packet: packet,
 			context: context,
 			generation: generation,
-			generatedProposalActivation: activation,
+			generatedProposalActivation: chimeFilteredActivation,
 			debugStatus: debugStatus,
 			decision: decision
 		)
+	}
+
+	// MARK: - T18.5 — Chime-in policy
+
+	/// Applies `ContextualChimeInPolicy` to the activation result (T18.5 + T18.6 + T18.6A).
+	///
+	/// T18.6A: Proposal novelty is now keyed on the full context fingerprint —
+	/// bundle ID + window title prefix + workflow + OCR/text availability.
+	/// This means the same template on different Reddit/YouTube pages has fully independent
+	/// novelty entries (fresh on each page), while the same page+template decays normally.
+	///
+	/// Context changes are detected by comparing fingerprint components and logged explicitly.
+	/// The interruption cost is derived from context-staleness so same-page repeats stay
+	/// panel-only (no floating) while different-page proposals can float again.
+	private func applyChimeInPolicy(
+		to activation: GeneratedExecutionProposalActivationResult,
+		packet: TriggerPacket,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot
+	) -> GeneratedExecutionProposalActivationResult {
+		guard !activation.visibleProposals.isEmpty else {
+			// Nothing to filter — still publish empty visibility state.
+			let emptyState = ProposalVisibilityState(
+				generatedCount: 0,
+				visibleCount: 0,
+				suppressedCount: activation.suppressedGeneratedCount,
+				suppressionReasons: ["no_candidates"],
+				lastDecision: "suppress",
+				lastNoveltyScore: nil,
+				updatedAt: Date()
+			)
+			appState.applyProposalVisibilityState(emptyState)
+			return activation
+		}
+
+		let now = Date()
+		let workflow = WorkflowInferenceEngine.shared.latestResult()
+		let wfType = workflow.map { WorkflowExecutionMapper.workflowType(from: $0.workflow) } ?? .unknown
+		let wfConf = workflow.map { min(1.0, max(0.0, $0.confidence)) } ?? 0
+
+		let hasSelectedText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasOCR = !(snapshot.recentOCRExcerpt ?? "").isEmpty
+		let hasRichContext = hasSelectedText || hasOCR
+		let topScore = activation.visibleProposals.first?.rankScore ?? 0
+		let isManual = packet.triggerType == .manualInvocation
+
+		// T18.6A — Full context fingerprint.
+		// Uses bundle ID (stable across page loads), window title prefix (changes with page),
+		// workflow, and source-availability flags. Same template → different page = different key.
+		let bundle = snapshot.bundleIdentifier ?? String(snapshot.activeApp.lowercased().prefix(20))
+		let titlePrefix = String(snapshot.windowTitle.prefix(40))
+		let currentCtx = ChimeInContextSnapshot(
+			bundle: bundle,
+			titlePrefix: titlePrefix,
+			workflow: wfType.rawValue,
+			hasOCR: hasOCR,
+			hasSelectedText: hasSelectedText
+		)
+
+		// Detect and log meaningful context changes.
+		let contextChanged: Bool
+		if let prev = lastChimeInContext, prev != currentCtx {
+			contextChanged = true
+			var changeReasons: [String] = []
+			if prev.titlePrefix != currentCtx.titlePrefix { changeReasons.append("title_changed") }
+			if prev.bundle != currentCtx.bundle       { changeReasons.append("app_changed") }
+			if prev.workflow != currentCtx.workflow   { changeReasons.append("workflow_changed") }
+			if prev.hasOCR != currentCtx.hasOCR       { changeReasons.append("ocr_changed") }
+			if prev.hasSelectedText != currentCtx.hasSelectedText { changeReasons.append("selection_changed") }
+			print("[ChimeInPolicy] context_changed=yes novelty_reset=yes reason=\(changeReasons.joined(separator: "|"))")
+		} else {
+			contextChanged = lastChimeInContext == nil // first call ever is not a "change"
+		}
+		lastChimeInContext = currentCtx
+
+		// Build context-aware novelty key.
+		// Format: "<templateId>|<bundle>|<titlePrefix>|<workflow>|<ocrFlag><textFlag>"
+		// Same template, same page → same key (decays with repetition).
+		// Same template, different page → different key (fresh novelty).
+		let topId = activation.visibleProposals.first?.id ?? ""
+		let ocrTextFlags = "\(hasOCR ? "1" : "0")\(hasSelectedText ? "1" : "0")"
+		let contextualNoveltyKey = "\(topId)|\(bundle)|\(titlePrefix)|\(wfType.rawValue)|\(ocrTextFlags)"
+		let novelty = ProposalNoveltyTracker.shared.noveltyScore(for: contextualNoveltyKey)
+
+		// T18.6A — Derive interruption cost from context-staleness.
+		// Same page + degraded novelty → higher cost (forces panel-only, no floating).
+		// Context changed / fresh novelty → low cost (floating eligible).
+		let derivedInterruptionCost: Double
+		if !contextChanged && novelty < 0.60 {
+			// Same page, already seen — calm: panel-only only, no floating interruption.
+			derivedInterruptionCost = 0.55
+		} else if contextChanged && novelty >= 0.70 {
+			// Fresh context — low interruption cost, floating eligible.
+			derivedInterruptionCost = 0.20
+		} else {
+			derivedInterruptionCost = 0.30
+		}
+
+		// Recent dismissal / accept intervals.
+		let dismissalAge = appState.lastDismissedProposalAt.map { now.timeIntervalSince($0) }
+		let acceptAge = appState.lastAcceptedProposalAt.map { now.timeIntervalSince($0) }
+
+		let factors = ContextualChimeInFactors(
+			isManualInvocation: isManual,
+			workflowType: wfType,
+			workflowConfidence: wfConf,
+			hasRichContext: hasRichContext,
+			proposalCount: activation.visibleProposals.count,
+			topProposalScore: topScore,
+			topInterruptionCost: derivedInterruptionCost,
+			recentDismissalInSeconds: dismissalAge,
+			recentAcceptInSeconds: acceptAge,
+			noveltyScore: novelty,
+			isActionExecuting: appState.isActionExecuting,
+			isContextStale: snapshot.packetIsStale,
+			visualContextWasRecentlyEnriched: false
+		)
+
+		var decision = ContextualChimeInPolicy.evaluate(factors: factors)
+
+		// Decision quality log — explains utility, novelty, and interruption cost together.
+		print("[ChimeInPolicy] decision_quality score=\(String(format: "%.2f", decision.score)) utility=\(String(format: "%.2f", topScore)) novelty=\(String(format: "%.2f", novelty)) interruption=\(String(format: "%.2f", derivedInterruptionCost)) context=\(contextChanged ? "changed" : "same") mode=\(decision.mode.rawValue)")
+
+		// Resurfacing guarantee (T18.6): if silent ≥3 min and score is passable, allow panel-only.
+		let wasFullySuppressed = !decision.shouldSurface
+		if wasFullySuppressed && !factors.isActionExecuting {
+			let lastVisible = appState.lastVisibleProposalAt ?? .distantPast
+			let silenceDuration = now.timeIntervalSince(lastVisible)
+			if silenceDuration >= 180 && topScore >= 0.38 {
+				print("[ChimeInPolicy] resurfacing_guarantee triggered silence=\(Int(silenceDuration))s score=\(String(format: "%.2f", topScore)) original_reason=\(decision.reasons.first ?? "unknown")")
+				decision = ContextualChimeInDecision(
+					mode: .panelOnly,
+					score: topScore,
+					reasons: ["resurfacing_guarantee"],
+					cooldownRecommendation: nil
+				)
+			} else {
+				print("[ChimeInPolicy] suppressed helpful proposal silence=\(Int(silenceDuration))s reason=\(decision.reasons.first ?? "policy") novelty=\(String(format: "%.2f", novelty))")
+			}
+		}
+
+		// Build visibility state for debug UI and pipeline log.
+		let totalGenerated = activation.visibleProposals.count + activation.suppressedGeneratedCount
+		let visibleAfterPolicy = decision.shouldSurface ? activation.visibleProposals.count : 0
+		let suppressedByPolicy = decision.shouldSurface ? 0 : activation.visibleProposals.count
+		let visibilityState = ProposalVisibilityState(
+			generatedCount: totalGenerated,
+			visibleCount: visibleAfterPolicy,
+			suppressedCount: activation.suppressedGeneratedCount + suppressedByPolicy,
+			suppressionReasons: decision.reasons,
+			lastDecision: decision.mode.rawValue,
+			lastNoveltyScore: novelty,
+			updatedAt: now
+		)
+		appState.applyProposalVisibilityState(visibilityState)
+		print("[ProposalPipeline] \(visibilityState.pipelineLogLine)")
+
+		if !decision.shouldSurface {
+			return GeneratedExecutionProposalActivationResult(
+				visibleProposals: [],
+				visibleStaticActionIds: activation.visibleStaticActionIds,
+				suppressedGeneratedCount: activation.suppressedGeneratedCount + activation.visibleProposals.count,
+				suppressedStaticCount: activation.suppressedStaticCount,
+				topSourceType: activation.topSourceType,
+				rankingSummary: "chime_suppressed:\(decision.reasons.first ?? "policy")",
+				timingDecision: .suppressAll,
+				warnings: activation.warnings + ["chime_policy_suppressed"],
+				createdAt: activation.createdAt,
+				floatingGeneratedProposalId: nil
+			)
+		}
+
+		// Record visible proposals in novelty tracker using full context-aware key.
+		for item in activation.visibleProposals.prefix(3) {
+			let itemKey = "\(item.id)|\(bundle)|\(titlePrefix)|\(wfType.rawValue)|\(ocrTextFlags)"
+			ProposalNoveltyTracker.shared.record(signature: itemKey)
+		}
+
+		// If panelOnly (policy decision or resurfacing guarantee), strip floating.
+		if decision.mode == .panelOnly {
+			return GeneratedExecutionProposalActivationResult(
+				visibleProposals: activation.visibleProposals,
+				visibleStaticActionIds: activation.visibleStaticActionIds,
+				suppressedGeneratedCount: activation.suppressedGeneratedCount,
+				suppressedStaticCount: activation.suppressedStaticCount,
+				topSourceType: activation.topSourceType,
+				rankingSummary: activation.rankingSummary,
+				timingDecision: GeneratedExecutionProposalTimingDecision(
+					outcome: .allowPanel,
+					reason: "chime_panel_only",
+					allowsFloatingGenerated: false,
+					allowsPanelGenerated: true
+				),
+				warnings: activation.warnings,
+				createdAt: activation.createdAt,
+				floatingGeneratedProposalId: nil
+			)
+		}
+
+		return activation
 	}
 
 	private func registeredToolActions(for packet: TriggerPacket, context: ContextModel) -> [any ActionProtocol] {
@@ -1573,7 +1817,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func invokeGeneratedExecutionProposal(candidateId: String) {
-		// T18.3.7: Execution-scoped generated execution invocation (no UI-layer runtime calls).
+		// T18.4: Execution-scoped generated execution — user-approved only, no auto-execution.
 		if appState.isActionExecuting {
 			print("[GeneratedProposalExecution] invoke_ignored reason=already_executing id=\(candidateId.prefix(12))")
 			return
@@ -1584,8 +1828,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		appState.executingActionId = actionId
 		appState.executingActionTitle = "Generated execution"
 		appState.latestActionResult = nil
+		appState.latestGeneratedExecutionPresentation = nil
 		appState.latestActionId = actionId
 		appState.latestActionTimestamp = Date()
+		appState.generatedExecutionPhaseLabel = "Preparing context…"
 		print("[GeneratedProposalExecution] runtime_prepare id=\(candidateId.prefix(12))")
 
 		Task { @MainActor in
@@ -1593,6 +1839,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				self.appState.isActionExecuting = false
 				self.appState.executingActionId = nil
 				self.appState.executingActionTitle = nil
+				self.appState.generatedExecutionPhaseLabel = nil
+				self.activeGeneratedExecutionRuntime = nil
 				print("[GeneratedProposalExecution] runtime_finished id=\(candidateId.prefix(12))")
 			}
 
@@ -1620,7 +1868,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 			guard let action else {
 				print("[GeneratedProposalExecution] runtime_unavailable id=\(candidateId.prefix(12)) reason=missing_execution_action")
-				self.appState.latestActionResult = "Generated execution is unavailable for this proposal yet."
+				// Surface a structured failure card rather than raw text.
+				let failResult = ExecutionResult(
+					actionId: UUID(),
+					status: .failed,
+					startedAt: now,
+					completedAt: Date(),
+					generatedContent: nil,
+					generatedSections: [],
+					warnings: ["missing_execution_action"],
+					executionMetadata: ["runtimePhase": "unavailable"],
+					confidence: 0,
+					followUpSuggestions: []
+				)
+				self.appState.latestGeneratedExecutionPresentation = GeneratedExecutionResultPresenter.makePresentation(from: failResult, action: nil)
+				print("[GeneratedExecutionResult] presented status=failed sections=0 reason=unavailable")
 				return
 			}
 
@@ -1637,33 +1899,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				visualContextScheduler: scheduler,
 				canonicalSnapshot: snapshot
 			)
+			self.activeGeneratedExecutionRuntime = runtime
 
-			print("[GeneratedProposalExecution] runtime_start id=\(candidateId.prefix(12))")
+			self.appState.generatedExecutionPhaseLabel = visualRequired ? "Gathering visual context…" : "Gathering context…"
+			print("[GeneratedExecutionRuntime] live_start id=\(candidateId.prefix(12)) workflow=\(action.workflowType.rawValue) primitives=\(action.executionPlan.primitives.count)")
+
 			let outcome = await runtime.start(action: action)
 			switch outcome {
 			case .completed(let result):
 				let status = result.status.rawValue
 				let visual = result.executionMetadata["visual_enrichment_performed"] == "1" ? "yes" : "no"
-				let ocr = result.executionMetadata["visual_enrichment_used_ocr"] == "1" ? "yes" : "no"
 				let visualDecision = result.executionMetadata["visual_enrichment_decision"] ?? "unknown"
-				let body = result.generatedContent ?? "(no generated content)"
-				print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=\(status) visual=\(visual) decision=\(visualDecision)")
-				self.appState.latestActionResult = """
-				Generated execution finished.
-
-				Title: \(action.title)
-				Status: \(status)
-				Visual required: \(visualRequired ? "yes" : "no")
-				Visual enrichment used: \(visual) (OCR: \(ocr))
-				Visual decision: \(visualDecision)
-
-				\(body)
-				"""
+				print("[GeneratedExecutionRuntime] live_completed id=\(candidateId.prefix(12)) status=\(status) visual=\(visual) decision=\(visualDecision)")
+				let presentation = GeneratedExecutionResultPresenter.makePresentation(from: result, action: action)
+				self.appState.latestGeneratedExecutionPresentation = presentation
+				self.appState.latestActionId = actionId
 				self.appState.latestActionTimestamp = Date()
+				self.appState.latestActionResult = nil
+				print("[GeneratedExecutionResult] presented status=\(status) sections=\(presentation.sections.count) followUps=\(presentation.followUpSuggestions.count)")
+
 			case .rejected(let reason):
-				print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=rejected reason=\(reason.rawValue)")
-				self.appState.latestActionResult = "Generated execution rejected: \(reason.rawValue)"
-				self.appState.latestActionTimestamp = Date()
+				print("[GeneratedExecutionRuntime] live_completed id=\(candidateId.prefix(12)) status=rejected reason=\(reason.rawValue)")
+				let failResult = ExecutionResult(
+					actionId: action.id,
+					status: .failed,
+					startedAt: now,
+					completedAt: Date(),
+					generatedContent: nil,
+					generatedSections: [],
+					warnings: [reason.rawValue],
+					executionMetadata: ["runtimePhase": "rejected"],
+					confidence: action.confidence,
+					followUpSuggestions: []
+				)
+				self.appState.latestGeneratedExecutionPresentation = GeneratedExecutionResultPresenter.makePresentation(from: failResult, action: action)
+				self.appState.latestActionResult = nil
+				print("[GeneratedExecutionResult] presented status=rejected sections=0")
 			}
 		}
 	}
@@ -2447,6 +2718,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[ContextDebug] selftest starting")
 			let ok = ContextDebugLogger.shared.selfTest()
 			print("[ContextDebug] selftest finished ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// T18.5: Chime-in policy self-test (deterministic; no I/O).
+		// Run the app with `CONTEXTUAL_RUN_CHIMEIN_SELFTEST=1` to execute once and exit.
+		if env["CONTEXTUAL_RUN_CHIMEIN_SELFTEST"] == "1" {
+			print("[ChimeInPolicy] selftest starting")
+			let policyOk = ContextualChimeInPolicy.runSelfTest()
+			let noveltyOk = ProposalNoveltyTracker.runSelfTest()
+			let presenterOk = GeneratedExecutionResultPresenter.runSelfTest()
+			let ok = policyOk && noveltyOk && presenterOk
+			print("[ChimeInPolicy] selftest finished ok=\(ok) policy=\(policyOk) novelty=\(noveltyOk) presenter=\(presenterOk)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}

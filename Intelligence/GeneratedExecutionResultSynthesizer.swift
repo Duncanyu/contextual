@@ -52,6 +52,12 @@ enum GeneratedExecutionResultSynthesizer {
 			}
 		}
 
+		let followUps = workflowFollowUpSuggestions(
+			workflowType: action.workflowType,
+			status: status,
+			primitives: outputs.map(\.primitive)
+		)
+
 		return ExecutionResult(
 			actionId: action.id,
 			status: status,
@@ -62,7 +68,7 @@ enum GeneratedExecutionResultSynthesizer {
 			warnings: allWarnings,
 			executionMetadata: metadata,
 			confidence: confidence,
-			followUpSuggestions: []
+			followUpSuggestions: followUps
 		)
 	}
 
@@ -158,5 +164,38 @@ enum GeneratedExecutionResultSynthesizer {
 	private static func titleForPart(_ partTitle: String, fallback: String) -> String {
 		if partTitle.hasPrefix("Section ") { return fallback }
 		return partTitle
+	}
+
+	// MARK: - Workflow-aware follow-up suggestions
+
+	private static func workflowFollowUpSuggestions(
+		workflowType: WorkflowType,
+		status: ExecutionResultStatus,
+		primitives: [ExecutionPrimitive]
+	) -> [String] {
+		guard status == .success || status == .partialSuccess else { return [] }
+		switch workflowType {
+		case .debugging:
+			return ["Search for similar errors", "Add a regression test", "Check recent git changes"]
+		case .research:
+			return ["Compare with another source", "Export key points", "Identify open questions"]
+		case .writing:
+			return ["Refine the draft", "Check for gaps", "Add supporting examples"]
+		case .studying, .browsing:
+			return ["Test yourself on key concepts", "Take a short break and review", "Add to study notes"]
+		case .reviewing:
+			return ["Flag items needing revision", "Share summary with teammates", "Create action items"]
+		case .editing:
+			return ["Review the changes", "Check for consistency", "Save a version before finalizing"]
+		case .comparing:
+			return ["Note the key differences", "Export comparison", "Decide on the preferred option"]
+		case .organizing:
+			return ["Review the structure", "Add missing categories", "Archive completed items"]
+		case .unknown:
+			if primitives.contains(.explainError) {
+				return ["Search for similar errors", "Check related logs"]
+			}
+			return ["Copy the result", "Run again with more context"]
+		}
 	}
 }

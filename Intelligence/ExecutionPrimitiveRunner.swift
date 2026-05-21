@@ -21,8 +21,11 @@ struct ExecutionPrimitiveRunner: Sendable {
 			return structureNotes(context: context, action: action)
 		case .answerFromContext:
 			return answerFromContext(context: context, action: action)
-		case .compareContexts, .organizeInformation, .generateStudyNotes,
-		     .synthesizeResearchSummary, .classifyWorkflow:
+		case .organizeInformation:
+			return organizeInformation(context: context, action: action)
+		case .generateStudyNotes:
+			return generateStudyNotes(context: context, action: action)
+		case .compareContexts, .synthesizeResearchSummary, .classifyWorkflow:
 			throw ExecutionPrimitiveRunnerError.unsupportedPrimitive
 		}
 	}
@@ -38,9 +41,21 @@ struct ExecutionPrimitiveRunner: Sendable {
 			return insufficientOutput(primitive: .summarizeContext, title: "Summary")
 		}
 		let lines = nonEmptyLines(text)
-		let bullets = lines.prefix(6).map { "• \($0)" }.joined(separator: "\n")
+		let app = context.appName.isEmpty ? nil : context.appName
+		let title = context.windowTitle.isEmpty ? nil : context.windowTitle
+		let workflow = context.workflowType.rawValue
+
+		// Build a more descriptive header from available metadata.
+		var headerParts: [String] = []
+		if let app { headerParts.append(app) }
+		if let title { headerParts.append("\"\(String(title.prefix(60)))\"") }
+		let header = headerParts.isEmpty ? "Current context" : headerParts.joined(separator: " — ")
+
+		let bullets = lines.prefix(7).map { "• \($0)" }.joined(separator: "\n")
 		let content = """
-		Summary (\(lines.count) lines, \(context.workflowType.rawValue) workflow):
+		\(header)
+		Workflow: \(workflow) · \(lines.count) line\(lines.count == 1 ? "" : "s") captured
+
 		\(bullets)
 		"""
 		return ExecutionPrimitiveOutput(
@@ -48,7 +63,7 @@ struct ExecutionPrimitiveRunner: Sendable {
 			title: "Context summary",
 			content: content,
 			confidence: min(action.confidence, 0.85),
-			metadata: ["lineCount": String(lines.count)]
+			metadata: ["lineCount": String(lines.count), "workflowType": workflow]
 		)
 	}
 
@@ -108,32 +123,58 @@ struct ExecutionPrimitiveRunner: Sendable {
 		guard !text.isEmpty else {
 			return insufficientOutput(primitive: .explainError, title: "Error explanation")
 		}
-		let errorLines = nonEmptyLines(text).filter { line in
+		let allLines = nonEmptyLines(text)
+		let errorLines = allLines.filter { line in
 			let lower = line.lowercased()
 			return lower.contains("error") || lower.contains("exception")
 				|| lower.contains("failed") || lower.contains("fatal")
+				|| lower.contains("crash") || lower.contains("assert")
+				|| lower.contains("nil") || lower.contains("undefined")
 		}
-		let focus = errorLines.prefix(3).joined(separator: "\n")
+		let focusLines = errorLines.prefix(4)
+		let contextLines = allLines.prefix(3)
+
 		let content: String
-		if focus.isEmpty {
+		if focusLines.isEmpty {
+			// No explicit error lines — give a diagnostic starting point from context.
+			let excerpt = contextLines.map { "  \($0)" }.joined(separator: "\n")
 			content = """
-			No explicit error markers in the bounded excerpt.
-			Likely causes to inspect: recent code changes, missing permissions, or invalid input.
+			No explicit error markers detected in the bounded excerpt.
+
+			Available context:
+			\(excerpt)
+
+			Inspection checklist:
+			• Review recent code changes near this location
+			• Verify all required permissions are granted
+			• Check for nil/optional unwrapping failures
+			• Look for type mismatches or invalid input values
+			• Confirm async/await patterns are correctly awaited
 			"""
 		} else {
+			let errorBlock = focusLines.map { "  \($0)" }.joined(separator: "\n")
 			content = """
 			Detected error signals:
-			\(focus)
+			\(errorBlock)
 
-			Likely next steps: reproduce locally, check logs near these lines, verify inputs and permissions.
+			Likely root causes:
+			• Check the call stack leading to these lines
+			• Look for unhandled optionals or force unwraps
+			• Verify preconditions and guard statements nearby
+			• Confirm dependencies / injected objects are non-nil
+
+			Next steps: reproduce in isolation, add breakpoints near these lines, verify inputs.
 			"""
 		}
 		return ExecutionPrimitiveOutput(
 			primitive: .explainError,
-			title: "Error explanation",
+			title: "Error analysis",
 			content: content,
-			confidence: focus.isEmpty ? 0.5 : min(action.confidence, 0.82),
-			metadata: ["errorLineCount": String(errorLines.count)]
+			confidence: focusLines.isEmpty ? 0.52 : min(action.confidence, 0.84),
+			metadata: [
+				"errorLineCount": String(errorLines.count),
+				"totalLineCount": String(allLines.count),
+			]
 		)
 	}
 
@@ -183,6 +224,95 @@ struct ExecutionPrimitiveRunner: Sendable {
 			content: content,
 			confidence: min(action.confidence, 0.75),
 			metadata: ["sourceType": context.sourceType]
+		)
+	}
+
+	private func organizeInformation(
+		context: GeneratedExecutionContext,
+		action: GeneratedExecutionAction
+	) -> ExecutionPrimitiveOutput {
+		let text = context.primarySourceText
+		guard !text.isEmpty else {
+			return insufficientOutput(primitive: .organizeInformation, title: "Organized information")
+		}
+		let lines = nonEmptyLines(text)
+		// Classify lines into categories by simple heuristics.
+		var facts: [String] = []
+		var questions: [String] = []
+		var tasks: [String] = []
+		var notes: [String] = []
+		for line in lines {
+			let lower = line.lowercased()
+			if line.hasSuffix("?") || lower.hasPrefix("why") || lower.hasPrefix("how") || lower.hasPrefix("what") {
+				questions.append(line)
+			} else if lower.hasPrefix("todo") || lower.hasPrefix("- [ ]") || lower.hasPrefix("•") || lower.hasPrefix("-") {
+				tasks.append(line)
+			} else if lower.contains("note:") || lower.contains("important") || lower.hasPrefix("*") {
+				notes.append(line)
+			} else {
+				facts.append(line)
+			}
+		}
+		var parts: [String] = []
+		if !facts.isEmpty {
+			parts.append("Key information:\n" + facts.prefix(5).map { "  • \($0)" }.joined(separator: "\n"))
+		}
+		if !tasks.isEmpty {
+			parts.append("Tasks / action items:\n" + tasks.prefix(5).map { "  • \($0)" }.joined(separator: "\n"))
+		}
+		if !questions.isEmpty {
+			parts.append("Open questions:\n" + questions.prefix(4).map { "  • \($0)" }.joined(separator: "\n"))
+		}
+		if !notes.isEmpty {
+			parts.append("Notes:\n" + notes.prefix(3).map { "  • \($0)" }.joined(separator: "\n"))
+		}
+		let content = parts.isEmpty ? "Insufficient structured content for organization." : parts.joined(separator: "\n\n")
+		return ExecutionPrimitiveOutput(
+			primitive: .organizeInformation,
+			title: "Organized information",
+			content: content,
+			confidence: min(action.confidence, 0.80),
+			metadata: [
+				"factCount": String(facts.count),
+				"taskCount": String(tasks.count),
+				"questionCount": String(questions.count),
+			]
+		)
+	}
+
+	private func generateStudyNotes(
+		context: GeneratedExecutionContext,
+		action: GeneratedExecutionAction
+	) -> ExecutionPrimitiveOutput {
+		let text = context.primarySourceText
+		guard !text.isEmpty else {
+			return insufficientOutput(primitive: .generateStudyNotes, title: "Study notes")
+		}
+		let lines = nonEmptyLines(text)
+		let concepts = lines.prefix(5).map { "• \($0)" }.joined(separator: "\n")
+		let app = context.appName.isEmpty ? "current context" : context.appName
+		let content = """
+		Study notes from \(app):
+
+		Key concepts:
+		\(concepts)
+
+		Review questions:
+		• What is the main point of this material?
+		• Which parts are still unclear or need more research?
+		• How does this connect to what you already know?
+
+		Next steps:
+		• Re-read the parts that felt unclear
+		• Make a short summary in your own words
+		• Test yourself on the key concepts above
+		"""
+		return ExecutionPrimitiveOutput(
+			primitive: .generateStudyNotes,
+			title: "Study notes",
+			content: content,
+			confidence: min(action.confidence, 0.78),
+			metadata: ["conceptCount": String(min(5, lines.count))]
 		)
 	}
 
