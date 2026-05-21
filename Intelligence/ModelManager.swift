@@ -224,6 +224,40 @@ final class ModelManager: @unchecked Sendable {
 		}
 	}
 
+	/// Pull a specific model by name. Used by `ModelAuditManager` to install fast inference
+	/// models (e.g. qwen2.5:0.5b) when no suitable small model is found.
+	/// Returns `true` on success, `false` on failure (disk, network, CLI missing).
+	func pullModel(named modelName: String) async -> Bool {
+		guard Self.resolveOllamaExecutablePath() != nil else {
+			print("[ModelManager] pull_blocked model=\(modelName) reason=ollama_not_installed")
+			return false
+		}
+		if let bytes = Self.availableDiskBytesForImportantUsage(), bytes < Self.minimumDiskBytesForModelPull {
+			let gb = Double(bytes) / 1_073_741_824.0
+			print("[ModelManager] pull_blocked model=\(modelName) reason=low_disk available=\(String(format: "%.1fGB", gb))")
+			return false
+		}
+		print("[ModelManager] pull_started model=\(modelName)")
+		let outcome = await Self.pullModelOnly(modelName: modelName)
+		switch outcome {
+		case .ok:
+			print("[ModelManager] pull_completed model=\(modelName)")
+			Self.invalidateGenerationCache()
+			return true
+		case .failed(let msg):
+			print("[ModelManager] pull_failed model=\(modelName) reason=\(String(msg.prefix(120)))")
+			return false
+		}
+	}
+
+	/// Check whether a model with the given name is currently installed in Ollama.
+	func isModelInstalled(named modelName: String) async -> Bool {
+		switch await Self.fetchTagsViaHTTP(timeout: Self.tagsTimeoutProbe) {
+		case .unreachable: return false
+		case .reachable(let names): return Self.tagsListContainsModel(names, modelName: modelName)
+		}
+	}
+
 	/// User-triggered pull when server is expected up (System Status).
 	func pullConfiguredModel(
 		updateState: @escaping (ModelRuntimeState) -> Void

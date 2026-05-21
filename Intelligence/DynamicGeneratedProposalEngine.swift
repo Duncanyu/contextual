@@ -5,6 +5,13 @@ protocol DynamicGeneratedProposalLLMGenerating: Sendable {
 	func generate(prompt: String, model: String) async throws -> String
 }
 
+// MARK: - Task inference title memory (metadata-only; no hardcoded behavior labels)
+
+private struct TaskInferenceTitleObservation: Sendable, Equatable {
+	let title: String
+	let capturedAt: Date
+}
+
 extension LocalAIClient: DynamicGeneratedProposalLLMGenerating {}
 
 /// Generation availability gate (injectable for self-tests).
@@ -40,8 +47,21 @@ actor DynamicGeneratedProposalEngine {
 	private let sparseVisualPeekGate: SparseVisualPeekGate
 	private let timeoutNanoseconds: UInt64
 	private var autoVisualGatheredAtByFingerprint: [String: Date] = [:]
+	/// Model-requested context escalation tracker — separate from auto-visual-gather.
+	/// Keyed by context fingerprint; value is the timestamp of the last escalation attempt.
+	/// Prevents repeated escalation on the same page/context even if auto-gather recently ran.
+	private var contextEscalatedAtByFingerprint: [String: Date] = [:]
+	// Task inference: short-lived title memory (feature input only; not hardcoded behaviors).
+	private var titleHistoryByBundle: [String: [TaskInferenceTitleObservation]] = [:]
+	// Task inference: short-lived cache of previously successful action contracts (accelerator only).
+	private var dynamicActionCacheByKey: [String: DynamicGeneratedActionContract] = [:]
 
 	private static let autoVisualGatherCooldownSeconds: TimeInterval = 70
+	/// Model-requested escalation is allowed once per fingerprint per this window.
+	/// Shorter than auto-gather so it fires for new pages even if auto-gather ran recently.
+	private static let contextEscalationCooldownSeconds: TimeInterval = 90
+	private static let titleHistoryMaxItems = 12
+	private static let dynamicActionCacheTTLSeconds: TimeInterval = 180
 
 	init(
 		modelManager: any DynamicGeneratedProposalAvailabilityChecking = ModelManager.shared,
@@ -69,6 +89,43 @@ actor DynamicGeneratedProposalEngine {
 	/// Set to `true` only in explicit debug/test scenarios. T18.3.5A defense-in-depth.
 	static var allowLiveLLMForDebug: Bool = false
 
+	/// Records a successful hook-composed execution as a short-lived cache entry (accelerator only).
+	/// This is intentionally NOT used as a source of truth; it simply helps avoid re-composing the
+	/// exact same action contract during rapid tab/app churn after the user accepted it.
+	func recordSuccessfulDynamicActionExecution(
+		candidateId: String,
+		action: GeneratedExecutionAction,
+		referenceTime: Date = Date()
+	) {
+		guard candidateId.hasPrefix("hook:") else { return }
+		let rawKey = String(candidateId.dropFirst("hook:".count))
+		guard !rawKey.isEmpty else { return }
+		let keyBase = rawKey.components(separatedBy: "|h").first ?? rawKey
+
+		let hookIds = HookCapabilityRegistry.hookIds(from: action.executionPlan.primitives)
+		let contract = DynamicGeneratedActionContract(
+			id: candidateId,
+			title: action.title,
+			userFacingQuestion: action.description,
+			inferredUserGoal: action.intentType.rawValue,
+			situationSummary: "cached_execution_success",
+			whyNow: "cached_successful_execution",
+			hookPlanIds: hookIds,
+			requiredContext: action.requiredContextTypes,
+			confidence: min(0.92, max(0.50, action.confidence + 0.04)),
+			createdAt: referenceTime,
+			expiresAt: referenceTime.addingTimeInterval(120),
+			cacheEligibility: true,
+			cacheKey: keyBase
+		)
+
+		dynamicActionCacheByKey[keyBase] = contract
+		pruneDynamicActionCache(referenceTime: referenceTime)
+		print(
+			"[DynamicActionSynthesis] cache_stored id=\(candidateId.prefix(48)) hooks=\(hookIds.joined(separator: ","))"
+		)
+	}
+
 	func generateProposals(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
 		existingStaticActions: [String],
@@ -78,8 +135,9 @@ actor DynamicGeneratedProposalEngine {
 		situational: SituationalContextSnapshot? = nil,
 		referenceTime: Date = Date()
 	) async -> DynamicGeneratedProposalResult {
-		// T18.3.5A: Emit architecture mode on every attempt so traces are always unambiguous.
-		print("[ProposalArchitecture] mode=template_library_only live_llm_enabled=no")
+		// Emit active architecture mode on every attempt so traces are always unambiguous.
+		let fallback = ProposalLoggingFlags.templateFallbackEnabled ? "yes" : "no"
+		print("[ProposalArchitecture] mode=task_inference_hooks live_llm_enabled=no template_fallback_enabled=\(fallback)")
 
 		let situationalContext: SituationalContextSnapshot
 		if let situational {
@@ -237,11 +295,164 @@ actor DynamicGeneratedProposalEngine {
 			}
 		}
 
-		// MARK: - Template library lookup (T18.3.5 / T18.3.6B)
-		// Runs BEFORE decision gate and BEFORE any LLM call.
-		// If eligible seeded templates exist, surface them immediately regardless of perception
-		// recommendation — the library is a fast, deterministic path that requires no LLM and
-		// no visual context.  Decision gate only matters when the library misses.
+		// MARK: - Model-driven task inference + hook composition (primary; no hardcoded behaviors)
+		// This is the source of truth for user-facing dynamic actions. If it fails/times out,
+		// we prefer silence (or cache) over falling back to generic seeded templates.
+
+		recordTitleObservation(situational: effectiveSituational, referenceTime: referenceTime)
+		let recentTitles = recentTitles(for: effectiveSituational)
+
+		// MARK: Cheap inference pass
+		print("[TaskInference] pass=cheap")
+		var activeInference = await TaskInferenceEngine.shared.infer(
+			snapshot: effectiveSnapshot,
+			situational: effectiveSituational,
+			recentTitles: recentTitles,
+			history: history,
+			referenceTime: referenceTime
+		)
+
+		// MARK: Context escalation (PART A) — model requested more context
+		// When the model returns c=0 + need=[...], attempt bounded context gathering once
+		// per fingerprint and re-run inference with the enriched snapshot.
+		if let cheapResult = activeInference, !cheapResult.shouldChime, !cheapResult.need.isEmpty {
+			let needList = cheapResult.need.joined(separator: ",")
+			let escalationFP = Self.contextEscalationFingerprint(snapshot: effectiveSnapshot, situational: effectiveSituational)
+			print("[ContextEscalation] requested need=[\(needList)] reason=\(cheapResult.needReason ?? "unspecified") fp=\(escalationFP)")
+			if canEscalateContext(escalationFP, referenceTime: referenceTime) {
+				recordContextEscalationAttempt(escalationFP, at: referenceTime)
+				print("[ContextEscalation] gate=allowed source=model_requested need=[\(needList)] reason=\(cheapResult.needReason ?? "unspecified") fp=\(escalationFP)")
+				let escalationStart = Date()
+				let escalationOutcome = await gatherEscalatedContext(
+					need: cheapResult.need,
+					snapshot: effectiveSnapshot,
+					situational: effectiveSituational,
+					referenceTime: referenceTime
+				)
+				if let enriched = escalationOutcome.snapshot {
+					let enrichedSituational = SituationalContextSynthesizer.synthesize(from: enriched, referenceTime: referenceTime)
+					let axChars = escalationOutcome.axChars
+					let ocrChars = escalationOutcome.ocrChars
+					let descFlag = escalationOutcome.hasDescriptors ? "yes" : "no"
+					let elapsed = Int(Date().timeIntervalSince(escalationStart) * 1000)
+					print("[ContextEscalation] completed ax_chars=\(axChars) ocr_chars=\(ocrChars) descriptors=\(descFlag) elapsed_ms=\(elapsed) fp=\(escalationFP)")
+					effectiveSnapshot = enriched
+					effectiveSituational = enrichedSituational
+					// Re-run inference with enriched context.
+					print("[TaskInference] pass=enriched")
+					activeInference = await TaskInferenceEngine.shared.infer(
+						snapshot: enriched,
+						situational: enrichedSituational,
+						recentTitles: recentTitles,
+						history: history,
+						referenceTime: referenceTime
+					)
+				} else {
+					let elapsed = Int(Date().timeIntervalSince(escalationStart) * 1000)
+					print("[ContextEscalation] denied reason=\(escalationOutcome.denialReason ?? "gather_unavailable") fp=\(escalationFP) elapsed_ms=\(elapsed)")
+				}
+			} else {
+				print("[ContextEscalation] gate=denied reason=already_attempted_same_fp fp=\(escalationFP)")
+			}
+		}
+
+		// MARK: Hook composition
+		if let inference = activeInference {
+			if !inference.shouldChime {
+				let needStr = inference.need.isEmpty ? "" : " need=[\(inference.need.joined(separator: ","))]"
+				print("[DynamicActionSynthesis] skipped reason=model_chose_quiet\(needStr)")
+				return result(
+					status: .quietByGate,
+					reason: "task_inference_quiet",
+					warnings: ["diag:task_inference_quiet"],
+					cause: nil,
+					referenceTime: referenceTime
+				)
+			}
+
+			if let composed = ModelDrivenHookComposer.compose(
+				inference: inference,
+				snapshot: effectiveSnapshot,
+				situational: effectiveSituational,
+				recentTitles: recentTitles,
+				referenceTime: referenceTime
+			) {
+				print(
+					"[DynamicActionSynthesis] source=hook_composer synthesized title=\(composed.contract.title) confidence=\(String(format: "%.2f", composed.contract.confidence)) why_now=\(composed.contract.whyNow)"
+				)
+				logMetadata(
+					event: "dynamic_action_synthesis",
+					value: "hook_composer",
+					extra: "title=\(composed.contract.title) conf=\(String(format: "%.2f", composed.contract.confidence)) why_now=\(composed.contract.whyNow)"
+				)
+				return DynamicGeneratedProposalResult(
+					status: .synthesized,
+					shouldChimeIn: true,
+					reason: "hook_composer",
+					workflowAssessment: "hook_composer",
+					proposalConfidence: composed.contract.confidence,
+					requiresVisualContext: composed.contract.requiredContext.contains(.screenCapture) || composed.contract.requiredContext.contains(.fusedVisual),
+					proposals: [composed.proposal],
+					warnings: [],
+					llmDiagnosticCause: nil,
+					createdAt: referenceTime,
+					libraryRecords: []
+				)
+			}
+
+			print("[DynamicActionSynthesis] skipped reason=compose_failed")
+		} else {
+			print("[DynamicActionSynthesis] skipped reason=no_inference")
+		}
+
+		let cacheKey = dynamicActionCacheKey(
+			snapshot: effectiveSnapshot,
+			situational: effectiveSituational,
+			recentTitles: recentTitles
+		)
+		if let cached = lookupCachedDynamicAction(
+			key: cacheKey,
+			situational: effectiveSituational,
+			referenceTime: referenceTime
+		) {
+			print(
+				"[DynamicActionSynthesis] source=cache synthesized title=\(cached.title) confidence=\(String(format: "%.2f", cached.confidence))"
+			)
+			logMetadata(
+				event: "dynamic_action_synthesis",
+				value: "cache",
+				extra: "title=\(cached.title) conf=\(String(format: "%.2f", cached.confidence))"
+			)
+			let proposal = Self.proposal(from: cached, situational: effectiveSituational)
+			return DynamicGeneratedProposalResult(
+				status: .synthesized,
+				shouldChimeIn: true,
+				reason: "cache",
+				workflowAssessment: "cache_hit",
+				proposalConfidence: cached.confidence,
+				requiresVisualContext: cached.requiredContext.contains(.screenCapture) || cached.requiredContext.contains(.fusedVisual),
+				proposals: [proposal],
+				warnings: [],
+				llmDiagnosticCause: nil,
+				createdAt: referenceTime,
+				libraryRecords: []
+			)
+		}
+
+		// MARK: - Template library fallback (debug-only)
+		// The reusable template library is an accelerator only; it must not dominate normal proposal
+		// synthesis. Enable only for explicit debug workflows.
+		if !ProposalLoggingFlags.templateFallbackEnabled {
+			return result(
+				status: .quietByGate,
+				reason: "no_task_inference_action",
+				warnings: ["diag:no_task_inference_action"],
+				cause: nil,
+				referenceTime: referenceTime
+			)
+		}
+
+		// MARK: - Template library lookup (debug-only)
 
 		logMetadata(
 			event: "pipeline_stage",
@@ -376,145 +587,9 @@ actor DynamicGeneratedProposalEngine {
 			referenceTime: referenceTime
 		)
 
-		// Decision approved — check preflight conditions before committing to LLM.
-		// NOTE: The code below is preserved but currently unreachable (library miss returns above).
-		// It will be re-enabled when the prewarm-to-LLM path is introduced (T18.3.6+).
-		//
-		// T18.3.5A: Hard gate — if this point is somehow reached, refuse to call LLM unless
-		// allowLiveLLMForDebug is explicitly set (never true in production).
-		guard DynamicGeneratedProposalEngine.allowLiveLLMForDebug else {
-			print("[ARCHITECTURE ERROR] DynamicGeneratedProposalEngine reached live LLM path — expected library-only mode (T18.3.5A). Suppressing call.")
-			assertionFailure("[ARCHITECTURE ERROR] DynamicGeneratedProposalEngine reached live LLM path — expected library-only mode (T18.3.5A).")
-			return result(
-				status: .quietByGate,
-				reason: "architecture_error_live_llm_suppressed",
-				warnings: ["diag:architecture_error_live_llm_suppressed"],
-				cause: nil,
-				referenceTime: referenceTime
-			)
-		}
-
-		if let gate = preflightGate(
-			snapshot: snapshot,
-			situational: situationalContext,
-			history: history,
-			referenceTime: referenceTime
-		) {
-			logMetadata(event: "large_model_called", value: "no", extra: "reason=\(gate.reason)")
-			return gate
-		}
-
-		guard LocalAISettings.shared.localAIEnabled else {
-			logMetadata(event: "large_model_called", value: "no", extra: "reason=local_ai_disabled")
-			return .unavailable(reason: "local_ai_disabled", cause: .modelUnavailable)
-		}
-
-		guard await modelManager.isGenerationAvailable() else {
-			if ModelManager.shared.isWithinStartupGrace() {
-				logMetadata(event: "large_model_called", value: "no", extra: "reason=startup_grace")
-				return .unavailable(reason: "startup_grace", cause: .startupGrace)
-			}
-			logMetadata(event: "large_model_called", value: "no", extra: "reason=model_unavailable")
-			return .unavailable(reason: "model_unavailable", cause: .modelUnavailable)
-		}
-
-		// Large model approved by decision stage.
-
-		let prompt = DynamicGeneratedProposalPromptBuilder.build(
-			snapshot: snapshot,
-			existingStaticActions: existingStaticActions,
-			reusableCount: reusableActions.count,
-			history: history,
-			budget: budget,
-			situational: situationalContext
-		)
-
-		let model = LocalAISettings.shared.modelName
-		logMetadata(event: "large_model_called", value: "yes", extra: "model=\(model) prompt_bytes=\(prompt.utf8.count)")
-		logMetadata(event: "llm_generation_started", value: model, extra: "prompt_bytes=\(prompt.utf8.count)")
-		// T18.3.5A: This line must never be reached in production (library-only mode).
-		// If the app doesn't crash here → wrong file is executing.
-		// T18.3.5A legacy fatal sentinel removed (T18.3.10A).
-
-		let generationStart = Date()
-		let raw: String
-		do {
-			raw = try await withTimeout {
-				try await self.client.generate(prompt: prompt, model: model)
-			}
-		} catch is CancellationError {
-			logMetadata(event: "llm_generation_cancelled", value: "1", extra: "cause=context_cancelled")
-			return result(
-				status: .cancelled,
-				reason: "cancelled",
-				warnings: ["context_cancelled"],
-				cause: .contextCancelled,
-				referenceTime: referenceTime
-			)
-		} catch let err as DynamicGeneratedProposalEngineError {
-			switch err {
-			case .appTimeout:
-				// Record fingerprint so next cycle for this context is skipped by decision stage.
-				let fp = AgenticProposalDecisionEngine.contextFingerprint(
-					snapshot: snapshot,
-					situational: situationalContext
-				)
-				await decisionEngine.recordTimeout(fingerprint: fp, at: referenceTime)
-				logMetadata(event: "llm_generation_timeout", value: "1", extra: "cause=app_timeout fingerprint_recorded=yes")
-				return result(
-					status: .timeout,
-					reason: "app_timeout",
-					warnings: ["app_timeout"],
-					cause: .appTimeout,
-					referenceTime: referenceTime
-				)
-			}
-		} catch {
-			let elapsed = Date().timeIntervalSince(generationStart)
-			let cause: DynamicGeneratedProposalLLMDiagnosticCause = elapsed < 2.5 ? .clientFailed : .responseTooSlow
-			logMetadata(
-				event: "llm_generation_failed",
-				value: "1",
-				extra: "cause=\(cause.rawValue) elapsed_ms=\(Int(elapsed * 1000))"
-			)
-			return .unavailable(reason: cause.rawValue, cause: cause)
-		}
-
-		#if DEBUG
-		if ProcessInfo.processInfo.environment["CONTEXTUAL_DEBUG_LLM_OUTPUT"] == "1" {
-			let preview = String(raw.prefix(300))
-			logMetadata(event: "debug_llm_output", value: "1", extra: "preview=\(preview)")
-		}
-		#endif
-
-		let (parsed, hardFailTag) = DynamicGeneratedProposalParser.parseWithReason(from: raw, referenceTime: referenceTime)
-		guard let parsed else {
-			// Parser logs byte bucket, extraction result, and alias diagnostics via parser_diag.
-			logMetadata(
-				event: "llm_parse_failed",
-				value: "1",
-				extra: "cause=malformed_response bytes=\(raw.utf8.count)"
-			)
-			return result(
-				status: .parseFailed,
-				reason: "parse_failed",
-				warnings: [hardFailTag ?? "diag:parse_failed"],
-				cause: .malformedResponse,
-				referenceTime: referenceTime
-			)
-		}
-
-		let filtered = filterRepetitive(parsed: parsed, history: history)
-		logMetadata(
-			event: "llm_generated_proposals_count",
-			value: "\(filtered.proposals.count)",
-			extra: "should_chime_in=\(filtered.shouldChimeIn)"
-		)
-		logMetadata(event: "llm_should_chime_in", value: filtered.shouldChimeIn ? "true" : "false", extra: nil)
-		if filtered.shouldChimeIn, let top = filtered.proposals.first {
-			logMetadata(event: "proposal_promoted_reason", value: top.usefulnessHint, extra: "title_len=\(top.title.count)")
-		}
-		return filtered
+		// NOTE: Live large-model proposal synthesis is intentionally disabled in the hot path.
+		// Any future slow-path LLM work should be wired as explicit/deferred work, not part of
+		// continuous proposal updates.
 	}
 
 	// MARK: - Gates
@@ -659,12 +734,171 @@ actor DynamicGeneratedProposalEngine {
 		autoVisualGatheredAtByFingerprint[fingerprint] = time
 	}
 
+	// MARK: - Model-requested context escalation helpers (PART A)
+
+	/// Returns true if this fingerprint has not been escalated within the cooldown window.
+	/// Model-requested escalation uses a SEPARATE gate from auto-visual-gather so that
+	/// a prior proactive OCR attempt does not block a model-driven request on a new page.
+	private func canEscalateContext(_ fingerprint: String, referenceTime: Date) -> Bool {
+		if let last = contextEscalatedAtByFingerprint[fingerprint],
+		   referenceTime.timeIntervalSince(last) < Self.contextEscalationCooldownSeconds {
+			return false
+		}
+		// Prune stale entries.
+		let cutoff = referenceTime.addingTimeInterval(-Self.contextEscalationCooldownSeconds * 2)
+		contextEscalatedAtByFingerprint = contextEscalatedAtByFingerprint.filter { $0.value > cutoff }
+		return true
+	}
+
+	private func recordContextEscalationAttempt(_ fingerprint: String, at time: Date) {
+		contextEscalatedAtByFingerprint[fingerprint] = time
+	}
+
+	/// Gathers the context types requested by the model via `need[]`.
+	/// Currently maps all visual context needs to the existing BoundedVisualContextRequest machinery.
+	/// Returns an enriched snapshot (or nil) plus metadata-only counts for diagnostics.
+	private func gatherEscalatedContext(
+		need: [String],
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) async -> (snapshot: CanonicalGeneratedExecutionContextSnapshot?, axChars: Int, ocrChars: Int, hasDescriptors: Bool, denialReason: String?) {
+		var denialReason: String?
+		var working = snapshot
+		var axChars = 0
+		var ocrChars = 0
+		var hasDescriptors = false
+		var didChange = false
+
+		// MARK: - AX window text (accessibility)
+		let wantsAX = need.contains("ax_window_text") || need.contains("browser_text")
+		if wantsAX {
+			let accessibilityAllowed = snapshot.permissionAvailability[.accessibility] != false
+			if !accessibilityAllowed {
+				denialReason = "permission_accessibility_denied"
+			} else if let ax = AXWindowContentSource.shared.extractActiveWindowContent() {
+				let joined = ax.visibleTextFragments.prefix(40).joined(separator: " • ")
+				let excerpt = String(joined.prefix(900))
+				axChars = excerpt.count
+				if axChars > 0 {
+					working = working.merging(axWindowTextExcerpt: excerpt, referenceTime: referenceTime)
+					didChange = true
+				}
+			} else if denialReason == nil {
+				denialReason = "ax_unavailable"
+			}
+		}
+
+		// MARK: - Visual/OCR gathering (screen recording)
+		let wantsOCR = need.contains("visible_ocr")
+		let wantsVisual = need.contains("visual_descriptor")
+		let wantsScreen = wantsOCR || wantsVisual
+
+		if wantsScreen {
+			guard let scheduler = visualScheduler else {
+				denialReason = denialReason ?? "no_visual_scheduler"
+				return (didChange ? working : nil, axChars, ocrChars, hasDescriptors, denialReason)
+			}
+			// Screen recording permission check — denied means we can't gather OCR/visual.
+			if snapshot.permissionAvailability[.screenRecording] == false {
+				denialReason = denialReason ?? "permission_screen_recording_denied"
+				return (didChange ? working : nil, axChars, ocrChars, hasDescriptors, denialReason)
+			}
+
+		let escalationBudget = ExecutionBudget(
+			maxCPUPercent: 30,
+			maxConcurrentTasks: 1,
+			maxExecutionTime: 12,
+			allowsVision: true,
+			allowsOCR: wantsOCR,
+			allowsLLM: false,
+			allowsBackgroundWork: false,
+			thermalStateSensitivity: 0.55,
+			budgetPriority: .low
+		)
+		let wf = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
+		let request = BoundedVisualContextRequest(
+			reason: "context_escalation:model_requested:[\(need.joined(separator: ","))]",
+			workflowType: wf,
+			intentType: .unknown,
+			requiresOCR: wantsOCR,
+			requiresVisualDescription: wantsVisual,
+			maxWindowSeconds: 8,
+			maxOCRCharacters: min(BoundedVisualContextBounds.defaultMaxOCRCharacters, 800),
+			maxDescriptionCharacters: min(BoundedVisualContextBounds.defaultMaxDescriptionCharacters, 300),
+			budget: escalationBudget,
+			permissionAvailability: snapshot.permissionAvailability,
+			createdAt: referenceTime,
+			expiresAt: referenceTime.addingTimeInterval(10)
+		)
+
+		let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
+			activeExecutionCount: 0,
+			runtimeState: .idle,
+			permissionAvailability: snapshot.permissionAvailability,
+			activeSamplingRequested: true
+		)
+
+		let visualResult = await scheduler.collect(request: request, budgetSnapshot: budgetSnapshot)
+			if !(visualResult.status == .completed || visualResult.status == .partial) {
+				denialReason = denialReason ?? "gather_\(visualResult.status.rawValue)"
+				return (didChange ? working : nil, axChars, ocrChars, hasDescriptors, denialReason)
+			}
+
+		// Record gate so auto-visual-gather knows visual context was recently obtained.
+		await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
+
+		let classification = VisualContextWorkflowClassifier.classify(
+			appCategory: situational.appCategory,
+			windowTitle: situational.windowTitle,
+			visualTags: visualResult.visualTags,
+			ocrExcerpt: visualResult.ocrExcerpt,
+			priorWorkflow: situational.inferredWorkflow,
+			priorConfidence: situational.workflowConfidence
+		)
+
+			let merged = working.merging(
+			visualResult: visualResult,
+			priorWorkflow: classification.workflow,
+			priorWorkflowConfidence: classification.confidence,
+			referenceTime: referenceTime
+		)
+			ocrChars = (merged.recentOCRExcerpt ?? "").count
+			hasDescriptors = merged.visualContextAvailability.hasUsableVisual
+			didChange = true
+			working = merged
+		}
+
+		if didChange {
+			return (working, axChars, ocrChars, hasDescriptors, nil)
+		}
+		return (nil, axChars, ocrChars, hasDescriptors, denialReason ?? "no_op")
+	}
+
 	/// Privacy-safe fingerprint hint for per-window auto-visual gating (process-local).
 	private static func autoVisualGatherFingerprint(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
 		situational: SituationalContextSnapshot
 	) -> String {
 		let raw = "\(snapshot.bundleIdentifier ?? snapshot.activeApp)|\(situational.windowTitle)|\(situational.inferredWorkflow.rawValue)"
+		let hint = abs(raw.hashValue)
+		return String(hint, radix: 16)
+	}
+
+	/// Fingerprint for model-requested context escalation.
+	/// Intentionally excludes inferredWorkflow so that a workflow change after enrichment
+	/// doesn't allow repeated escalation attempts on the same page/window.
+	private static func contextEscalationFingerprint(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot
+	) -> String {
+		let bundle = (situational.activeBundleId ?? snapshot.bundleIdentifier ?? snapshot.activeApp).lowercased()
+		var title = situational.windowTitle.lowercased()
+		for suffix in [" - google chrome", " - safari", " - firefox", " — mozilla firefox"] {
+			if title.hasSuffix(suffix) { title = String(title.dropLast(suffix.count)) }
+		}
+		title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+		let raw = "\(bundle)|\(title)"
 		let hint = abs(raw.hashValue)
 		return String(hint, radix: 16)
 	}
@@ -742,6 +976,114 @@ actor DynamicGeneratedProposalEngine {
 			print("[DynamicGeneratedProposal] \(event)=\(value) \(extra)")
 		} else {
 			print("[DynamicGeneratedProposal] \(event)=\(value)")
+		}
+	}
+
+	// MARK: - Hook-composed proposal mapping
+
+	private static func proposal(
+		from contract: DynamicGeneratedActionContract,
+		situational: SituationalContextSnapshot
+	) -> ValidatedDynamicGeneratedProposal {
+		let workflow = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
+		let ids = contract.hookPlanIds.filter { $0 != "observe_current_context" && $0 != "present_result" }
+		let resolved = HookCapabilityRegistry.shared.resolveNeededCapabilities(ids).resolved
+		let primitives = HookCapabilityRegistry.primitives(from: resolved)
+		let intent: IntentType = {
+			if primitives.contains(.compareContexts) { return .compare }
+			if primitives.contains(.explainError) { return .explain }
+			if primitives.contains(.extractActionItems) { return .extract }
+			if primitives.contains(.organizeInformation) { return .organize }
+			if primitives.contains(.synthesizeResearchSummary) { return .synthesize }
+			if primitives.contains(.structureNotes) { return .structure }
+			if primitives.contains(.classifyWorkflow) { return .classify }
+			if primitives.contains(.answerFromContext) { return .answer }
+			if primitives.contains(.summarizeContext) { return .summarize }
+			return .unknown
+		}()
+
+		let interruptionCost: Double = {
+			let base: Double
+			switch workflow {
+			case .debugging: base = 0.26
+			case .research, .browsing, .studying: base = 0.22
+			default: base = 0.18
+			}
+			return max(0.08, min(0.65, base - max(0, (contract.confidence - 0.7)) * 0.12))
+		}()
+
+		return ValidatedDynamicGeneratedProposal(
+			id: contract.id,
+			title: contract.title,
+			description: contract.userFacingQuestion,
+			workflowType: workflow,
+			intentType: intent,
+			expectedOutcome: contract.inferredUserGoal,
+			requiredContextTypes: contract.requiredContext,
+			suggestedPrimitives: primitives,
+			interruptionCost: interruptionCost,
+			confidence: contract.confidence,
+			usefulnessHint: "hook_composer_cache"
+		)
+	}
+
+	// MARK: - Task inference memory + synthesis cache (metadata-only)
+
+	private func recordTitleObservation(
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) {
+		let key = (situational.activeBundleId ?? situational.activeAppName).lowercased()
+		let title = situational.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !title.isEmpty else { return }
+		var items = titleHistoryByBundle[key] ?? []
+		items.append(TaskInferenceTitleObservation(title: title, capturedAt: referenceTime))
+		if items.count > Self.titleHistoryMaxItems {
+			items.removeFirst(items.count - Self.titleHistoryMaxItems)
+		}
+		titleHistoryByBundle[key] = items
+	}
+
+	private func recentTitles(for situational: SituationalContextSnapshot) -> [String] {
+		let key = (situational.activeBundleId ?? situational.activeAppName).lowercased()
+		let history = titleHistoryByBundle[key] ?? []
+		return history.map(\.title)
+	}
+
+	private func dynamicActionCacheKey(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		recentTitles: [String]
+	) -> String {
+		TaskInferenceEngine.fingerprint(snapshot: snapshot, situational: situational, recentTitles: recentTitles)
+	}
+
+	private func rememberDynamicActionContract(
+		_ contract: DynamicGeneratedActionContract,
+		referenceTime: Date
+	) {
+		guard contract.cacheEligibility else { return }
+		dynamicActionCacheByKey[contract.cacheKey] = contract
+		pruneDynamicActionCache(referenceTime: referenceTime)
+	}
+
+	private func lookupCachedDynamicAction(
+		key: String,
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) -> DynamicGeneratedActionContract? {
+		pruneDynamicActionCache(referenceTime: referenceTime)
+		guard let cached = dynamicActionCacheByKey[key] else { return nil }
+		if cached.expiresAt <= referenceTime { return nil }
+		// Accelerator only: if we now have rich selected text, prefer fresh synthesis over cache.
+		if situational.selectedTextSignal.availability == .available { return nil }
+		return cached
+	}
+
+	private func pruneDynamicActionCache(referenceTime: Date) {
+		let cutoff = referenceTime.addingTimeInterval(-Self.dynamicActionCacheTTLSeconds)
+		dynamicActionCacheByKey = dynamicActionCacheByKey.filter { _, value in
+			value.createdAt >= cutoff && value.expiresAt > referenceTime
 		}
 	}
 }

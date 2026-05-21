@@ -50,7 +50,11 @@ final class FloatingSuggestionWindowController {
 				if visible {
 					self.positionPanelFixedSafe()
 					self.panel.orderFrontRegardless()
+					let f = self.panel.frame
+					// [FloatingSuggestionDebug] Part 4e — Panel state after ordering to front.
+					print("[FloatingSuggestionDebug] state=attached alpha=\(String(format: "%.2f", self.panel.alphaValue)) on_screen=\(self.panel.isVisible) frame=(\(Int(f.origin.x)),\(Int(f.origin.y)),\(Int(f.size.width)),\(Int(f.size.height))) level=\(self.panel.level.rawValue) screen=\(self.panel.screen != nil ? "yes" : "no")")
 				} else {
+					print("[FloatingSuggestionDebug] state=detached")
 					self.panel.orderOut(nil)
 				}
 			}

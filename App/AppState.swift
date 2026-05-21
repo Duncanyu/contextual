@@ -88,6 +88,110 @@ final class AppState: ObservableObject {
 	/// When the last visible generated proposal was published; used for resurfacing guarantee.
 	var lastVisibleProposalAt: Date?
 
+	/// T16.X — Snapshot of all reusable/seeded action records for the Action Library debug view.
+	/// Populated on demand when the library view expands; never auto-refreshed.
+	@Published private(set) var actionLibrarySnapshot: [ReusableGeneratedActionRecord] = []
+
+	/// Loads the latest action library snapshot from the persistence manager. Call when the
+	/// library debug view expands; safe to call repeatedly (actor-isolated, non-blocking).
+	func refreshActionLibrarySnapshot() {
+		Task {
+			let records = await GeneratedActionPersistenceManager.shared.snapshot()
+			let sorted = records.sorted {
+				if $0.workflowType.rawValue != $1.workflowType.rawValue {
+					return $0.workflowType.rawValue < $1.workflowType.rawValue
+				}
+				return $0.usefulnessScore > $1.usefulnessScore
+			}
+			await MainActor.run { self.actionLibrarySnapshot = sorted }
+		}
+	}
+
+	// MARK: - Task inference perf stats (debug panel)
+
+	/// Rolling task inference performance stats. Refreshed on demand by the debug panel.
+	@Published private(set) var taskInferenceStats: TaskInferenceRollingStats = .empty
+
+	/// Load latest stats from the actor; safe to call from main thread.
+	func refreshTaskInferenceStats() {
+		Task {
+			let model = ActiveModelTierConfig.shared.taskInferenceModel
+			let stats = await TaskInferencePerfStats.shared.rollingStats(model: model)
+			await MainActor.run { self.taskInferenceStats = stats }
+		}
+	}
+
+	/// Model audit discovered models — populated after audit runs.
+	@Published private(set) var auditDiscoveredModels: [String] = []
+
+	func refreshModelAuditInfo() {
+		Task {
+			let models = await ModelAuditManager.shared.lastDiscoveredModels()
+			await MainActor.run {
+				self.auditDiscoveredModels = models
+				self.refreshModelStatus()
+			}
+		}
+	}
+
+	// MARK: - Model management state
+
+	/// True while a benchmark audit is in progress.
+	@Published private(set) var modelAuditRunning: Bool = false
+
+	/// Whether the selected task inference model uses batch mode (set by audit smoke test).
+	@Published private(set) var taskInferenceBatchMode: Bool = false
+
+	/// Whether the audit explicitly found no viable model (the "none" sentinel was stored).
+	@Published private(set) var taskInferenceDisabled: Bool = false
+
+	/// The currently active task inference model name, or nil if disabled/not selected.
+	@Published private(set) var activeTaskInferenceModel: String? = nil
+
+	/// The planner model name (used for heavier synthesis, set in LocalAISettings).
+	var plannerModelName: String { LocalAISettings.shared.modelName }
+
+	func refreshModelStatus() {
+		let settings = LocalAISettings.shared
+		taskInferenceBatchMode = settings.taskInferenceBatchMode
+		taskInferenceDisabled = settings.taskInferenceModel == ModelTierConfig.noViableModel
+		activeTaskInferenceModel = settings.effectiveTaskInferenceModel
+	}
+
+	/// Trigger a fresh model benchmark audit. Safe to call from UI.
+	func triggerModelBenchmark() {
+		guard !modelAuditRunning else { return }
+		modelAuditRunning = true
+		Task.detached(priority: .utility) {
+			let base = LocalAISettings.shared.modelName
+			await ModelAuditManager.shared.runAudit(baseModel: base)
+			await MainActor.run { self.modelAuditRunning = false }
+			// refreshModelAuditInfo() also calls refreshModelStatus()
+			await self.refreshModelAuditInfo()
+			let chosen = await ModelAuditManager.shared.selectedModel() ?? base
+			await ModelAuditManager.shared.runWarmupIfNeeded(model: chosen)
+			await ModelAuditManager.shared.startPeriodicKeepalive(model: chosen)
+		}
+	}
+
+	/// Pull qwen2.5:0.5b (the recommended fast inference model) then re-run audit.
+	func installRecommendedInferenceModel() {
+		guard !modelAuditRunning else { return }
+		modelAuditRunning = true
+		Task.detached(priority: .utility) {
+			print("[ModelSelection] installing_recommended model=qwen2.5:0.5b")
+			let ok = await ModelManager.shared.pullModel(named: "qwen2.5:0.5b")
+			if ok {
+				let base = LocalAISettings.shared.modelName
+				await ModelAuditManager.shared.runAudit(baseModel: base)
+			} else {
+				print("[ModelSelection] install_failed model=qwen2.5:0.5b")
+			}
+			await MainActor.run { self.modelAuditRunning = false }
+			await self.refreshModelAuditInfo()
+		}
+	}
+
 	private let dismissedSuggestionCooldown = CooldownManager()
 	private let acceptedSuggestionCooldown = CooldownManager()
 	private let dismissedSuggestionCooldownSeconds: TimeInterval = 120
@@ -140,6 +244,13 @@ final class AppState: ObservableObject {
 	var onInvokeActionById: ((String) -> Void)?
 	/// User-invoked generated proposal execution; wired by app lifecycle (no UI/runtime coupling).
 	var onInvokeGeneratedExecutionProposalById: ((String) -> Void)?
+
+	/// Ephemeral mapping from activated candidate id → execution action (for non-reusable, hook/LLM
+	/// generated execution candidates). This avoids persisting raw context while still allowing
+	/// user-click execution to resolve the action plan deterministically.
+	///
+	/// This cache is refreshed on each publication cycle by the app lifecycle.
+	var generatedExecutionActionByCandidateId: [String: GeneratedExecutionAction] = [:]
 
 	var onEnableLocalAI: (() -> Void)?
 	var onDisableLocalAI: (() -> Void)?
@@ -274,6 +385,22 @@ final class AppState: ObservableObject {
 		if let debugStatus {
 			generatedProposalDebugStatus = debugStatus
 		}
+	}
+
+	/// App lifecycle injects the latest in-memory executable actions for generated proposals.
+	/// Reusable template executions are resolved via persistence; this cache is for non-reusable
+	/// synthesized candidates (e.g. hook-composed fast path).
+	func cacheGeneratedExecutionCandidateActions(_ candidates: [GeneratedExecutionProposalCandidate]) {
+		var map: [String: GeneratedExecutionAction] = [:]
+		for candidate in candidates {
+			guard let action = candidate.executionAction else { continue }
+			map[candidate.id] = action
+		}
+		generatedExecutionActionByCandidateId = map
+	}
+
+	func cachedGeneratedExecutionAction(candidateId: String) -> GeneratedExecutionAction? {
+		generatedExecutionActionByCandidateId[candidateId]
 	}
 
 	/// T18.6 — Update proposal visibility state after a publication cycle.

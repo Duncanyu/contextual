@@ -18,6 +18,13 @@ struct AssistantPanelView: View {
 	@State private var inlineAssistanceDebugExpanded: Bool = false
 	@State private var visibleIntelligenceDebugExpanded: Bool = false
 	@State private var generatedExecutionResultDebugExpanded: Bool = false
+	@State private var actionLibraryDebugExpanded: Bool = false
+	@State private var taskInferenceStatsExpanded: Bool = false
+	// Debug subsection expansion
+	@State private var debugSystemExpanded: Bool = false
+	@State private var debugContextExpanded: Bool = true
+	@State private var debugIntelligenceExpanded: Bool = false
+	@State private var debugPerformanceExpanded: Bool = false
 	@State private var dismissedVisibleGeneratedActionIds: Set<UUID> = []
 
 	var body: some View {
@@ -284,92 +291,184 @@ struct AssistantPanelView: View {
 
 	private var debugSection: some View {
 		DisclosureGroup(isExpanded: $debugExpanded) {
-			VStack(alignment: .leading, spacing: 8) {
-				Text("Active app: \(debugCtx.activeAppName ?? "—")")
-				windowTitleDebugLine(title: debugCtx.activeWindowTitle)
-				Text("Clipboard: available=\(debugCtx.clipboardTextAvailable) length=\(debugCtx.clipboardTextLength)")
-				Text("Selection: available=\(debugCtx.selectedTextAvailable) length=\(debugCtx.selectedTextLength)")
-				Text("Screen capture: available=\(debugCtx.screenCaptureAvailable)")
-				Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRTextLength) lines=\(debugCtx.screenOCRLineCount)")
-				Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
-				Text(appState.generatedProposalDebugStatus.logLine)
-					.font(.caption2)
-					.fixedSize(horizontal: false, vertical: true)
-				// T18.6 — Proposal pipeline visibility footer.
-				proposalVisibilityDebugFooter
-				if !appState.registeredToolActions.isEmpty {
-					VStack(alignment: .leading, spacing: 6) {
-						Text("Tools (debug)")
-							.font(.caption.weight(.medium))
-						ForEach(Array(appState.registeredToolActions.enumerated()), id: \.element.id) { _, action in
-							Button(action.name) {
-								appState.invokeAction(id: action.id)
-							}
-							.buttonStyle(.bordered)
-							.frame(maxWidth: .infinity, alignment: .leading)
-							.disabled(appState.isActionExecuting)
+			VStack(alignment: .leading, spacing: 10) {
+
+				// ── System ────────────────────────────────────────────────────────
+				DisclosureGroup(isExpanded: $debugSystemExpanded) {
+					VStack(alignment: .leading, spacing: 4) {
+						Text("Local AI: \(appState.localAIEnabled ? "enabled" : "disabled") · state=\(appState.modelRuntimeState.debugLabel)")
+						Text("Ollama model: \(appState.activeTaskInferenceModel ?? "none") · mode=\(appState.taskInferenceBatchMode ? "batch" : "stream")")
+						Text("Inference disabled: \(appState.taskInferenceDisabled)")
+						Text("Planner/executor: \(appState.plannerModelName)")
+						if !appState.auditDiscoveredModels.isEmpty {
+							Text("Discovered: \(appState.auditDiscoveredModels.joined(separator: ", "))")
 						}
-					}
-				}
-				Text("Recent apps (max 5): \(recentList(debugCtx.recentAppNames))")
-				Text("Recent triggers (max 5): \(recentList(debugCtx.recentTriggers))")
-
-				DisclosureGroup(isExpanded: $richContextDebugExpanded) {
-					RichContextDebugView(summary: appState.richContextDebugSummary)
-						.padding(.top, 4)
-				} label: {
-					Text("Rich context (internal)")
-						.font(.caption)
-						.fontWeight(.medium)
-				}
-
-				DisclosureGroup(isExpanded: $dynamicIntentDebugExpanded) {
-					DynamicIntentDebugView(summary: appState.dynamicIntentDebugSummary)
-						.padding(.top, 4)
-				} label: {
-					Text("Dynamic intent (internal)")
-						.font(.caption)
-						.fontWeight(.medium)
-				}
-
-				DisclosureGroup(isExpanded: $dynamicActionPreviewExpanded) {
-					DynamicActionPreviewView(summary: appState.dynamicActionDisplaySummary)
-						.padding(.top, 4)
-				} label: {
-					Text("Generated actions (internal)")
-						.font(.caption)
-						.fontWeight(.medium)
-				}
-
-				DisclosureGroup(isExpanded: $inlineAssistanceDebugExpanded) {
-					InlineAssistanceDebugView(snapshot: appState.inlineAssistanceSnapshot)
-						.padding(.top, 4)
-				} label: {
-					Text("Inline assistance (internal)")
-						.font(.caption)
-						.fontWeight(.medium)
-				}
-
-				DisclosureGroup(isExpanded: $visibleIntelligenceDebugExpanded) {
-					VisibleIntelligenceDebugView(summary: appState.visibleIntelligenceDebugSummary)
-						.padding(.top, 4)
-				} label: {
-					Text("Visible intelligence (internal)")
-						.font(.caption)
-						.fontWeight(.medium)
-				}
-
-				DisclosureGroup(isExpanded: $generatedExecutionResultDebugExpanded) {
-					VStack(alignment: .leading, spacing: 10) {
-						GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.partial)
-						GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.failed)
 					}
 					.padding(.top, 4)
 				} label: {
-					Text("Generated execution result (sample)")
-						.font(.caption)
-						.fontWeight(.medium)
+					Text("System")
+						.font(.caption.weight(.medium))
+						.foregroundStyle(.primary)
 				}
+
+				Divider().opacity(0.35)
+
+				// ── Context ───────────────────────────────────────────────────────
+				DisclosureGroup(isExpanded: $debugContextExpanded) {
+					VStack(alignment: .leading, spacing: 4) {
+						Text("Active app: \(debugCtx.activeAppName ?? "—")")
+						windowTitleDebugLine(title: debugCtx.activeWindowTitle)
+						Text("Selection: available=\(debugCtx.selectedTextAvailable) length=\(debugCtx.selectedTextLength)")
+						Text("Clipboard: available=\(debugCtx.clipboardTextAvailable) length=\(debugCtx.clipboardTextLength)")
+						Text("Screen capture: available=\(debugCtx.screenCaptureAvailable)")
+						Text("OCR: available=\(debugCtx.screenOCRAvailable) chars=\(debugCtx.screenOCRTextLength) lines=\(debugCtx.screenOCRLineCount)")
+						Text("Last trigger: \(debugCtx.lastSourceTrigger?.rawValue ?? "—")")
+						Text("Recent apps: \(recentList(debugCtx.recentAppNames))")
+						Text("Recent triggers: \(recentList(debugCtx.recentTriggers))")
+
+						DisclosureGroup(isExpanded: $richContextDebugExpanded) {
+							RichContextDebugView(summary: appState.richContextDebugSummary)
+								.padding(.top, 4)
+						} label: {
+							Text("Rich context (internal)")
+								.font(.caption.weight(.medium))
+						}
+					}
+					.padding(.top, 4)
+				} label: {
+					Text("Context")
+						.font(.caption.weight(.medium))
+						.foregroundStyle(.primary)
+				}
+
+				Divider().opacity(0.35)
+
+				// ── Intelligence ──────────────────────────────────────────────────
+				DisclosureGroup(isExpanded: $debugIntelligenceExpanded) {
+					VStack(alignment: .leading, spacing: 4) {
+						Text(appState.generatedProposalDebugStatus.logLine)
+							.fixedSize(horizontal: false, vertical: true)
+
+						proposalVisibilityDebugFooter
+
+						if !appState.registeredToolActions.isEmpty {
+							VStack(alignment: .leading, spacing: 6) {
+								Text("Tools (debug)")
+									.font(.caption.weight(.medium))
+								ForEach(Array(appState.registeredToolActions.enumerated()), id: \.element.id) { _, action in
+									Button(action.name) {
+										appState.invokeAction(id: action.id)
+									}
+									.buttonStyle(.bordered)
+									.frame(maxWidth: .infinity, alignment: .leading)
+									.disabled(appState.isActionExecuting)
+								}
+							}
+						}
+
+						DisclosureGroup(isExpanded: $dynamicIntentDebugExpanded) {
+							DynamicIntentDebugView(summary: appState.dynamicIntentDebugSummary)
+								.padding(.top, 4)
+						} label: {
+							Text("Dynamic intent (internal)")
+								.font(.caption.weight(.medium))
+						}
+
+						DisclosureGroup(isExpanded: $dynamicActionPreviewExpanded) {
+							DynamicActionPreviewView(summary: appState.dynamicActionDisplaySummary)
+								.padding(.top, 4)
+						} label: {
+							Text("Generated actions (internal)")
+								.font(.caption.weight(.medium))
+						}
+
+						DisclosureGroup(isExpanded: $inlineAssistanceDebugExpanded) {
+							InlineAssistanceDebugView(snapshot: appState.inlineAssistanceSnapshot)
+								.padding(.top, 4)
+						} label: {
+							Text("Inline assistance (internal)")
+								.font(.caption.weight(.medium))
+						}
+
+						DisclosureGroup(isExpanded: $actionLibraryDebugExpanded) {
+							GeneratedActionLibraryDebugView(records: appState.actionLibrarySnapshot)
+								.padding(.top, 4)
+						} label: {
+							let eligibleCount = appState.actionLibrarySnapshot.filter { $0.reuseEligibility == .eligible }.count
+							let totalCount = appState.actionLibrarySnapshot.count
+							Text(totalCount > 0
+								 ? "Action library (\(eligibleCount)/\(totalCount) eligible)"
+								 : "Action library (tap to load)")
+								.font(.caption.weight(.medium))
+						}
+						.onChange(of: actionLibraryDebugExpanded) { expanded in
+							if expanded { appState.refreshActionLibrarySnapshot() }
+						}
+
+						DisclosureGroup(isExpanded: $visibleIntelligenceDebugExpanded) {
+							VisibleIntelligenceDebugView(summary: appState.visibleIntelligenceDebugSummary)
+								.padding(.top, 4)
+						} label: {
+							Text("Visible intelligence (internal)")
+								.font(.caption.weight(.medium))
+						}
+
+						DisclosureGroup(isExpanded: $generatedExecutionResultDebugExpanded) {
+							VStack(alignment: .leading, spacing: 10) {
+								GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.partial)
+								GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.failed)
+							}
+							.padding(.top, 4)
+						} label: {
+							Text("Generated execution result (sample)")
+								.font(.caption.weight(.medium))
+						}
+					}
+					.padding(.top, 4)
+				} label: {
+					Text("Intelligence")
+						.font(.caption.weight(.medium))
+						.foregroundStyle(.primary)
+				}
+
+				Divider().opacity(0.35)
+
+				// ── Performance ───────────────────────────────────────────────────
+				DisclosureGroup(isExpanded: $debugPerformanceExpanded) {
+					VStack(alignment: .leading, spacing: 4) {
+						let s = appState.taskInferenceStats
+						if s.attempts == 0 {
+							Text("No inference attempts recorded yet.")
+						} else {
+							let pct = Int(s.successRate * 100)
+							Text("Success: \(pct)% · timeout: \(Int(s.timeoutRate * 100))%")
+								.foregroundStyle(s.timeoutRate > 0.15 ? Color.orange : Color.secondary)
+							Text("p50=\(s.p50LatencyMs)ms")
+						}
+						DisclosureGroup(isExpanded: $taskInferenceStatsExpanded) {
+							TaskInferenceStatsDebugView(stats: appState.taskInferenceStats)
+								.padding(.top, 4)
+						} label: {
+							Text("Task inference detail")
+								.font(.caption.weight(.medium))
+						}
+						.onChange(of: taskInferenceStatsExpanded) { expanded in
+							if expanded { appState.refreshTaskInferenceStats() }
+						}
+					}
+					.padding(.top, 4)
+					.onAppear { appState.refreshTaskInferenceStats() }
+				} label: {
+					let s = appState.taskInferenceStats
+					let perfLabel: String = {
+						if s.attempts == 0 { return "Performance" }
+						return "Performance · p50=\(s.p50LatencyMs)ms · \(Int(s.successRate * 100))% ok"
+					}()
+					Text(perfLabel)
+						.font(.caption.weight(.medium))
+						.foregroundStyle(s.timeoutRate > 0.15 ? Color.orange : Color.primary)
+				}
+
 			}
 			.font(.caption)
 			.foregroundStyle(.secondary)

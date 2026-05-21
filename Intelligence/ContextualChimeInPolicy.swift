@@ -77,7 +77,7 @@ enum ContextualChimeInPolicy {
 	// MARK: - Thresholds (named for legibility)
 
 	private static let suppressScoreFloor: Double = 0.40      // T18.6: loosened from 0.42
-	private static let panelOnlyScoreFloor: Double = 0.52
+	private static let panelOnlyScoreFloor: Double = 0.48     // T18.6B: lowered from 0.52 — more floating on confident fresh context
 	private static let noveltySuppress: Double = 0.12          // T18.6: loosened from 0.25 — only suppress near-zero novelty
 	private static let noveltyPenaltyThreshold: Double = 0.55  // T18.6: loosened from 0.65
 	private static let dismissalHardSuppress: TimeInterval = 60
@@ -200,7 +200,7 @@ enum ContextualChimeInPolicy {
 
 		let floatingEligible = score >= panelOnlyScoreFloor
 			&& factors.topInterruptionCost < 0.5
-			&& factors.workflowConfidence >= 0.35
+			&& factors.workflowConfidence >= 0.28  // T18.6B: relaxed from 0.35 — browsing often has moderate confidence
 			&& !factors.isContextStale
 
 		reasons.append(floatingEligible ? "floating_eligible" : "panel_only")

@@ -17,5 +17,14 @@ enum ProposalLoggingFlags {
 		return false
 		#endif
 	}
-}
 
+	/// Debug-only fallback to the seeded template library when task inference fails.
+	/// Disabled by default; enable only for explicit debugging.
+	static var templateFallbackEnabled: Bool {
+		#if DEBUG
+		ProcessInfo.processInfo.environment["CONTEXTUAL_ENABLE_TEMPLATE_FALLBACK"] == "1"
+		#else
+		return false
+		#endif
+	}
+}

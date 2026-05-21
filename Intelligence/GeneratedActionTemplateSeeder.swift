@@ -5,7 +5,7 @@ import Foundation
 /// Increment to trigger re-seeding with new templates on next launch.
 /// Previously seeded records that still exist are preserved (idempotent inserts).
 enum GeneratedActionTemplateSeedVersion {
-	static let current = 2
+	static let current = 3
 }
 
 // MARK: - Seeder
@@ -65,7 +65,7 @@ actor GeneratedActionTemplateSeeder {
 
 	// MARK: - Built-in catalog
 
-	/// The canonical seed set (v2). All templates:
+	/// The canonical seed set (v3). All templates:
 	/// - Use bounded ExecutionPrimitive codes
 	/// - Are NOT static summarize/explain/rewrite actions
 	/// - Start eligible with conservative stats so they survive eligibility re-scoring
@@ -171,6 +171,132 @@ actor GeneratedActionTemplateSeeder {
 				intent: .structure,
 				primitive: ExecutionPrimitive.organizeInformation.rawValue,
 				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			makeTemplate(
+				id: "browsing|compare|compare_contexts|workflow_context|v1",
+				title: "Compare the main options or positions on this page",
+				description: "Lay out the key alternatives, trade-offs, or conflicting claims visible in this browser context",
+				workflow: .browsing,
+				intent: .compare,
+				primitive: ExecutionPrimitive.compareContexts.rawValue,
+				contextTypes: [.workflowContext],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			makeTemplate(
+				id: "browsing|review|synthesize_research_summary|workflow_context|v1",
+				title: "Evaluate this page as a useful source",
+				description: "Assess the credibility, depth, and relevance of the current page's content",
+				workflow: .browsing,
+				intent: .review,
+				primitive: ExecutionPrimitive.synthesizeResearchSummary.rawValue,
+				contextTypes: [.workflowContext],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			makeTemplate(
+				id: "browsing|summarize|summarize_context|workflow_context|v1",
+				title: "Summarize what this page is actually about",
+				description: "Distill the main point, angle, and conclusion of the current page into a single summary",
+				workflow: .browsing,
+				intent: .summarize,
+				primitive: ExecutionPrimitive.summarizeContext.rawValue,
+				contextTypes: [.workflowContext],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			makeTemplate(
+				id: "browsing|synthesize|synthesize_research_summary|none|v1",
+				title: "Synthesize the main takeaways before moving on",
+				description: "Collect the most useful signals from the current page and distill them into concrete takeaways",
+				workflow: .browsing,
+				intent: .synthesize,
+				primitive: ExecutionPrimitive.synthesizeResearchSummary.rawValue,
+				contextTypes: [.none],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			makeTemplate(
+				id: "browsing|answer|answer_from_context|text_snippet|v1",
+				title: "Surface the key decision buried in this content",
+				description: "Identify the core question, trade-off, or decision this page is ultimately about",
+				workflow: .browsing,
+				intent: .answer,
+				primitive: ExecutionPrimitive.answerFromContext.rawValue,
+				contextTypes: [.textSnippet],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			makeTemplate(
+				id: "browsing|structure|structure_notes|workflow_context|v1",
+				title: "Structure the key points from this page",
+				description: "Extract and organize the most important sections and ideas from the current page into a clear outline",
+				workflow: .browsing,
+				intent: .structure,
+				primitive: ExecutionPrimitive.structureNotes.rawValue,
+				contextTypes: [.workflowContext],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			// MARK: Comparing / Side-by-side work
+
+			makeTemplate(
+				id: "comparing|compare|compare_contexts|workflow_context|v1",
+				title: "Map out what's being compared and what's missing",
+				description: "Identify the comparison dimensions, criteria gaps, and what would make this comparison complete",
+				workflow: .comparing,
+				intent: .compare,
+				primitive: ExecutionPrimitive.compareContexts.rawValue,
+				contextTypes: [.workflowContext],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			makeTemplate(
+				id: "comparing|structure|organize_information|workflow_context|v1",
+				title: "Organize the comparison into a clear grid",
+				description: "Lay out the items and dimensions in a structured format suited to the current context",
+				workflow: .comparing,
+				intent: .structure,
+				primitive: ExecutionPrimitive.organizeInformation.rawValue,
+				contextTypes: [.workflowContext],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			// MARK: Organizing / Information architecture
+
+			makeTemplate(
+				id: "organizing|organize|organize_information|workflow_context|v1",
+				title: "Reorganize this content into a cleaner structure",
+				description: "Identify the current structure, what's out of place, and suggest a reorganization plan",
+				workflow: .organizing,
+				intent: .organize,
+				primitive: ExecutionPrimitive.organizeInformation.rawValue,
+				contextTypes: [.workflowContext],
+				expiry: expiry,
+				referenceTime: referenceTime
+			),
+
+			// MARK: Reviewing / Evaluation
+
+			makeTemplate(
+				id: "reviewing|review|synthesize_research_summary|workflow_context|v1",
+				title: "Identify what's strong, weak, and missing here",
+				description: "Generate a balanced evaluation of the current content: strengths, gaps, and what to check next",
+				workflow: .reviewing,
+				intent: .review,
+				primitive: ExecutionPrimitive.synthesizeResearchSummary.rawValue,
+				contextTypes: [.workflowContext],
 				expiry: expiry,
 				referenceTime: referenceTime
 			),

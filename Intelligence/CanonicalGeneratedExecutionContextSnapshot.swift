@@ -531,3 +531,91 @@ extension CanonicalGeneratedExecutionContextSnapshot {
 		)
 	}
 }
+
+// MARK: - AX window text enrichment (proposal-scoped; metadata-only)
+
+extension CanonicalGeneratedExecutionContextSnapshot {
+	/// Returns a copy of the snapshot enriched with a bounded excerpt of AX window text fragments.
+	/// This is metadata-only: the snapshot never carries full AX trees or unbounded text.
+	func merging(
+		axWindowTextExcerpt: String,
+		referenceTime: Date = Date()
+	) -> CanonicalGeneratedExecutionContextSnapshot {
+		let trimmed = axWindowTextExcerpt.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else { return self }
+
+		let capped = CanonicalGeneratedExecutionContextSnapshot.capExcerpt(trimmed) ?? trimmed
+		let priorSummary = contextSummary ?? ""
+		let mergedSummaryRaw: String = {
+			if priorSummary.isEmpty { return "ax=\(capped)" }
+			if priorSummary.contains("ax=") { return priorSummary }
+			return priorSummary + " | ax=" + capped
+		}()
+		let mergedSummary = CanonicalGeneratedExecutionContextSnapshot.capSummary(mergedSummaryRaw) ?? mergedSummaryRaw
+
+		var mergedTypes = availableContextTypes
+		var seen = Set(mergedTypes)
+		if seen.insert(.textSnippet).inserted { mergedTypes.append(.textSnippet) }
+
+		let mergedMetadata = CanonicalExecutionSourceMetadata(
+			selectedTextCapturedAt: sourceMetadata.selectedTextCapturedAt,
+			clipboardCapturedAt: sourceMetadata.clipboardCapturedAt,
+			ocrCapturedAt: sourceMetadata.ocrCapturedAt,
+			contextUpdatedAt: referenceTime,
+			lastSourceTrigger: sourceMetadata.lastSourceTrigger,
+			fusedConfidence: sourceMetadata.fusedConfidence,
+			fusedConflictScore: sourceMetadata.fusedConflictScore,
+			fusedSuppressedSources: sourceMetadata.fusedSuppressedSources,
+			fusedArbitrationReasons: sourceMetadata.fusedArbitrationReasons,
+			fusedPrimarySource: sourceMetadata.fusedPrimarySource,
+			sessionContinuityScore: sourceMetadata.sessionContinuityScore,
+			sessionDominantWorkflow: sourceMetadata.sessionDominantWorkflow
+		)
+
+		let provisional = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: activeApp,
+			windowTitle: windowTitle,
+			bundleIdentifier: bundleIdentifier,
+			inferredWorkflow: inferredWorkflow,
+			inferredIntent: inferredIntent,
+			selectedText: selectedText,
+			clipboardText: clipboardText,
+			recentOCRExcerpt: recentOCRExcerpt,
+			contextSummary: mergedSummary,
+			workflowConfidence: workflowConfidence,
+			availableContextTypes: mergedTypes,
+			visualContextAvailability: visualContextAvailability,
+			permissionAvailability: permissionAvailability,
+			generatedAt: referenceTime,
+			freshnessScore: freshnessScore,
+			sourceMetadata: mergedMetadata,
+			fusedPacketId: fusedPacketId,
+			packetIsStale: packetIsStale
+		)
+
+		let scored = GeneratedExecutionContextFreshnessScorer.score(
+			snapshot: provisional,
+			referenceTime: referenceTime
+		)
+		return CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: provisional.activeApp,
+			windowTitle: provisional.windowTitle,
+			bundleIdentifier: provisional.bundleIdentifier,
+			inferredWorkflow: provisional.inferredWorkflow,
+			inferredIntent: provisional.inferredIntent,
+			selectedText: provisional.selectedText,
+			clipboardText: provisional.clipboardText,
+			recentOCRExcerpt: provisional.recentOCRExcerpt,
+			contextSummary: provisional.contextSummary,
+			workflowConfidence: provisional.workflowConfidence,
+			availableContextTypes: provisional.availableContextTypes,
+			visualContextAvailability: provisional.visualContextAvailability,
+			permissionAvailability: provisional.permissionAvailability,
+			generatedAt: provisional.generatedAt,
+			freshnessScore: scored,
+			sourceMetadata: provisional.sourceMetadata,
+			fusedPacketId: provisional.fusedPacketId,
+			packetIsStale: provisional.packetIsStale
+		)
+	}
+}

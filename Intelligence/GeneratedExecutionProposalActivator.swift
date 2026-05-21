@@ -5,7 +5,9 @@ enum GeneratedExecutionProposalActivator {
 
 	static let generatedProposalIdPrefix = "generated_exec:"
 	static let maxPanelGeneratedVisible = 2
-	static let floatingStrongScoreThreshold = 0.78
+	/// T16.X: lowered from 0.78 → 0.58. Chime policy is now the primary floating gate.
+	/// The old 0.78 wall blocked all seeded templates (confidence ≈ 0.72) from ever floating.
+	static let floatingStrongScoreThreshold = 0.58
 	static let panelMediumScoreThreshold = 0.52
 	static let preSuppressConfidenceThreshold = 0.44
 
@@ -87,12 +89,43 @@ enum GeneratedExecutionProposalActivator {
 			from: input.reusableRecords,
 			referenceTime: referenceTime
 		)
+
+		// workflowResolution needed for promotion; compute it first using the raw reusableCandidates.
 		let workflowResolution = resolveEffectiveWorkflow(input: input, reusableCandidates: reusableCandidates)
 		print(
 			"[GeneratedProposalActivation] reusable_candidates count=\(reusableCandidates.count) input_records=\(input.reusableRecords.count) effective_workflow=\(workflowResolution.workflow.rawValue) wf_source=\(workflowResolution.source) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) canonical_workflow=\(input.snapshot.inferredWorkflow.rawValue) canonical_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence))"
 		)
+
+		// Part A — Apply generic penalty / rich boost before ranking so richer templates win.
+		let promotedReusable = applyProposalPromotion(to: reusableCandidates, effectiveWorkflow: workflowResolution.workflow)
+
+		// [GeneratedProposalDebug] Part 1 — Per-candidate trace (verbose only).
+		if ProposalLoggingFlags.verboseProposalLogsEnabled {
+			for c in promotedReusable.prefix(8) {
+				let prim = c.primitiveSignature ?? "?"
+				print("[GeneratedProposalDebug] candidate id=\(c.id.prefix(50)) primitive=\(prim) workflow=\(c.workflowType.rawValue) title=\"\(c.title.prefix(60))\" confidence=\(String(format: "%.2f", c.confidence))")
+			}
+		}
+		// [GeneratedProposalDebug] Part 3 — Diversity summary before pre-suppression.
+		let diagUniquePrims = Set(promotedReusable.compactMap { $0.primitiveSignature }).count
+		let diagUniqueTitles = Set(promotedReusable.map { $0.title }).count
+		let diagUniqueWfs = Set(promotedReusable.map { $0.workflowType.rawValue }).count
+		let diagPrimFreq = Dictionary(grouping: promotedReusable.compactMap { $0.primitiveSignature }, by: { $0 })
+			.mapValues { $0.count }
+			.sorted { $0.value > $1.value }
+			.prefix(5)
+			.map { "\($0.key):\($0.value)" }
+			.joined(separator: ",")
+		print("[GeneratedProposalDebug] diversity candidate_count=\(promotedReusable.count) unique_primitives=\(diagUniquePrims) unique_titles=\(diagUniqueTitles) unique_workflows=\(diagUniqueWfs) top_primitives=[\(diagPrimFreq)]")
+		let promotedTopTitles = promotedReusable
+			.sorted { $0.confidence > $1.confidence }
+			.prefix(3)
+			.map { "\"\($0.title.prefix(40))\"" }
+			.joined(separator: ", ")
+		print("[GeneratedProposalPromotion] final_top_titles=[\(promotedTopTitles)]")
+
 		var reusablePassed = 0
-		for reusable in reusableCandidates {
+		for reusable in promotedReusable {
 			if let reason = preSuppressReason(candidate: reusable, input: input) {
 				preSuppressedGenerated += 1
 				logSuppressed(id: reusable.id, reason: reason)
@@ -104,13 +137,22 @@ enum GeneratedExecutionProposalActivator {
 			}
 			candidates.append(reusable)
 		}
-		let topTitles = reusableCandidates
+		let topTitles = promotedReusable
 			.prefix(2)
 			.map(\.title)
 			.joined(separator: "|")
 		print(
-			"[GeneratedProposalActivation] summary reusable_total=\(reusableCandidates.count) reusable_passed=\(reusablePassed) pre_suppressed_generated=\(preSuppressedGenerated) top_titles=\(topTitles)"
+			"[GeneratedProposalActivation] summary reusable_total=\(promotedReusable.count) reusable_passed=\(reusablePassed) pre_suppressed_generated=\(preSuppressedGenerated) top_titles=\(topTitles)"
 		)
+
+		// [GeneratedProposalDebug] Part 2 — Fallback dominance check after pre-suppression.
+		let diagFallbackPrefixes = ["Prepare a next step", "Identify what context", "Extract key signals",
+		                            "Gather sparse visual", "Take a bounded", "Gather context from"]
+		let diagPassedReusable = candidates.filter { $0.source == .reusableGenerated }
+		let diagFallbackCount = diagPassedReusable.filter { c in diagFallbackPrefixes.contains(where: { c.title.hasPrefix($0) }) }.count
+		let diagRichCount = diagPassedReusable.filter { c in !diagFallbackPrefixes.contains(where: { c.title.hasPrefix($0) }) }.count
+		let diagRatio = diagPassedReusable.isEmpty ? "n/a" : String(format: "%.2f", Double(diagRichCount) / Double(diagPassedReusable.count))
+		print("[GeneratedProposalDebug] fallback_dominance passed_reusable=\(diagPassedReusable.count) rich=\(diagRichCount) generic_fallback=\(diagFallbackCount) rich_ratio=\(diagRatio)")
 
 		let rankables = candidates.map { UnifiedActionRankingAdapter.fromProposalCandidate($0) }
 		let fusedStale = input.snapshot.packetIsStale
@@ -152,6 +194,17 @@ enum GeneratedExecutionProposalActivator {
 			context: rankingContext,
 			emitLog: true
 		)
+
+		// [GeneratedProposalDebug] Part 4a — Post-ranking score trace (verbose only).
+		if ProposalLoggingFlags.verboseProposalLogsEnabled {
+			for ranked in ranking.rankedActions.prefix(6) where ranked.action.isGeneratedFamily {
+				let rScore = ranked.components.finalScore
+				let panelOk = rScore >= panelMediumScoreThreshold
+				let floatOk = rScore >= floatingStrongScoreThreshold
+				let codes = ranked.rankingExplanationCodes.prefix(3).joined(separator: ",")
+				print("[GeneratedProposalDebug] ranked_candidate id=\(ranked.action.id.prefix(40)) score=\(String(format: "%.3f", rScore)) panel=\(panelOk ? "yes" : "NO") float=\(floatOk ? "yes" : "NO") gap_to_float=\(String(format: "%.3f", floatingStrongScoreThreshold - rScore)) codes=\(codes.isEmpty ? "none" : codes)")
+			}
+		}
 
 		let timing = evaluateTiming(
 			input: input,
@@ -223,6 +276,17 @@ enum GeneratedExecutionProposalActivator {
 
 		if visibleStaticIds.isEmpty, !input.suppressStaticProposalFallback {
 			visibleStaticIds = input.staticActionIds
+		}
+
+		// [FloatingSuggestionDebug] Part 4c — floatingGeneratedProposalId gate result.
+		// If nil despite timing.allowsFloatingGenerated=true, the 0.78 score threshold is the wall.
+		let diagTopGenScore = ranking.rankedActions.first(where: { $0.action.isGeneratedFamily })?.components.finalScore ?? 0
+		if let fid = floatingId {
+			print("[FloatingSuggestionDebug] floating_id_set id=\(fid.prefix(50)) top_gen_score=\(String(format: "%.3f", diagTopGenScore))")
+		} else if timing.allowsFloatingGenerated {
+			print("[FloatingSuggestionDebug] floating_id_nil timing=allows top_gen_score=\(String(format: "%.3f", diagTopGenScore)) threshold=\(floatingStrongScoreThreshold) reason=score_below_float_threshold")
+		} else {
+			print("[FloatingSuggestionDebug] floating_id_nil timing=blocks top_gen_score=\(String(format: "%.3f", diagTopGenScore)) timing_outcome=\(timing.outcome.rawValue)")
 		}
 
 		let topSource = ranking.rankedActions.first?.action.sourceType
@@ -311,9 +375,9 @@ enum GeneratedExecutionProposalActivator {
 			return "low_freshness"
 		}
 
-		// Reusable / library-sourced templates work on workflow metadata — a stale clipboard is
-		// irrelevant to them and must not suppress a valid library hit (T18.3.6C).
-		if candidate.source != .reusableGenerated,
+		// Reusable/library and hook-composer candidates don't depend on clipboard freshness.
+		// Hook-composer actions gather context at execution time — stale clipboard is irrelevant.
+		if candidate.source != .reusableGenerated, candidate.source != .hookComposer,
 		   clipboardOnlyStaleContext(snapshot: input.snapshot, referenceTime: input.referenceTime)
 		{
 			return "stale_clipboard_only"
@@ -388,7 +452,15 @@ enum GeneratedExecutionProposalActivator {
 		// For reusable candidates only check hard physical constraints that absolutely require
 		// live sensor data: text presence for selectedText/textSnippet, visual for fusedVisual.
 		// Trust the library's retrieval decision for .workflowContext and .errorContext.
-		if candidate.source == .reusableGenerated {
+		//
+		// MARK: Hook-composer candidates — lenient path
+		// Hook-composer actions are built with minimized required context and gather remaining
+		// context at execution time (via observe_current_context / gather_visible_context_once).
+		// Strict bridge validation would reject them for .multiSource when only one tab is open,
+		// even though the hook plan can still run and produce a partial or escalated result.
+		// Trust the composer's minimized requirements; only enforce hard physical constraints.
+		if candidate.source == .reusableGenerated || candidate.source == .hookComposer {
+			let pathLabel = candidate.source == .hookComposer ? "hook_composer_lenient" : "reusable_trust_library"
 			var passed = true
 			if required.contains(.selectedText) || required.contains(.textSnippet) {
 				let hasText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -396,10 +468,27 @@ enum GeneratedExecutionProposalActivator {
 				if !hasText { passed = false }
 			}
 			if passed, required.contains(.fusedVisual) || required.contains(.screenCapture) {
-				if !snapshot.visualContextAvailability.hasUsableVisual { passed = false }
+				if snapshot.visualContextAvailability.hasUsableVisual {
+					// ok
+				} else if candidate.source == .hookComposer,
+						  let plan = candidate.executionAction?.executionPlan,
+						  (plan.requiresVision || plan.requiresOCR)
+				{
+					// Hook-composed actions may gather one bounded visual context during execution.
+					// Do not suppress visibility just because visual isn't present yet.
+					let screenAllowed = snapshot.permissionAvailability[.screenRecording] != false
+					if !screenAllowed { passed = false }
+				} else {
+					passed = false
+				}
 			}
 			if ProposalLoggingFlags.verboseProposalLogsEnabled {
-				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=reusable_trust_library passed=\(passed)")
+				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=\(pathLabel) passed=\(passed)")
+			} else if candidate.source == .hookComposer {
+				// Always log hook_composer decisions — they are the primary dynamic action path.
+				let req = required.map(\.rawValue).sorted().joined(separator: ",")
+				let reason = passed ? "context_can_be_gathered" : "missing_required_context"
+				print("[GeneratedProposalActivation] hook_candidate_\(passed ? "allowed" : "suppressed") reason=\(reason) id=\(String(candidate.id.prefix(60))) required=\(req)")
 			}
 			return passed
 		}
@@ -482,6 +571,17 @@ enum GeneratedExecutionProposalActivator {
 		let allowsPanel = topScore >= panelMediumScoreThreshold
 			|| input.isManualInvocation
 
+		// [FloatingSuggestionDebug] Part 4b — Float gate: shows score vs threshold and blocking condition.
+		// If passes=NO and gap_to_threshold is small, the 0.78 floor is the blocker.
+		let floatGapStr = String(format: "%.3f", floatingStrongScoreThreshold - topScore)
+		let floatBlockReason: String = {
+			if topScore < floatingStrongScoreThreshold { return "score_below_\(floatingStrongScoreThreshold)" }
+			if input.snapshot.workflowConfidence < 0.45 { return "wf_conf_\(String(format: "%.2f", input.snapshot.workflowConfidence))_below_0.45" }
+			if input.snapshot.packetIsStale { return "packet_stale" }
+			return "none"
+		}()
+		print("[FloatingSuggestionDebug] float_gate top_score=\(String(format: "%.3f", topScore)) threshold=\(floatingStrongScoreThreshold) gap=\(floatGapStr) passes=\(allowsFloating) block_reason=\(floatBlockReason)")
+
 		// T18.3.6C: Explicit timing decision log so suppression reason is always visible.
 		print("[GeneratedProposalActivation] timing_score topScore=\(String(format: "%.3f", topScore)) panel_threshold=\(panelMediumScoreThreshold) float_threshold=\(floatingStrongScoreThreshold) allows_panel=\(topScore >= panelMediumScoreThreshold) allows_float=\(allowsFloating) is_manual=\(input.isManualInvocation) wf_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence)) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) stale=\(input.snapshot.packetIsStale)")
 
@@ -536,6 +636,77 @@ enum GeneratedExecutionProposalActivator {
 		switch actionId {
 		case ScreenAnalyzeAction.analyzeScreenId: [.fusedVisual, .screenCapture]
 		default: [.textSnippet]
+		}
+	}
+
+	// MARK: - Proposal promotion (Part A)
+
+	/// Applies score adjustments so rich, workflow-specific proposals outrank generic fallbacks.
+	///
+	/// Rules:
+	/// - `.unknown` workflow → penalty (generic catch-all template)
+	/// - Specific title pattern known to be generic → additional penalty
+	/// - Workflow matches effective workflow → boost
+	///
+	/// Adjustments are applied to `confidence` which flows through to `UnifiedActionRankingAdapter`.
+	private static func applyProposalPromotion(
+		to candidates: [GeneratedExecutionProposalCandidate],
+		effectiveWorkflow: WorkflowType
+	) -> [GeneratedExecutionProposalCandidate] {
+		// Titles that are known generic last-resort patterns regardless of workflow.
+		let extraGenericPrefixes: [String] = [
+			"Classify the current workflow",
+			"Identify what context is needed",
+			"Take a bounded visual peek",
+		]
+		return candidates.map { c in
+			let isUnknownWorkflow = c.workflowType == .unknown
+			let isExtraGeneric = extraGenericPrefixes.contains(where: { c.title.hasPrefix($0) })
+			let isWorkflowAligned = effectiveWorkflow != .unknown
+				&& c.workflowType == effectiveWorkflow
+				&& c.workflowType != .unknown
+
+			var delta: Double = 0
+			var reason = ""
+
+			if isUnknownWorkflow {
+				delta -= 0.10
+				reason = "unknown_workflow"
+			}
+			if isExtraGeneric {
+				delta -= 0.06   // cumulative with unknown_workflow penalty
+				reason = reason.isEmpty ? "generic_title" : "\(reason)+generic_title"
+			}
+			if isWorkflowAligned, delta == 0 {
+				delta += 0.06
+				reason = "workflow_aligned"
+			}
+
+			guard delta != 0 else { return c }
+
+			let newConf = min(1.0, max(0, c.confidence + delta))
+			if delta < 0 {
+				print("[GeneratedProposalPromotion] generic_penalty id=\(c.id.prefix(40)) title=\"\(c.title.prefix(50))\" reason=\(reason) delta=\(String(format: "%.2f", delta))")
+			} else {
+				print("[GeneratedProposalPromotion] rich_boost id=\(c.id.prefix(40)) title=\"\(c.title.prefix(50))\" reason=\(reason) delta=+\(String(format: "%.2f", delta))")
+			}
+			return GeneratedExecutionProposalCandidate(
+				id: c.id,
+				title: c.title,
+				description: c.description,
+				source: c.source,
+				workflowType: c.workflowType,
+				intentType: c.intentType,
+				confidence: newConf,
+				interruptionCost: c.interruptionCost,
+				explainabilitySummary: c.explainabilitySummary,
+				expectedOutputSummary: c.expectedOutputSummary,
+				requiredContextTypes: c.requiredContextTypes,
+				executionAction: c.executionAction,
+				generatedActionId: c.generatedActionId,
+				primitiveSignature: c.primitiveSignature,
+				isExecutableGeneratedProposal: c.isExecutableGeneratedProposal
+			)
 		}
 	}
 

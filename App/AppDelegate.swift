@@ -194,6 +194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			LocalAISettings.shared.localAIEnabled = false
 			self.appState.localAIEnabled = false
 			self.appState.modelRuntimeState = .unavailable
+			Task.detached(priority: .utility) {
+				await ModelAuditManager.shared.stopPeriodicKeepalive()
+			}
 		}
 
 		appState.onEnableAutoStartOllama = { [weak self] in
@@ -283,6 +286,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				updateState: { runtimeState in
 					DispatchQueue.main.async {
 						uiState.modelRuntimeState = runtimeState
+						// After model becomes ready: refresh persisted model status immediately,
+						// then run audit and warmup in background.
+						if case .ready = runtimeState {
+							Task { await uiState.refreshModelStatus() }
+							Task.detached(priority: .utility) {
+								let base = LocalAISettings.shared.modelName
+								// Run parser + composer self-test on startup (no live AI — fast).
+								let selfTestOk = await TaskInferenceSelfTest.run()
+								if !selfTestOk {
+									print("[TaskInferenceSelfTest] WARNING startup self-test failed — parser may reject model output")
+								}
+								// Run model audit (discover + benchmark candidates).
+								await ModelAuditManager.shared.runAuditIfNeeded(baseModel: base)
+								await uiState.refreshModelAuditInfo()
+								// Speculative warmup after audit selects the best model.
+								let chosen = await ModelAuditManager.shared.selectedModel() ?? base
+								await ModelAuditManager.shared.runWarmupIfNeeded(model: chosen)
+								// Start keepalive loop to prevent Ollama from unloading the
+								// model between inference bursts (default Ollama idle TTL = 5 min).
+								await ModelAuditManager.shared.startPeriodicKeepalive(model: chosen)
+							}
+						}
 					}
 				}
 			)
@@ -749,6 +774,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			snapshot: proposalSnapshot,
 			budget: .conservative
 		)
+		// Cache executable generated execution actions for user-click execution (non-reusable).
+		appState.cacheGeneratedExecutionCandidateActions(llmCandidates)
 
 		let reusableCandidatesForLog = GeneratedExecutionProposalCandidateBuilder.buildReusable(
 			from: llmResult.libraryRecords,
@@ -791,8 +818,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		   let floatingId = activation.floatingGeneratedProposalId,
 		   let topGenerated = activation.visibleProposals.first
 		{
+			let question = topGenerated.subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+			let headline: String
+			if question.hasSuffix("?"), question.count <= 110 {
+				headline = question
+			} else {
+				headline = "Try: \(topGenerated.title)?"
+			}
 			publishedProposal = ActionProposal(
-				title: "Try: \(topGenerated.title)?",
+				title: headline,
 				sourceCaption: "Generated proposal",
 				primaryActionId: floatingId,
 				secondaryActionIds: [],
@@ -985,6 +1019,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			snapshot: prepared.snapshot,
 			budget: .conservative
 		)
+		// Cache executable generated execution actions for user-click execution (non-reusable).
+		appState.cacheGeneratedExecutionCandidateActions(llmCandidates)
 
 		let reusableCandidatesForLog2 = GeneratedExecutionProposalCandidateBuilder.buildReusable(
 			from: llmResult.libraryRecords,
@@ -1036,8 +1072,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		   let floatingId = activation.floatingGeneratedProposalId,
 		   let topGenerated = activation.visibleProposals.first
 		{
+			let question = topGenerated.subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+			let headline: String
+			if question.hasSuffix("?"), question.count <= 110 {
+				headline = question
+			} else {
+				headline = "Try: \(topGenerated.title)?"
+			}
 			publishedProposal = ActionProposal(
-				title: "Try: \(topGenerated.title)?",
+				title: headline,
 				sourceCaption: "Generated proposal",
 				primaryActionId: floatingId,
 				secondaryActionIds: [],
@@ -1045,6 +1088,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				reason: "generated_execution_proposal"
 			)
 			publishedProposalKey = "\(packet.triggerType.rawValue)|\(floatingId)|generated"
+			print("[FloatingSuggestionDebug] proposal_constructed title=\"\(topGenerated.title.prefix(60))\" floatingId=\(floatingId.prefix(40))")
+		} else {
+			// Log which condition blocked construction for diagnosis.
+			let blockReason: String = {
+				if !activation.timingDecision.allowsFloatingGenerated {
+					return "timing_blocks_floating outcome=\(activation.timingDecision.outcome.rawValue)"
+				}
+				if activation.floatingGeneratedProposalId == nil {
+					return "floating_id_nil visible_count=\(activation.visibleProposals.count)"
+				}
+				return "no_visible_proposals"
+			}()
+			print("[FloatingSuggestionDebug] proposal_not_constructed reason=\(blockReason) panel_proposals=\(activation.visibleProposals.count)")
 		}
 
 		if packet.triggerType != .manualInvocation, let key = publishedProposalKey {
@@ -1067,18 +1123,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		// T18.5: Apply chime-in policy before publishing.
 		let chimeFilteredActivation = applyChimeInPolicy(to: activation, packet: packet, snapshot: proposalSnapshot)
-		let chimeFilteredProposal: ActionProposal?
-		let chimeFilteredProposalKey: String?
+		var chimeFilteredProposal: ActionProposal?
+		var chimeFilteredProposalKey: String?
 		if chimeFilteredActivation.timingDecision.allowsFloatingGenerated {
 			chimeFilteredProposal = publishedProposal
 			chimeFilteredProposalKey = publishedProposalKey
 		} else if publishedProposal?.reason == "generated_execution_proposal" {
+			print("[FloatingSuggestionDebug] proposal_chime_nulled chime_allows_float=no proposal_was=\(publishedProposal != nil ? "set" : "nil")")
 			chimeFilteredProposal = nil
 			chimeFilteredProposalKey = nil
 		} else {
 			chimeFilteredProposal = publishedProposal
 			chimeFilteredProposalKey = publishedProposalKey
 		}
+
+		// Part B — Chime-driven floating fallback (T16.X).
+		// If chime policy says floatingSuggestion but the activator's old gate blocked floatingId,
+		// construct the proposal directly from the top visible panel proposal.
+		// This eliminates the double-gate problem: chime policy is the single authority for floating.
+		if chimeFilteredActivation.timingDecision.allowsFloatingGenerated,
+		   chimeFilteredProposal == nil,
+		   let topPanel = activation.visibleProposals.first
+		{
+			let chimeDrivenId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: topPanel.id)
+			chimeFilteredProposal = ActionProposal(
+				title: "Try: \(topPanel.title)?",
+				sourceCaption: "Generated proposal",
+				primaryActionId: chimeDrivenId,
+				secondaryActionIds: [],
+				confidence: topPanel.confidence,
+				reason: "generated_execution_proposal"
+			)
+			chimeFilteredProposalKey = "\(packet.triggerType.rawValue)|\(chimeDrivenId)|generated"
+			print("[FloatingSuggestionDebug] proposal_constructed reason=chime_policy_floating title=\"\(topPanel.title.prefix(60))\"")
+		}
+
+		print("[FloatingSuggestionDebug] chime_result allows_float=\(chimeFilteredActivation.timingDecision.allowsFloatingGenerated) proposal_survives=\(chimeFilteredProposal != nil)")
 
 		let toolActions = registeredToolActions(for: packet, context: context)
 		publishDynamicOnlyReasonedActions(
@@ -1863,7 +1943,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 					action = nil
 				}
 			} else {
-				action = nil
+				// Non-reusable synthesized candidates resolve via the ephemeral action cache populated
+				// during proposal activation (hook composer / non-library candidates).
+				action = self.appState.cachedGeneratedExecutionAction(candidateId: candidateId)
+				if let action {
+					self.appState.executingActionTitle = action.title
+				}
 			}
 
 			guard let action else {
@@ -1917,6 +2002,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				self.appState.latestActionTimestamp = Date()
 				self.appState.latestActionResult = nil
 				print("[GeneratedExecutionResult] presented status=\(status) sections=\(presentation.sections.count) followUps=\(presentation.followUpSuggestions.count)")
+				// Cache hook-composed actions only after a successful execution (accelerator, not source of truth).
+				if result.status == .success || result.status == .partialSuccess {
+					await DynamicGeneratedProposalEngine.shared.recordSuccessfulDynamicActionExecution(
+						candidateId: candidateId,
+						action: action,
+						referenceTime: Date()
+					)
+				}
 
 			case .rejected(let reason):
 				print("[GeneratedExecutionRuntime] live_completed id=\(candidateId.prefix(12)) status=rejected reason=\(reason.rawValue)")
@@ -2197,11 +2290,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return true
 		}
 
-		// Inline assistance foundations (T16.6; synthetic; metadata-only).
+		// Inline assistance foundations (T16.6 + T18.6; synthetic; metadata-only).
 		// Run with `CONTEXTUAL_RUN_INLINE_ASSISTANCE_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_INLINE_ASSISTANCE_SELFTEST"] == "1" {
-			let ok = InlineAssistanceCandidateBuilder.runSelfTest()
-			print("[InlineAssistance] env selftest ok=\(ok)")
+			let builderOk = InlineAssistanceCandidateBuilder.runSelfTest()
+			let policyOk  = InlineAssistanceEligibilityPolicy.runSelfTest()
+			let ok = builderOk && policyOk
+			print("[InlineAssistance] env selftest ok=\(ok) builder=\(builderOk) policy=\(policyOk)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
@@ -2732,6 +2827,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			let ok = policyOk && noveltyOk && presenterOk
 			print("[ChimeInPolicy] selftest finished ok=\(ok) policy=\(policyOk) novelty=\(noveltyOk) presenter=\(presenterOk)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_TASK_INFERENCE_SELFTEST=1` to validate parser + composer (no live AI).
+		if env["CONTEXTUAL_RUN_TASK_INFERENCE_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await TaskInferenceSelfTest.run()
+				print("[TaskInferenceSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
 			return true
 		}
 

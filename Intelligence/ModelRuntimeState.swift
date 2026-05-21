@@ -14,4 +14,18 @@ enum ModelRuntimeState: Equatable {
 	case installing
 	case ready
 	case error(String)
+
+	/// Short label for debug UI.
+	var debugLabel: String {
+		switch self {
+		case .notInstalled: return "not_installed"
+		case .checking: return "checking"
+		case .starting: return "starting"
+		case .unavailable: return "unavailable"
+		case .modelMissing(let m): return "missing(\(m))"
+		case .installing: return "installing"
+		case .ready: return "ready"
+		case .error(let msg): return "error(\(msg.prefix(30)))"
+		}
+	}
 }

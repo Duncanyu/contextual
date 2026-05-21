@@ -7,6 +7,9 @@ enum GeneratedExecutionProposalSource: String, Hashable, Sendable, Codable, Case
 	case generatedAction = "generated_action"
 	case generatedExecution = "generated_execution"
 	case reusableGenerated = "reusable_generated"
+	/// Proposal composed by ModelDrivenHookComposer from task inference + hook capability registry.
+	/// Uses lenient context validation — composer already minimized requirements, execution handles rest.
+	case hookComposer = "hook_composer"
 }
 
 // MARK: - Candidate

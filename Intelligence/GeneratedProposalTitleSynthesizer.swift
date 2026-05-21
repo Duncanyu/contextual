@@ -77,6 +77,56 @@ enum GeneratedProposalTitleSynthesizer {
 				title: "Extract key signals from this page",
 				description: "Identify notable points, requirements, or action items from the current page context."
 			)
+		case (.browsing, .some(.compareContexts)):
+			return (
+				title: "Compare the main options or positions on this page",
+				description: "Lay out the key alternatives, trade-offs, or conflicting claims visible in the current context."
+			)
+		case (.browsing, .some(.synthesizeResearchSummary)):
+			return (
+				title: "Evaluate this page as a useful source",
+				description: "Assess the credibility, depth, and relevance of the current page's content."
+			)
+		case (.browsing, .some(.summarizeContext)):
+			return (
+				title: "Summarize what this page is actually about",
+				description: "Distill the main point, angle, and conclusion of the current page into a single summary."
+			)
+		case (.browsing, .some(.structureNotes)):
+			return (
+				title: "Structure the key points from this page",
+				description: "Extract and organize the most important sections and ideas into a clear outline."
+			)
+		case (.browsing, .some(.answerFromContext)):
+			return (
+				title: "Surface the key decision buried in this content",
+				description: "Identify the core question, trade-off, or decision this page is ultimately about."
+			)
+		case (.comparing, .some(.compareContexts)):
+			return (
+				title: "Map out what's being compared and what's missing",
+				description: "Identify the comparison dimensions, criteria gaps, and what would make this comparison complete."
+			)
+		case (.comparing, _):
+			return (
+				title: "Organize the comparison into a clear structure",
+				description: "Lay out the items and dimensions in a format suited to this comparison context."
+			)
+		case (.organizing, _):
+			return (
+				title: "Reorganize this content into a cleaner structure",
+				description: "Identify the current structure, what's out of place, and suggest a reorganization plan."
+			)
+		case (.reviewing, .some(.synthesizeResearchSummary)):
+			return (
+				title: "Identify what's strong, weak, and missing here",
+				description: "Generate a balanced evaluation: strengths, gaps, and what to check next."
+			)
+		case (.reviewing, _):
+			return (
+				title: "Evaluate the current content",
+				description: "Assess quality, completeness, and what would strengthen the current context."
+			)
 		case (.research, .some(.extractActionItems)):
 			return (
 				title: "Extract useful research questions",

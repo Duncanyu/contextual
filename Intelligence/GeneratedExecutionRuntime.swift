@@ -383,6 +383,28 @@ actor GeneratedExecutionRuntime {
 		var outputs: [ExecutionPrimitiveOutput] = []
 		var warnings: [String] = extraWarnings
 		let fallback = action.executionPlan.fallbackBehavior
+		let isHookComposer = action.generationSource == .hookComposer
+		let actionIdShort = action.id.uuidString.prefix(8)
+
+		func hookId(for primitive: ExecutionPrimitive) -> String {
+			// Best-effort mapping: the registry maps primitives to representative hook IDs.
+			let ids = HookCapabilityRegistry.hookIds(from: [primitive])
+			return ids.first(where: { $0 != "observe_current_context" && $0 != "present_result" }) ?? primitive.rawValue
+		}
+
+		if isHookComposer {
+			var hooks: [String] = ["observe_current_context"]
+			if action.executionPlan.requiresVision || action.executionPlan.requiresOCR {
+				hooks.append("gather_visible_context_once")
+				if action.executionPlan.requiresOCR { hooks.append("run_ocr_once") }
+			}
+			hooks.append(contentsOf: HookCapabilityRegistry.hookIds(from: action.executionPlan.primitives)
+				.filter { $0 != "observe_current_context" && $0 != "present_result" })
+			hooks.append("present_result")
+			var seen: Set<String> = []
+			let chain = hooks.filter { seen.insert($0).inserted }
+			print("[HookExecution] started actionId=\(actionIdShort) hooks=\(chain.joined(separator: ","))")
+		}
 
 		for primitive in action.executionPlan.primitives {
 			if let abort = checkAbort(action: action, startedAt: startedAt, deadline: deadline) {
@@ -403,6 +425,9 @@ actor GeneratedExecutionRuntime {
 				let code = "budget_\(primitiveBudget.reason.rawValue)"
 				warnings.append(code)
 				log(event: "primitive_skipped", reason: code, actionId: action.id)
+				if isHookComposer {
+					print("[HookExecution] hook_unavailable actionId=\(actionIdShort) id=\(hookId(for: primitive)) reason=\(code)")
+				}
 				if fallback == .failFast {
 					let result = finishBudgetDenied(
 						action: action,
@@ -421,6 +446,9 @@ actor GeneratedExecutionRuntime {
 
 			await budgetManager.recordPrimitiveStarted(primitive, action: action)
 			log(event: "primitive_started", reason: primitive.rawValue, actionId: action.id)
+			if isHookComposer {
+				print("[HookExecution] hook_started actionId=\(actionIdShort) id=\(hookId(for: primitive))")
+			}
 
 			do {
 				let output = try await primitiveRunner.run(
@@ -431,10 +459,16 @@ actor GeneratedExecutionRuntime {
 				outputs.append(output)
 				warnings.append(contentsOf: output.warnings)
 				log(event: "primitive_completed", reason: primitive.rawValue, actionId: action.id)
+				if isHookComposer {
+					print("[HookExecution] hook_completed actionId=\(actionIdShort) id=\(hookId(for: primitive))")
+				}
 			} catch ExecutionPrimitiveRunnerError.unsupportedPrimitive {
 				let code = "unsupported_\(primitive.rawValue)"
 				warnings.append(code)
 				log(event: "primitive_skipped", reason: code, actionId: action.id)
+				if isHookComposer {
+					print("[HookExecution] hook_unavailable actionId=\(actionIdShort) id=\(hookId(for: primitive)) reason=\(code)")
+				}
 				if fallback == .failFast {
 					await budgetManager.recordPrimitiveCompleted(primitive, action: action)
 					let result = finishFailed(
@@ -453,6 +487,9 @@ actor GeneratedExecutionRuntime {
 			} catch {
 				warnings.append(ExecutionPrimitiveRunnerError.insufficientContext.rawValue)
 				log(event: "primitive_skipped", reason: "error", actionId: action.id)
+				if isHookComposer {
+					print("[HookExecution] hook_unavailable actionId=\(actionIdShort) id=\(hookId(for: primitive)) reason=error")
+				}
 				if fallback == .failFast {
 					await budgetManager.recordPrimitiveCompleted(primitive, action: action)
 					let result = finishFailed(
@@ -483,6 +520,11 @@ actor GeneratedExecutionRuntime {
 			status = .partialSuccess
 		}
 
+		if isHookComposer {
+			let w = warnings.prefix(6).joined(separator: ",")
+			let wp = w.isEmpty ? "" : " warnings=\(w)"
+			print("[HookExecution] completed actionId=\(actionIdShort) status=\(status.rawValue)\(wp)")
+		}
 		return PrimitiveRunOutcome(outputs: outputs, warnings: warnings, status: status, abortResult: nil)
 	}
 

@@ -213,6 +213,9 @@ actor GeneratedActionTemplateLibrary: GeneratedActionTemplateLibraryProviding {
 		}
 		if situational.ocrSignal.availability == .available {
 			types.append(.fusedVisual)
+			// T18.6B: also include .none so visual-tagged templates (contextTypes: [.none])
+			// can surface alongside context-specific ones when OCR is present.
+			types.append(.none)
 		}
 		if situational.visualSignal.availability == .available {
 			types += [.fusedVisual, .screenCapture]

@@ -36,8 +36,27 @@ final class LocalAIClient: @unchecked Sendable {
 	}
 
 	func generate(prompt: String, model: String) async throws -> String {
+		try await generate(
+			prompt: prompt,
+			model: model,
+			numPredict: 220,
+			temperature: 0.15,
+			purpose: nil
+		)
+	}
+
+	/// Variant for fast, bounded calls (e.g. task inference). Default `generate(prompt:model:)`
+	/// remains the canonical path for longer completions.
+	func generate(
+		prompt: String,
+		model: String,
+		numPredict: Int,
+		temperature: Double,
+		purpose: String?
+	) async throws -> String {
 		let inputLength = prompt.utf8.count
-		print("[LocalAI] generate_started model=\(model) inputBytes=\(inputLength)")
+		let purposePart = (purpose?.isEmpty == false) ? " purpose=\(purpose!)" : ""
+		print("[LocalAI] generate_started model=\(model)\(purposePart) inputBytes=\(inputLength)")
 		do {
 			guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else {
 				throw LocalAIClientError.invalidURL
@@ -46,11 +65,16 @@ final class LocalAIClient: @unchecked Sendable {
 			request.httpMethod = "POST"
 			request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+			// keep_alive: keep model warm in Ollama for 10 min after each inference.
+			// This prevents the cold-start penalty (3–10s for phi3) on rapid context changes.
+			let keepAlive = (purpose == "task_inference" || purpose == "warmup" || purpose == "model_audit")
+				? "10m" : nil
 			let payload = OllamaGenerateRequest(
 				model: model,
 				prompt: prompt,
 				stream: false,
-				options: OllamaGenerateOptions(numPredict: 220, temperature: 0.15)
+				options: OllamaGenerateOptions(numPredict: numPredict, temperature: temperature),
+				keepAlive: keepAlive
 			)
 			request.httpBody = try JSONEncoder().encode(payload)
 
@@ -70,7 +94,7 @@ final class LocalAIClient: @unchecked Sendable {
 				throw LocalAIClientError.emptyResponse
 			}
 			let outLen = text.utf8.count
-			print("[LocalAI] generate_done model=\(model) outputBytes=\(outLen)")
+			print("[LocalAI] generate_done model=\(model)\(purposePart) outputBytes=\(outLen)")
 			#if DEBUG
 			if ProcessInfo.processInfo.environment["CONTEXTUAL_DEBUG_LLM_OUTPUT"] == "1" {
 				let preview = String(text.prefix(300))
@@ -79,16 +103,128 @@ final class LocalAIClient: @unchecked Sendable {
 			#endif
 			return text
 		} catch {
-			print("[LocalAI] generate_failed model=\(model)")
+			print("[LocalAI] generate_failed model=\(model)\(purposePart)")
 			throw error
 		}
 	}
+
+	// MARK: - Streaming JSON generation (Part E — Early termination)
+	//
+	// Streams NDJSON from Ollama's `stream:true` endpoint and returns as soon as a
+	// complete balanced `{...}` JSON object is detected in the accumulated response.
+	// This avoids waiting for trailing prose or markdown that models sometimes emit
+	// after the JSON object.
+	//
+	// Returns `nil` if streaming fails so callers can fall back to batch mode.
+
+	func generateStreamingJSON(
+		prompt: String,
+		model: String,
+		numPredict: Int,
+		temperature: Double,
+		purpose: String?
+	) async throws -> String {
+		guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else {
+			throw LocalAIClientError.invalidURL
+		}
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+		let payload = OllamaGenerateRequest(
+			model: model,
+			prompt: prompt,
+			stream: true,
+			options: OllamaGenerateOptions(numPredict: numPredict, temperature: temperature),
+			keepAlive: "10m"
+		)
+		request.httpBody = try JSONEncoder().encode(payload)
+
+		let purposePart = purpose.map { " purpose=\($0)" } ?? ""
+		let requestStart = Date()
+		print("[LocalAI] streaming_started model=\(model)\(purposePart) inputBytes=\(prompt.utf8.count)")
+
+		let (asyncBytes, response) = try await session.bytes(for: request)
+		guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+			let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+			print("[LocalAI] streaming_http_error model=\(model) status=\(code)")
+			throw LocalAIClientError.badStatusCode(code)
+		}
+
+		var accumulated = ""
+		var firstByteLogged = false
+		for try await line in asyncBytes.lines {
+			guard !line.isEmpty else { continue }
+			guard let lineData = line.data(using: .utf8) else { continue }
+			// Log first byte arrival time — critical for diagnosing whether Ollama is
+			// responding at all vs. model load / queue contention delaying everything.
+			if !firstByteLogged {
+				firstByteLogged = true
+				let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
+				print("[LocalAI] streaming_first_byte model=\(model)\(purposePart) elapsed_ms=\(ms)")
+			}
+			guard let chunk = try? JSONDecoder().decode(OllamaStreamChunk.self, from: lineData) else { continue }
+			if let token = chunk.response { accumulated += token }
+			// Stop as soon as we have a complete JSON object.
+			if hasCompletedJSONObject(accumulated) {
+				let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
+				print("[LocalAI] streaming_early_stop model=\(model)\(purposePart) outputBytes=\(accumulated.utf8.count) elapsed_ms=\(ms)")
+				return accumulated
+			}
+			if chunk.done == true { break }
+		}
+
+		if accumulated.isEmpty {
+			let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
+			print("[LocalAI] streaming_empty_response model=\(model)\(purposePart) first_byte=\(firstByteLogged ? "yes" : "no") elapsed_ms=\(ms)")
+			throw LocalAIClientError.emptyResponse
+		}
+		let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
+		print("[LocalAI] streaming_done model=\(model)\(purposePart) outputBytes=\(accumulated.utf8.count) elapsed_ms=\(ms)")
+		return accumulated
+	}
+
+	/// Returns true when `s` contains at least one complete, balanced `{...}` JSON object.
+	private func hasCompletedJSONObject(_ s: String) -> Bool {
+		var depth = 0
+		var inString = false
+		var escape = false
+		for ch in s {
+			if escape { escape = false; continue }
+			if ch == "\\" && inString { escape = true; continue }
+			if ch == "\"" { inString.toggle(); continue }
+			if inString { continue }
+			if ch == "{" { depth += 1 }
+			if ch == "}" {
+				guard depth > 0 else { continue }
+				depth -= 1
+				if depth == 0 { return true }
+			}
+		}
+		return false
+	}
+
+	private struct OllamaStreamChunk: Decodable {
+		let response: String?
+		let done: Bool?
+		let error: String?
+	}
+
+	// MARK: - Structs
 
 	private struct OllamaGenerateRequest: Encodable {
 		let model: String
 		let prompt: String
 		let stream: Bool
 		let options: OllamaGenerateOptions?
+		/// Ask Ollama to keep the model loaded in memory after this request.
+		/// "-1" = keep indefinitely; "10m" = 10 minutes. Prevents cold-start penalty.
+		let keepAlive: String?
+
+		enum CodingKeys: String, CodingKey {
+			case model, prompt, stream, options
+			case keepAlive = "keep_alive"
+		}
 	}
 
 	private struct OllamaGenerateOptions: Encodable {

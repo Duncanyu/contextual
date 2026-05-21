@@ -112,6 +112,8 @@ enum ExecutionResultStatus: String, Hashable, Sendable, Codable, CaseIterable {
 enum GenerationSource: String, Hashable, Sendable, Codable, CaseIterable {
 	case synthesizedIntent = "synthesized_intent"
 	case generatedAction = "generated_action"
+	/// Fast hook-based composition (no LLM in proposal hot path).
+	case hookComposer = "hook_composer"
 	case userRequested = "user_requested"
 	case reuseCache = "reuse_cache"
 	case selfTest = "self_test"

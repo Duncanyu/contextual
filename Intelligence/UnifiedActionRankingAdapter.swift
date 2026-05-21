@@ -193,6 +193,7 @@ enum UnifiedActionRankingAdapter {
 			case .generatedAction: .generatedAction
 			case .generatedExecution: .executableGenerated
 			case .reusableGenerated: .reusableGenerated
+			case .hookComposer: .executableGenerated
 			}
 		}()
 		let candidateType: UnifiedCandidateActionType = {
@@ -201,6 +202,7 @@ enum UnifiedActionRankingAdapter {
 			case .generatedAction: .generatedPreview
 			case .generatedExecution: .executionAction
 			case .reusableGenerated: .reusableTemplate
+			case .hookComposer: .executionAction
 			}
 		}()
 		let requiresVision = candidate.requiredContextTypes.contains(.fusedVisual)

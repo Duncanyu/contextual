@@ -198,7 +198,8 @@ struct SystemStatusView: View {
 					.font(.caption2)
 					.foregroundStyle(.secondary)
 			case .ready:
-				EmptyView()
+				LocalModelStatusView()
+					.onAppear { appState.refreshModelStatus() }
 			case .error(let message):
 				Text(message)
 					.font(.caption2)

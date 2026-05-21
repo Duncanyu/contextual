@@ -25,8 +25,12 @@ struct ExecutionPrimitiveRunner: Sendable {
 			return organizeInformation(context: context, action: action)
 		case .generateStudyNotes:
 			return generateStudyNotes(context: context, action: action)
-		case .compareContexts, .synthesizeResearchSummary, .classifyWorkflow:
-			throw ExecutionPrimitiveRunnerError.unsupportedPrimitive
+		case .compareContexts:
+			return compareContexts(context: context, action: action)
+		case .synthesizeResearchSummary:
+			return synthesizeResearchSummary(context: context, action: action)
+		case .classifyWorkflow:
+			return classifyWorkflow(context: context, action: action)
 		}
 	}
 
@@ -313,6 +317,120 @@ struct ExecutionPrimitiveRunner: Sendable {
 			content: content,
 			confidence: min(action.confidence, 0.78),
 			metadata: ["conceptCount": String(min(5, lines.count))]
+		)
+	}
+
+	private func compareContexts(
+		context: GeneratedExecutionContext,
+		action: GeneratedExecutionAction
+	) -> ExecutionPrimitiveOutput {
+		let selected = (context.selectedTextExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+		let clipboard = (context.clipboardTextExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+		let ocr = (context.ocrTextExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+		let left: (label: String, text: String)?
+		let right: (label: String, text: String)?
+
+		if !selected.isEmpty, !clipboard.isEmpty {
+			left = ("Selected text", selected)
+			right = ("Clipboard", clipboard)
+		} else if !selected.isEmpty, !ocr.isEmpty {
+			left = ("Selected text", selected)
+			right = ("OCR excerpt", ocr)
+		} else if !clipboard.isEmpty, !ocr.isEmpty {
+			left = ("Clipboard", clipboard)
+			right = ("OCR excerpt", ocr)
+		} else {
+			return insufficientOutput(primitive: .compareContexts, title: "Comparison")
+		}
+
+		guard let left, let right else {
+			return insufficientOutput(primitive: .compareContexts, title: "Comparison")
+		}
+
+		let leftLines = Array(nonEmptyLines(left.text).prefix(7))
+		let rightLines = Array(nonEmptyLines(right.text).prefix(7))
+		let leftSet = Set(leftLines.map { $0.lowercased() })
+		let rightSet = Set(rightLines.map { $0.lowercased() })
+		let overlap = Array(leftSet.intersection(rightSet)).sorted().prefix(8)
+
+		let sections = [
+			ExecutionResultSection(title: left.label, body: leftLines.joined(separator: "\n"), order: 0),
+			ExecutionResultSection(title: right.label, body: rightLines.joined(separator: "\n"), order: 1),
+			ExecutionResultSection(
+				title: "Overlap",
+				body: overlap.isEmpty ? "No obvious overlap in the bounded excerpts." : overlap.joined(separator: "\n"),
+				order: 2
+			),
+		]
+
+		let content = "Compared two bounded context sources (\(left.label) vs \(right.label))."
+		return ExecutionPrimitiveOutput(
+			primitive: .compareContexts,
+			title: "Comparison",
+			content: content,
+			sections: sections,
+			confidence: min(action.confidence, 0.78),
+			metadata: ["overlapCount": String(overlap.count)]
+		)
+	}
+
+	private func synthesizeResearchSummary(
+		context: GeneratedExecutionContext,
+		action: GeneratedExecutionAction
+	) -> ExecutionPrimitiveOutput {
+		let text = context.primarySourceText
+		guard !text.isEmpty else {
+			return insufficientOutput(primitive: .synthesizeResearchSummary, title: "Research takeaways")
+		}
+		let lines = nonEmptyLines(text)
+		let takeaways = lines.prefix(6).map { "• \($0)" }.joined(separator: "\n")
+		let sections = [
+			ExecutionResultSection(title: "Takeaways", body: takeaways, order: 0),
+			ExecutionResultSection(
+				title: "Questions to verify",
+				body: "• What claim here needs a primary source?\n• What counterexample or caveat might apply?",
+				order: 1
+			),
+			ExecutionResultSection(
+				title: "Next steps",
+				body: "• Save the most relevant links\n• Compare against one alternative source\n• Write down what you want to test/confirm",
+				order: 2
+			),
+		]
+		return ExecutionPrimitiveOutput(
+			primitive: .synthesizeResearchSummary,
+			title: "Research takeaways",
+			content: "Synthesized bounded takeaways (\(min(lines.count, 6)) points).",
+			sections: sections,
+			confidence: min(action.confidence, 0.74),
+			metadata: ["lineCount": String(lines.count)]
+		)
+	}
+
+	private func classifyWorkflow(
+		context: GeneratedExecutionContext,
+		action: GeneratedExecutionAction
+	) -> ExecutionPrimitiveOutput {
+		let wf = context.workflowType.rawValue
+		let intent = context.intentType.rawValue
+		let hints = [
+			"context_source=\(context.sourceType)",
+			"app=\(context.appName)",
+			"title_prefix=\(String(context.windowTitle.prefix(60)))",
+			"has_visual=\(context.hasActiveVisualContext ? "yes" : "no")",
+		].joined(separator: " ")
+		let content = """
+		Inferred workflow: \(wf)
+		Inferred intent: \(intent)
+		\(hints)
+		"""
+		return ExecutionPrimitiveOutput(
+			primitive: .classifyWorkflow,
+			title: "Workflow classification",
+			content: content,
+			confidence: min(action.confidence, 0.82),
+			metadata: ["workflowType": wf, "intentType": intent]
 		)
 	}
 

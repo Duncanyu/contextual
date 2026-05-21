@@ -50,7 +50,12 @@ enum DynamicGeneratedProposalCandidateMapper {
 			planConfidence: proposal.confidence
 		)
 
-		let explainability = "llm_dynamic|\(proposal.usefulnessHint)|primitives=\(primitives.map(\.rawValue).joined(separator: ","))"
+		// usefulnessHint variants: "hook_composer_model" (live), "hook_composer_cache" (cached).
+		// Neither equals "hook_composer" exactly — use hasPrefix to catch both.
+		let isHookComposer = proposal.usefulnessHint.hasPrefix("hook_composer")
+		let sourceTag = isHookComposer ? "hook_composer" : "llm_dynamic"
+		let explainability = "\(sourceTag)|\(proposal.usefulnessHint)|primitives=\(primitives.map(\.rawValue).joined(separator: ","))|contract=\(proposal.id.prefix(60))"
+		let generationSource: GenerationSource = isHookComposer ? .hookComposer : .generatedAction
 
 		let execution = GeneratedExecutionAction(
 			title: proposal.title,
@@ -62,18 +67,22 @@ enum DynamicGeneratedProposalCandidateMapper {
 			requiredContextTypes: proposal.requiredContextTypes,
 			executionPlan: plan,
 			explainabilitySummary: explainability,
-			generationSource: .generatedAction,
+			generationSource: generationSource,
 			createdAt: referenceTime,
 			expirationDate: referenceTime.addingTimeInterval(180),
 			isReusable: false,
 			reuseScore: snapshot.workflowConfidence
 		)
 
+		if ProposalLoggingFlags.verboseProposalLogsEnabled {
+			print("[GeneratedProposalMapper] mapped id=\(proposal.id.prefix(60)) source=\(isHookComposer ? "hook_composer" : "generatedExecution") hint=\(proposal.usefulnessHint)")
+		}
+
 		return GeneratedExecutionProposalCandidate(
 			id: proposal.id,
 			title: proposal.title,
 			description: proposal.description,
-			source: .generatedExecution,
+			source: isHookComposer ? .hookComposer : .generatedExecution,
 			workflowType: proposal.workflowType,
 			intentType: proposal.intentType,
 			confidence: proposal.confidence,

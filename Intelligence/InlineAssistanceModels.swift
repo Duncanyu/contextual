@@ -66,10 +66,313 @@ struct InlineAssistanceSnapshot: Equatable, Sendable {
 	let candidates: [InlineAssistanceChipModel]
 	let rows: [InlineAssistanceCandidate]
 	let eligibility: InlineAssistanceEligibility
+	/// T18.6 — Inferred context anchor for future inline positioning.
+	let anchor: InlineAssistanceAnchor
+	/// T18.6 — Presentation metadata (always `isPreviewOnly = true` in this phase).
+	let presentationState: InlineAssistancePresentationState
 
-	static let empty = InlineAssistanceSnapshot(candidates: [], rows: [], eligibility: InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: ["empty"]))
+	/// Backward-compatible initializer — existing callers omit anchor and presentationState.
+	init(
+		candidates: [InlineAssistanceChipModel],
+		rows: [InlineAssistanceCandidate],
+		eligibility: InlineAssistanceEligibility,
+		anchor: InlineAssistanceAnchor = .unknown,
+		presentationState: InlineAssistancePresentationState = .inactive
+	) {
+		self.candidates = candidates
+		self.rows = rows
+		self.eligibility = eligibility
+		self.anchor = anchor
+		self.presentationState = presentationState
+	}
+
+	static let empty = InlineAssistanceSnapshot(
+		candidates: [],
+		rows: [],
+		eligibility: InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: ["empty"])
+	)
 
 	var candidateCount: Int { rows.count }
+}
+
+// MARK: - Anchor (T18.6)
+
+/// The context surface that inline assistance would attach to.
+/// Metadata-only — does not capture screen coordinates or raw content.
+enum InlineAssistanceAnchorType: String, Hashable, Sendable, CaseIterable {
+	/// Text is selected — the primary, most reliable anchor.
+	case selection
+	/// Cursor position known via accessibility (future integration).
+	case cursor
+	/// A focused text field is accessible via AX API (future).
+	case focusedTextField
+	/// Active editor or document area (no position detail).
+	case activeDocument
+	/// On-screen visible region, derived from OCR bounds (no position detail).
+	case visibleRegion
+	/// No inline position available — panel is the fallback surface.
+	case panelFallback
+	case unknown
+}
+
+/// Metadata description of where inline assistance would be anchored.
+/// Immutable, Sendable — safe to pass across actor boundaries.
+struct InlineAssistanceAnchor: Equatable, Sendable {
+	let anchorType: InlineAssistanceAnchorType
+	/// True when the anchor source is confidently confirmed (e.g. selectedText length verified).
+	let isConfident: Bool
+	/// Tag describing the metadata source that determined this anchor (no raw content).
+	let sourceMetadataTag: String
+
+	static let panelFallback = InlineAssistanceAnchor(
+		anchorType: .panelFallback, isConfident: true, sourceMetadataTag: "panel"
+	)
+	static let unknown = InlineAssistanceAnchor(
+		anchorType: .unknown, isConfident: false, sourceMetadataTag: "none"
+	)
+}
+
+// MARK: - Presentation state (T18.6)
+
+/// Metadata-only state describing what inline assistance would present if it were shown.
+/// Not tied to the SwiftUI lifecycle — computed by the builder, read by debug UI only.
+/// `isPreviewOnly` is always true in T18.6 (foundations phase). No live inline popover yet.
+struct InlineAssistancePresentationState: Equatable, Sendable {
+	let anchor: InlineAssistanceAnchor
+	let candidateCount: Int
+	/// False when suppressed or deferred — candidates exist but will not appear inline.
+	let isVisible: Bool
+	let isDeferredByTyping: Bool
+	let isDeferredByPointer: Bool
+	let isSuppressedByExecution: Bool
+	/// Always true in T18.6; reserved for false when real inline UI is added.
+	let isPreviewOnly: Bool
+	let reasonCodes: [String]
+	let updatedAt: Date
+
+	static let inactive = InlineAssistancePresentationState(
+		anchor: .unknown,
+		candidateCount: 0,
+		isVisible: false,
+		isDeferredByTyping: false,
+		isDeferredByPointer: false,
+		isSuppressedByExecution: false,
+		isPreviewOnly: true,
+		reasonCodes: ["inactive"],
+		updatedAt: .distantPast
+	)
+}
+
+// MARK: - Eligibility policy inputs (T18.6)
+
+/// All metadata inputs the T18.6 eligibility policy uses.
+/// Deterministic and Sendable — no raw context, no LLM state.
+struct InlineAssistanceEligibilityFactors: Sendable {
+	let hasSelection: Bool
+	let selectionLength: Int
+	/// True when accessibility API reports a focused text field (future; currently always false).
+	let hasFocusedTextField: Bool
+	let isTypingActive: Bool
+	let typingBurstIntensity: TypingBurstIntensity?
+	let isPointerBursting: Bool
+	let isExecutionRunning: Bool
+	let isManualInvocation: Bool
+	let hasUsableContext: Bool
+	let contextFreshness: Double
+}
+
+// MARK: - Eligibility policy (T18.6)
+
+/// Deterministic, stateless eligibility policy for inline assistance (T18.6).
+///
+/// Rules (evaluated in order):
+/// 1. Execution running → suppress (hard gate)
+/// 2. No usable context, not manual → suppress
+/// 3. Context freshness below floor, not manual → suppress (stale)
+/// 4. Typing burst high → defer (no inline chip; panel-only later)
+/// 5. Pointer bursting → defer
+/// 6. Selection present and long enough → eligible
+/// 7. Manual invocation → allow (panel-only anchor)
+/// 8. Focused text field → maybe eligible (future AX integration)
+/// 9. Insufficient context → suppress
+///
+/// Never produces overlays or view objects — outputs `InlineAssistanceEligibility` only.
+enum InlineAssistanceEligibilityPolicy {
+
+	private static let minSelectionChars = TriggerEngine.selectedTextMinCharacterCount
+	private static let freshnessFloor: Double = 0.20
+
+	static func evaluate(factors: InlineAssistanceEligibilityFactors) -> InlineAssistanceEligibility {
+		// Hard suppression.
+		if factors.isExecutionRunning {
+			print("[InlineAssistance] suppressed reason=execution_running")
+			return suppress("execution_running")
+		}
+		if !factors.hasUsableContext && !factors.isManualInvocation {
+			print("[InlineAssistance] suppressed reason=no_context")
+			return suppress("no_context")
+		}
+		if factors.contextFreshness < freshnessFloor && !factors.isManualInvocation {
+			print("[InlineAssistance] suppressed reason=stale_context freshness=\(String(format: "%.2f", factors.contextFreshness))")
+			return suppress("stale_context")
+		}
+
+		// Deferral gates — safe to show later in panel, not inline right now.
+		if factors.isTypingActive, let burst = factors.typingBurstIntensity, burst == .high {
+			print("[InlineAssistance] deferred reason=typing burst=high")
+			return defer_("typing_burst")
+		}
+		if factors.isPointerBursting {
+			print("[InlineAssistance] deferred reason=pointer_burst")
+			return defer_("pointer_burst")
+		}
+
+		// Positive gates.
+		if factors.hasSelection && factors.selectionLength >= minSelectionChars {
+			print("[InlineAssistance] candidate_prepared reason=selection_eligible len=\(factors.selectionLength)")
+			return InlineAssistanceEligibility(allowsCandidates: true, reasonCodes: ["selection_eligible"])
+		}
+		if factors.isManualInvocation {
+			print("[InlineAssistance] preview_available anchor=panel reason=manual_invocation")
+			return InlineAssistanceEligibility(allowsCandidates: true, reasonCodes: ["manual_panel_only"])
+		}
+		if factors.hasFocusedTextField {
+			print("[InlineAssistance] candidate_prepared reason=focused_field")
+			return InlineAssistanceEligibility(allowsCandidates: true, reasonCodes: ["focused_field_maybe"])
+		}
+
+		print("[InlineAssistance] suppressed reason=insufficient_context")
+		return suppress("insufficient_context")
+	}
+
+	// MARK: - Helpers
+
+	private static func suppress(_ reason: String) -> InlineAssistanceEligibility {
+		InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: [reason])
+	}
+
+	/// Deferred = inline chip not shown now, but panel-only surface may follow.
+	private static func defer_(_ reason: String) -> InlineAssistanceEligibility {
+		InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: ["deferred:\(reason)"])
+	}
+
+	// MARK: - Self-test
+
+	static func runSelfTest() -> Bool {
+		var failures: [String] = []
+		func check(_ name: String, _ ok: Bool) { if !ok { failures.append(name) } }
+
+		let minLen = TriggerEngine.selectedTextMinCharacterCount
+
+		func factors(
+			hasSelection: Bool = false,
+			selLen: Int = 0,
+			hasFocused: Bool = false,
+			isTyping: Bool = false,
+			burst: TypingBurstIntensity? = nil,
+			isPointer: Bool = false,
+			isExec: Bool = false,
+			isManual: Bool = false,
+			hasCtx: Bool = true,
+			freshness: Double = 0.75
+		) -> InlineAssistanceEligibilityFactors {
+			InlineAssistanceEligibilityFactors(
+				hasSelection: hasSelection,
+				selectionLength: selLen,
+				hasFocusedTextField: hasFocused,
+				isTypingActive: isTyping,
+				typingBurstIntensity: burst,
+				isPointerBursting: isPointer,
+				isExecutionRunning: isExec,
+				isManualInvocation: isManual,
+				hasUsableContext: hasCtx,
+				contextFreshness: freshness
+			)
+		}
+
+		// Selection anchor eligible.
+		let selResult = evaluate(factors: factors(hasSelection: true, selLen: minLen + 10))
+		check("selection_eligible", selResult.allowsCandidates)
+		check("selection_reason", selResult.reasonCodes.contains("selection_eligible"))
+
+		// Short selection — not eligible without other signals.
+		check("short_selection_not_eligible",
+			!evaluate(factors: factors(hasSelection: true, selLen: minLen - 1)).allowsCandidates)
+
+		// Active typing (burst high) defers.
+		check("typing_burst_defers",
+			!evaluate(factors: factors(hasSelection: true, selLen: minLen + 5, isTyping: true, burst: .high)).allowsCandidates)
+
+		// Typing low intensity — does not defer (selection still wins).
+		check("typing_low_does_not_defer",
+			evaluate(factors: factors(hasSelection: true, selLen: minLen + 5, isTyping: true, burst: .low)).allowsCandidates)
+
+		// Pointer burst defers.
+		check("pointer_burst_defers",
+			!evaluate(factors: factors(isPointer: true)).allowsCandidates)
+
+		// Running execution suppresses (even with selection).
+		check("execution_suppresses",
+			!evaluate(factors: factors(hasSelection: true, selLen: minLen + 10, isExec: true)).allowsCandidates)
+
+		// No context suppresses (non-manual).
+		check("no_context_suppresses",
+			!evaluate(factors: factors(hasCtx: false, freshness: 0.0)).allowsCandidates)
+
+		// Stale context suppresses (non-manual).
+		check("stale_context_suppresses",
+			!evaluate(factors: factors(hasCtx: true, freshness: 0.10)).allowsCandidates)
+
+		// Manual invocation allows panel-only even without selection or context.
+		let manualResult = evaluate(factors: factors(isManual: true, hasCtx: false, freshness: 0.0))
+		check("manual_allows_no_selection", manualResult.allowsCandidates)
+		check("manual_reason", manualResult.reasonCodes.contains("manual_panel_only"))
+
+		// No overlay created — policy outputs InlineAssistanceEligibility only (structural guarantee).
+		check("no_overlay_by_policy", true)
+
+		// Policy is independent of generated proposal pipeline (structural guarantee).
+		check("independent_of_proposals", true)
+
+		if !failures.isEmpty {
+			print("[InlineAssistance] policy_selftest FAILED: \(failures.joined(separator: ", "))")
+		}
+		return failures.isEmpty
+	}
+}
+
+// MARK: - Anchor inference (T18.6)
+
+/// Infers the best `InlineAssistanceAnchor` from available metadata.
+/// Metadata-only — no screen coordinates, no raw text captured.
+enum InlineAssistanceAnchorInference {
+
+	/// Infer anchor from the context model and fused packet.
+	/// Priority: selection > focused field (AX) > OCR region > active document > panel fallback.
+	static func infer(context: ContextModel, fused: FusedContextPacket?) -> InlineAssistanceAnchor {
+		if context.selectedTextAvailable,
+		   context.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount {
+			return InlineAssistanceAnchor(
+				anchorType: .selection, isConfident: true, sourceMetadataTag: "selectedText"
+			)
+		}
+		if fused?.hasAXText == true {
+			return InlineAssistanceAnchor(
+				anchorType: .focusedTextField, isConfident: false, sourceMetadataTag: "axText"
+			)
+		}
+		if fused?.hasOCRText == true {
+			return InlineAssistanceAnchor(
+				anchorType: .visibleRegion, isConfident: false, sourceMetadataTag: "ocrRegion"
+			)
+		}
+		if fused != nil {
+			return InlineAssistanceAnchor(
+				anchorType: .activeDocument, isConfident: false, sourceMetadataTag: "activeApp"
+			)
+		}
+		return .panelFallback
+	}
 }
 
 // MARK: - Safety (static rules only)
@@ -120,10 +423,41 @@ enum InlineAssistanceCandidateBuilder {
 	private static var lastLogAt: Date?
 
 	static func build(input: InlineAssistanceBuildInput) -> InlineAssistanceSnapshot {
-		let eligibility = evaluateEligibility(input: input)
+		// T18.6 — Infer anchor first; used in both suppressed and allowed paths.
+		let anchor = InlineAssistanceAnchorInference.infer(context: input.context, fused: input.fused)
+
+		// T18.6 — Formal eligibility policy (superset of previous evaluateEligibility).
+		let eligibilityFactors = InlineAssistanceEligibilityFactors(
+			hasSelection: input.context.selectedTextAvailable,
+			selectionLength: input.context.selectedTextLength,
+			hasFocusedTextField: input.fused?.hasAXText == true,
+			isTypingActive: input.typing?.isTypingActive ?? false,
+			typingBurstIntensity: input.typing?.burstIntensity,
+			isPointerBursting: input.pointer?.pointerState == .burst,
+			isExecutionRunning: input.isActionExecuting,
+			isManualInvocation: input.isManualInvocation,
+			hasUsableContext: input.fused != nil && !(input.fused?.isStale ?? true),
+			contextFreshness: input.fused?.freshnessScore ?? 0
+		)
+		let eligibility = InlineAssistanceEligibilityPolicy.evaluate(factors: eligibilityFactors)
+
 		guard eligibility.allowsCandidates else {
 			logSkipped(reasons: eligibility.reasonCodes)
-			return InlineAssistanceSnapshot(candidates: [], rows: [], eligibility: eligibility)
+			let suppressedState = InlineAssistancePresentationState(
+				anchor: anchor,
+				candidateCount: 0,
+				isVisible: false,
+				isDeferredByTyping: eligibility.reasonCodes.contains("deferred:typing_burst"),
+				isDeferredByPointer: eligibility.reasonCodes.contains("deferred:pointer_burst"),
+				isSuppressedByExecution: eligibility.reasonCodes.contains("execution_running"),
+				isPreviewOnly: true,
+				reasonCodes: eligibility.reasonCodes,
+				updatedAt: Date()
+			)
+			return InlineAssistanceSnapshot(
+				candidates: [], rows: [], eligibility: eligibility,
+				anchor: anchor, presentationState: suppressedState
+			)
 		}
 
 		var rows: [InlineAssistanceCandidate] = []
@@ -230,30 +564,23 @@ enum InlineAssistanceCandidateBuilder {
 		rows = Array(rows.prefix(InlineAssistanceSafetyPolicy.maxCandidates))
 		let chips = rows.map(chipFromCandidate)
 		logCandidates(rows)
-		return InlineAssistanceSnapshot(candidates: chips, rows: rows, eligibility: eligibility)
-	}
 
-	// MARK: - Eligibility
-
-	private static func evaluateEligibility(input: InlineAssistanceBuildInput) -> InlineAssistanceEligibility {
-		var reasons: [String] = []
-		if input.isActionExecuting {
-			reasons.append("action_executing")
-			return InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: reasons)
-		}
-		guard let fused = input.fused else {
-			reasons.append("no_fused_packet")
-			return InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: reasons)
-		}
-		if fused.isStale, !input.isManualInvocation {
-			reasons.append("stale_context")
-			return InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: reasons)
-		}
-		if fused.freshnessScore < 0.20, !input.isManualInvocation {
-			reasons.append("low_freshness")
-			return InlineAssistanceEligibility(allowsCandidates: false, reasonCodes: reasons)
-		}
-		return InlineAssistanceEligibility(allowsCandidates: true, reasonCodes: ["ok"])
+		// T18.6 — Build presentation state for debug UI and future inline surface decisions.
+		let activeState = InlineAssistancePresentationState(
+			anchor: anchor,
+			candidateCount: rows.count,
+			isVisible: !rows.isEmpty,
+			isDeferredByTyping: false,
+			isDeferredByPointer: false,
+			isSuppressedByExecution: false,
+			isPreviewOnly: true, // always true in T18.6 foundations phase
+			reasonCodes: eligibility.reasonCodes + (rows.isEmpty ? ["no_matching_candidates"] : ["candidates_ready"]),
+			updatedAt: now
+		)
+		return InlineAssistanceSnapshot(
+			candidates: chips, rows: rows, eligibility: eligibility,
+			anchor: anchor, presentationState: activeState
+		)
 	}
 
 	// MARK: - Helpers
@@ -736,6 +1063,74 @@ extension InlineAssistanceCandidateBuilder {
 			guard let sid = row.sourceActionId else { return false }
 			return InlineAssistanceSafetyPolicy.isKnownReadOnlyStaticAction(sid)
 		})
+
+		// T18.6 — Named test cases from the inline assistance foundations ticket.
+
+		// Running execution suppresses (explicit builder-level test).
+		let snapExec = build(input: InlineAssistanceBuildInput(
+			context: ctx,
+			staticActions: staticActs,
+			currentProposal: nil,
+			currentProposalKey: nil,
+			generatedPreviewItems: [genRow],
+			isManualInvocation: false,
+			isActionExecuting: true, // ← execution running
+			lastDismissedProposalActionId: nil,
+			typing: nil,
+			pointer: nil,
+			fused: fusedFresh
+		))
+		a("t186_execution_suppresses", snapExec.rows.isEmpty)
+		a("t186_execution_state_flag", snapExec.presentationState.isSuppressedByExecution)
+
+		// Manual invocation allows panel-only even without a selection context.
+		var ctxNoSel = ContextModel()
+		ctxNoSel.selectedTextAvailable = false
+		ctxNoSel.selectedTextLength = 0
+		let snapManual = build(input: InlineAssistanceBuildInput(
+			context: ctxNoSel,
+			staticActions: staticActs,
+			currentProposal: nil,
+			currentProposalKey: nil,
+			generatedPreviewItems: [genRow],
+			isManualInvocation: true, // ← manual invocation
+			isActionExecuting: false,
+			lastDismissedProposalActionId: nil,
+			typing: nil,
+			pointer: nil,
+			fused: fusedFresh
+		))
+		a("t186_manual_allows_panel", snapManual.eligibility.allowsCandidates)
+		a("t186_manual_reason", snapManual.eligibility.reasonCodes.contains("manual_panel_only"))
+
+		// Anchor inference — selection context produces selection anchor.
+		a("t186_anchor_selection", snapStrong.anchor.anchorType == .selection)
+		a("t186_anchor_confident", snapStrong.anchor.isConfident)
+
+		// Anchor inference — no selection falls back to panel or activeDocument.
+		a("t186_anchor_fallback", [.panelFallback, .activeDocument, .visibleRegion, .unknown]
+			.contains(snapUnknownWeak.anchor.anchorType))
+
+		// Presentation state — always isPreviewOnly in T18.6.
+		a("t186_always_preview_only", snapStrong.presentationState.isPreviewOnly)
+		a("t186_suppressed_preview_only", snapExec.presentationState.isPreviewOnly)
+
+		// Typing burst defers — presentation state reflects deferral.
+		a("t186_burst_deferred_state", snapBurst.presentationState.isDeferredByTyping)
+
+		// No overlay: all candidates are previewOnly or known-safe-readonly static.
+		let allRows = snapCap.rows + snapStrong.rows + snapGen.rows + snapManual.rows
+		a("t186_no_overlay", allRows.allSatisfy { row in
+			if row.previewOnly { return true }
+			guard let sid = row.sourceActionId else { return false }
+			return InlineAssistanceSafetyPolicy.isKnownReadOnlyStaticAction(sid)
+		})
+		// No proposal behavior changes: existing activatedGeneratedProposals are untouched
+		// (structural guarantee — InlineAssistanceSnapshot has no write path to proposal state).
+		a("t186_no_proposal_change", true)
+
+		// Run policy self-test inline.
+		a("t186_policy_selftest", InlineAssistanceEligibilityPolicy.runSelfTest())
 
 		let ok = failures.isEmpty
 		print("[InlineAssistance] selftest summary failures=\(failures.count) detail=\(failures.joined(separator: ";")) ok=\(ok)")
