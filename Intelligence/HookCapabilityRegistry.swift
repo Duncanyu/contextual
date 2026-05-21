@@ -45,6 +45,12 @@ struct HookCapabilityDefinition: Sendable, Equatable {
 	let isImplemented: Bool
 	let mappedPrimitive: ExecutionPrimitive?
 	let safetyNotes: String
+	/// Preferred next hooks (planning hint only; no execution logic).
+	let commonNextHookIds: [String]
+	/// Preferred previous hooks (planning hint only; no execution logic).
+	let commonPrevHookIds: [String]
+	/// Hooks that frequently pair well with this one (planning hint only).
+	let pairsWellWithHookIds: [String]
 
 	/// Legacy init (all new hooks use full init below)
 	init(
@@ -65,6 +71,9 @@ struct HookCapabilityDefinition: Sendable, Equatable {
 		self.isImplemented = isImplemented
 		self.mappedPrimitive = mappedPrimitive
 		self.safetyNotes = ""
+		self.commonNextHookIds = []
+		self.commonPrevHookIds = []
+		self.pairsWellWithHookIds = []
 	}
 
 	init(
@@ -77,7 +86,10 @@ struct HookCapabilityDefinition: Sendable, Equatable {
 		outputType: HookOutputType,
 		isImplemented: Bool,
 		mappedPrimitive: ExecutionPrimitive?,
-		safetyNotes: String = ""
+		safetyNotes: String = "",
+		commonNextHookIds: [String] = [],
+		commonPrevHookIds: [String] = [],
+		pairsWellWithHookIds: [String] = []
 	) {
 		self.id = id
 		self.description = description
@@ -89,6 +101,9 @@ struct HookCapabilityDefinition: Sendable, Equatable {
 		self.isImplemented = isImplemented
 		self.mappedPrimitive = mappedPrimitive
 		self.safetyNotes = safetyNotes
+		self.commonNextHookIds = commonNextHookIds
+		self.commonPrevHookIds = commonPrevHookIds
+		self.pairsWellWithHookIds = pairsWellWithHookIds
 	}
 }
 

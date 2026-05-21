@@ -184,7 +184,6 @@ actor TaskInferenceEngine {
 		}
 		ModelTier.taskInference.log(model: model)
 
-		let hookIds = contextFilteredHookIds(snapshot: snapshot, situational: situational)
 		let prompt = TaskInferencePromptBuilder.build(
 			snapshot: snapshot,
 			situational: situational,
@@ -355,11 +354,10 @@ actor TaskInferenceEngine {
 			appName: situational.activeAppName,
 			selectedText: snapshot.selectedText
 		)
-		let qPresent = !parsed.userFacingQuestion.isEmpty
-		let caps = parsed.neededCapabilities.joined(separator: ",")
-		let question = qPresent ? " q=\"\(String(parsed.userFacingQuestion.prefix(60)))\"" : ""
+		let cats = parsed.neededCapabilityCategories.joined(separator: ",")
+		let goalPreview = sanitizeLog(parsed.possibleUserGoal)
 		print(
-			"[TaskInference] semantic_validation=\(validity.rawValue) chime=\(parsed.shouldChime ? "yes" : "no") conf=\(String(format: "%.2f", parsed.confidence)) hooks_count=\(parsed.neededCapabilities.count) question=\(qPresent ? "yes" : "no") task=\(sanitizeLog(parsed.inferredTaskType)) caps=[\(caps)]\(question) elapsed_ms=\(elapsedMs) warm=\(warm ? "yes" : "no")"
+			"[TaskInference] semantic_validation=\(validity.rawValue) chime=\(parsed.shouldChime ? "yes" : "no") conf=\(String(format: "%.2f", parsed.confidence)) needCats=[\(cats)] goal=\(goalPreview) elapsed_ms=\(elapsedMs) warm=\(warm ? "yes" : "no")"
 		)
 
 		// placeholder, exampleLeakage, ungroundedOutput all trigger one retry.
@@ -386,16 +384,15 @@ actor TaskInferenceEngine {
 			// Build ultra-short correction prompt and retry once.
 			let invalidFields: [String] = {
 				switch validity {
-				case .placeholder:       return ["g", "a", "o", "h", "q"]
-				case .exampleLeakage:    return ["g", "o", "q"]
-				case .ungroundedOutput:  return ["g", "a", "o", "q"]
-				default:                return ["g", "a", "o", "h", "q"]
+				case .placeholder:       return ["g", "needCats"]
+				case .exampleLeakage:    return ["g"]
+				case .ungroundedOutput:  return ["g"]
+				default:                return ["g", "needCats"]
 				}
 			}()
 			let retryPrompt = TaskInferencePromptBuilder.buildRetryPrompt(
 				snapshot: snapshot,
 				situational: situational,
-				hookIds: hookIds,
 				retryReason: validity.rawValue,
 				invalidFields: invalidFields
 			)
@@ -442,7 +439,8 @@ actor TaskInferenceEngine {
 				return nil
 			}
 			// Retry produced a usable result.
-			print("[TaskInference] retry_success chime=\(retryParsed.shouldChime ? "yes" : "no") conf=\(String(format: "%.2f", retryParsed.confidence)) caps=[\(retryParsed.neededCapabilities.joined(separator: ","))] elapsed_ms=\(retryElapsedMs) fp=\(fingerprint)")
+			let retryCats = retryParsed.neededCapabilityCategories.joined(separator: ",")
+			print("[TaskInference] retry_success chime=\(retryParsed.shouldChime ? "yes" : "no") conf=\(String(format: "%.2f", retryParsed.confidence)) needCats=[\(retryCats)] elapsed_ms=\(retryElapsedMs) fp=\(fingerprint)")
 			lastSuccessfulInferenceAt = referenceTime
 			Task {
 				await TaskInferencePerfStats.shared.record(TaskInferencePerfEntry(
@@ -458,10 +456,10 @@ actor TaskInferenceEngine {
 			return retryParsed
 		}
 
-		// Success (valid or noHooks) — update warm tracker so future calls know model is resident.
+		// Success — update warm tracker so future calls know model is resident.
 		lastSuccessfulInferenceAt = referenceTime
 		print(
-			"[TaskInference] result chime=\(parsed.shouldChime ? "yes" : "no") conf=\(String(format: "%.2f", parsed.confidence)) task=\(sanitizeLog(parsed.inferredTaskType)) caps=[\(caps)]\(question) elapsed_ms=\(elapsedMs) warm=\(warm ? "yes" : "no")"
+			"[TaskInference] result chime=\(parsed.shouldChime ? "yes" : "no") conf=\(String(format: "%.2f", parsed.confidence)) needCats=[\(cats)] goal=\(goalPreview) elapsed_ms=\(elapsedMs) warm=\(warm ? "yes" : "no")"
 		)
 
 		Task {
@@ -605,33 +603,5 @@ actor TaskInferenceEngine {
 		return String(trimmed.prefix(72)).replacingOccurrences(of: "\n", with: " ")
 	}
 
-	/// Returns the same context-filtered hook IDs the prompt builder selects.
-	/// Used to pass the hook list to `buildRetryPrompt` without re-running prompt construction.
-	private func contextFilteredHookIds(
-		snapshot: CanonicalGeneratedExecutionContextSnapshot,
-		situational: SituationalContextSnapshot
-	) -> [String] {
-		// Delegate to the prompt builder's internal selection. We call `build` but only
-		// need the hook list; cheapest approach is to extract it via the same builder call
-		// since build() is idempotent and fast (no network, no AI).
-		// This small duplication is acceptable; the alternative is making contextFilteredHooks public.
-		var ids: [String] = ["observe_current_context"]
-		let cat = situational.appCategory
-		let wf = situational.inferredWorkflow
-		let hasText = situational.selectedTextSignal.availability == .available
-			|| situational.ocrSignal.availability == .available
-			|| (situational.clipboardSignal.availability == .available && situational.clipboardSignal.canBePrimary)
-		if wf == .debugging || (snapshot.recentOCRExcerpt ?? "").lowercased().contains("error") {
-			ids += ["explain_visible_error", "extract_error_messages"]
-		}
-		if cat == .browser || wf == .browsing || wf == .research {
-			ids += ["extract_product_attributes", "compare_items", "summarize_context"]
-		}
-		if cat == .ide { ids += ["extract_code_symbols", "extract_error_messages"] }
-		if cat == .notes || wf == .writing { ids += ["structure_key_points", "summarize_context"] }
-		if hasText && !ids.contains("summarize_context") { ids += ["summarize_context"] }
-		ids.append("present_result")
-		var seen: Set<String> = []
-		return ids.filter { seen.insert($0).inserted }.prefix(8).map { $0 }
-	}
+	// (No hook IDs are passed to the small model. Hook planning happens after inference.)
 }

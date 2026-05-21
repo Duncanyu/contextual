@@ -370,7 +370,7 @@ actor DynamicGeneratedProposalEngine {
 				)
 			}
 
-			if let composed = ModelDrivenHookComposer.compose(
+			if let composed = await TaskInferencePlanningPipeline.compose(
 				inference: inference,
 				snapshot: effectiveSnapshot,
 				situational: effectiveSituational,

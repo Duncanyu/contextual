@@ -16,6 +16,12 @@ enum TaskInferenceParser {
 		// ignores unknown keys), producing a c=0 / confidence=0 result instead of the intended values.
 		let repaired = repairJSON(json)
 
+		// Schema guard: if the model outputs forbidden keys (hooks/ids/questions/etc),
+		// reject loudly so this doesn't get miscounted as a valid "quiet".
+		if let forbidden = forbiddenKeys(in: repaired), !forbidden.isEmpty {
+			return (nil, .parseForbiddenKeys)
+		}
+
 		// Pass 1: JSONDecoder — fast; works for clean + repaired output.
 		if let decoded = tryJSONDecoder(repaired) {
 			return buildResult(from: decoded, referenceTime: referenceTime)
@@ -44,11 +50,14 @@ enum TaskInferenceParser {
 			return (nil, .parseMissingRequiredKey)
 		}
 
-		let caps = decoded.resolvedCapabilities
-			.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+		let cats = decoded.resolvedNeedCats
+			.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
 			.filter { !$0.isEmpty }
-		var seen: Set<String> = []
-		let uniqueCaps = caps.filter { seen.insert($0).inserted }
+		var seenCats: Set<String> = []
+		let uniqueCats = cats.filter { seenCats.insert($0).inserted }
+		if shouldChime && uniqueCats.isEmpty {
+			return (nil, .parseMissingRequiredKey)
+		}
 
 		let expiry = max(6, min(60, decoded.resolvedExpirySeconds))
 
@@ -66,14 +75,8 @@ enum TaskInferenceParser {
 			shouldChime: shouldChime,
 			possibleUserGoal: decoded.resolvedGoal,
 			confidence: confidence,
-			inferredTaskType: decoded.resolvedTaskType,
-			evidenceSummary: decoded.resolvedEvidence,
-			neededCapabilities: uniqueCaps,
-			suggestedActionVerb: decoded.resolvedVerb,
-			suggestedObject: decoded.resolvedObject,
-			userFacingQuestion: decoded.resolvedUserFacingQuestion,
+			neededCapabilityCategories: uniqueCats,
 			whyNow: decoded.resolvedWhyNow,
-			interruptionRisk: clamp01(decoded.resolvedRisk),
 			missingContext: decoded.resolvedMissing,
 			expirySeconds: expiry,
 			createdAt: referenceTime,
@@ -156,6 +159,29 @@ enum TaskInferenceParser {
 	private static func tryJSONDecoder(_ json: String) -> TaskInferenceTolerantOutput? {
 		guard let data = json.data(using: .utf8) else { return nil }
 		return try? JSONDecoder().decode(TaskInferenceTolerantOutput.self, from: data)
+	}
+
+	// MARK: - Forbidden key detection
+
+	private static func forbiddenKeys(in json: String) -> [String]? {
+		guard let data = json.data(using: .utf8),
+			  let obj = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
+			  let dict = obj as? [String: Any]
+		else { return nil }
+
+		// Contract: qwen must NOT output hooks/ids or user-facing question templates.
+		let forbidden: Set<String> = [
+			"h", "hooks", "caps", "capabilities", "neededCapabilities",
+			"q", "question", "userFacingQuestion",
+			"a", "o", "verb", "object", "obj",
+			"allow_h", "allowHooks", "allowedHooks",
+		]
+
+		var bad: [String] = []
+		for key in dict.keys {
+			if forbidden.contains(key) { bad.append(key) }
+		}
+		return bad.sorted()
 	}
 
 	// MARK: - Pass 2: Structural repair
@@ -254,46 +280,29 @@ enum TaskInferenceParser {
 			return nil
 		}
 
-		return TaskInferenceTolerantOutput(
-			shouldChime: asBool("shouldChime"),
-			shouldChimeIn: asBool("shouldChimeIn"),
-			c: asInt("c"),
-			possibleUserGoal: asString("possibleUserGoal"),
-			goal: asString("goal"),
-			g: asString("g"),
-			confidence: asDouble("confidence"),
-			conf: asDouble("conf"),
-			p: asDouble("p"),
-			inferredTaskType: asString("inferredTaskType"),
-			taskType: asString("taskType"),
-			task: asString("task"),
-			evidenceSummary: asString("evidenceSummary"),
-			evidence: asString("evidence"),
-			neededCapabilities: asStringArray("neededCapabilities"),
-			capabilities: asStringArray("capabilities"),
-			caps: asStringArray("caps"),
-			h: asStringArray("h"),
-			suggestedActionVerb: asString("suggestedActionVerb"),
-			verb: asString("verb"),
-			a: asString("a"),
-			suggestedObject: asString("suggestedObject"),
-			object: asString("object"),
-			obj: asString("obj"),
-			o: asString("o"),
-			userFacingQuestion: asString("userFacingQuestion"),
-			question: asString("question"),
-			q: asString("q"),
-			whyNow: asString("whyNow"),
-			why: asString("why"),
-			interruptionRisk: asDouble("interruptionRisk"),
-			risk: asDouble("risk"),
-			missingContext: asStringArray("missingContext"),
-			missing: asStringArray("missing"),
-			expirySeconds: asDouble("expirySeconds"),
-			expiry: asDouble("expiry"),
-			need: asStringArray("need"),
-			needReason: asString("needReason")
-		)
+			return TaskInferenceTolerantOutput(
+				shouldChime: asBool("shouldChime"),
+				shouldChimeIn: asBool("shouldChimeIn"),
+				c: asInt("c"),
+				possibleUserGoal: asString("possibleUserGoal"),
+				goal: asString("goal"),
+				g: asString("g"),
+				confidence: asDouble("confidence"),
+				conf: asDouble("conf"),
+				p: asDouble("p"),
+				evidenceSummary: asString("evidenceSummary"),
+				evidence: asString("evidence"),
+				neededCapabilityCategories: asStringArray("neededCapabilityCategories"),
+				needCats: asStringArray("needCats"),
+				whyNow: asString("whyNow"),
+				why: asString("why"),
+				missingContext: asStringArray("missingContext"),
+				missing: asStringArray("missing"),
+				expirySeconds: asDouble("expirySeconds"),
+				expiry: asDouble("expiry"),
+				need: asStringArray("need"),
+				needReason: asString("needReason")
+			)
 	}
 
 	// MARK: - Helpers
