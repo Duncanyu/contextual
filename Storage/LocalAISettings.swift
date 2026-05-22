@@ -16,12 +16,23 @@ final class LocalAISettings {
 		/// Persisted timestamp for the last successful model audit. Prevents re-auditing on
 		/// every app launch (which can pause live task inference via the audit gate).
 		static let taskInferenceLastAuditAt = "com.contextual.localAI.taskInferenceLastAuditAt"
+		static let twoStageTaskInferenceEnabled = "com.contextual.localAI.twoStageTaskInferenceEnabled"
 	}
 
 	init(defaults: UserDefaults = .standard) {
 		self.defaults = defaults
 		if defaults.object(forKey: Key.modelName) == nil {
 			defaults.set("phi3", forKey: Key.modelName)
+		}
+		print("[TwoStageInference] enabled=\(twoStageTaskInferenceEnabled ? "yes" : "no") source=UserDefaults")
+	}
+
+	var twoStageTaskInferenceEnabled: Bool {
+		get {
+			return defaults.bool(forKey: Key.twoStageTaskInferenceEnabled)
+		}
+		set {
+			defaults.set(newValue, forKey: Key.twoStageTaskInferenceEnabled)
 		}
 	}
 

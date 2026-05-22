@@ -254,7 +254,8 @@ enum UnifiedActionRanker {
 			)
 			if let staticIdx = output.firstIndex(where: { !$0.action.isGeneratedFamily }) {
 				let promoted = output.remove(at: staticIdx)
-				output.insert(promoted, at: genIdx)
+				let insertIdx = staticIdx < genIdx ? genIdx - 1 : genIdx
+				output.insert(promoted, at: insertIdx)
 				output.append(demoted)
 			} else {
 				output.append(demoted)

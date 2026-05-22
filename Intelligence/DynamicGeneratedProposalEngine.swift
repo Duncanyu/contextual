@@ -209,21 +209,23 @@ actor DynamicGeneratedProposalEngine {
 							thermalStateSensitivity: 0.55,
 							budgetPriority: .low
 						)
+						// OCR-first policy: proactive gather fetches OCR only.
+						// Visual descriptor is expensive and is deferred to the model-requested
+						// context escalation pass (after the router has seen OCR and still
+						// decides it needs visual context). This prevents visual descriptor
+						// from running on every browsing context automatically.
 						let request = BoundedVisualContextRequest(
-							reason: "proposal_auto_visual_gather:metadata_only_perception_recommended",
+							reason: "proposal_auto_visual_gather:ocr_only_metadata_only_perception_recommended",
 							workflowType: wf,
 							intentType: intent,
 							requiresOCR: true,
-							requiresVisualDescription: true,
+							requiresVisualDescription: false,
 							maxWindowSeconds: 6,
 							maxOCRCharacters: min(
 								BoundedVisualContextBounds.defaultMaxOCRCharacters,
 								520
 							),
-							maxDescriptionCharacters: min(
-								BoundedVisualContextBounds.defaultMaxDescriptionCharacters,
-								240
-							),
+							maxDescriptionCharacters: 0,
 							budget: autoBudget,
 							permissionAvailability: snapshot.permissionAvailability,
 							createdAt: referenceTime,
@@ -345,7 +347,8 @@ actor DynamicGeneratedProposalEngine {
 						situational: enrichedSituational,
 						recentTitles: recentTitles,
 						history: history,
-						referenceTime: referenceTime
+						referenceTime: referenceTime,
+						isEnrichedPass: true
 					)
 				} else {
 					let elapsed = Int(Date().timeIntervalSince(escalationStart) * 1000)
@@ -776,6 +779,7 @@ actor DynamicGeneratedProposalEngine {
 			let accessibilityAllowed = snapshot.permissionAvailability[.accessibility] != false
 			if !accessibilityAllowed {
 				denialReason = "permission_accessibility_denied"
+				print("[TwoStageContextAcquisition] source=ax_window_text completed=no")
 			} else if let ax = AXWindowContentSource.shared.extractActiveWindowContent() {
 				let joined = ax.visibleTextFragments.prefix(40).joined(separator: " • ")
 				let excerpt = String(joined.prefix(900))
@@ -784,89 +788,106 @@ actor DynamicGeneratedProposalEngine {
 					working = working.merging(axWindowTextExcerpt: excerpt, referenceTime: referenceTime)
 					didChange = true
 				}
-			} else if denialReason == nil {
-				denialReason = "ax_unavailable"
+				print("[TwoStageContextAcquisition] source=ax_window_text completed=\(axChars > 0 ? "yes" : "no")")
+			} else {
+				if denialReason == nil {
+					denialReason = "ax_unavailable"
+				}
+				print("[TwoStageContextAcquisition] source=ax_window_text completed=no")
 			}
 		}
 
 		// MARK: - Visual/OCR gathering (screen recording)
-		let wantsOCR = need.contains("visible_ocr")
+		let wantsOCR = need.contains("visible_ocr") || need.contains("ocr")
 		let wantsVisual = need.contains("visual_descriptor")
 		let wantsScreen = wantsOCR || wantsVisual
 
 		if wantsScreen {
 			guard let scheduler = visualScheduler else {
 				denialReason = denialReason ?? "no_visual_scheduler"
+				if wantsOCR { print("[TwoStageContextAcquisition] source=ocr completed=no") }
+				if wantsVisual { print("[TwoStageContextAcquisition] source=visual_descriptor completed=no") }
 				return (didChange ? working : nil, axChars, ocrChars, hasDescriptors, denialReason)
 			}
 			// Screen recording permission check — denied means we can't gather OCR/visual.
 			if snapshot.permissionAvailability[.screenRecording] == false {
 				denialReason = denialReason ?? "permission_screen_recording_denied"
+				if wantsOCR { print("[TwoStageContextAcquisition] source=ocr completed=no") }
+				if wantsVisual { print("[TwoStageContextAcquisition] source=visual_descriptor completed=no") }
 				return (didChange ? working : nil, axChars, ocrChars, hasDescriptors, denialReason)
 			}
 
-		let escalationBudget = ExecutionBudget(
-			maxCPUPercent: 30,
-			maxConcurrentTasks: 1,
-			maxExecutionTime: 12,
-			allowsVision: true,
-			allowsOCR: wantsOCR,
-			allowsLLM: false,
-			allowsBackgroundWork: false,
-			thermalStateSensitivity: 0.55,
-			budgetPriority: .low
-		)
-		let wf = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
-		let request = BoundedVisualContextRequest(
-			reason: "context_escalation:model_requested:[\(need.joined(separator: ","))]",
-			workflowType: wf,
-			intentType: .unknown,
-			requiresOCR: wantsOCR,
-			requiresVisualDescription: wantsVisual,
-			maxWindowSeconds: 8,
-			maxOCRCharacters: min(BoundedVisualContextBounds.defaultMaxOCRCharacters, 800),
-			maxDescriptionCharacters: min(BoundedVisualContextBounds.defaultMaxDescriptionCharacters, 300),
-			budget: escalationBudget,
-			permissionAvailability: snapshot.permissionAvailability,
-			createdAt: referenceTime,
-			expiresAt: referenceTime.addingTimeInterval(10)
-		)
+			let escalationBudget = ExecutionBudget(
+				maxCPUPercent: 30,
+				maxConcurrentTasks: 1,
+				maxExecutionTime: 12,
+				allowsVision: true,
+				allowsOCR: wantsOCR,
+				allowsLLM: false,
+				allowsBackgroundWork: false,
+				thermalStateSensitivity: 0.55,
+				budgetPriority: .low
+			)
+			let wf = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
+			let request = BoundedVisualContextRequest(
+				reason: "context_escalation:model_requested:[\(need.joined(separator: ","))]",
+				workflowType: wf,
+				intentType: .unknown,
+				requiresOCR: wantsOCR,
+				requiresVisualDescription: wantsVisual,
+				maxWindowSeconds: 8,
+				maxOCRCharacters: min(BoundedVisualContextBounds.defaultMaxOCRCharacters, 800),
+				maxDescriptionCharacters: min(BoundedVisualContextBounds.defaultMaxDescriptionCharacters, 300),
+				budget: escalationBudget,
+				permissionAvailability: snapshot.permissionAvailability,
+				createdAt: referenceTime,
+				expiresAt: referenceTime.addingTimeInterval(10)
+			)
 
-		let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
-			activeExecutionCount: 0,
-			runtimeState: .idle,
-			permissionAvailability: snapshot.permissionAvailability,
-			activeSamplingRequested: true
-		)
+			let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
+				activeExecutionCount: 0,
+				runtimeState: .idle,
+				permissionAvailability: snapshot.permissionAvailability,
+				activeSamplingRequested: true
+			)
 
-		let visualResult = await scheduler.collect(request: request, budgetSnapshot: budgetSnapshot)
+			let visualResult = await scheduler.collect(request: request, budgetSnapshot: budgetSnapshot)
 			if !(visualResult.status == .completed || visualResult.status == .partial) {
 				denialReason = denialReason ?? "gather_\(visualResult.status.rawValue)"
+				if wantsOCR { print("[TwoStageContextAcquisition] source=ocr completed=no") }
+				if wantsVisual { print("[TwoStageContextAcquisition] source=visual_descriptor completed=no") }
 				return (didChange ? working : nil, axChars, ocrChars, hasDescriptors, denialReason)
 			}
 
-		// Record gate so auto-visual-gather knows visual context was recently obtained.
-		await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
+			// Record gate so auto-visual-gather knows visual context was recently obtained.
+			await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
 
-		let classification = VisualContextWorkflowClassifier.classify(
-			appCategory: situational.appCategory,
-			windowTitle: situational.windowTitle,
-			visualTags: visualResult.visualTags,
-			ocrExcerpt: visualResult.ocrExcerpt,
-			priorWorkflow: situational.inferredWorkflow,
-			priorConfidence: situational.workflowConfidence
-		)
+			let classification = VisualContextWorkflowClassifier.classify(
+				appCategory: situational.appCategory,
+				windowTitle: situational.windowTitle,
+				visualTags: visualResult.visualTags,
+				ocrExcerpt: visualResult.ocrExcerpt,
+				priorWorkflow: situational.inferredWorkflow,
+				priorConfidence: situational.workflowConfidence
+			)
 
 			let merged = working.merging(
-			visualResult: visualResult,
-			priorWorkflow: classification.workflow,
-			priorWorkflowConfidence: classification.confidence,
-			referenceTime: referenceTime
-		)
+				visualResult: visualResult,
+				priorWorkflow: classification.workflow,
+				priorWorkflowConfidence: classification.confidence,
+				referenceTime: referenceTime
+			)
 			ocrChars = (merged.recentOCRExcerpt ?? "").count
 			hasDescriptors = merged.visualContextAvailability.hasUsableVisual
 			didChange = true
 			working = merged
+
+			if wantsOCR {
+				print("[TwoStageContextAcquisition] source=ocr completed=\(ocrChars > 0 ? "yes" : "no")")
+			}
+			if wantsVisual {
+				print("[TwoStageContextAcquisition] source=visual_descriptor completed=\(hasDescriptors ? "yes" : "no")")
+			}
 		}
 
 		if didChange {

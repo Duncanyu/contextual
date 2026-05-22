@@ -154,8 +154,13 @@ final class AppState: ObservableObject {
 	func refreshModelStatus() {
 		let settings = LocalAISettings.shared
 		taskInferenceBatchMode = settings.taskInferenceBatchMode
-		taskInferenceDisabled = settings.taskInferenceModel == ModelTierConfig.noViableModel
-		activeTaskInferenceModel = settings.effectiveTaskInferenceModel
+		if settings.twoStageTaskInferenceEnabled {
+			taskInferenceDisabled = false
+			activeTaskInferenceModel = "qwen2.5:0.5b + 1.5b"
+		} else {
+			taskInferenceDisabled = settings.taskInferenceModel == ModelTierConfig.noViableModel
+			activeTaskInferenceModel = settings.effectiveTaskInferenceModel
+		}
 	}
 
 	/// Trigger a fresh model benchmark audit. Safe to call from UI.
@@ -202,6 +207,12 @@ final class AppState: ObservableObject {
 	@Published var modelRuntimeState: ModelRuntimeState = .checking
 	@Published var localAIEnabled: Bool = false
 	@Published var autoStartOllama: Bool = false
+	@Published var twoStageTaskInferenceEnabled: Bool = false {
+		didSet {
+			LocalAISettings.shared.twoStageTaskInferenceEnabled = twoStageTaskInferenceEnabled
+			refreshModelStatus()
+		}
+	}
 
 	@Published var latestActionResult: String?
 	@Published var latestActionId: String?

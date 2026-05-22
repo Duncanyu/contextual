@@ -49,7 +49,13 @@ final class OCRProcessor: @unchecked Sendable {
 			let avg = confCount > 0 ? (confSum / Float(confCount)) : nil
 
 			let chars = text.utf8.count
+			// Log a real excerpt so logs prove OCR content is genuine (not fabricated).
+			let rawExcerpt = String(text.prefix(100))
+				.trimmingCharacters(in: .whitespacesAndNewlines)
+				.replacingOccurrences(of: "\n", with: " ")
+			let excerptDisplay = rawExcerpt.isEmpty ? "(empty)" : rawExcerpt
 			print("[OCR] completed chars=\(chars) lines=\(lineCount)")
+			print("[OCR] excerpt=\"\(excerptDisplay)\"")
 			return OCRResult(text: text, lineCount: lineCount, confidenceAverage: avg, timestamp: Date())
 		}.value
 	}

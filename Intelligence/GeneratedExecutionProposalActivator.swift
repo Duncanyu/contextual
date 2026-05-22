@@ -9,6 +9,7 @@ enum GeneratedExecutionProposalActivator {
 	/// The old 0.78 wall blocked all seeded templates (confidence ≈ 0.72) from ever floating.
 	static let floatingStrongScoreThreshold = 0.58
 	static let panelMediumScoreThreshold = 0.52
+	static let panelGeneratedScoreThreshold = 0.40
 	static let preSuppressConfidenceThreshold = 0.44
 
 	static func generatedProposalActionId(for candidateId: String) -> String {
@@ -199,7 +200,7 @@ enum GeneratedExecutionProposalActivator {
 		if ProposalLoggingFlags.verboseProposalLogsEnabled {
 			for ranked in ranking.rankedActions.prefix(6) where ranked.action.isGeneratedFamily {
 				let rScore = ranked.components.finalScore
-				let panelOk = rScore >= panelMediumScoreThreshold
+				let panelOk = rScore >= panelGeneratedScoreThreshold
 				let floatOk = rScore >= floatingStrongScoreThreshold
 				let codes = ranked.rankingExplanationCodes.prefix(3).joined(separator: ",")
 				print("[GeneratedProposalDebug] ranked_candidate id=\(ranked.action.id.prefix(40)) score=\(String(format: "%.3f", rScore)) panel=\(panelOk ? "yes" : "NO") float=\(floatOk ? "yes" : "NO") gap_to_float=\(String(format: "%.3f", floatingStrongScoreThreshold - rScore)) codes=\(codes.isEmpty ? "none" : codes)")
@@ -235,8 +236,18 @@ enum GeneratedExecutionProposalActivator {
 
 		for ranked in ranking.rankedActions {
 			let action = ranked.action
-			let suppressed = ranked.rankingExplanationCodes.contains("suppressed_low_confidence")
+			
+			// Find the candidate first to check its confidence for the dogfood/debug override
+			let candidate = candidates.first(where: { $0.id == action.id })
+			let isHighConfidenceLLM = candidate != nil && candidate!.isGeneratedFamily && candidate!.confidence >= 0.8
+
+			var suppressed = ranked.rankingExplanationCodes.contains("suppressed_low_confidence")
 				|| ranked.rankingExplanationCodes.contains("suppressed_low_usefulness")
+
+			if isHighConfidenceLLM {
+				// Dogfooding/debug mode override: high-confidence LLM candidates bypass ranking suppression
+				suppressed = false
+			}
 
 			if action.sourceType == .staticAction {
 				if suppressed {
@@ -252,15 +263,32 @@ enum GeneratedExecutionProposalActivator {
 				continue
 			}
 
-			guard let candidate = candidates.first(where: { $0.id == action.id }) else { continue }
+			guard let candidate = candidate else { continue }
 
 			let score = ranked.components.finalScore
-			let panelEligible = timing.allowsPanelGenerated
-				&& score >= panelMediumScoreThreshold
-				&& visibleGenerated.count < maxPanelGeneratedVisible
+			var panelEligible = false
+			var panelAllowedReason: String? = nil
 
-			if panelEligible {
+			if candidate.isGeneratedFamily {
+				let isHighConfidenceLLM = candidate.confidence >= 0.8
+				let allowsPanelGenerated = timing.allowsPanelGenerated && score >= panelGeneratedScoreThreshold
+
+				if isHighConfidenceLLM {
+					panelEligible = true
+					panelAllowedReason = "llm_success_high_confidence"
+				} else if allowsPanelGenerated {
+					panelEligible = true
+					panelAllowedReason = "score_above_lower_threshold"
+				}
+			} else {
+				panelEligible = timing.allowsPanelGenerated && score >= panelMediumScoreThreshold
+			}
+
+			if panelEligible && visibleGenerated.count < maxPanelGeneratedVisible {
 				visibleGenerated.append(GeneratedExecutionProposalPanelItem(from: candidate, rankScore: score))
+				if let reason = panelAllowedReason {
+					print("[GeneratedProposalActivation] panel_visibility_allowed reason=\(reason)")
+				}
 			} else {
 				rankingSuppressedGenerated += 1
 			}
@@ -271,6 +299,8 @@ enum GeneratedExecutionProposalActivator {
 			   candidate.isGeneratedFamily
 			{
 				floatingId = generatedProposalActionId(for: candidate.id)
+			} else if floatingId == nil, candidate.isGeneratedFamily, score < floatingStrongScoreThreshold {
+				print("[GeneratedProposalActivation] floating_visibility_blocked reason=score_below_threshold")
 			}
 		}
 
@@ -429,7 +459,42 @@ enum GeneratedExecutionProposalActivator {
 		let hasClipboard = !(snapshot.clipboardText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 		let hasOCR = !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-		return hasClipboard && !suppression.includeClipboard && !hasOCR
+		return hasClipboard && !suppression.includeClipboard
+	}
+
+	private static func truthfulContextSource(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		strictSelectionNotRequired: Bool
+	) -> String {
+		var sources: [String] = []
+		let hasSelection = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasOCR = !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasTitle = !snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasVisual = snapshot.visualContextAvailability.hasUsableVisual
+
+		if hasSelection {
+			sources.append("selection")
+		}
+		if hasOCR {
+			sources.append("ocr")
+		}
+		if hasTitle {
+			sources.append("title")
+		}
+		if hasVisual {
+			sources.append("visual")
+		}
+
+		if sources.isEmpty {
+			return "metadata"
+		} else {
+			return sources.joined(separator: "/")
+		}
+	}
+
+	private static func requiresStrictSelection(_ title: String) -> Bool {
+		let lower = title.lowercased()
+		return lower.contains("selected") || lower.contains("selection") || lower.contains("highlighted")
 	}
 
 	private static func contextSatisfied(
@@ -444,90 +509,108 @@ enum GeneratedExecutionProposalActivator {
 			return true
 		}
 
-		// MARK: Reusable / library-sourced candidates (T18.3.6C)
-		// The template library already verified context requirements at retrieval time using the
-		// situational context (which correctly infers workflow from browser title heuristics etc.).
-		// Rebuilding via GeneratedExecutionContextBridge here uses the raw canonical snapshot which
-		// may have inferredWorkflow=.unknown even when the situational context resolved .browsing.
-		// For reusable candidates only check hard physical constraints that absolutely require
-		// live sensor data: text presence for selectedText/textSnippet, visual for fusedVisual.
-		// Trust the library's retrieval decision for .workflowContext and .errorContext.
-		//
-		// MARK: Hook-composer candidates — lenient path
-		// Hook-composer actions are built with minimized required context and gather remaining
-		// context at execution time (via observe_current_context / gather_visible_context_once).
-		// Strict bridge validation would reject them for .multiSource when only one tab is open,
-		// even though the hook plan can still run and produce a partial or escalated result.
-		// Trust the composer's minimized requirements; only enforce hard physical constraints.
-		if candidate.source == .reusableGenerated || candidate.source == .hookComposer {
-			let pathLabel = candidate.source == .hookComposer ? "hook_composer_lenient" : "reusable_trust_library"
-			var passed = true
-			if required.contains(.selectedText) || required.contains(.textSnippet) {
-				let hasText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-					|| !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-				if !hasText { passed = false }
+		// Helper to check if strict selection is NOT required
+		let strictSelectionNotRequired = !requiresStrictSelection(candidate.title)
+		
+		// Context availability checks
+		let hasTitle = !snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasOCR = !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasVisual = snapshot.visualContextAvailability.hasUsableVisual
+		let hasSomeContext = hasTitle || hasOCR || hasVisual
+
+		let performCheck: () -> Bool = {
+			// MARK: Reusable / library-sourced candidates (T18.3.6C)
+			if candidate.source == .reusableGenerated || candidate.source == .hookComposer {
+				let pathLabel = candidate.source == .hookComposer ? "hook_composer_lenient" : "reusable_trust_library"
+				var passed = true
+				if required.contains(.selectedText) || required.contains(.textSnippet) {
+					let hasText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+						|| !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+					if !hasText {
+						if strictSelectionNotRequired && hasSomeContext {
+							passed = true
+						} else {
+							passed = false
+						}
+					}
+				}
+				if passed, required.contains(.fusedVisual) || required.contains(.screenCapture) {
+					if snapshot.visualContextAvailability.hasUsableVisual {
+						// ok
+					} else if candidate.source == .hookComposer,
+							  let plan = candidate.executionAction?.executionPlan,
+							  (plan.requiresVision || plan.requiresOCR)
+					{
+						let screenAllowed = snapshot.permissionAvailability[.screenRecording] != false
+						if !screenAllowed { passed = false }
+					} else {
+						passed = false
+					}
+				}
+				if ProposalLoggingFlags.verboseProposalLogsEnabled {
+					print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=\(pathLabel) passed=\(passed)")
+				} else if candidate.source == .hookComposer {
+					let req = required.map(\.rawValue).sorted().joined(separator: ",")
+					let reason = passed ? "context_can_be_gathered" : "missing_required_context"
+					print("[GeneratedProposalActivation] hook_candidate_\(passed ? "allowed" : "suppressed") reason=\(reason) id=\(String(candidate.id.prefix(60))) required=\(req)")
+				}
+				return passed
 			}
-			if passed, required.contains(.fusedVisual) || required.contains(.screenCapture) {
-				if snapshot.visualContextAvailability.hasUsableVisual {
-					// ok
-				} else if candidate.source == .hookComposer,
-						  let plan = candidate.executionAction?.executionPlan,
-						  (plan.requiresVision || plan.requiresOCR)
-				{
-					// Hook-composed actions may gather one bounded visual context during execution.
-					// Do not suppress visibility just because visual isn't present yet.
-					let screenAllowed = snapshot.permissionAvailability[.screenRecording] != false
-					if !screenAllowed { passed = false }
-				} else {
-					passed = false
+
+			// MARK: LLM-generated candidates — rebuild via bridge for full context check
+			if let execution = candidate.executionAction {
+				let bridge = GeneratedExecutionContextBridge()
+				let ctx = bridge.buildContext(from: snapshot, action: execution)
+				var passed = ctx.satisfies(required: Array(required))
+				if !passed && (required.contains(.textSnippet) || required.contains(.selectedText)) {
+					let hasText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+						|| !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+					if !hasText && strictSelectionNotRequired && hasSomeContext {
+						passed = true
+					}
+				}
+				let available = ctx.availableContextTypes.map(\.rawValue).sorted().joined(separator: ",")
+				let missing = required.filter { !ctx.availableContextTypes.contains($0) }.map(\.rawValue).sorted().joined(separator: ",")
+				if ProposalLoggingFlags.verboseProposalLogsEnabled {
+					print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=bridge available=\(available) missing=\(missing.isEmpty ? "none" : missing) hasText=\(ctx.hasUsableText) passed=\(passed)")
+				}
+				return passed
+			}
+
+			if required.contains(.textSnippet) || required.contains(.selectedText) {
+				let hasText = !(snapshot.selectedText ?? "").isEmpty
+					|| !(snapshot.recentOCRExcerpt ?? "").isEmpty
+				if !hasText {
+					if strictSelectionNotRequired && hasSomeContext {
+						// passed
+					} else {
+						if ProposalLoggingFlags.verboseProposalLogsEnabled {
+							print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).joined(separator: ",")) path=simple passed=false reason=no_text")
+						}
+						return false
+					}
+				}
+			}
+			if required.contains(.fusedVisual) || required.contains(.screenCapture) {
+				if !snapshot.visualContextAvailability.hasUsableVisual {
+					if ProposalLoggingFlags.verboseProposalLogsEnabled {
+						print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).joined(separator: ",")) path=simple passed=false reason=no_visual")
+					}
+					return false
 				}
 			}
 			if ProposalLoggingFlags.verboseProposalLogsEnabled {
-				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=\(pathLabel) passed=\(passed)")
-			} else if candidate.source == .hookComposer {
-				// Always log hook_composer decisions — they are the primary dynamic action path.
-				let req = required.map(\.rawValue).sorted().joined(separator: ",")
-				let reason = passed ? "context_can_be_gathered" : "missing_required_context"
-				print("[GeneratedProposalActivation] hook_candidate_\(passed ? "allowed" : "suppressed") reason=\(reason) id=\(String(candidate.id.prefix(60))) required=\(req)")
+				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).joined(separator: ",")) path=simple passed=true")
 			}
-			return passed
+			return true
 		}
 
-		// MARK: LLM-generated candidates — rebuild via bridge for full context check
-		if let execution = candidate.executionAction {
-			let bridge = GeneratedExecutionContextBridge()
-			let ctx = bridge.buildContext(from: snapshot, action: execution)
-			let passed = ctx.satisfies(required: Array(required))
-			let available = ctx.availableContextTypes.map(\.rawValue).sorted().joined(separator: ",")
-			let missing = required.filter { !ctx.availableContextTypes.contains($0) }.map(\.rawValue).sorted().joined(separator: ",")
-			if ProposalLoggingFlags.verboseProposalLogsEnabled {
-				print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=bridge available=\(available) missing=\(missing.isEmpty ? "none" : missing) hasText=\(ctx.hasUsableText) passed=\(passed)")
-			}
-			return passed
+		let passed = performCheck()
+		if passed {
+			let src = truthfulContextSource(snapshot: snapshot, strictSelectionNotRequired: strictSelectionNotRequired)
+			print("[GeneratedProposalActivation] context_requirement=passed source=\(src)")
 		}
-
-		if required.contains(.textSnippet) || required.contains(.selectedText) {
-			let hasText = !(snapshot.selectedText ?? "").isEmpty
-				|| !(snapshot.recentOCRExcerpt ?? "").isEmpty
-			if !hasText {
-				if ProposalLoggingFlags.verboseProposalLogsEnabled {
-					print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_text")
-				}
-				return false
-			}
-		}
-		if required.contains(.fusedVisual) || required.contains(.screenCapture) {
-			if !snapshot.visualContextAvailability.hasUsableVisual {
-				if ProposalLoggingFlags.verboseProposalLogsEnabled {
-					print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=false reason=no_visual")
-				}
-				return false
-			}
-		}
-		if ProposalLoggingFlags.verboseProposalLogsEnabled {
-			print("[GeneratedProposalActivation] context_validation template=\(String(candidate.id.prefix(40))) required=\(required.map(\.rawValue).sorted().joined(separator: ",")) path=simple passed=true")
-		}
-		return true
+		return passed
 	}
 
 	// MARK: - Timing
@@ -560,7 +643,7 @@ enum GeneratedExecutionProposalActivator {
 				outcome: .allowPanel,
 				reason: "post_dismiss_cooldown_panel_only",
 				allowsFloatingGenerated: false,
-				allowsPanelGenerated: topScore >= panelMediumScoreThreshold
+				allowsPanelGenerated: topScore >= panelGeneratedScoreThreshold
 			)
 		}
 
@@ -568,7 +651,7 @@ enum GeneratedExecutionProposalActivator {
 			&& input.snapshot.workflowConfidence >= 0.45
 			&& !input.snapshot.packetIsStale
 
-		let allowsPanel = topScore >= panelMediumScoreThreshold
+		let allowsPanel = topScore >= panelGeneratedScoreThreshold
 			|| input.isManualInvocation
 
 		// [FloatingSuggestionDebug] Part 4b — Float gate: shows score vs threshold and blocking condition.
@@ -583,7 +666,7 @@ enum GeneratedExecutionProposalActivator {
 		print("[FloatingSuggestionDebug] float_gate top_score=\(String(format: "%.3f", topScore)) threshold=\(floatingStrongScoreThreshold) gap=\(floatGapStr) passes=\(allowsFloating) block_reason=\(floatBlockReason)")
 
 		// T18.3.6C: Explicit timing decision log so suppression reason is always visible.
-		print("[GeneratedProposalActivation] timing_score topScore=\(String(format: "%.3f", topScore)) panel_threshold=\(panelMediumScoreThreshold) float_threshold=\(floatingStrongScoreThreshold) allows_panel=\(topScore >= panelMediumScoreThreshold) allows_float=\(allowsFloating) is_manual=\(input.isManualInvocation) wf_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence)) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) stale=\(input.snapshot.packetIsStale)")
+		print("[GeneratedProposalActivation] timing_score topScore=\(String(format: "%.3f", topScore)) panel_threshold=\(panelGeneratedScoreThreshold) float_threshold=\(floatingStrongScoreThreshold) allows_panel=\(allowsPanel) allows_float=\(allowsFloating) is_manual=\(input.isManualInvocation) wf_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence)) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) stale=\(input.snapshot.packetIsStale)")
 
 		let outcome: GeneratedProposalTimingOutcome
 		if allowsFloating {
@@ -735,5 +818,6 @@ enum GeneratedExecutionProposalActivator {
 		print(
 			"[GeneratedProposalActivation] considered=\(considered) visible_generated=\(visibleGenerated) visible_static=\(visibleStatic) ratio=\(ratio) top=\(topSource?.rawValue ?? "none") timing=\(timing.outcome.rawValue)"
 		)
+		print("[GeneratedProposalActivation] visible_generated=\(visibleGenerated)")
 	}
 }

@@ -52,8 +52,35 @@ final class LocalAIClient: @unchecked Sendable {
 		model: String,
 		numPredict: Int,
 		temperature: Double,
-		purpose: String?
+		purpose: String?,
+		schema: [String: Any]? = nil
 	) async throws -> String {
+		let isTwoStage = LocalAISettings.shared.twoStageTaskInferenceEnabled
+		let lanePurpose: String? = {
+			if !isTwoStage { return nil }
+			if purpose == "two_stage_router" { return "router" }
+			if purpose == "two_stage_planner" { return "planner" }
+			if purpose == "warmup" { return "keepalive" }
+			return nil
+		}()
+
+		if let lp = lanePurpose {
+			let acquired = await TwoStageLaneManager.shared.acquire(purpose: lp)
+			if !acquired {
+				throw LocalAIClientError.emptyResponse
+			}
+		}
+
+		let startTime = Date()
+		defer {
+			if let lp = lanePurpose {
+				let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
+				Task {
+					await TwoStageLaneManager.shared.release(purpose: lp, elapsedMs: elapsed)
+				}
+			}
+		}
+
 		let inputLength = prompt.utf8.count
 		let purposePart = (purpose?.isEmpty == false) ? " purpose=\(purpose!)" : ""
 		print("[LocalAI] generate_started model=\(model)\(purposePart) inputBytes=\(inputLength)")
@@ -65,16 +92,22 @@ final class LocalAIClient: @unchecked Sendable {
 			request.httpMethod = "POST"
 			request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-			// keep_alive: keep model warm in Ollama for 10 min after each inference.
-			// This prevents the cold-start penalty (3–10s for phi3) on rapid context changes.
-			let keepAlive = (purpose == "task_inference" || purpose == "warmup" || purpose == "model_audit")
-				? "10m" : nil
+			// keep_alive: keep model warm in Ollama for 10 min (or 5 min for two-stage) after each inference.
+			let keepAlive: String? = {
+				if isTwoStage {
+					if purpose == "two_stage_router" || purpose == "two_stage_planner" || purpose == "warmup" {
+						return "5m"
+					}
+				}
+				return (purpose == "task_inference" || purpose == "warmup" || purpose == "model_audit") ? "10m" : nil
+			}()
 			let payload = OllamaGenerateRequest(
 				model: model,
 				prompt: prompt,
 				stream: false,
 				options: OllamaGenerateOptions(numPredict: numPredict, temperature: temperature),
-				keepAlive: keepAlive
+				keepAlive: keepAlive,
+				format: schema.map { AnyCodableValue(value: $0) }
 			)
 			request.httpBody = try JSONEncoder().encode(payload)
 
@@ -122,8 +155,35 @@ final class LocalAIClient: @unchecked Sendable {
 		model: String,
 		numPredict: Int,
 		temperature: Double,
-		purpose: String?
+		purpose: String?,
+		schema: [String: Any]? = nil
 	) async throws -> String {
+		let isTwoStage = LocalAISettings.shared.twoStageTaskInferenceEnabled
+		let lanePurpose: String? = {
+			if !isTwoStage { return nil }
+			if purpose == "two_stage_router" { return "router" }
+			if purpose == "two_stage_planner" { return "planner" }
+			if purpose == "warmup" { return "keepalive" }
+			return nil
+		}()
+
+		if let lp = lanePurpose {
+			let acquired = await TwoStageLaneManager.shared.acquire(purpose: lp)
+			if !acquired {
+				throw LocalAIClientError.emptyResponse
+			}
+		}
+
+		let startTime = Date()
+		defer {
+			if let lp = lanePurpose {
+				let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
+				Task {
+					await TwoStageLaneManager.shared.release(purpose: lp, elapsedMs: elapsed)
+				}
+			}
+		}
+
 		guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else {
 			throw LocalAIClientError.invalidURL
 		}
@@ -131,12 +191,14 @@ final class LocalAIClient: @unchecked Sendable {
 		request.httpMethod = "POST"
 		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+		let keepAlive = isTwoStage ? "5m" : "10m"
 		let payload = OllamaGenerateRequest(
 			model: model,
 			prompt: prompt,
 			stream: true,
 			options: OllamaGenerateOptions(numPredict: numPredict, temperature: temperature),
-			keepAlive: "10m"
+			keepAlive: keepAlive,
+			format: schema.map { AnyCodableValue(value: $0) }
 		)
 		request.httpBody = try JSONEncoder().encode(payload)
 
@@ -220,10 +282,12 @@ final class LocalAIClient: @unchecked Sendable {
 		/// Ask Ollama to keep the model loaded in memory after this request.
 		/// "-1" = keep indefinitely; "10m" = 10 minutes. Prevents cold-start penalty.
 		let keepAlive: String?
+		let format: AnyCodableValue?
 
 		enum CodingKeys: String, CodingKey {
 			case model, prompt, stream, options
 			case keepAlive = "keep_alive"
+			case format
 		}
 	}
 
@@ -242,3 +306,30 @@ final class LocalAIClient: @unchecked Sendable {
 		let error: String?
 	}
 }
+
+// MARK: - AnyCodableValue for Dynamic JSON schema serialization
+
+struct AnyCodableValue: Encodable {
+	let value: Any
+
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.singleValueContainer()
+		if let string = value as? String {
+			try container.encode(string)
+		} else if let number = value as? Double {
+			try container.encode(number)
+		} else if let int = value as? Int {
+			try container.encode(int)
+		} else if let bool = value as? Bool {
+			try container.encode(bool)
+		} else if let array = value as? [Any] {
+			try container.encode(array.map { AnyCodableValue(value: $0) })
+		} else if let dict = value as? [String: Any] {
+			try container.encode(dict.mapValues { AnyCodableValue(value: $0) })
+		} else {
+			throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported value for AnyCodableValue"))
+		}
+	}
+}
+
+

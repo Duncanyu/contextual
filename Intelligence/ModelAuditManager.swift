@@ -98,13 +98,27 @@ actor ModelAuditManager {
 	// MARK: - Full audit
 
 	func runAudit(baseModel: String) async {
+		print("[LocalAIReady] checking")
 		print("[ModelAudit] started base_model=\(baseModel)")
 		lastAuditAt = Date()
 
 		// ── Step 1: discover installed models ──────────────────────────────────────
 		var installed = await fetchInstalledModels()
 		discoveredModels = installed
+		if installed.isEmpty {
+			print("[LocalAIReady] ready=no reason=no_models_installed")
+		} else {
+			print("[LocalAIReady] ready=yes models=\(installed.count)")
+		}
 		print("[ModelAudit] discovered=[\(installed.joined(separator: ","))]")
+
+		// ── Two-stage model readiness verification ─────────────────────────────────
+		// Log which models are available for router (qwen2.5:0.5b) and planner (qwen2.5:1.5b).
+		// Only these two models are permitted for task inference — do NOT report phi3 readiness.
+		let routerAvailable = installed.contains { modelNameMatches($0, candidate: "qwen2.5:0.5b") }
+		let plannerAvailable = installed.contains { modelNameMatches($0, candidate: "qwen2.5:1.5b") }
+		print("[TwoStageModelReady] router=qwen2.5:0.5b available=\(routerAvailable ? "yes" : "no")")
+		print("[TwoStageModelReady] planner=qwen2.5:1.5b available=\(plannerAvailable ? "yes" : "no")")
 
 		if installed.isEmpty {
 			print("[ModelAudit] no_models_found cannot_benchmark")

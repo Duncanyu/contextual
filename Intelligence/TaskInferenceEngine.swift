@@ -6,7 +6,8 @@ protocol TaskInferenceLLMGenerating: Sendable {
 		model: String,
 		numPredict: Int,
 		temperature: Double,
-		purpose: String?
+		purpose: String?,
+		schema: [String: Any]?
 	) async throws -> String
 
 	/// Streaming variant: accumulates tokens and returns as soon as a balanced `{…}` JSON object
@@ -16,8 +17,31 @@ protocol TaskInferenceLLMGenerating: Sendable {
 		model: String,
 		numPredict: Int,
 		temperature: Double,
-		purpose: String?
+		purpose: String?,
+		schema: [String: Any]?
 	) async throws -> String
+}
+
+extension TaskInferenceLLMGenerating {
+	func generate(
+		prompt: String,
+		model: String,
+		numPredict: Int,
+		temperature: Double,
+		purpose: String?
+	) async throws -> String {
+		try await generate(prompt: prompt, model: model, numPredict: numPredict, temperature: temperature, purpose: purpose, schema: nil)
+	}
+
+	func generateStreamingJSON(
+		prompt: String,
+		model: String,
+		numPredict: Int,
+		temperature: Double,
+		purpose: String?
+	) async throws -> String {
+		try await generateStreamingJSON(prompt: prompt, model: model, numPredict: numPredict, temperature: temperature, purpose: purpose, schema: nil)
+	}
 }
 
 extension LocalAIClient: TaskInferenceLLMGenerating {}
@@ -29,6 +53,8 @@ extension LocalAIClient: TaskInferenceLLMGenerating {}
 /// Model selection is delegated to ActiveModelTierConfig (populated by ModelAuditManager).
 /// On timeout: stay quiet — no generic template fallback.
 actor TaskInferenceEngine {
+    // Two-stage lane manager for serialized router/planner calls
+    private let twoStageLane = TwoStageLaneManager.shared
 	static let shared = TaskInferenceEngine()
 
 	private struct Cached: Sendable {
@@ -65,6 +91,8 @@ actor TaskInferenceEngine {
 	/// When a second call arrives while one is in flight, it returns nil immediately rather
 	/// than queuing — the caller will retry on the next context event.
 	private var isInferenceRunning = false
+	private var activePlannerTask: Task<TaskInferenceResult?, Never>?
+	private var activeFingerprint: String?
 
 	/// Set by ModelAuditManager while benchmarking. During benchmark, Ollama must be
 	/// exclusively available for the audit — live inference would compete for the inference
@@ -96,8 +124,46 @@ actor TaskInferenceEngine {
 		situational: SituationalContextSnapshot,
 		recentTitles: [String],
 		history: ProposalHistoryMetadata?,
-		referenceTime: Date = Date()
+		referenceTime: Date = Date(),
+		isEnrichedPass: Bool = false
 	) async -> TaskInferenceResult? {
+		let fingerprint = Self.fingerprint(
+			snapshot: snapshot,
+			situational: situational,
+			recentTitles: recentTitles
+		)
+
+		if LocalAISettings.shared.twoStageTaskInferenceEnabled {
+			if let activeFp = activeFingerprint, activeFp != fingerprint {
+				print("[TwoStage] context changed (fp: \(activeFp) -> \(fingerprint)). Cancelling active planner task.")
+				activePlannerTask?.cancel()
+				activePlannerTask = nil
+				activeFingerprint = nil
+			}
+			activeFingerprint = fingerprint
+
+			let task = Task { [weak self] () -> TaskInferenceResult? in
+				guard let self = self else { return nil }
+				return await self.inferTwoStage(
+					snapshot: snapshot,
+					situational: situational,
+					recentTitles: recentTitles,
+					history: history,
+					referenceTime: referenceTime,
+					fingerprint: fingerprint,
+					isEnrichedPass: isEnrichedPass
+				)
+			}
+			activePlannerTask = task
+			let result = await task.value
+
+			if self.activeFingerprint == fingerprint {
+				self.activePlannerTask = nil
+				self.activeFingerprint = nil
+			}
+			return result
+		}
+
 		// Audit gate: ModelAuditManager holds this while benchmarking to get exclusive
 		// access to Ollama. During benchmark, live inference would compete for the inference
 		// queue and cause every benchmark sample to time out.
@@ -108,12 +174,6 @@ actor TaskInferenceEngine {
 			print("[TaskInference] skipped reason=inference_already_running")
 			return nil
 		}
-
-		let fingerprint = Self.fingerprint(
-			snapshot: snapshot,
-			situational: situational,
-			recentTitles: recentTitles
-		)
 
 		// Audit gate: during benchmark we must not compete for Ollama. Still allow cache hits.
 		if auditGateActive {
@@ -484,7 +544,358 @@ actor TaskInferenceEngine {
 		cacheByFingerprint[fingerprint] = Cached(result: parsed, cachedAt: referenceTime)
 		pruneCache(referenceTime: referenceTime)
 		return parsed
+	
+    }
+
+    // MARK: - Two-Stage Inference
+
+	private func inferTwoStage(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		recentTitles: [String],
+		history: ProposalHistoryMetadata?,
+		referenceTime: Date,
+		fingerprint: String,
+		isEnrichedPass: Bool
+	) async -> TaskInferenceResult? {
+		if Task.isCancelled { return nil }
+
+		// Stage 0: Build and print lightweight context packet
+		let hasOCR = snapshot.recentOCRExcerpt != nil && !snapshot.recentOCRExcerpt!.isEmpty
+		let hasVisual = snapshot.visualContextAvailability.visualSummaryExcerpt != nil && !snapshot.visualContextAvailability.visualSummaryExcerpt!.isEmpty
+		let hasSel = !(snapshot.selectedText ?? "").isEmpty
+		let hasClip = !(snapshot.clipboardText ?? "").isEmpty
+		let typingState = situational.metadata["typingState"] ?? "no"
+		let pointerState = situational.metadata["pointerState"] ?? "no"
+		let recentChanges = recentTitles.joined(separator: "|")
+		let availableSources = snapshot.availableContextTypes.map(\.rawValue).joined(separator: ",")
+		
+		let visualExcerpt = snapshot.visualContextAvailability.visualSummaryExcerpt ?? ""
+		let visualConf = hasVisual ? 0.95 : 0.0
+		let visualAgeMs: Int
+		if let capturedAt = snapshot.visualContextAvailability.visualCapturedAt {
+			visualAgeMs = Int(referenceTime.timeIntervalSince(capturedAt) * 1000)
+		} else {
+			visualAgeMs = -1
+		}
+		
+		print("[TwoStageContextPacket] app=\"\(situational.activeAppName)\" title=\"\(situational.windowTitle)\" wf=\"\(situational.inferredWorkflow.rawValue)\" cat=\"\(situational.appCategory.rawValue)\" ocr_avail=\(hasOCR ? "yes" : "no") visual_avail=\(hasVisual ? "yes" : "no") typing=\(typingState) pointer=\(pointerState) has_sel=\(hasSel ? "yes" : "no") has_clip=\(hasClip ? "yes" : "no") recent_changes=\"\(recentChanges)\" available_context_sources=\"\(availableSources)\" visual_descriptor_available=\(hasVisual ? "yes" : "no") visual_descriptor_excerpt=\"\(visualExcerpt)\" visual_descriptor_confidence=\(visualConf) visual_descriptor_age_ms=\(visualAgeMs)")
+
+		print("[TwoStageRouter] started")
+
+		// Blank desktop suppression (only deterministic safety logic kept)
+		let appLower = situational.activeAppName.lowercased()
+		let titleLower = situational.windowTitle.lowercased()
+		if appLower == "finder" && (titleLower.isEmpty || titleLower == "desktop" || titleLower == "finder") {
+			print("[TwoStageRouter] decision=insufficient_context reason=blank_desktop_suppression")
+			return nil
+		}
+
+		// Router phase using a cheap model.
+		let routerModel = "qwen2.5:0.5b"
+		let plannerModel = "qwen2.5:1.5b"
+
+		// Build lightweight router prompt.
+		let routerPrompt = TwoStageRouterPromptBuilder.build(
+			snapshot: snapshot,
+			situational: situational,
+			recentTitles: recentTitles,
+			history: history,
+			referenceTime: referenceTime
+		)
+
+		// Acquire lane for router.
+		let routerStart = Date()
+		guard await twoStageLane.acquire(purpose: "router") else { return nil }
+		if Task.isCancelled {
+			await twoStageLane.release(purpose: "router", elapsedMs: Int(Date().timeIntervalSince(routerStart) * 1000))
+			return nil
+		}
+
+		var routerRaw: String = ""
+		var routerUsedStreaming = true
+		do {
+			(routerRaw, routerUsedStreaming) = try await withInferenceTimeout(timeoutSeconds: Self.inferenceTimeoutSeconds) {
+				try await self.llm.generateStreamingJSON(
+					prompt: routerPrompt,
+					model: routerModel,
+					numPredict: 80,
+					temperature: 0.10,
+					purpose: "task_inference_router"
+				)
+			}
+		} catch {
+			print("[TwoStageRouter] failed error=\(error)")
+			await twoStageLane.release(purpose: "router", elapsedMs: Int(Date().timeIntervalSince(routerStart) * 1000))
+			return nil
+		}
+
+		let elapsedRouter = Int(Date().timeIntervalSince(routerStart) * 1000)
+		await twoStageLane.release(purpose: "router", elapsedMs: elapsedRouter)
+
+		if Task.isCancelled { return nil }
+
+		// Parse router output tolerantly.
+		guard let routerObj = Self.parseRouterOutput(routerRaw) else {
+			let rawPreview = routerRaw.replacingOccurrences(of: "\n", with: "↵")
+			print("[TwoStageRouter] raw=\(rawPreview)")
+			print("[TwoStageRouter] parsed=nil")
+			print("[TwoStageRouter] decision=insufficient_context")
+			print("[TwoStageRouter] JSON parse failed raw=\(routerRaw)")
+			return nil
+		}
+
+		let modelDecision: String
+		if let dec = routerObj["decision"] as? String {
+			let lowerDec = dec.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+			if lowerDec == "enough_context" || lowerDec == "classify_now" {
+				modelDecision = "enough_context"
+			} else if lowerDec == "need_more_context" || lowerDec == "insufficient_context" {
+				modelDecision = "need_more_context"
+			} else {
+				modelDecision = lowerDec
+			}
+		} else {
+			modelDecision = "enough_context"
+		}
+
+		var requestedContexts: [String] = []
+		if let reqArr = routerObj["request"] as? [String] {
+			requestedContexts = reqArr
+		} else if let reqArr = routerObj["request"] as? String {
+			requestedContexts = reqArr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+		} else if let needArr = routerObj["need"] as? [String] {
+			requestedContexts = needArr
+		} else if let needStr = routerObj["need"] as? String {
+			requestedContexts = needStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+		}
+		requestedContexts = requestedContexts.map { $0.lowercased().trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && $0 != "none" }
+
+		print("[TwoStageRouter] raw=\(routerRaw.replacingOccurrences(of: "\n", with: "↵"))")
+		print("[TwoStageRouter] parsed=\(routerObj)")
+		
+		var finalDecision = modelDecision
+		var finalRequestedContexts = requestedContexts
+
+		if isEnrichedPass {
+			var suppressedAny = false
+			var filteredRequested: [String] = []
+			for req in finalRequestedContexts {
+				let lowerReq = req.lowercased().trimmingCharacters(in: .whitespaces)
+				if lowerReq == "ocr" || lowerReq == "visible_ocr" {
+					if let ocr = snapshot.recentOCRExcerpt, !ocr.isEmpty {
+						print("[TwoStageRouter] repeated_context_request_suppressed source=\(req)")
+						suppressedAny = true
+						continue
+					}
+				} else if lowerReq == "visual_descriptor" {
+					if let vis = snapshot.visualContextAvailability.visualSummaryExcerpt, !vis.isEmpty {
+						print("[TwoStageRouter] repeated_context_request_suppressed source=\(req)")
+						suppressedAny = true
+						continue
+					}
+				} else if lowerReq == "ax_window_text" || lowerReq == "browser_text" {
+					if let summary = snapshot.contextSummary, summary.contains("ax=") {
+						print("[TwoStageRouter] repeated_context_request_suppressed source=\(req)")
+						suppressedAny = true
+						continue
+					}
+				}
+				filteredRequested.append(req)
+			}
+			
+			if suppressedAny {
+				finalRequestedContexts = filteredRequested
+				// Usable context check:
+				let hasTitle = !situational.windowTitle.isEmpty
+				let hasOCRText = snapshot.recentOCRExcerpt != nil && !snapshot.recentOCRExcerpt!.isEmpty
+				let hasVisualText = snapshot.visualContextAvailability.visualSummaryExcerpt != nil && !snapshot.visualContextAvailability.visualSummaryExcerpt!.isEmpty
+				let hasAX = snapshot.contextSummary?.contains("ax=") == true
+				let hasSelected = snapshot.selectedText != nil && !snapshot.selectedText!.isEmpty
+				let hasClipboard = snapshot.clipboardText != nil && !snapshot.clipboardText!.isEmpty
+				
+				let usableContextExists = hasTitle || hasOCRText || hasVisualText || hasAX || hasSelected || hasClipboard
+				if usableContextExists {
+					finalDecision = "enough_context"
+					finalRequestedContexts = []
+					print("[TwoStageRouter] decision=enough_context reason=enriched_context_available")
+				}
+			}
+		}
+
+		print("[TwoStageRouter] decision=\(finalDecision)")
+		
+		let reqsStr = "[" + finalRequestedContexts.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+		print("[TwoStageRouter] requested_context=\(reqsStr)")
+
+		if finalDecision == "need_more_context" {
+			var needMapped: [String] = []
+			for req in finalRequestedContexts {
+				if req == "ocr" || req == "visible_ocr" {
+					needMapped.append("visible_ocr")
+				} else if req == "visual_descriptor" {
+					needMapped.append("visual_descriptor")
+				} else if req == "ax_window_text" || req == "browser_text" {
+					needMapped.append("ax_window_text")
+				} else {
+					needMapped.append(req)
+				}
+			}
+			if !needMapped.isEmpty {
+				return TaskInferenceResult(
+					shouldChime: false,
+					possibleUserGoal: "",
+					confidence: routerObj["confidence"] as? Double ?? routerObj["p"] as? Double ?? 0.8,
+					neededCapabilityCategories: [],
+					whyNow: "",
+					missingContext: [],
+					expirySeconds: 20,
+					createdAt: referenceTime,
+					need: needMapped,
+					needReason: "escalation"
+				)
+			} else {
+				print("[TwoStageRouter] need_more_context but requested_context empty, staying quiet.")
+				return nil
+			}
+		}
+
+		guard finalDecision == "enough_context" else {
+			print("[TwoStageRouter] decision=\(finalDecision), staying quiet.")
+			return nil
+		}
+
+		// Debounce before planner.
+		print("[TwoStagePlannerDebounce] scheduled fp=\(fingerprint)")
+		do {
+			try await Task.sleep(nanoseconds: 1_000_000_000) // 1000ms
+		} catch {
+			print("[TwoStagePlannerDebounce] cancelled during sleep fp=\(fingerprint)")
+			return nil
+		}
+
+		if Task.isCancelled { return nil }
+		print("[TwoStagePlannerDebounce] fired")
+
+		// Planner phase.
+		let plannerPrompt = TwoStageCompactPlannerPromptBuilder.build(
+			snapshot: snapshot,
+			situational: situational,
+			recentTitles: recentTitles,
+			history: history,
+			referenceTime: referenceTime
+		)
+
+		let plannerStart = Date()
+		guard await twoStageLane.acquire(purpose: "planner") else { return nil }
+		if Task.isCancelled {
+			await twoStageLane.release(purpose: "planner", elapsedMs: Int(Date().timeIntervalSince(plannerStart) * 1000))
+			return nil
+		}
+
+		var plannerRaw: String = ""
+		var plannerUsedStreaming = true
+		do {
+			(plannerRaw, plannerUsedStreaming) = try await withInferenceTimeout(timeoutSeconds: 2.5) {
+				try await self.llm.generateStreamingJSON(
+					prompt: plannerPrompt,
+					model: plannerModel,
+					numPredict: 120,
+					temperature: 0.10,
+					purpose: "task_inference_planner"
+				)
+			}
+		} catch {
+			print("[TwoStagePlanner] failed error=\(error)")
+			await twoStageLane.release(purpose: "planner", elapsedMs: Int(Date().timeIntervalSince(plannerStart) * 1000))
+			return nil
+		}
+
+		let elapsedPlanner = Int(Date().timeIntervalSince(plannerStart) * 1000)
+		await twoStageLane.release(purpose: "planner", elapsedMs: elapsedPlanner)
+
+		if Task.isCancelled { return nil }
+
+		// Parse compact planner output.
+		guard let plannerObj = Self.parseCompactPlanner(plannerRaw) else {
+			let rawPreview = plannerRaw.replacingOccurrences(of: "\n", with: "↵")
+			print("[TwoStagePlanner] raw=\(rawPreview)")
+			print("[TwoStagePlanner] parsed=nil")
+			print("[TwoStagePlanner] action=no")
+			print("[TwoStagePlanner] quiet=yes reason=parse_failed")
+			return nil
+		}
+
+		let activity = plannerObj["inferred_activity"] as? String ?? "unknown"
+		let confidence = plannerObj["confidence"] as? Double ?? plannerObj["p"] as? Double ?? 0.85
+		let evidence = plannerObj["evidence"] as? String ?? plannerObj["reason"] as? String ?? "stable context"
+		let goal = plannerObj["candidate_action_title"] as? String ?? plannerObj["t"] as? String ?? ""
+		let shouldChime: Bool
+		if let surfaceVal = plannerObj["should_surface_softly"] as? Bool {
+			shouldChime = surfaceVal
+		} else if let surfaceVal = plannerObj["should_surface_softly"] as? Int {
+			shouldChime = (surfaceVal != 0)
+		} else if let surfaceVal = plannerObj["should_surface_softly"] as? String {
+			let lower = surfaceVal.lowercased()
+			shouldChime = (lower == "true" || lower == "1" || lower == "yes")
+		} else if let aVal = plannerObj["a"] as? Int {
+			shouldChime = (aVal != 0)
+		} else if let aVal = plannerObj["a"] as? Bool {
+			shouldChime = aVal
+		} else {
+			shouldChime = !goal.isEmpty
+		}
+
+		let categories: [String]
+		if let hVal = plannerObj["suggested_hooks"] as? String {
+			categories = hVal.split(separator: ",")
+				.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+				.filter { !$0.isEmpty }
+		} else if let hArr = plannerObj["suggested_hooks"] as? [String] {
+			categories = hArr.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+				.filter { !$0.isEmpty }
+		} else if let hVal = plannerObj["h"] as? String {
+			categories = hVal.split(separator: ",")
+				.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+				.filter { !$0.isEmpty }
+		} else if let hArr = plannerObj["h"] as? [String] {
+			categories = hArr.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+				.filter { !$0.isEmpty }
+		} else {
+			categories = []
+		}
+
+		let reqCtx: [String]
+		if let reqArr = plannerObj["required_context"] as? [String] {
+			reqCtx = reqArr
+		} else if let reqStr = plannerObj["required_context"] as? String {
+			reqCtx = reqStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+		} else {
+			reqCtx = ["title"]
+		}
+
+		print("[TwoStagePlanner] raw=\(plannerRaw.replacingOccurrences(of: "\n", with: "↵"))")
+		print("[TwoStagePlanner] parsed=\(plannerObj)")
+		print("[TwoStagePlanner] inferred_activity=\(activity)")
+		print("[TwoStagePlanner] evidence=\(evidence)")
+		print("[TwoStagePlanner] required_context=\(reqCtx.joined(separator: "/"))")
+
+		let plannerResult = TaskInferenceResult(
+			shouldChime: shouldChime,
+			possibleUserGoal: goal,
+			confidence: confidence,
+			neededCapabilityCategories: categories,
+			whyNow: evidence,
+			missingContext: [],
+			expirySeconds: 20,
+			createdAt: referenceTime,
+			need: [],
+			needReason: nil
+		)
+
+		return plannerResult
 	}
+
 
 	// MARK: - Fingerprint / cache
 
@@ -597,6 +1008,446 @@ actor TaskInferenceEngine {
 		return collapsed.split(separator: " ").prefix(10).joined(separator: " ")
 	}
 
+	static func sanitizePlannerResponse(_ raw: String) -> String {
+		var content = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+		
+		// Check for block fences: ```json ... ```
+		if content.hasPrefix("```") {
+			let lines = content.components(separatedBy: .newlines)
+			if lines.count >= 2 {
+				let firstLine = lines[0].trimmingCharacters(in: .whitespacesAndNewlines)
+				if firstLine.hasPrefix("```") {
+					var middleLines = Array(lines.dropFirst())
+					if let lastLine = middleLines.last?.trimmingCharacters(in: .whitespacesAndNewlines), lastLine == "```" {
+						middleLines.removeLast()
+					}
+					content = middleLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+				}
+			}
+		}
+		
+		// Check for single-line inline fences or leftovers:
+		if content.hasPrefix("```") {
+			let prefixToRemove = content.hasPrefix("```json") ? "```json" : "```"
+			content = String(content.dropFirst(prefixToRemove.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+			if content.hasSuffix("```") {
+				content = String(content.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+			}
+		}
+		
+		return content
+	}
+
+	static func extractFirstBalancedJSONObject(from str: String) -> String? {
+		var braceDepth = 0
+		var inString = false
+		var isEscaped = false
+		var firstBraceIndex: String.Index? = nil
+		
+		let chars = Array(str)
+		var i = 0
+		while i < chars.count {
+			let char = chars[i]
+			
+			if inString {
+				if isEscaped {
+					isEscaped = false
+				} else if char == "\\" {
+					isEscaped = true
+				} else if char == "\"" {
+					inString = false
+				}
+			} else {
+				if char == "\"" {
+					inString = true
+				} else if char == "{" {
+					if braceDepth == 0 {
+						firstBraceIndex = str.index(str.startIndex, offsetBy: i)
+					}
+					braceDepth += 1
+				} else if char == "}" {
+					if braceDepth > 0 {
+						braceDepth -= 1
+						if braceDepth == 0, let startIdx = firstBraceIndex {
+							let endIdx = str.index(str.startIndex, offsetBy: i)
+							return String(str[startIdx...endIdx])
+						}
+					}
+				}
+			}
+			i += 1
+		}
+		return nil
+	}
+
+	static func parseCompactPlanner(_ raw: String) -> [String: Any]? {
+		let trimmedRaw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+		
+		// Attempt 1: Strict JSON decode
+		if let data = trimmedRaw.data(using: .utf8),
+		   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+			#if DEBUG
+			print("[TwoStagePlanner] parse_success")
+			#endif
+			return obj
+		}
+		
+		// Attempt 2: Sanitize response and retry decode
+		let sanitized = sanitizePlannerResponse(raw)
+		#if DEBUG
+		print("[TwoStagePlanner] sanitized_json=\(sanitized)")
+		#endif
+		
+		if let data = sanitized.data(using: .utf8),
+		   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+			#if DEBUG
+			print("[TwoStagePlanner] parse_recovered_via_sanitizer")
+			#endif
+			return obj
+		}
+		
+		// Attempt 3: Extract first balanced {...} JSON object
+		if let balanced = extractFirstBalancedJSONObject(from: raw) {
+			#if DEBUG
+			print("[TwoStagePlanner] sanitized_json=\(balanced)")
+			#endif
+			if let data = balanced.data(using: .utf8),
+			   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+				#if DEBUG
+				print("[TwoStagePlanner] parse_recovered_via_sanitizer")
+				#endif
+				return obj
+			}
+		}
+
+		// Attempt 4: Single-to-double quote repair
+		let repaired = repairSingleQuotes(sanitized)
+		if let data = repaired.data(using: .utf8),
+		   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+			#if DEBUG
+			print("[TwoStagePlanner] parse_recovered_via_single_quote_repair")
+			#endif
+			return obj
+		}
+
+		// Attempt 5: Regex fallback extraction
+		if let dict = regexExtractPlannerFields(raw) {
+			#if DEBUG
+			print("[TwoStagePlanner] parse_recovered_via_regex")
+			#endif
+			return dict
+		}
+		
+		#if DEBUG
+		print("[TwoStagePlanner] parse_failed_final raw=\(raw)")
+		#endif
+		return nil
+	}
+
+	static func repairSingleQuotes(_ raw: String) -> String {
+		return raw.replacingOccurrences(of: "'", with: "\"")
+	}
+
+	static func regexExtractRouterFields(_ raw: String) -> [String: Any]? {
+		var dict: [String: Any] = [:]
+		
+		// Extract decision
+		if let decMatch = raw.range(of: #""decision"\s*:\s*"([^"]+)""#, options: .regularExpression) {
+			let sub = raw[decMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if valPart.hasPrefix("\""), valPart.hasSuffix("\"") {
+					dict["decision"] = String(valPart.dropFirst().dropLast())
+				}
+			}
+		}
+		
+		// Extract reason
+		if let reasonMatch = raw.range(of: #""reason"\s*:\s*"([^"]+)""#, options: .regularExpression) {
+			let sub = raw[reasonMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if valPart.hasPrefix("\""), valPart.hasSuffix("\"") {
+					dict["reason"] = String(valPart.dropFirst().dropLast())
+				}
+			}
+		}
+		
+		// Extract confidence
+		if let confMatch = raw.range(of: #""confidence"\s*:\s*([0-9\.]+)"#, options: .regularExpression) {
+			let sub = raw[confMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if let val = Double(valPart) {
+					dict["confidence"] = val
+				}
+			}
+		} else if let confMatch = raw.range(of: #""p"\s*:\s*([0-9\.]+)"#, options: .regularExpression) {
+			let sub = raw[confMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if let val = Double(valPart) {
+					dict["confidence"] = val
+				}
+			}
+		}
+		
+		// Extract request array
+		if let reqMatch = raw.range(of: #""request"\s*:\s*\[([^\]]*)\]"#, options: .regularExpression) {
+			let sub = raw[reqMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if valPart.hasPrefix("["), valPart.hasSuffix("]") {
+					let inner = valPart.dropFirst().dropLast()
+					let items = inner.split(separator: ",").map {
+						$0.trimmingCharacters(in: .whitespacesAndNewlines)
+						  .replacingOccurrences(of: "\"", with: "")
+						  .replacingOccurrences(of: "'", with: "")
+					}.filter { !$0.isEmpty }
+					dict["request"] = items
+				}
+			}
+		}
+		
+		if dict["decision"] != nil {
+			return dict
+		}
+		return nil
+	}
+
+	static func regexExtractPlannerFields(_ raw: String) -> [String: Any]? {
+		var dict: [String: Any] = [:]
+		
+		let keys = ["inferred_activity", "evidence", "candidate_action_title", "suggested_hooks", "reason", "t", "h"]
+		for key in keys {
+			let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]+)\""
+			if let matchRange = raw.range(of: pattern, options: .regularExpression) {
+				let sub = raw[matchRange]
+				if let colonIdx = sub.firstIndex(of: ":") {
+					let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+					if valPart.hasPrefix("\""), valPart.hasSuffix("\"") {
+						dict[key] = String(valPart.dropFirst().dropLast())
+					}
+				}
+			}
+		}
+		
+		// Extract confidence
+		if let confMatch = raw.range(of: #""confidence"\s*:\s*([0-9\.]+)"#, options: .regularExpression) {
+			let sub = raw[confMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if let val = Double(valPart) {
+					dict["confidence"] = val
+					dict["p"] = val
+				}
+			}
+		} else if let confMatch = raw.range(of: #""p"\s*:\s*([0-9\.]+)"#, options: .regularExpression) {
+			let sub = raw[confMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if let val = Double(valPart) {
+					dict["confidence"] = val
+					dict["p"] = val
+				}
+			}
+		}
+		
+		// Extract should_surface_softly / a
+		if let surfaceMatch = raw.range(of: #""should_surface_softly"\s*:\s*(true|false|1|0)"#, options: .regularExpression) {
+			let sub = raw[surfaceMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if valPart == "true" || valPart == "1" {
+					dict["should_surface_softly"] = true
+					dict["a"] = 1
+				} else {
+					dict["should_surface_softly"] = false
+					dict["a"] = 0
+				}
+			}
+		} else if let surfaceMatch = raw.range(of: #""a"\s*:\s*(true|false|1|0)"#, options: .regularExpression) {
+			let sub = raw[surfaceMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if valPart == "true" || valPart == "1" {
+					dict["should_surface_softly"] = true
+					dict["a"] = 1
+				} else {
+					dict["should_surface_softly"] = false
+					dict["a"] = 0
+				}
+			}
+		}
+		
+		// Extract required_context array
+		if let reqMatch = raw.range(of: #""required_context"\s*:\s*\[([^\]]*)\]"#, options: .regularExpression) {
+			let sub = raw[reqMatch]
+			if let colonIdx = sub.firstIndex(of: ":") {
+				let valPart = sub[sub.index(after: colonIdx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+				if valPart.hasPrefix("["), valPart.hasSuffix("]") {
+					let inner = valPart.dropFirst().dropLast()
+					let items = inner.split(separator: ",").map {
+						$0.trimmingCharacters(in: .whitespacesAndNewlines)
+						  .replacingOccurrences(of: "\"", with: "")
+						  .replacingOccurrences(of: "'", with: "")
+					}.filter { !$0.isEmpty }
+					dict["required_context"] = items
+				}
+			}
+		}
+		
+		if dict["candidate_action_title"] != nil || dict["inferred_activity"] != nil || dict["t"] != nil {
+			return dict
+		}
+		return nil
+	}
+
+	struct RouterBoostResult {
+		let score: Double
+		let reasons: [String]
+	}
+
+	static func computeDeterministicBoost(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot
+	) -> RouterBoostResult {
+		var score: Double = 0.0
+		var reasons: [String] = []
+
+		let appLower = (situational.activeAppName).lowercased()
+		let titleLower = (situational.windowTitle).lowercased()
+		let wf = situational.inferredWorkflow
+		
+		// 1. Xcode and debugging workflow
+		if appLower == "xcode" {
+			score += 0.8
+			reasons.append("Xcode editor")
+		} else if wf == .debugging {
+			score += 0.5
+			reasons.append("debugging workflow")
+		}
+
+		// 2. Title product-like keywords
+		let productKeywords = ["amazon", "product", "price", "shop", "cart", "checkout", "buy", "store", "review", "rating", "ebay", "walmart", "target", "aliexpress", "aliexpress.com", "shopify"]
+		for kw in productKeywords {
+			if titleLower.contains(kw) {
+				score += 0.9
+				reasons.append("product keyword (\(kw))")
+				break
+			}
+		}
+
+		// 4. Title search result pages
+		let searchKeywords = ["google search", "bing search", "search results", "query=", "search?q="]
+		for kw in searchKeywords {
+			if titleLower.contains(kw) {
+				score += 0.5
+				reasons.append("search result keyword (\(kw))")
+				break
+			}
+		}
+
+		// 5. Title code-like terms
+		let codeKeywords = [".swift", ".py", ".js", ".ts", ".json", ".yml", ".yaml", ".xml", "github", "gitlab", "terminal", "vscode", "cursor"]
+		for kw in codeKeywords {
+			if titleLower.contains(kw) {
+				score += 0.6
+				reasons.append("code/developer keyword (\(kw))")
+				break
+			}
+		}
+
+		// 6. Selected text presence
+		if let sel = snapshot.selectedText, !sel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+			let count = sel.count
+			if count > 0 {
+				score += 0.7
+				reasons.append("selected text (\(count) chars)")
+			}
+		}
+
+		// 7. Clipboard length and recent
+		if let clip = snapshot.clipboardText, !clip.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+			let count = clip.count
+			if count > 300 {
+				score += 0.6
+				reasons.append("long clipboard text (\(count) chars)")
+			}
+		}
+
+		// 8. Visual OCR with meaningful text
+		if let ocr = snapshot.recentOCRExcerpt, !ocr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+			let count = ocr.count
+			if count > 500 {
+				if wf == .browsing || wf == .reviewing || wf == .debugging {
+					score += 0.8
+					reasons.append("long OCR (\(count) chars) in active \(wf) workflow")
+				} else {
+					score += 0.5
+					reasons.append("long OCR (\(count) chars)")
+				}
+			}
+		}
+
+		// 9. Compare / research / review workflows
+		if titleLower.contains("compare") || titleLower.contains("review") || titleLower.contains("research") {
+			score += 0.4
+			reasons.append("active research workflow title")
+		}
+
+		// 10. Forms / applications / signups
+		let formKeywords = ["form", "sign up", "register", "application", "checkout", "billing", "shipping"]
+		for kw in formKeywords {
+			if titleLower.contains(kw) {
+				score += 0.5
+				reasons.append("form/application title (\(kw))")
+				break
+			}
+		}
+
+		return RouterBoostResult(score: score, reasons: reasons)
+	}
+
+	static func parseRouterOutput(_ raw: String) -> [String: Any]? {
+		let trimmedRaw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+		
+		// Attempt 1: Strict JSON decode
+		if let data = trimmedRaw.data(using: .utf8),
+		   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+			return obj
+		}
+		
+		// Attempt 2: Sanitize response and retry decode
+		let sanitized = sanitizePlannerResponse(raw)
+		if let data = sanitized.data(using: .utf8),
+		   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+			return obj
+		}
+		
+		// Attempt 3: Extract first balanced {...} JSON object
+		if let balanced = extractFirstBalancedJSONObject(from: raw) {
+			if let data = balanced.data(using: .utf8),
+			   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+				return obj
+			}
+		}
+
+		// Attempt 4: Single-to-double quote repair
+		let repaired = repairSingleQuotes(sanitized)
+		if let data = repaired.data(using: .utf8),
+		   let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+			return obj
+		}
+
+		// Attempt 5: Regex fallback extraction
+		if let dict = regexExtractRouterFields(raw) {
+			return dict
+		}
+		
+		return nil
+	}
+
 	private func sanitizeLog(_ s: String) -> String {
 		let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
 		if trimmed.isEmpty { return "none" }
@@ -605,3 +1456,4 @@ actor TaskInferenceEngine {
 
 	// (No hook IDs are passed to the small model. Hook planning happens after inference.)
 }
+

@@ -8,7 +8,7 @@ extension Notification.Name {
 final class AppDelegate: NSObject, NSApplicationDelegate {
 	/// TEMPORARY: Set to `true` to run the task-inference bakeoff harness on launch and exit.
 	/// Keep `false` for normal app usage.
-	private static let runTaskInferenceBakeoffOnLaunch = true
+	private static let runTaskInferenceBakeoffOnLaunch = false
 	private let appState = AppState()
 	private var menuBarController: MenuBarController?
 	private var floatingSuggestionController: FloatingSuggestionWindowController?
@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let env = ProcessInfo.processInfo.environment
 		if Self.runTaskInferenceBakeoffOnLaunch {
 			Task {
-				let ok = await TaskInferenceBakeoff.run()
+				let ok = await TaskInferenceBakeoff.runTwoStageProductionSimulation()
 				print("[TaskInferenceBakeoff] launch run ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
@@ -186,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		let s = LocalAISettings.shared
 		appState.localAIEnabled = s.localAIEnabled
 		appState.autoStartOllama = s.autoStartOllama
+		appState.twoStageTaskInferenceEnabled = s.twoStageTaskInferenceEnabled
 		if s.localAIEnabled {
 			appState.modelRuntimeState = .checking
 		}
@@ -307,6 +308,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 								let selfTestOk = await TaskInferenceSelfTest.run()
 								if !selfTestOk {
 									print("[TaskInferenceSelfTest] WARNING startup self-test failed — parser may reject model output")
+								}
+								if LocalAISettings.shared.twoStageTaskInferenceEnabled {
+									print("[TwoStageInference] bypassing old single-stage audit, warmup, and keepalive because two-stage mode is ON")
+									return
 								}
 								// Run model audit (discover + benchmark candidates).
 								await ModelAuditManager.shared.runAuditIfNeeded(baseModel: base)
@@ -2838,6 +2843,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			let ok = policyOk && noveltyOk && presenterOk
 			print("[ChimeInPolicy] selftest finished ok=\(ok) policy=\(policyOk) novelty=\(noveltyOk) presenter=\(presenterOk)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_ACTIVATOR_SELFTEST=1` to validate proposal activation.
+		if env["CONTEXTUAL_RUN_ACTIVATOR_SELFTEST"] == "1" {
+			let ok = GeneratedExecutionProposalActivatorSelfTest.run()
+			print("[GeneratedExecutionProposalActivatorSelfTest] env selftest ok=\(ok)")
+			fflush(nil)
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { NSApp.terminate(nil) }
 			return true
 		}
 

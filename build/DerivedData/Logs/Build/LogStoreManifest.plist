@@ -6,7 +6,7 @@
 	<integer>12</integer>
 	<key>logs</key>
 	<dict>
-		<key>BD6C3092-2CF6-46E0-A540-0C9500333332</key>
+		<key>515D799C-D8B4-41A5-B76D-064988898868</key>
 		<dict>
 			<key>className</key>
 			<string>IDECommandLineBuildLog</string>
@@ -15,21 +15,21 @@
 			<key>domainType</key>
 			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
 			<key>fileName</key>
-			<string>BD6C3092-2CF6-46E0-A540-0C9500333332.xcactivitylog</string>
+			<string>515D799C-D8B4-41A5-B76D-064988898868.xcactivitylog</string>
 			<key>hasPrimaryLog</key>
 			<true/>
 			<key>primaryObservable</key>
 			<dict>
 				<key>highLevelStatus</key>
-				<string>E</string>
+				<string>W</string>
 				<key>totalNumberOfAnalyzerIssues</key>
 				<integer>0</integer>
 				<key>totalNumberOfErrors</key>
-				<integer>8</integer>
+				<integer>0</integer>
 				<key>totalNumberOfTestFailures</key>
 				<integer>0</integer>
 				<key>totalNumberOfWarnings</key>
-				<integer>2</integer>
+				<integer>37</integer>
 			</dict>
 			<key>schemeIdentifier-containerName</key>
 			<string>Contextual project</string>
@@ -40,13 +40,55 @@
 			<key>signature</key>
 			<string>Building project Contextual with scheme Contextual and configuration Debug</string>
 			<key>timeStartedRecording</key>
-			<real>800221999.25166297</real>
+			<real>801113545.34616196</real>
 			<key>timeStoppedRecording</key>
-			<real>800222001.33297002</real>
+			<real>801113557.260777</real>
 			<key>title</key>
 			<string>Building project Contextual with scheme Contextual and configuration Debug</string>
 			<key>uniqueIdentifier</key>
-			<string>BD6C3092-2CF6-46E0-A540-0C9500333332</string>
+			<string>515D799C-D8B4-41A5-B76D-064988898868</string>
+		</dict>
+		<key>9C436826-FB61-4B64-BB7C-DBF1247520B9</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>9C436826-FB61-4B64-BB7C-DBF1247520B9.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>37</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>Contextual project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>Contextual</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project Contextual with scheme Contextual and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>801113300.27289498</real>
+			<key>timeStoppedRecording</key>
+			<real>801113344.39773297</real>
+			<key>title</key>
+			<string>Building project Contextual with scheme Contextual and configuration Debug</string>
+			<key>uniqueIdentifier</key>
+			<string>9C436826-FB61-4B64-BB7C-DBF1247520B9</string>
 		</dict>
 	</dict>
 </dict>

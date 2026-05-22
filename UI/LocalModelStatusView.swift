@@ -26,9 +26,18 @@ struct LocalModelStatusView: View {
 
 	private var modelTierSection: some View {
 		VStack(alignment: .leading, spacing: 6) {
-			Text("Model Tiers")
-				.font(.caption.weight(.medium))
-				.foregroundStyle(.secondary)
+			HStack {
+				Text("Model Tiers")
+					.font(.caption.weight(.medium))
+					.foregroundStyle(.secondary)
+				Spacer()
+				Text("Two-Stage: \(appState.twoStageTaskInferenceEnabled ? "ON" : "OFF")")
+					.font(.system(size: 9, weight: .bold))
+					.foregroundStyle(appState.twoStageTaskInferenceEnabled ? .green : .secondary)
+					.padding(.horizontal, 5)
+					.padding(.vertical, 2)
+					.background((appState.twoStageTaskInferenceEnabled ? Color.green : Color.secondary).opacity(0.12), in: Capsule())
+			}
 
 			// Task inference tier
 			modelTierRow(
@@ -47,16 +56,24 @@ struct LocalModelStatusView: View {
 				badge: "active",
 				badgeColor: .secondary
 			)
+
+			// Toggle for two-stage mode
+			Toggle("Enable Two-Stage Inference", isOn: $appState.twoStageTaskInferenceEnabled)
+				.toggleStyle(.checkbox)
+				.font(.system(size: 10))
+				.padding(.top, 2)
 		}
 	}
 
 	private var taskInferenceBadge: String {
+		if appState.twoStageTaskInferenceEnabled { return "two-stage" }
 		if appState.taskInferenceDisabled { return "unavailable" }
 		if appState.taskInferenceBatchMode { return "batch" }
 		return "stream"
 	}
 
 	private var taskInferenceBadgeColor: Color {
+		if appState.twoStageTaskInferenceEnabled { return .blue }
 		if appState.taskInferenceDisabled { return .red }
 		return .green
 	}

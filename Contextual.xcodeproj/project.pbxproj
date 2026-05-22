@@ -238,6 +238,9 @@
 			AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004120000000000000141 /* TaskInferenceSelfTest.swift */; };
 			AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */; };
 			AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004140000000000000143 /* TaskInferenceBakeoff.swift */; };
+			AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */; };
+			AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */; };
+			AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000242 /* TwoStageLaneManager.swift */; };
 			AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -479,6 +482,9 @@
 			AA0004120000000000000141 /* TaskInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceSelfTest.swift; sourceTree = "<group>"; };
 			AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePlanningPipeline.swift; sourceTree = "<group>"; };
 			AA0004140000000000000143 /* TaskInferenceBakeoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceBakeoff.swift; sourceTree = "<group>"; };
+			AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageCompactPlannerPromptBuilder.swift; sourceTree = "<group>"; };
+			AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageRouterPromptBuilder.swift; sourceTree = "<group>"; };
+			AA0004110000000000000242 /* TwoStageLaneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageLaneManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -741,6 +747,9 @@
 					AA0004120000000000000141 /* TaskInferenceSelfTest.swift */,
 					AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */,
 					AA0004140000000000000143 /* TaskInferenceBakeoff.swift */,
+					AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */,
+					AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */,
+					AA0004110000000000000242 /* TwoStageLaneManager.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -1083,6 +1092,9 @@
 					AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */,
 					AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */,
 					AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */,
+					AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */,
+					AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */,
+					AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,

@@ -356,7 +356,15 @@ final class ModelManager: @unchecked Sendable {
 		case .unreachable:
 			return false
 		case .reachable(let names):
-			return Self.tagsListContainsModel(names, modelName: modelName)
+			// Primary: accept if the configured model (phi3/planner) is installed.
+			// Fallback: accept if the required task inference model is installed.
+			// This prevents task inference from being blocked when the user has qwen2.5:0.5b
+			// installed but not phi3 — the task inference model check is handled by
+			// ModelAuditManager / ActiveModelTierConfig, not this gate.
+			// Any installed model means Ollama is functional; the model-specific check
+			// is done downstream via ActiveModelTierConfig.taskInferenceModel.
+			if Self.tagsListContainsModel(names, modelName: modelName) { return true }
+			return !names.isEmpty
 		}
 	}
 

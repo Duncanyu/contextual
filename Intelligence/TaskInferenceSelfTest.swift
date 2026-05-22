@@ -170,9 +170,94 @@ enum TaskInferenceSelfTest {
 		check("parser_need_has_visible_ocr", parsed15?.need.contains("visible_ocr") == true)
 		check("parser_need_has_ax_window", parsed15?.need.contains("ax_window_text") == true)
 
+		// MARK: 16 — Compact Planner parsing recovery tests (Two-Stage Planner)
+
+		let caseARaw = """
+{"a":1,"t":"Compare products","h":"extract,compare","p":0.91}
+"""
+		let caseBRaw = """
+```json
+{"a":1,"t":"Compare products","h":"extract,compare","p":0.91}
+```
+"""
+		let caseCRaw = """
+Extra text before a json-fenced planner output containing:
+```json
+{"a":1,"t":"Compare products","h":"extract,compare","p":0.91}
+```
+"""
+
+		let parsedA = TaskInferenceEngine.parseCompactPlanner(caseARaw)
+		check("caseA_success", parsedA != nil)
+		check("caseA_a", parsedA?["a"] as? Int == 1)
+		check("caseA_t", parsedA?["t"] as? String == "Compare products")
+		check("caseA_h", parsedA?["h"] as? String == "extract,compare")
+		check("caseA_p", (parsedA?["p"] as? Double ?? 0.0) == 0.91)
+
+		let parsedB = TaskInferenceEngine.parseCompactPlanner(caseBRaw)
+		check("caseB_success", parsedB != nil)
+		check("caseB_a", parsedB?["a"] as? Int == 1)
+		check("caseB_t", parsedB?["t"] as? String == "Compare products")
+		check("caseB_h", parsedB?["h"] as? String == "extract,compare")
+		check("caseB_p", (parsedB?["p"] as? Double ?? 0.0) == 0.91)
+
+		let parsedC = TaskInferenceEngine.parseCompactPlanner(caseCRaw)
+		check("caseC_success", parsedC != nil)
+		check("caseC_a", parsedC?["a"] as? Int == 1)
+		check("caseC_t", parsedC?["t"] as? String == "Compare products")
+		check("caseC_h", parsedC?["h"] as? String == "extract,compare")
+		check("caseC_p", (parsedC?["p"] as? Double ?? 0.0) == 0.91)
+
+		// MARK: 17 — Two-Stage Router boost & parser tests
+		
+		let routerRawA = """
+{"decision":"enough_context","request":[],"confidence":0.95,"reason":"Job posting found"}
+"""
+		let routerRawB = """
+```json
+{"decision":"need_more_context","request":["ocr","visual_descriptor"],"confidence":0.80,"reason":"Interesting product search"}
+```
+"""
+		let routerRawC = """
+{"decision":'need_more_context',"request":['ocr'],"confidence":0.85,"reason":'vague browser'}
+"""
+		let parsedRA = TaskInferenceEngine.parseRouterOutput(routerRawA)
+		check("parsedRA_success", parsedRA != nil)
+		check("parsedRA_decision", parsedRA?["decision"] as? String == "enough_context")
+		check("parsedRA_reason", parsedRA?["reason"] as? String == "Job posting found")
+
+		let parsedRB = TaskInferenceEngine.parseRouterOutput(routerRawB)
+		check("parsedRB_success", parsedRB != nil)
+		check("parsedRB_decision", parsedRB?["decision"] as? String == "need_more_context")
+
+		let parsedRC = TaskInferenceEngine.parseRouterOutput(routerRawC)
+		check("parsedRC_success", parsedRC != nil)
+		check("parsedRC_decision", parsedRC?["decision"] as? String == "need_more_context")
+
+		let snapBoost = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Xcode",
+			windowTitle: "AppDelegate.swift",
+			bundleIdentifier: "com.apple.dt.Xcode",
+			inferredWorkflow: .debugging,
+			selectedText: nil,
+			clipboardText: nil,
+			recentOCRExcerpt: nil,
+			contextSummary: "",
+			workflowConfidence: 1.0,
+			availableContextTypes: [],
+			permissionAvailability: [:],
+			generatedAt: now,
+			freshnessScore: 1.0
+		)
+		let situationalBoost = SituationalContextSynthesizer.synthesize(from: snapBoost, referenceTime: now)
+		let boost = TaskInferenceEngine.computeDeterministicBoost(snapshot: snapBoost, situational: situationalBoost)
+		check("boost_xcode_editor", boost.score >= 0.8)
+		check("boost_xcode_reasons", boost.reasons.contains("Xcode editor"))
+
 		let ok = failures.isEmpty
 		let detail = failures.joined(separator: ";")
 		print("[TaskInferenceSelfTest] ok=\(ok) failures=\(failures.count) detail=\(detail)")
 		return ok
 	}
+
 }
