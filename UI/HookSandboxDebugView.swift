@@ -66,12 +66,13 @@ struct HookSandboxDebugView: View {
         VStack(alignment: .leading, spacing: 5) {
             // Status badge
             HStack(spacing: 5) {
-                Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(result.success ? .green : .red)
+                let passed = result.status == .success
+                Image(systemName: passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(passed ? .green : .red)
                     .font(.system(size: 11))
-                Text(result.success ? "Passed" : "Failed at \(result.failedAt ?? "?")")
+                Text(passed ? "Passed" : "Failed at \(result.failedAt ?? "?")")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(result.success ? Color.green : Color.red)
+                    .foregroundStyle(passed ? Color.green : Color.red)
                 Text("(\(result.mode.rawValue))")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary)
@@ -124,7 +125,7 @@ struct HookSandboxDebugView: View {
             }
 
             // Failure reason
-            if !result.success, let reason = result.failureReason {
+            if result.status != .success, let reason = result.failureReason {
                 Text("Reason: \(reason)")
                     .font(.system(size: 9))
                     .foregroundStyle(.red.opacity(0.85))

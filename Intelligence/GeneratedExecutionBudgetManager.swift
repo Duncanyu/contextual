@@ -108,7 +108,7 @@ actor GeneratedExecutionBudgetManager {
 				return deny(.activeSamplingDenied, budget: budget, meta: ["gate": "gather", "expensive": "1"])
 			}
 			if requirements.contains(.fusedVisual) || requirements.contains(.screenCapture) {
-				if !budget.allowsVision {
+				if !budget.allowsVision && !budget.allowsOCR {
 					return deny(.visionNotAllowed, budget: budget, meta: ["gate": "gather"])
 				}
 				if !snapshot.permissionGranted(.screenRecording) {

@@ -399,7 +399,8 @@ actor DynamicGeneratedProposalEngine {
 					warnings: [],
 					llmDiagnosticCause: nil,
 					createdAt: referenceTime,
-					libraryRecords: []
+					libraryRecords: [],
+					hookContracts: [composed.contract]
 				)
 			}
 
@@ -438,7 +439,8 @@ actor DynamicGeneratedProposalEngine {
 				warnings: [],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
-				libraryRecords: []
+				libraryRecords: [],
+				hookContracts: [cached]
 			)
 		}
 
@@ -516,7 +518,8 @@ actor DynamicGeneratedProposalEngine {
 				warnings: [],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
-				libraryRecords: records
+				libraryRecords: records,
+				hookContracts: []
 			)
 		}
 
@@ -626,7 +629,8 @@ actor DynamicGeneratedProposalEngine {
 				warnings: ["no_fused_context"],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
-				libraryRecords: []
+				libraryRecords: [],
+				hookContracts: []
 			)
 		}
 		if !freshEnough && !hasText && !hasMetadata && !metadataOnlyUsable {
@@ -641,7 +645,8 @@ actor DynamicGeneratedProposalEngine {
 				warnings: ["stale_context"],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
-				libraryRecords: []
+				libraryRecords: [],
+				hookContracts: []
 			)
 		}
 
@@ -659,7 +664,8 @@ actor DynamicGeneratedProposalEngine {
 				warnings: ["post_dismiss_cooldown"],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
-				libraryRecords: []
+				libraryRecords: [],
+				hookContracts: []
 			)
 		}
 
@@ -691,7 +697,8 @@ actor DynamicGeneratedProposalEngine {
 			warnings: parsed.warnings + (kept.count < parsed.proposals.count ? ["repetition_filtered"] : []),
 			llmDiagnosticCause: parsed.llmDiagnosticCause,
 			createdAt: parsed.createdAt,
-			libraryRecords: []
+			libraryRecords: [],
+			hookContracts: parsed.hookContracts
 		)
 	}
 
@@ -973,7 +980,8 @@ actor DynamicGeneratedProposalEngine {
 			warnings: warnings,
 			llmDiagnosticCause: cause,
 			createdAt: referenceTime,
-			libraryRecords: []
+			libraryRecords: [],
+			hookContracts: []
 		)
 	}
 

@@ -129,7 +129,8 @@ enum DynamicGeneratedProposalEngineSelfTest {
 			warnings: [],
 			llmDiagnosticCause: nil,
 			createdAt: Date(),
-			libraryRecords: []
+			libraryRecords: [],
+			hookContracts: []
 		)
 		let weakMapped = DynamicGeneratedProposalCandidateMapper.candidates(
 			from: weakLLM,

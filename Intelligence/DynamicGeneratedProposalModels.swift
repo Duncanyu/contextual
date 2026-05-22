@@ -182,6 +182,10 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 	/// Non-empty only when the live path found a library hit — no LLM was called.
 	/// Pass directly to GeneratedExecutionProposalActivationInput.reusableRecords.
 	let libraryRecords: [ReusableGeneratedActionRecord]
+	/// Hook-composed dynamic action contracts (T18.4+).
+	/// Non-empty only when the task-inference → hook-composition fast path synthesized a contract.
+	/// Cached in AppState and executed via the quarantined hook runtime (not templates / not LLM).
+	let hookContracts: [DynamicGeneratedActionContract]
 
 	static let quiet = DynamicGeneratedProposalResult(
 		status: .quietByGate,
@@ -194,7 +198,8 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 		warnings: [],
 		llmDiagnosticCause: nil,
 		createdAt: Date(),
-		libraryRecords: []
+		libraryRecords: [],
+		hookContracts: []
 	)
 
 	static func unavailable(
@@ -212,7 +217,8 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 			warnings: [cause.rawValue],
 			llmDiagnosticCause: cause,
 			createdAt: Date(),
-			libraryRecords: []
+			libraryRecords: [],
+			hookContracts: []
 		)
 	}
 }

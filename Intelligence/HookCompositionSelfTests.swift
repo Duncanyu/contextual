@@ -1,12 +1,10 @@
 import Foundation
 
-/// Hook-Based Action Composition self-tests (T18.5).
+/// Hook-Based Action Composition self-tests.
 ///
-/// Exercises the hook registry and composition pipeline for 4 representative user intents:
-///   A: Compare products       → needs ["compare", "extract"] → expects non-nil contract
-///   B: Explain code           → needs ["reason", "extract"]  → expects non-nil contract
-///   C: Play music             → needs ["control"]            → expects nil (fail quietly)
-///   D: Turn on Do Not Disturb → needs ["control"]            → expects nil (fail quietly)
+/// NOTE: The active foundational hook catalog is fully active by default.
+/// These self-tests verify that composition successfully reaches discovery, maps categories
+/// and outputs valid Dynamic Plans for Case A and Case B, while failing quietly on pure control cases.
 ///
 /// Run with env var: `CONTEXTUAL_RUN_HOOK_COMPOSITION_SELFTEST=1`
 ///
@@ -16,8 +14,8 @@ import Foundation
 ///   [HookAudit] implemented=...
 ///   [HookAudit] placeholders=...
 ///   [HookAudit] by_category=...
-///   [HookCompositionSelfTest] case=compare_products result=pass
-///   [HookCompositionSelfTest] case=explain_code result=pass
+///   [HookCompositionSelfTest] case=compare_products result=pass expected=non-nil
+///   [HookCompositionSelfTest] case=explain_code result=pass expected=non-nil
 ///   [HookCompositionSelfTest] case=play_music result=pass expected=nil
 ///   [HookCompositionSelfTest] case=turn_on_dnd result=pass expected=nil
 ///   [HookCompositionSelfTest] ok=true failures=0
@@ -33,7 +31,7 @@ enum HookCompositionSelfTests {
 
 		var failures: [String] = []
 
-		// MARK: - Case A: Compare products
+		// MARK: - Case A: Compare products (expects valid dynamic plan containing compare_items & extract_product_attributes, no extract_tasks)
 
 		let caseAResult = await compositionResult(
 			goal: "compare product prices and features",
@@ -42,12 +40,23 @@ enum HookCompositionSelfTests {
 			registry: registry
 		)
 		let caseAPassed = caseAResult != nil
-			&& caseAResult!.contract.hookPlanIds.contains("compare_items")
-			&& caseAResult!.contract.hookPlanIds.count > 2
-		if !caseAPassed { failures.append("compare_products") }
-		print("[HookCompositionSelfTest] case=compare_products result=\(caseAPassed ? "pass" : "FAIL") chain=\(caseAResult?.contract.hookPlanIds.joined(separator: ",") ?? "nil")")
+		if !caseAPassed {
+			failures.append("compare_products: result was nil")
+			print("[HookCompositionSelfTest] FAIL compare_products: result was nil")
+		} else if let ids = caseAResult?.contract.hookPlanIds {
+			let hasCompare = ids.contains("compare_items")
+			let hasAttr = ids.contains("extract_product_attributes")
+			let leaksTasks = ids.contains("extract_tasks")
+			if !hasCompare || !hasAttr || leaksTasks {
+				failures.append("compare_products: invalid chain \(ids)")
+				print("[HookCompositionSelfTest] FAIL compare_products: invalid chain \(ids)")
+			}
+		}
+		if !failures.contains(where: { $0.hasPrefix("compare_products") }) {
+			print("[HookCompositionSelfTest] case=compare_products result=pass expected=non-nil")
+		}
 
-		// MARK: - Case B: Explain code
+		// MARK: - Case B: Explain code (expects valid dynamic plan containing explain_error or explain_code)
 
 		let caseBResult = await compositionResult(
 			goal: "explain the error in this code",
@@ -55,9 +64,20 @@ enum HookCompositionSelfTests {
 			workflow: .debugging,
 			registry: registry
 		)
-		let caseBPassed = caseBResult != nil && caseBResult!.contract.hookPlanIds.count > 2
-		if !caseBPassed { failures.append("explain_code") }
-		print("[HookCompositionSelfTest] case=explain_code result=\(caseBPassed ? "pass" : "FAIL") chain=\(caseBResult?.contract.hookPlanIds.joined(separator: ",") ?? "nil")")
+		let caseBPassed = caseBResult != nil
+		if !caseBPassed {
+			failures.append("explain_code: result was nil")
+			print("[HookCompositionSelfTest] FAIL explain_code: result was nil")
+		} else if let ids = caseBResult?.contract.hookPlanIds {
+			let hasExplain = ids.contains("explain_error") || ids.contains("explain_code")
+			if !hasExplain {
+				failures.append("explain_code: invalid chain \(ids)")
+				print("[HookCompositionSelfTest] FAIL explain_code: invalid chain \(ids)")
+			}
+		}
+		if !failures.contains(where: { $0.hasPrefix("explain_code") }) {
+			print("[HookCompositionSelfTest] case=explain_code result=pass expected=non-nil")
+		}
 
 		// MARK: - Case C: Play music (control-only → must fail quietly)
 

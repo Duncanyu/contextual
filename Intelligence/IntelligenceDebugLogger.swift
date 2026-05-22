@@ -88,7 +88,29 @@ enum IntelligenceDebugLogger {
 		var parts: [String] = []
 		parts.append("stage=\(stage.rawValue)")
 		parts.append("event=\(event)")
-		if let r = meta.reason { parts.append("reason=\(r)") }
+		if let r = meta.reason {
+			if stage == .execution && event == "budget_denied" {
+				let cleanR = r.replacingOccurrences(of: "\"", with: "")
+				let mapped: String
+				switch cleanR {
+				case "permissionDenied", "expensive_context_denied", "expensiveContextDenied", "permission_denied", "permission_missing", "permission missing":
+					mapped = "permission missing"
+				case "generation_frequency_exceeded", "generationFrequencyExceeded", "frequencyLimit", "rate_limit", "rate limit":
+					mapped = "rate limit"
+				case "already_attempted", "alreadyAttempted", "already attempted":
+					mapped = "already attempted"
+				case "vision_not_allowed", "visionNotAllowed", "visual_model_not_allowed", "visual model not allowed":
+					mapped = "visual model not allowed"
+				case "ocr_not_allowed", "ocrNotAllowed", "ocr_disabled", "OCR disabled":
+					mapped = "OCR disabled"
+				default:
+					mapped = "budget exhausted"
+				}
+				parts.append("reason=\"\(mapped)\"")
+			} else {
+				parts.append("reason=\(r)")
+			}
+		}
 		if let l = meta.layer { parts.append("layer=\(l)") }
 		if let s = meta.source { parts.append("source=\(s)") }
 		if let t = meta.type { parts.append("type=\(t)") }

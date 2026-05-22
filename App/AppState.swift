@@ -319,6 +319,10 @@ final class AppState: ObservableObject {
 	///
 	/// This cache is refreshed on each publication cycle by the app lifecycle.
 	var generatedExecutionActionByCandidateId: [String: GeneratedExecutionAction] = [:]
+	/// Ephemeral mapping from activated candidate id → hook-composed action contract (hook:...).
+	/// Used to route user-invoked "Prepare execution" through the quarantined hook runtime.
+	/// Refreshed on each publication cycle (no persistence required).
+	private var hookContractByCandidateId: [String: DynamicGeneratedActionContract] = [:]
 
 	var onEnableLocalAI: (() -> Void)?
 	var onDisableLocalAI: (() -> Void)?
@@ -459,16 +463,37 @@ final class AppState: ObservableObject {
 	/// Reusable template executions are resolved via persistence; this cache is for non-reusable
 	/// synthesized candidates (e.g. hook-composed fast path).
 	func cacheGeneratedExecutionCandidateActions(_ candidates: [GeneratedExecutionProposalCandidate]) {
-		var map: [String: GeneratedExecutionAction] = [:]
+		let now = Date()
 		for candidate in candidates {
 			guard let action = candidate.executionAction else { continue }
-			map[candidate.id] = action
+			generatedExecutionActionByCandidateId[candidate.id] = action
 		}
-		generatedExecutionActionByCandidateId = map
+		for (id, action) in generatedExecutionActionByCandidateId {
+			if now >= action.expirationDate {
+				generatedExecutionActionByCandidateId.removeValue(forKey: id)
+			}
+		}
 	}
 
 	func cachedGeneratedExecutionAction(candidateId: String) -> GeneratedExecutionAction? {
 		generatedExecutionActionByCandidateId[candidateId]
+	}
+
+	func cacheHookContracts(_ contracts: [DynamicGeneratedActionContract]) {
+		let now = Date()
+		for contract in contracts {
+			guard contract.id.hasPrefix("hook:") else { continue }
+			hookContractByCandidateId[contract.id] = contract
+		}
+		for (id, contract) in hookContractByCandidateId {
+			if now >= contract.expiresAt {
+				hookContractByCandidateId.removeValue(forKey: id)
+			}
+		}
+	}
+
+	func cachedHookContract(candidateId: String) -> DynamicGeneratedActionContract? {
+		hookContractByCandidateId[candidateId]
 	}
 
 	/// T18.6 — Update proposal visibility state after a publication cycle.

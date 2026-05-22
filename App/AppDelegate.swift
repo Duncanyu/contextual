@@ -902,6 +902,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		)
 		// Cache executable generated execution actions for user-click execution (non-reusable).
 		appState.cacheGeneratedExecutionCandidateActions(llmCandidates)
+		// Cache hook-composed contracts so Prepare Execution can run the real hook chain.
+		appState.cacheHookContracts(llmResult.hookContracts)
 
 		let reusableCandidatesForLog = GeneratedExecutionProposalCandidateBuilder.buildReusable(
 			from: llmResult.libraryRecords,
@@ -1149,6 +1151,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		)
 		// Cache executable generated execution actions for user-click execution (non-reusable).
 		appState.cacheGeneratedExecutionCandidateActions(llmCandidates)
+		// Cache hook-composed contracts so Prepare Execution can run the real hook chain.
+		appState.cacheHookContracts(llmResult.hookContracts)
 
 		let reusableCandidatesForLog2 = GeneratedExecutionProposalCandidateBuilder.buildReusable(
 			from: llmResult.libraryRecords,
@@ -2032,9 +2036,10 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		}
 
 		let actionId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: candidateId)
+		let cachedHookContract = appState.cachedHookContract(candidateId: candidateId)
 		appState.isActionExecuting = true
 		appState.executingActionId = actionId
-		appState.executingActionTitle = "Generated execution"
+		appState.executingActionTitle = cachedHookContract?.title ?? "Generated execution"
 		appState.latestActionResult = nil
 		appState.latestGeneratedExecutionPresentation = nil
 		appState.latestActionId = actionId
@@ -2055,6 +2060,62 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			let now = Date()
 			let canonical = CanonicalContextState.shared.current()
 			let snapshot = self.buildCanonicalSnapshotForProposalActivation(context: self.contextBuilder.model, fused: canonical)
+
+			// Hook-composed contracts run through the quarantined hook runtime (no templates, no LLM).
+			if let contract = cachedHookContract, candidateId.hasPrefix("hook:") {
+				print("[GeneratedProposalExecution] using_contract=yes title=\"\(contract.title)\"")
+				print("[GeneratedProposalExecution] runtime_start id=\(candidateId.prefix(12)) source=generated_contract")
+				self.appState.generatedExecutionPhaseLabel = "Running hook chain…"
+
+				let provider = ScreenCaptureBoundedVisualContextProvider()
+				let scheduler = VisualContextScheduler(provider: provider)
+				let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
+					activeExecutionCount: 1,
+					runtimeState: .executing,
+					permissionAvailability: snapshot.permissionAvailability,
+					activeSamplingRequested: contract.hookPlanIds.contains("run_ocr_once")
+						|| contract.hookPlanIds.contains("gather_visible_context_once")
+				)
+
+				let sandboxResult = await HookExecutionSandbox.shared.execute(
+					chain: contract.hookPlanIds,
+					snapshot: snapshot,
+					mode: .live,
+					source: .generatedContract,
+					allowBoundedCapture: true,
+					visualScheduler: scheduler,
+					budgetSnapshot: budgetSnapshot
+				)
+
+				let status: ExecutionResultStatus = sandboxResult.status == .success ? .success : .failed
+				let chainBody = contract.hookPlanIds.joined(separator: " → ")
+				let outputBody = sandboxResult.finalOutput ?? ""
+				let sections: [ExecutionResultSection] = [
+					ExecutionResultSection(title: "Hook chain", body: chainBody, order: 0),
+					ExecutionResultSection(title: "Output", body: outputBody.isEmpty ? "(no output)" : outputBody, order: 1),
+				]
+				var metadata = sandboxResult.executionMetadata ?? [:]
+				metadata["hook_runtime_source"] = "generated_contract"
+				metadata["hook_runtime_status"] = sandboxResult.status.rawValue
+
+				let result = ExecutionResult(
+					actionId: UUID(),
+					status: status,
+					startedAt: now,
+					completedAt: Date(),
+					generatedContent: nil,
+					generatedSections: sections,
+					warnings: sandboxResult.status == .success ? [] : [sandboxResult.failureReason ?? "hook_runtime_failed"],
+					executionMetadata: metadata,
+					confidence: contract.confidence,
+					followUpSuggestions: []
+				)
+				let presentation = GeneratedExecutionResultPresenter.makePresentation(from: result, action: nil)
+				self.appState.latestGeneratedExecutionPresentation = presentation
+				print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=\(status.rawValue)")
+				print("[GeneratedExecutionResult] presented status=\(status.rawValue) sections=\(presentation.sections.count)")
+				return
+			}
 
 			let action: GeneratedExecutionAction?
 			var resolvedTemplateId: String?

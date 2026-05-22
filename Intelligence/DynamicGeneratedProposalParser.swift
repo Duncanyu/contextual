@@ -179,7 +179,8 @@ enum DynamicGeneratedProposalParser {
 			warnings: warnings,
 			llmDiagnosticCause: nil,
 			createdAt: referenceTime,
-			libraryRecords: []
+			libraryRecords: [],
+			hookContracts: []
 		)
 	}
 
@@ -461,4 +462,3 @@ enum DynamicGeneratedProposalParser {
 		return trimmed.count <= max ? trimmed : String(trimmed.prefix(max))
 	}
 }
-

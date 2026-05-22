@@ -54,6 +54,11 @@ enum TaskInferencePlanningPipeline {
 			print("[HookPlanner] skipped reason=\(safety.abortReason ?? "safety_abort")")
 			return nil
 		}
+		if retrieved.isEmpty {
+			print("[HookValidation] result=fail reason=no_hooks_available")
+			print("[HookCompositionPipeline] skipped reason=no_valid_hooks")
+			return nil
+		}
 
 		// 2) Plan chain + gap check.
 		let plan = HookGraphPlanner.plan(
@@ -65,7 +70,11 @@ enum TaskInferencePlanningPipeline {
 		if !plan.missingCategories.isEmpty {
 			print("[HookPlanner] gaps missingCats=[\(plan.missingCategories.joined(separator: ","))] reason=no_implemented_hooks")
 		}
-		guard !plan.hookIds.isEmpty else { return nil }
+		guard !plan.hookIds.isEmpty else {
+			print("[HookValidation] result=fail reason=no_hooks_available")
+			print("[HookCompositionPipeline] skipped reason=no_valid_hooks")
+			return nil
+		}
 
 		// Fail quietly when the only hooks are anchors (observe_current_context + present_result).
 		// This means no capability hooks were resolved — e.g. pure "control" requests with no
@@ -251,13 +260,13 @@ private enum HookCategoryRetriever {
 		case "extract":
 			return [.extraction]
 		case "reason":
-			return [.reasoning]
+			return [.reasoning, .transformation]
 		case "compare":
 			// Compare needs extraction (source material) + reasoning (comparison logic) + presentation.
-			return [.extraction, .reasoning, .presentation]
+			return [.extraction, .reasoning, .transformation, .presentation]
 		case "organize":
-			// Organize needs reasoning (structure, classify) + presentation (output).
-			return [.reasoning, .presentation]
+			// Organize needs reasoning (structure, classify) + transformation + presentation (output).
+			return [.reasoning, .transformation, .presentation]
 		case "output":
 			return [.presentation]
 		case "control":
@@ -269,7 +278,7 @@ private enum HookCategoryRetriever {
 			return [.observation, .reasoning]
 		case "utility":
 			// Cross-cutting utility: reasoning for analysis, extraction for data.
-			return [.reasoning, .extraction]
+			return [.reasoning, .extraction, .transformation]
 		default:
 			return []
 		}
@@ -420,27 +429,24 @@ private enum HookGraphPlanner {
 				// Observation: gather richer context when explicitly requested.
 				// Only add visual hooks when permission is available; don't require it.
 				if snapshot.permissionAvailability[.screenRecording] != false {
-					tryAdd("gather_visible_context_once")
-					if situational.ocrSignal.availability != .available {
-						tryAdd("run_ocr_once")
-					}
+					tryAdd("run_ocr_once")
 				} else {
 					// Fallback: inspect window title/recent titles (no screen permission needed).
-					tryAdd("inspect_window_title")
-					tryAdd("inspect_recent_titles")
+					tryAdd("read_window_title")
+					tryAdd("observe_current_context")
 				}
 
 			case "extract":
 				// Extraction: pick the best-fit extraction hook for the current workflow.
-				// Priority: workflow-matched → generic extraction → fallback to tasks.
+				// Priority: workflow-matched → generic extraction → fallback.
 				let wf = situational.inferredWorkflow.rawValue
 				switch wf {
 				case "debugging":
-					tryAdd("extract_error_messages")
+					tryAdd("extract_errors")
 					tryAdd("extract_entities")
 				case "browsing", "research", "studying":
 					tryAdd("extract_entities")
-					tryAdd("extract_tasks")
+					tryAdd("extract_key_claims")
 				default:
 					includeFirst { $0.category == .extraction && $0.isImplemented }
 				}
@@ -450,19 +456,19 @@ private enum HookGraphPlanner {
 				let wf = situational.inferredWorkflow.rawValue
 				switch wf {
 				case "debugging":
-					tryAdd("explain_visible_error")
+					tryAdd("explain_error")
 				case "research", "studying":
-					tryAdd("synthesize_research_takeaways")
+					tryAdd("summarize_visible_content")
 				case "writing", "notes":
-					tryAdd("structure_key_points")
+					tryAdd("rewrite_text")
 				case "browsing":
-					tryAdd("summarize_context")
+					tryAdd("summarize_current_context")
 				default:
 					// Generic: pick the first non-trivial reasoning hook.
 					includeFirst {
 						$0.category == .reasoning && $0.isImplemented
 						&& $0.id != "observe_current_context"
-						&& $0.id != "classify_workflow"
+						&& $0.id != "classify_page_type"
 					}
 				}
 
@@ -470,13 +476,14 @@ private enum HookGraphPlanner {
 				// Compare needs both extraction (source material) AND reasoning (compare logic).
 				// Include the canonical compare hook plus an extraction support hook.
 				tryAdd("compare_items")
-				// Support hook: extract structured attributes for richer comparison.
-				includeFirst { $0.category == .extraction && $0.isImplemented && $0.id != "compare_items" }
+				tryAdd("extract_product_attributes")
+				// Support hook fallback: extract structured attributes for richer comparison.
+				includeFirst { $0.category == .extraction && $0.isImplemented && $0.id != "compare_items" && $0.id != "extract_product_attributes" }
 
 			case "organize":
 				// Organize: structure/note hooks work best here.
-				tryAdd("structure_key_points")
-				tryAdd("generate_checklist")
+				tryAdd("rewrite_text")
+				tryAdd("convert_to_checklist")
 
 			case "output":
 				// Output: presentation hooks; no-op if present_result already covers it.
@@ -493,15 +500,15 @@ private enum HookGraphPlanner {
 			case "memory":
 				// Memory: no dedicated hooks yet. Use recent-title inspection + summarize
 				// as a proxy for "recall what the user was doing."
-				tryAdd("inspect_recent_titles")
-				tryAdd("summarize_context")
+				tryAdd("observe_current_context")
+				tryAdd("summarize_current_context")
 
 			case "utility":
 				// Utility: cross-cutting. Workflow classification + a reasoning hook.
-				tryAdd("classify_workflow")
+				tryAdd("classify_page_type")
 				includeFirst {
-					$0.category == .reasoning && $0.isImplemented
-					&& $0.id != "classify_workflow"
+					($0.category == .reasoning || $0.category == .transformation) && $0.isImplemented
+					&& $0.id != "classify_page_type"
 					&& $0.id != "observe_current_context"
 				}
 
@@ -548,12 +555,12 @@ private enum HookGraphPlanner {
 			case "extract":
 				if !usedCategories.contains(.extraction) { missing.append(cat) }
 			case "reason":
-				if !usedCategories.contains(.reasoning) { missing.append(cat) }
+				if !usedCategories.contains(.reasoning) && !usedCategories.contains(.transformation) { missing.append(cat) }
 			case "compare":
 				// compare_items is the canonical hook; missing if absent.
 				if !idSet.contains("compare_items") { missing.append(cat) }
 			case "organize":
-				if !idSet.contains("structure_key_points") && !idSet.contains("generate_checklist") {
+				if !idSet.contains("rewrite_text") && !idSet.contains("convert_to_checklist") && !idSet.contains("create_table") {
 					missing.append(cat)
 				}
 			case "control":
