@@ -56,7 +56,13 @@ struct HookSandboxStepResult: Sendable {
 
 // MARK: - Overall result
 
+enum HookSandboxMode: String, Sendable {
+    case sample
+    case live
+}
+
 struct HookSandboxResult: Sendable {
+    let mode: HookSandboxMode
     let chain: [String]
     let steps: [HookSandboxStepResult]
     let success: Bool
@@ -121,9 +127,29 @@ actor HookExecutionSandbox {
         "observe_current_context",
         "gather_visible_context_once",
         "run_ocr_once",
-        "extract_entities",
+        "extract_product_attributes",
         "present_result",
     ]
+
+    /// Seeded sample snapshot used to test hook chaining deterministically.
+    /// Does not require any permissions; the sandbox reads only from this snapshot.
+    static func seededSampleSnapshot(referenceTime: Date = Date()) -> CanonicalGeneratedExecutionContextSnapshot {
+        CanonicalGeneratedExecutionContextSnapshot(
+            activeApp: "Firefox",
+            windowTitle: "Spigen Rugged Armor Designed for AirPods 4 Case - Matte Black",
+            bundleIdentifier: "org.mozilla.firefox",
+            inferredWorkflow: .browsing,
+            selectedText: nil,
+            clipboardText: nil,
+            recentOCRExcerpt: "Spigen Rugged Armor AirPods 4 Case Matte Black. Price $19.99. Rating 4.6 stars. Compatible with AirPods 4.",
+            contextSummary: "Amazon product page showing AirPods case listing, price, rating, product image, and shopping controls.",
+            workflowConfidence: 0.74,
+            availableContextTypes: [.workflowContext, .textSnippet, .fusedVisual],
+            permissionAvailability: [.screenRecording: false, .accessibility: false, .clipboard: false],
+            generatedAt: referenceTime,
+            freshnessScore: 0.72
+        )
+    }
 
     // MARK: - Execute
 
@@ -132,10 +158,12 @@ actor HookExecutionSandbox {
     func execute(
         chain: [String],
         snapshot: CanonicalGeneratedExecutionContextSnapshot,
+        mode: HookSandboxMode,
         registry: HookCapabilityRegistry = .shared
     ) async -> HookSandboxResult {
         let chainStr = chain.joined(separator: "→")
-        print("[HookRuntimeSandbox] started chain=[\(chainStr)]")
+        print("[HookRuntimeSandbox] mode=\(mode.rawValue) started chain=[\(chainStr)]")
+        print("[HookRuntimeSandbox] seeded_context app=\(snapshot.activeApp) title=\"\(String(snapshot.windowTitle.prefix(80)))\" wf=\(snapshot.inferredWorkflow.rawValue) ocr=\(snapshot.recentOCRExcerpt != nil ? "yes" : "no") visual=\(snapshot.visualContextAvailability.visualSummaryExcerpt != nil ? "yes" : "no")")
 
         let ctx = SandboxContext(snapshot: snapshot)
         var steps: [HookSandboxStepResult] = []
@@ -156,7 +184,7 @@ actor HookExecutionSandbox {
                 print("[HookRuntimeSandbox] failed hook=\(hookId) reason=\(step.outcome.shortLabel) elapsed_ms=\(durationMs)")
                 let partialOutput = ctx.outputLines.isEmpty ? nil : ctx.outputLines.joined(separator: "\n")
                 let result = HookSandboxResult(
-                    chain: chain, steps: steps, success: false, finalOutput: partialOutput
+                    mode: mode, chain: chain, steps: steps, success: false, finalOutput: partialOutput
                 )
                 print("[HookRuntimeSandbox] result=failure completed=\(result.completedCount) failed=\(hookId) reason=\(step.outcome.shortLabel)")
                 return result
@@ -168,9 +196,10 @@ actor HookExecutionSandbox {
             : ctx.outputLines.joined(separator: "\n")
 
         let result = HookSandboxResult(
-            chain: chain, steps: steps, success: true, finalOutput: finalOutput
+            mode: mode, chain: chain, steps: steps, success: true, finalOutput: finalOutput
         )
-        print("[HookRuntimeSandbox] result=success completed=\(result.completedCount) output_len=\(finalOutput?.count ?? 0)")
+        let finalPreview = (finalOutput ?? "").prefix(120).replacingOccurrences(of: "\n", with: "↵")
+        print("[HookRuntimeSandbox] result=success completed=\(result.completedCount) output_len=\(finalOutput?.count ?? 0) final_output=\"\(finalPreview)\"")
         return result
     }
 

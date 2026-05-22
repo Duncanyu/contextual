@@ -181,7 +181,8 @@ struct LocalModelStatusView: View {
 				HookSandboxDebugView(
 					result: appState.hookSandboxResult,
 					isRunning: appState.hookSandboxRunning,
-					onRun: { appState.runHookSandbox() }
+					onRunSample: { appState.runHookSandboxSample() },
+					onRunLive: { appState.runHookSandboxLive() }
 				)
 			}
 		}

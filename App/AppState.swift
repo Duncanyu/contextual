@@ -257,19 +257,35 @@ final class AppState: ObservableObject {
 
 	/// Kick off the quarantined hook sandbox on the fixed debug test chain.
 	/// Safe to call repeatedly; drops concurrent calls.
-	func runHookSandbox() {
+	func runHookSandboxSample() {
+		runHookSandbox(mode: .sample)
+	}
+
+	func runHookSandboxLive() {
+		runHookSandbox(mode: .live)
+	}
+
+	private func runHookSandbox(mode: HookSandboxMode) {
 		guard !hookSandboxRunning else { return }
-		// Build snapshot: prefer latest pipeline snapshot, fall back to minimal metadata-only one.
-		let snapshot = latestCanonicalSnapshot ?? CanonicalGeneratedExecutionContextSnapshot(
-			activeApp: debugContext.activeAppName ?? "Unknown",
-			windowTitle: debugContext.activeWindowTitle ?? ""
-		)
+		let snapshot: CanonicalGeneratedExecutionContextSnapshot = {
+			switch mode {
+			case .sample:
+				return HookExecutionSandbox.seededSampleSnapshot()
+			case .live:
+				// Prefer latest pipeline snapshot, fall back to minimal metadata-only one.
+				return latestCanonicalSnapshot ?? CanonicalGeneratedExecutionContextSnapshot(
+					activeApp: debugContext.activeAppName ?? "Unknown",
+					windowTitle: debugContext.activeWindowTitle ?? ""
+				)
+			}
+		}()
 		hookSandboxRunning = true
 		hookSandboxResult = nil
 		Task.detached(priority: .userInitiated) { [weak self] in
 			let result = await HookExecutionSandbox.shared.execute(
 				chain: HookExecutionSandbox.defaultTestChain,
-				snapshot: snapshot
+				snapshot: snapshot,
+				mode: mode
 			)
 			await MainActor.run { [weak self] in
 				self?.hookSandboxRunning = false

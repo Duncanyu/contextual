@@ -7,7 +7,8 @@ import SwiftUI
 struct HookSandboxDebugView: View {
     let result: HookSandboxResult?
     let isRunning: Bool
-    let onRun: () -> Void
+    let onRunSample: () -> Void
+    let onRunLive: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -29,18 +30,30 @@ struct HookSandboxDebugView: View {
                 }
             }
 
-            Button {
-                onRun()
-            } label: {
-                Label(
-                    isRunning ? "Running…" : "Run Hook Sandbox",
-                    systemImage: isRunning ? "hourglass" : "play.rectangle"
-                )
+            HStack(spacing: 8) {
+                Button {
+                    onRunSample()
+                } label: {
+                    Label(
+                        isRunning ? "Running…" : "Run Hook Sandbox Sample",
+                        systemImage: isRunning ? "hourglass" : "play.rectangle"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .font(.caption)
+                .disabled(isRunning)
+
+                Button {
+                    onRunLive()
+                } label: {
+                    Label("Run Hook Sandbox Live", systemImage: "bolt")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .font(.caption)
+                .disabled(isRunning)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .font(.caption)
-            .disabled(isRunning)
 
             if let result {
                 resultBlock(result)
@@ -59,6 +72,9 @@ struct HookSandboxDebugView: View {
                 Text(result.success ? "Passed" : "Failed at \(result.failedAt ?? "?")")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(result.success ? Color.green : Color.red)
+                Text("(\(result.mode.rawValue))")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(result.completedCount)/\(result.chain.count) hooks")
                     .font(.system(size: 9))
