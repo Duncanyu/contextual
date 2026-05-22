@@ -237,6 +237,7 @@
 			AA0002270000000000000140 /* TaskInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000140 /* TaskInferenceEngine.swift */; };
 			AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004120000000000000141 /* TaskInferenceSelfTest.swift */; };
 			AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */; };
+			AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004140000000000000143 /* TaskInferenceBakeoff.swift */; };
 			AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
 /* End PBXBuildFile section */
 
@@ -477,6 +478,7 @@
 			AA0002C30000000000000F3 /* ModelAuditManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAuditManager.swift; sourceTree = "<group>"; };
 			AA0004120000000000000141 /* TaskInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceSelfTest.swift; sourceTree = "<group>"; };
 			AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePlanningPipeline.swift; sourceTree = "<group>"; };
+			AA0004140000000000000143 /* TaskInferenceBakeoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceBakeoff.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -738,6 +740,7 @@
 					AA0002C30000000000000F3 /* ModelAuditManager.swift */,
 					AA0004120000000000000141 /* TaskInferenceSelfTest.swift */,
 					AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */,
+					AA0004140000000000000143 /* TaskInferenceBakeoff.swift */,
 				AA0002C6000000000000EC /* GeneratedExecutionContextProvider.swift */,
 				AA0002C7000000000000ED /* ExecutionPrimitiveOutput.swift */,
 				AA0002C8000000000000EE /* ExecutionPrimitiveRunner.swift */,
@@ -1079,6 +1082,7 @@
 					AA0001C30000000000000F3 /* ModelAuditManager.swift in Sources */,
 					AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */,
 					AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */,
+					AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */,
 				AA0001C6000000000000EC /* GeneratedExecutionContextProvider.swift in Sources */,
 				AA0001C7000000000000ED /* ExecutionPrimitiveOutput.swift in Sources */,
 				AA0001C8000000000000EE /* ExecutionPrimitiveRunner.swift in Sources */,

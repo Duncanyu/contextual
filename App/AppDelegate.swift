@@ -6,6 +6,9 @@ extension Notification.Name {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+	/// TEMPORARY: Set to `true` to run the task-inference bakeoff harness on launch and exit.
+	/// Keep `false` for normal app usage.
+	private static let runTaskInferenceBakeoffOnLaunch = true
 	private let appState = AppState()
 	private var menuBarController: MenuBarController?
 	private var floatingSuggestionController: FloatingSuggestionWindowController?
@@ -73,6 +76,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		NSApp.setActivationPolicy(.accessory)
 
 		let env = ProcessInfo.processInfo.environment
+		if Self.runTaskInferenceBakeoffOnLaunch {
+			Task {
+				let ok = await TaskInferenceBakeoff.run()
+				print("[TaskInferenceBakeoff] launch run ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
 		if runPhase13SelfTestsIfRequested(environment: env) {
 			return
 		}

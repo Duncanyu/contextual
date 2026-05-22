@@ -131,7 +131,19 @@ struct HookCapabilityRegistry: Sendable {
 	init() {
 		let defs = Self.buildAll()
 		self.all = defs
-		self.byId = Dictionary(uniqueKeysWithValues: defs.map { ($0.id, $0) })
+		// Defensive: avoid crashing the entire app if a hook ID is accidentally duplicated.
+		// (This has occurred in practice and surfaced as a Swiftinterface fatal error.)
+		var map: [String: HookCapabilityDefinition] = [:]
+		var duplicates: [String] = []
+		for def in defs {
+			if map[def.id] != nil { duplicates.append(def.id); continue }
+			map[def.id] = def
+		}
+		if !duplicates.isEmpty {
+			let uniqueDupes = Array(Set(duplicates)).sorted()
+			print("[HookRegistry] duplicate_ids_detected count=\(uniqueDupes.count) ids=[\(uniqueDupes.joined(separator: ","))]")
+		}
+		self.byId = map
 	}
 
 	// MARK: - Public API
@@ -326,7 +338,9 @@ struct HookCapabilityRegistry: Sendable {
 			outputType: .bullets,
 			isImplemented: true,
 			mappedPrimitive: .organizeInformation,
-			safetyNotes: "Read-only text processing."
+			safetyNotes: "Read-only text processing.",
+			commonNextHookIds: ["compare_items"],
+			pairsWellWithHookIds: ["compare_items"]
 		),
 		HookCapabilityDefinition(
 			id: "extract_specs",
@@ -386,7 +400,9 @@ struct HookCapabilityRegistry: Sendable {
 			outputType: .bullets,
 			isImplemented: true,
 			mappedPrimitive: .extractActionItems,
-			safetyNotes: "Read-only text analysis."
+			safetyNotes: "Read-only text analysis.",
+			commonNextHookIds: ["explain_visible_error"],
+			pairsWellWithHookIds: ["explain_visible_error"]
 		),
 		HookCapabilityDefinition(
 			id: "extract_code_symbols",
@@ -410,7 +426,9 @@ struct HookCapabilityRegistry: Sendable {
 			outputType: .checklist,
 			isImplemented: true,
 			mappedPrimitive: .extractActionItems,
-			safetyNotes: "Read-only text analysis."
+			safetyNotes: "Read-only text analysis.",
+			commonNextHookIds: ["generate_checklist", "structure_key_points"],
+			pairsWellWithHookIds: ["generate_checklist"]
 		),
 	] }
 
@@ -427,7 +445,9 @@ struct HookCapabilityRegistry: Sendable {
 			outputType: .comparison,
 			isImplemented: true,
 			mappedPrimitive: .compareContexts,
-			safetyNotes: "In-memory reasoning only."
+			safetyNotes: "In-memory reasoning only.",
+			commonNextHookIds: ["present_result"],
+			pairsWellWithHookIds: ["extract_product_attributes", "extract_entities"]
 		),
 		HookCapabilityDefinition(
 			id: "rank_options",
@@ -463,7 +483,9 @@ struct HookCapabilityRegistry: Sendable {
 			outputType: .bullets,
 			isImplemented: true,
 			mappedPrimitive: .synthesizeResearchSummary,
-			safetyNotes: "In-memory synthesis only."
+			safetyNotes: "In-memory synthesis only.",
+			commonNextHookIds: ["structure_key_points", "present_result"],
+			pairsWellWithHookIds: ["extract_entities", "structure_key_points"]
 		),
 		HookCapabilityDefinition(
 			id: "structure_key_points",
@@ -475,7 +497,9 @@ struct HookCapabilityRegistry: Sendable {
 			outputType: .bullets,
 			isImplemented: true,
 			mappedPrimitive: .structureNotes,
-			safetyNotes: "In-memory reasoning only."
+			safetyNotes: "In-memory reasoning only.",
+			commonPrevHookIds: ["synthesize_research_takeaways", "extract_tasks"],
+			pairsWellWithHookIds: ["extract_tasks", "generate_checklist", "synthesize_research_takeaways"]
 		),
 		HookCapabilityDefinition(
 			id: "generate_checklist",
@@ -499,7 +523,9 @@ struct HookCapabilityRegistry: Sendable {
 			outputType: .debugReport,
 			isImplemented: true,
 			mappedPrimitive: .explainError,
-			safetyNotes: "Read-only analysis."
+			safetyNotes: "Read-only analysis.",
+			commonPrevHookIds: ["extract_error_messages"],
+			pairsWellWithHookIds: ["extract_error_messages", "extract_code_symbols"]
 		),
 		HookCapabilityDefinition(
 			id: "inspect_stacktrace",
