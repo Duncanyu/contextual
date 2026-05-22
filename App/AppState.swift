@@ -237,6 +237,47 @@ final class AppState: ObservableObject {
 	/// Session-only redundancy tuning (T11.7). Never stores raw text.
 	let redundancyMemory = RedundancyMemory()
 
+	// MARK: - Hook sandbox (debug only)
+
+	/// Most recent canonical snapshot, updated at every pipeline trigger.
+	/// Used exclusively by the hook sandbox debug button — not consumed by any production path.
+	@Published private(set) var latestCanonicalSnapshot: CanonicalGeneratedExecutionContextSnapshot?
+
+	/// True while the hook sandbox chain is executing (gates button).
+	@Published var hookSandboxRunning: Bool = false
+
+	/// Result of the last hook sandbox run. Nil before first run.
+	@Published var hookSandboxResult: HookSandboxResult? = nil
+
+	/// Called by AppDelegate each time a canonical proposal snapshot is built.
+	/// Keeps the sandbox fed with current context without any production side-effects.
+	func updateLatestCanonicalSnapshot(_ snapshot: CanonicalGeneratedExecutionContextSnapshot) {
+		self.latestCanonicalSnapshot = snapshot
+	}
+
+	/// Kick off the quarantined hook sandbox on the fixed debug test chain.
+	/// Safe to call repeatedly; drops concurrent calls.
+	func runHookSandbox() {
+		guard !hookSandboxRunning else { return }
+		// Build snapshot: prefer latest pipeline snapshot, fall back to minimal metadata-only one.
+		let snapshot = latestCanonicalSnapshot ?? CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: debugContext.activeAppName ?? "Unknown",
+			windowTitle: debugContext.activeWindowTitle ?? ""
+		)
+		hookSandboxRunning = true
+		hookSandboxResult = nil
+		Task.detached(priority: .userInitiated) { [weak self] in
+			let result = await HookExecutionSandbox.shared.execute(
+				chain: HookExecutionSandbox.defaultTestChain,
+				snapshot: snapshot
+			)
+			await MainActor.run { [weak self] in
+				self?.hookSandboxRunning = false
+				self?.hookSandboxResult = result
+			}
+		}
+	}
+
 	// MARK: - Floating suggestion (T10.1)
 
 	@Published var floatingSuggestion: SuggestionViewModel?

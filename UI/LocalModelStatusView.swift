@@ -175,6 +175,15 @@ struct LocalModelStatusView: View {
 					.foregroundStyle(.tertiary)
 					.lineLimit(2)
 			}
+
+			// Debug-only hook sandbox trigger — not part of normal execution flow.
+			if appState.twoStageTaskInferenceEnabled {
+				HookSandboxDebugView(
+					result: appState.hookSandboxResult,
+					isRunning: appState.hookSandboxRunning,
+					onRun: { appState.runHookSandbox() }
+				)
+			}
 		}
 	}
 

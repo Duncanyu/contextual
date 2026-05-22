@@ -91,6 +91,7 @@
 		AA0001300000000000000030 /* PanelLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002360000000000000033 /* PanelLayout.swift */; };
 		AA0001310000000000000031 /* SystemStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002370000000000000034 /* SystemStatusView.swift */; };
 		AA0001320000000000000032 /* LocalModelStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002380000000000000035 /* LocalModelStatusView.swift */; };
+		AA0005020000000000000202 /* HookSandboxDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0006020000000000000202 /* HookSandboxDebugView.swift */; };
 		AA0001350000000000000035 /* FloatingSuggestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002390000000000000036 /* FloatingSuggestionView.swift */; };
 		AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */; };
 		AA0001370000000000000038 /* TriggerEligibilityEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002410000000000000039 /* TriggerEligibilityEvaluator.swift */; };
@@ -230,8 +231,9 @@
 		AA00021F0000000000000138 /* ProposalNoveltyTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000409A000000000000138 /* ProposalNoveltyTracker.swift */; };
 		AA000220000000000000139 /* ProposalVisibilityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040A000000000000139 /* ProposalVisibilityState.swift */; };
 			AA000221000000000000013A /* DynamicGeneratedActionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040B000000000000013A /* DynamicGeneratedActionContract.swift */; };
-			AA000222000000000000013B /* HookCapabilityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040C000000000000013B /* HookCapabilityRegistry.swift */; };
-			AA000224000000000000013D /* TaskInferenceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040E000000000000013D /* TaskInferenceModels.swift */; };
+		AA000222000000000000013B /* HookCapabilityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040C000000000000013B /* HookCapabilityRegistry.swift */; };
+		AA0005030000000000000203 /* HookExecutionSandbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0006030000000000000203 /* HookExecutionSandbox.swift */; };
+		AA000224000000000000013D /* TaskInferenceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040E000000000000013D /* TaskInferenceModels.swift */; };
 			AA000225000000000000013E /* TaskInferencePromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00040F000000000000013E /* TaskInferencePromptBuilder.swift */; };
 			AA000226000000000000013F /* TaskInferenceParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000410000000000000013F /* TaskInferenceParser.swift */; };
 			AA0002270000000000000140 /* TaskInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000140 /* TaskInferenceEngine.swift */; };
@@ -337,6 +339,7 @@
 		AA0002360000000000000033 /* PanelLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelLayout.swift; sourceTree = "<group>"; };
 		AA0002370000000000000034 /* SystemStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemStatusView.swift; sourceTree = "<group>"; };
 		AA0002380000000000000035 /* LocalModelStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelStatusView.swift; sourceTree = "<group>"; };
+		AA0006020000000000000202 /* HookSandboxDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookSandboxDebugView.swift; sourceTree = "<group>"; };
 		AA0002390000000000000036 /* FloatingSuggestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSuggestionView.swift; sourceTree = "<group>"; };
 		AA000230000000000000002E /* ScreenCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureSource.swift; sourceTree = "<group>"; };
 		AA0002660000000000000076 /* ContextCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCapability.swift; sourceTree = "<group>"; };
@@ -472,8 +475,9 @@
 		AA000409A000000000000138 /* ProposalNoveltyTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalNoveltyTracker.swift; sourceTree = "<group>"; };
 		AA00040A000000000000139 /* ProposalVisibilityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalVisibilityState.swift; sourceTree = "<group>"; };
 			AA00040B000000000000013A /* DynamicGeneratedActionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedActionContract.swift; sourceTree = "<group>"; };
-			AA00040C000000000000013B /* HookCapabilityRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookCapabilityRegistry.swift; sourceTree = "<group>"; };
-			AA00040E000000000000013D /* TaskInferenceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceModels.swift; sourceTree = "<group>"; };
+		AA00040C000000000000013B /* HookCapabilityRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookCapabilityRegistry.swift; sourceTree = "<group>"; };
+		AA0006030000000000000203 /* HookExecutionSandbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookExecutionSandbox.swift; sourceTree = "<group>"; };
+		AA00040E000000000000013D /* TaskInferenceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceModels.swift; sourceTree = "<group>"; };
 			AA00040F000000000000013E /* TaskInferencePromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePromptBuilder.swift; sourceTree = "<group>"; };
 			AA000410000000000000013F /* TaskInferenceParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceParser.swift; sourceTree = "<group>"; };
 			AA0004110000000000000140 /* TaskInferenceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceEngine.swift; sourceTree = "<group>"; };
@@ -554,6 +558,7 @@
 				AA0002360000000000000033 /* PanelLayout.swift */,
 				AA0002370000000000000034 /* SystemStatusView.swift */,
 				AA0002380000000000000035 /* LocalModelStatusView.swift */,
+				AA0006020000000000000202 /* HookSandboxDebugView.swift */,
 				AA0002390000000000000036 /* FloatingSuggestionView.swift */,
 			);
 			path = UI;
@@ -739,6 +744,7 @@
 					AA00040A000000000000139 /* ProposalVisibilityState.swift */,
 					AA00040B000000000000013A /* DynamicGeneratedActionContract.swift */,
 					AA00040C000000000000013B /* HookCapabilityRegistry.swift */,
+					AA0006030000000000000203 /* HookExecutionSandbox.swift */,
 					AA00040E000000000000013D /* TaskInferenceModels.swift */,
 					AA00040F000000000000013E /* TaskInferencePromptBuilder.swift */,
 					AA000410000000000000013F /* TaskInferenceParser.swift */,
@@ -941,6 +947,7 @@
 				AA0001300000000000000030 /* PanelLayout.swift in Sources */,
 				AA0001310000000000000031 /* SystemStatusView.swift in Sources */,
 				AA0001320000000000000032 /* LocalModelStatusView.swift in Sources */,
+				AA0005020000000000000202 /* HookSandboxDebugView.swift in Sources */,
 				AA0001350000000000000035 /* FloatingSuggestionView.swift in Sources */,
 				AA0001060000000000000006 /* SystemSource.swift in Sources */,
 				AA0001070000000000000007 /* ActiveAppSource.swift in Sources */,
@@ -1083,9 +1090,10 @@
 				AA00021E0000000000000137 /* ContextualChimeInPolicy.swift in Sources */,
 				AA00021F0000000000000138 /* ProposalNoveltyTracker.swift in Sources */,
 				AA000220000000000000139 /* ProposalVisibilityState.swift in Sources */,
-					AA000221000000000000013A /* DynamicGeneratedActionContract.swift in Sources */,
-					AA000222000000000000013B /* HookCapabilityRegistry.swift in Sources */,
-					AA000224000000000000013D /* TaskInferenceModels.swift in Sources */,
+				AA000221000000000000013A /* DynamicGeneratedActionContract.swift in Sources */,
+				AA000222000000000000013B /* HookCapabilityRegistry.swift in Sources */,
+				AA0005030000000000000203 /* HookExecutionSandbox.swift in Sources */,
+				AA000224000000000000013D /* TaskInferenceModels.swift in Sources */,
 					AA000225000000000000013E /* TaskInferencePromptBuilder.swift in Sources */,
 					AA000226000000000000013F /* TaskInferenceParser.swift in Sources */,
 					AA0002270000000000000140 /* TaskInferenceEngine.swift in Sources */,

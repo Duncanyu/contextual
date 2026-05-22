@@ -855,6 +855,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			context: context,
 			fused: canonical
 		)
+		// Feed latest snapshot to hook sandbox (debug only — no production side-effects).
+		appState.updateLatestCanonicalSnapshot(proposalSnapshot)
 		let activationHistory = GeneratedExecutionProposalActivationHistory.fromAppState(
 			lastDismissedProposalActionId: appState.lastDismissedProposalActionId,
 			lastDismissedProposalAt: appState.lastDismissedProposalAt
@@ -1088,6 +1090,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			context: context,
 			fused: canonical
 		)
+		// Feed latest snapshot to hook sandbox (debug only — no production side-effects).
+		appState.updateLatestCanonicalSnapshot(proposalSnapshot)
 
 		GeneratedProposalActivationDiagnostics.logAttemptStarted(
 			triggerType: packet.triggerType.rawValue,
