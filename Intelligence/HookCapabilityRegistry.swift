@@ -125,6 +125,11 @@ enum HookCategory: String, Sendable, Equatable {
 struct HookCapabilityRegistry: Sendable {
 	static let shared = HookCapabilityRegistry()
 
+	/// Emit [HookAudit] lines on registry init. Off by default (avoids dogfood noise).
+	/// Set to `true` before accessing `.shared` to see the startup audit.
+	/// Enabled automatically by hook composition self-tests and the debug compose trigger.
+	nonisolated(unsafe) static var hookAuditEnabled: Bool = false
+
 	let all: [HookCapabilityDefinition]
 	private let byId: [String: HookCapabilityDefinition]
 
@@ -144,6 +149,24 @@ struct HookCapabilityRegistry: Sendable {
 			print("[HookRegistry] duplicate_ids_detected count=\(uniqueDupes.count) ids=[\(uniqueDupes.joined(separator: ","))]")
 		}
 		self.byId = map
+
+		// [HookAudit] — startup summary of all hooks in the registry.
+		let implementedAll = defs.filter(\.isImplemented)
+		let placeholderAll = defs.filter { !$0.isImplemented }
+		let auditCats: [HookCategory] = [.observation, .extraction, .reasoning, .presentation, .computerControl, .dangerous]
+		let catSummary = auditCats.map { cat -> String in
+			let impl = defs.filter { $0.category == cat && $0.isImplemented }.count
+			let total = defs.filter { $0.category == cat }.count
+			return "\(cat.rawValue)=\(impl)/\(total)"
+		}.joined(separator: " ")
+		// [HookAudit] only prints when explicitly enabled (self-test or debug compose trigger).
+		// Off by default to avoid startup noise during normal dogfooding.
+		if Self.hookAuditEnabled {
+			print("[HookAudit] total=\(defs.count)")
+			print("[HookAudit] implemented=\(implementedAll.count)")
+			print("[HookAudit] placeholders=\(placeholderAll.count)")
+			print("[HookAudit] by_category=\(catSummary)")
+		}
 	}
 
 	// MARK: - Public API

@@ -88,6 +88,100 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
+		// Hook-Based Action Composition self-tests (T18.5; async; metadata-only).
+		// Run with `CONTEXTUAL_RUN_HOOK_COMPOSITION_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_HOOK_COMPOSITION_SELFTEST"] == "1" {
+			Task {
+				let ok = await HookCompositionSelfTests.run()
+				print("[HookCompositionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		// Manual hook composition debug probe.
+		// Run with `CONTEXTUAL_DEBUG_COMPOSE_ACTION="Compare products"` (or any goal string).
+		// Prints [HookAudit], [HookDiscovery], [HookValidation], [GeneratedActionContract] logs and exits.
+		if let debugGoal = env["CONTEXTUAL_DEBUG_COMPOSE_ACTION"], !debugGoal.isEmpty {
+			Task {
+				await HookCompositionSelfTests.runManualCompose(goal: debugGoal)
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		// Router direct probe: tests both batch and streaming paths against qwen2.5:0.5b
+		// using the exact production router prompt format and prints [RouterProbe] results, then exits.
+		// Use to isolate whether latency is a cold-start, a streaming path bug, or Ollama config.
+		//
+		// Correct command (use debug binary, not /Applications):
+		//   CONTEXTUAL_DEBUG_ROUTER_DIRECT_PROBE=1 \
+		//     /path/to/DerivedData/.../Debug/Contextual.app/Contents/MacOS/Contextual
+		//
+		// Expected output (warm model):
+		//   [RouterProbe] path=batch  success=yes total_ms=<400   raw="...json..."
+		//   [RouterProbe] path=streaming success=yes total_ms=<250 raw="{...}"
+		//   [RouterProbe] finished
+		if env["CONTEXTUAL_DEBUG_ROUTER_DIRECT_PROBE"] == "1" {
+			Task {
+				// Use the exact production router prompt format (matches TwoStageRouterPromptBuilder output).
+				// The previous "JSON only. {...}\n" format caused the model to describe the JSON
+				// rather than reproduce it. The multi-line instruction format below works correctly.
+				let probeRouterPrompt = """
+JSON only. One object: {"decision":"enough_context","request":[],"reason":"brief","confidence":0.9}
+request values: "ocr","visual_descriptor","ax_window_text". If decision=enough_context, request=[].
+enough_context: app+title are clear, OR selected/ocr/visual/ax is present. need_more_context: browser/media/game with no text. Never request context already present.
+ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no clip=no
+"""
+				let model = "qwen2.5:0.5b"
+				print("[RouterProbe] started model=\(model) prompt_bytes=\(probeRouterPrompt.utf8.count)")
+
+				// Path A: batch (stream:false — verifies model loads, ignores streaming code path)
+				print("[RouterProbe] path=batch starting")
+				let batchStart = Date()
+				do {
+					let raw = try await LocalAIClient.shared.generate(
+						prompt: probeRouterPrompt,
+						model: model,
+						numPredict: 48,
+						temperature: 0.10,
+						purpose: nil,
+						schema: nil
+					)
+					let ms = Int(Date().timeIntervalSince(batchStart) * 1000)
+					let preview = String(raw.prefix(200)).replacingOccurrences(of: "\n", with: "↵")
+					print("[RouterProbe] path=batch success=yes total_ms=\(ms) raw=\"\(preview)\"")
+				} catch {
+					let ms = Int(Date().timeIntervalSince(batchStart) * 1000)
+					print("[RouterProbe] path=batch success=no total_ms=\(ms) error=\(error)")
+				}
+
+				// Path B: streaming (current production router path — emits [TwoStageRouterTiming] logs)
+				print("[RouterProbe] path=streaming starting")
+				let streamStart = Date()
+				do {
+					let raw = try await LocalAIClient.shared.generateStreamingJSON(
+						prompt: probeRouterPrompt,
+						model: model,
+						numPredict: 48,
+						temperature: 0.10,
+						purpose: "task_inference_router",
+						schema: nil
+					)
+					let ms = Int(Date().timeIntervalSince(streamStart) * 1000)
+					let preview = String(raw.prefix(200)).replacingOccurrences(of: "\n", with: "↵")
+					print("[RouterProbe] path=streaming success=yes total_ms=\(ms) raw=\"\(preview)\"")
+				} catch {
+					let ms = Int(Date().timeIntervalSince(streamStart) * 1000)
+					print("[RouterProbe] path=streaming success=no total_ms=\(ms) error=\(error)")
+				}
+
+				print("[RouterProbe] finished")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
 		// Phase 14: lightweight activity monitoring for proposal timing (metadata-only).
 		TypingActivitySource.shared.startMonitoring()
 		PointerActivitySource.shared.startMonitoring()
@@ -311,6 +405,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 								}
 								if LocalAISettings.shared.twoStageTaskInferenceEnabled {
 									print("[TwoStageInference] bypassing old single-stage audit, warmup, and keepalive because two-stage mode is ON")
+									// Warm up router and planner models for two-stage inference.
+									// Cold-start for qwen2.5:0.5b is ~8-10s (GGUF load from disk).
+									// A startup warmup ensures the first router call responds in ~100ms.
+									// Sequential to respect OLLAMA_NUM_PARALLEL=1 — router first.
+									let routerModel = "qwen2.5:0.5b"
+									let plannerModel = "qwen2.5:1.5b"
+									print("[TwoStageWarmup] warming router=\(routerModel)")
+									await ModelAuditManager.shared.runWarmupIfNeeded(model: routerModel)
+									print("[TwoStageWarmup] warming planner=\(plannerModel)")
+									await ModelAuditManager.shared.runWarmupIfNeeded(model: plannerModel)
+									// Keep the router resident with a 4-minute keepalive ping loop.
+									// Ollama's default idle unload TTL is 5 minutes; this prevents cold
+									// re-loads during sustained dogfooding sessions.
+									await ModelAuditManager.shared.startPeriodicKeepalive(model: routerModel)
 									return
 								}
 								// Run model audit (discover + benchmark candidates).

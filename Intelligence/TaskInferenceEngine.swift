@@ -69,6 +69,16 @@ actor TaskInferenceEngine {
 	/// Streaming hard timeout. Streaming stops early when JSON closes, so effective
 	/// latency is much lower than this cap. phi3 warm = ~2-4s; qwen2.5:0.5b = ~0.5s.
 	static let inferenceTimeoutSeconds: TimeInterval = 6.0
+
+	/// Router-specific timeout. The router model (qwen2.5:0.5b) produces a tiny JSON object.
+	/// 8s covers model cold-start (typical 3-6s for 390MB GGUF) plus inference time.
+	/// Pre-session logs showed cold-start completions at 6073ms/6300ms/6391ms — a 4s limit
+	/// caused all of those to fail. Keep at 8s until warm-model optimizations are validated.
+	static let routerTimeoutSeconds: TimeInterval = 8.0
+
+	/// Router max tokens. The router only produces a small JSON decision object;
+	/// 48 tokens is more than enough and limits output rambling.
+	static let routerNumPredict: Int = 48
 	static let cacheMaxAgeSeconds: TimeInterval = 28
 	static let cacheStaleMaxAgeSeconds: TimeInterval = 56
 
@@ -134,6 +144,17 @@ actor TaskInferenceEngine {
 		)
 
 		if LocalAISettings.shared.twoStageTaskInferenceEnabled {
+			// Readiness gate: don't run router/planner until Ollama is confirmed reachable.
+			// Uses the same coalesced/cached check as single-stage (6s TTL, startup grace).
+			// When not ready, skip silently — no retry spam.
+			print("[LocalAIReady] checking")
+			guard await modelManager.isGenerationAvailable() else {
+				print("[LocalAIReady] ready=no reason=server_unreachable")
+				print("[TaskInference] skipped reason=local_ai_not_ready fp=\(fingerprint)")
+				return nil
+			}
+			print("[LocalAIReady] ready=yes")
+
 			if let activeFp = activeFingerprint, activeFp != fingerprint {
 				print("[TwoStage] context changed (fp: \(activeFp) -> \(fingerprint)). Cancelling active planner task.")
 				activePlannerTask?.cancel()
@@ -581,6 +602,17 @@ actor TaskInferenceEngine {
 		
 		print("[TwoStageContextPacket] app=\"\(situational.activeAppName)\" title=\"\(situational.windowTitle)\" wf=\"\(situational.inferredWorkflow.rawValue)\" cat=\"\(situational.appCategory.rawValue)\" ocr_avail=\(hasOCR ? "yes" : "no") visual_avail=\(hasVisual ? "yes" : "no") typing=\(typingState) pointer=\(pointerState) has_sel=\(hasSel ? "yes" : "no") has_clip=\(hasClip ? "yes" : "no") recent_changes=\"\(recentChanges)\" available_context_sources=\"\(availableSources)\" visual_descriptor_available=\(hasVisual ? "yes" : "no") visual_descriptor_excerpt=\"\(visualExcerpt)\" visual_descriptor_confidence=\(visualConf) visual_descriptor_age_ms=\(visualAgeMs)")
 
+		// Short debounce before router: absorbs rapid title changes (fast browsing/tab switching)
+		// so we don't fire a router call for every intermediate URL. The planner has its own
+		// 1s debounce; this 300ms guard reduces unnecessary router calls upstream.
+		do {
+			try await Task.sleep(nanoseconds: 300_000_000) // 300 ms
+		} catch {
+			print("[TwoStageRouter] cancelled during pre-router debounce fp=\(fingerprint)")
+			return nil
+		}
+		if Task.isCancelled { return nil }
+
 		print("[TwoStageRouter] started")
 
 		// Blank desktop suppression (only deterministic safety logic kept)
@@ -603,6 +635,8 @@ actor TaskInferenceEngine {
 			history: history,
 			referenceTime: referenceTime
 		)
+		print("[TwoStageRouterTiming] phase=prompt_built bytes=\(routerPrompt.utf8.count)")
+		print("[TwoStageRouterConfig] model=\(routerModel) num_predict=\(Self.routerNumPredict) temperature=0.10 timeout_ms=\(Int(Self.routerTimeoutSeconds * 1000)) keep_alive=5m")
 
 		// Acquire lane for router.
 		let routerStart = Date()
@@ -615,18 +649,19 @@ actor TaskInferenceEngine {
 		var routerRaw: String = ""
 		var routerUsedStreaming = true
 		do {
-			(routerRaw, routerUsedStreaming) = try await withInferenceTimeout(timeoutSeconds: Self.inferenceTimeoutSeconds) {
+			(routerRaw, routerUsedStreaming) = try await withInferenceTimeout(timeoutSeconds: Self.routerTimeoutSeconds) {
 				try await self.llm.generateStreamingJSON(
 					prompt: routerPrompt,
 					model: routerModel,
-					numPredict: 80,
+					numPredict: Self.routerNumPredict,
 					temperature: 0.10,
 					purpose: "task_inference_router"
 				)
 			}
 		} catch {
-			print("[TwoStageRouter] failed error=\(error)")
-			await twoStageLane.release(purpose: "router", elapsedMs: Int(Date().timeIntervalSince(routerStart) * 1000))
+			let elapsedMs = Int(Date().timeIntervalSince(routerStart) * 1000)
+			print("[TwoStageRouter] failed error=\(error) elapsed_ms=\(elapsedMs)")
+			await twoStageLane.release(purpose: "router", elapsedMs: elapsedMs)
 			return nil
 		}
 
@@ -723,8 +758,16 @@ actor TaskInferenceEngine {
 			}
 		}
 
+		// Schema normalization: enough_context must never carry context requests forward.
+		// The router sometimes outputs enough_context with a non-empty request array
+		// (a hallucination / format error). Clear it here so OCR/visual never trigger
+		// on a sufficient-context pass.
+		if finalDecision == "enough_context" && !finalRequestedContexts.isEmpty {
+			print("[TwoStageRouter] normalized_request_empty reason=enough_context")
+			finalRequestedContexts = []
+		}
+
 		print("[TwoStageRouter] decision=\(finalDecision)")
-		
 		let reqsStr = "[" + finalRequestedContexts.map { "\"\($0)\"" }.joined(separator: ",") + "]"
 		print("[TwoStageRouter] requested_context=\(reqsStr)")
 

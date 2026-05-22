@@ -1,4 +1,5 @@
 import Foundation
+import os.lock
 
 enum LocalAIClientError: Error, LocalizedError {
 	case invalidURL
@@ -27,6 +28,31 @@ final class LocalAIClient: @unchecked Sendable {
 	static let shared = LocalAIClient()
 
 	private let session: URLSession
+
+	/// Tracks the number of concurrent Ollama HTTP requests in flight (across all purposes).
+	/// Concurrent requests compete for Ollama's inference queue even with OLLAMA_NUM_PARALLEL=1,
+	/// causing stalled requests and apparent timeouts. Logged as [LocalAIConcurrency].
+	nonisolated(unsafe) private static var activeRequestCount: Int = 0
+	nonisolated(unsafe) private static var concurrencyLock = os_unfair_lock()
+
+	private static func incrementActive(purpose: String?) -> Int {
+		withUnsafeMutablePointer(to: &concurrencyLock) { os_unfair_lock_lock($0) }
+		activeRequestCount += 1
+		let count = activeRequestCount
+		withUnsafeMutablePointer(to: &concurrencyLock) { os_unfair_lock_unlock($0) }
+		let p = purpose ?? "nil"
+		print("[LocalAIConcurrency] started purpose=\(p) active_requests=\(count)")
+		return count
+	}
+
+	private static func decrementActive(purpose: String?) {
+		withUnsafeMutablePointer(to: &concurrencyLock) { os_unfair_lock_lock($0) }
+		activeRequestCount = max(0, activeRequestCount - 1)
+		let count = activeRequestCount
+		withUnsafeMutablePointer(to: &concurrencyLock) { os_unfair_lock_unlock($0) }
+		let p = purpose ?? "nil"
+		print("[LocalAIConcurrency] completed purpose=\(p) active_requests=\(count)")
+	}
 
 	private init() {
 		let config = URLSessionConfiguration.ephemeral
@@ -72,7 +98,9 @@ final class LocalAIClient: @unchecked Sendable {
 		}
 
 		let startTime = Date()
+		Self.incrementActive(purpose: purpose)
 		defer {
+			Self.decrementActive(purpose: purpose)
 			if let lp = lanePurpose {
 				let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
 				Task {
@@ -175,7 +203,9 @@ final class LocalAIClient: @unchecked Sendable {
 		}
 
 		let startTime = Date()
+		Self.incrementActive(purpose: purpose)
 		defer {
+			Self.decrementActive(purpose: purpose)
 			if let lp = lanePurpose {
 				let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
 				Task {
@@ -202,9 +232,18 @@ final class LocalAIClient: @unchecked Sendable {
 		)
 		request.httpBody = try JSONEncoder().encode(payload)
 
+		// Whether to emit detailed per-phase timing under [TwoStageRouterTiming].
+		let isRouter = purpose == "task_inference_router"
 		let purposePart = purpose.map { " purpose=\($0)" } ?? ""
 		let requestStart = Date()
-		print("[LocalAI] streaming_started model=\(model)\(purposePart) inputBytes=\(prompt.utf8.count)")
+
+		if isRouter {
+			// Log sanitized request structure so we can verify model, options, keep_alive in logs.
+			print("[TwoStageRouterRequest] model=\(model) stream=true num_predict=\(numPredict) temperature=\(temperature) keep_alive=\(keepAlive)")
+			print("[TwoStageRouterTiming] phase=request_started model=\(model) bytes=\(prompt.utf8.count)")
+		} else {
+			print("[LocalAI] streaming_started model=\(model)\(purposePart) inputBytes=\(prompt.utf8.count)")
+		}
 
 		let (asyncBytes, response) = try await session.bytes(for: request)
 		guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -215,25 +254,51 @@ final class LocalAIClient: @unchecked Sendable {
 
 		var accumulated = ""
 		var firstByteLogged = false
-		for try await line in asyncBytes.lines {
-			guard !line.isEmpty else { continue }
-			guard let lineData = line.data(using: .utf8) else { continue }
-			// Log first byte arrival time — critical for diagnosing whether Ollama is
-			// responding at all vs. model load / queue contention delaying everything.
-			if !firstByteLogged {
-				firstByteLogged = true
-				let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
-				print("[LocalAI] streaming_first_byte model=\(model)\(purposePart) elapsed_ms=\(ms)")
+		do {
+			for try await line in asyncBytes.lines {
+				guard !line.isEmpty else { continue }
+				guard let lineData = line.data(using: .utf8) else { continue }
+				if !firstByteLogged {
+					firstByteLogged = true
+					let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
+					if isRouter {
+						print("[TwoStageRouterTiming] phase=first_token elapsed_ms=\(ms)")
+					} else {
+						print("[LocalAI] streaming_first_byte model=\(model)\(purposePart) elapsed_ms=\(ms)")
+					}
+				}
+				guard let chunk = try? JSONDecoder().decode(OllamaStreamChunk.self, from: lineData) else { continue }
+				if let token = chunk.response { accumulated += token }
+				// Stop as soon as we have a complete JSON object.
+				if hasCompletedJSONObject(accumulated) {
+					let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
+					if isRouter {
+						print("[TwoStageRouterTiming] phase=json_detected elapsed_ms=\(ms) bytes=\(accumulated.utf8.count)")
+						print("[TwoStageRouter] early_stop_stream=yes elapsed_ms=\(ms)")
+					} else {
+						print("[LocalAI] streaming_early_stop model=\(model)\(purposePart) outputBytes=\(accumulated.utf8.count) elapsed_ms=\(ms)")
+					}
+					return accumulated
+				}
+				if chunk.done == true { break }
 			}
-			guard let chunk = try? JSONDecoder().decode(OllamaStreamChunk.self, from: lineData) else { continue }
-			if let token = chunk.response { accumulated += token }
-			// Stop as soon as we have a complete JSON object.
-			if hasCompletedJSONObject(accumulated) {
+		} catch {
+			// Catch CancellationError (external timeout fired) or URLError so we can log
+			// the partial output accumulated before cancellation — critical for diagnosing
+			// whether the router timeout is due to: (a) no tokens at all, or (b) partial JSON
+			// that never closed, or (c) prose output before JSON.
+			if isRouter {
 				let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
-				print("[LocalAI] streaming_early_stop model=\(model)\(purposePart) outputBytes=\(accumulated.utf8.count) elapsed_ms=\(ms)")
-				return accumulated
+				let preview = accumulated.prefix(300).replacingOccurrences(of: "\n", with: "↵")
+				if accumulated.isEmpty {
+					print("[TwoStageRouterTiming] phase=timeout elapsed_ms=\(ms)")
+					print("[TwoStageRouter] timeout_partial raw=\"\" chars=0 note=no_tokens_produced")
+				} else {
+					print("[TwoStageRouterTiming] phase=timeout elapsed_ms=\(ms)")
+					print("[TwoStageRouter] timeout_partial raw=\"\(preview)\" chars=\(accumulated.count)")
+				}
 			}
-			if chunk.done == true { break }
+			throw error
 		}
 
 		if accumulated.isEmpty {
@@ -242,7 +307,11 @@ final class LocalAIClient: @unchecked Sendable {
 			throw LocalAIClientError.emptyResponse
 		}
 		let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
-		print("[LocalAI] streaming_done model=\(model)\(purposePart) outputBytes=\(accumulated.utf8.count) elapsed_ms=\(ms)")
+		if isRouter {
+			print("[TwoStageRouterTiming] phase=request_completed elapsed_ms=\(ms) bytes=\(accumulated.utf8.count)")
+		} else {
+			print("[LocalAI] streaming_done model=\(model)\(purposePart) outputBytes=\(accumulated.utf8.count) elapsed_ms=\(ms)")
+		}
 		return accumulated
 	}
 

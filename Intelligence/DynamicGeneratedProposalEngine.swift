@@ -799,7 +799,15 @@ actor DynamicGeneratedProposalEngine {
 
 		// MARK: - Visual/OCR gathering (screen recording)
 		let wantsOCR = need.contains("visible_ocr") || need.contains("ocr")
-		let wantsVisual = need.contains("visual_descriptor")
+		// OCR-first policy: visual descriptor is only gathered if OCR is NOT also being
+		// requested in this same pass (or OCR is already present). When both are requested,
+		// defer visual to a later escalation — the router will re-request it after seeing OCR.
+		var wantsVisual = need.contains("visual_descriptor")
+		let hasExistingOCR = !(snapshot.recentOCRExcerpt ?? "").isEmpty
+		if wantsOCR && wantsVisual && !hasExistingOCR {
+			wantsVisual = false
+			print("[ContextEscalation] deferred=visual_descriptor reason=ocr_first_policy ocr_must_run_first=yes")
+		}
 		let wantsScreen = wantsOCR || wantsVisual
 
 		if wantsScreen {

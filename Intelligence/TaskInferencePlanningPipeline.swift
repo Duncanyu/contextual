@@ -26,8 +26,12 @@ enum TaskInferencePlanningPipeline {
 		guard inference.confidence >= 0.42 else { return nil }
 
 		let cats = normalizeCats(inference.neededCapabilityCategories)
+
+		// Entry banner — proves the hook-composition layer was reached.
+		print("[HookCompositionPipeline] entering goal=\"\(String(inference.possibleUserGoal.prefix(60)))\" categories=[\(cats.joined(separator: ","))] confidence=\(String(format: "%.2f", inference.confidence))")
+
 		guard !cats.isEmpty else {
-			print("[HookPlanner] skipped reason=no_needCats")
+			print("[HookCompositionPipeline] skipped reason=no_needCats")
 			return nil
 		}
 
@@ -63,6 +67,17 @@ enum TaskInferencePlanningPipeline {
 		}
 		guard !plan.hookIds.isEmpty else { return nil }
 
+		// Fail quietly when the only hooks are anchors (observe_current_context + present_result).
+		// This means no capability hooks were resolved — e.g. pure "control" requests with no
+		// implemented hooks. Returning nil is the correct "fail quietly" behavior.
+		let nonAnchorHooks = plan.hookIds.filter {
+			$0 != "observe_current_context" && $0 != "present_result"
+		}
+		guard !nonAnchorHooks.isEmpty else {
+			print("[HookPlanner] skipped reason=no_capability_hooks_resolved cats=[\(cats.joined(separator: ","))]")
+			return nil
+		}
+
 		let workflow = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
 		let primitives = HookCapabilityRegistry.primitives(from: plan.usedHooks)
 		let intent = inferIntent(from: primitives)
@@ -97,10 +112,23 @@ enum TaskInferencePlanningPipeline {
 			)
 
 			let chain = plan.hookIds.joined(separator: ",")
-			let missingCats = plan.missingCategories.isEmpty ? "none" : plan.missingCategories.joined(separator: ",")
-			print("[HookRetriever] cats=[\(cats.joined(separator: ","))] retrieved=\(retrieved.count) implemented=\(plan.usedHooks.count)")
-			print("[HookPlanner] chain=\(chain) missingCats=\(missingCats)")
-			print("[HookComposer] synthesized title=\(contract.title) hooks=\(plan.hookIds.count)")
+		let missingCatsStr = plan.missingCategories.isEmpty ? "none" : plan.missingCategories.joined(separator: ",")
+		print("[HookRetriever] cats=[\(cats.joined(separator: ","))] retrieved=\(retrieved.count) implemented=\(plan.usedHooks.count)")
+		print("[HookPlanner] chain=\(chain) missingCats=\(missingCatsStr)")
+
+		// [HookValidation] — pass or fail based on missing required categories and unimplemented hooks.
+		let unimplementedInPlan = plan.hookIds.filter { id in
+			guard let def = registry.definition(for: id) else { return false }
+			return !def.isImplemented
+		}
+		let validationPass = plan.missingCategories.isEmpty && unimplementedInPlan.isEmpty
+		let validationResult = validationPass ? "pass" : "fail"
+		print("[HookValidation] result=\(validationResult) missing_cats=[\(missingCatsStr)] unimplemented=[\(unimplementedInPlan.joined(separator: ","))]")
+
+		// [GeneratedActionContract] — final contract summary.
+		let executableFlag = plan.hookIds.count >= 2 && !plan.usedHooks.isEmpty
+		print("[GeneratedActionContract] executable=\(executableFlag ? "yes" : "no") title=\"\(contract.title)\" hooks=[\(chain)] confidence=\(String(format: "%.2f", contract.confidence))")
+		print("[HookComposer] synthesized title=\(contract.title) hooks=\(plan.hookIds.count)")
 
 		let proposal = ValidatedDynamicGeneratedProposal(
 			id: contract.id,
@@ -253,7 +281,8 @@ private enum HookCategoryRetriever {
 		situational: SituationalContextSnapshot,
 		registry: HookCapabilityRegistry
 	) -> [HookCapabilityDefinition] {
-		// Pass 1: direct category mapping for all 9 parser-allowed cats.
+		// Pass 1: goal_decomposition — map capability categories to hook categories.
+		print("[HookDiscovery] pass=goal_decomposition categories=[\(needCats.joined(separator: ","))]")
 		var wanted: Set<HookCategory> = []
 		for cat in needCats {
 			wanted.formUnion(hookCategories(for: cat))
@@ -262,7 +291,10 @@ private enum HookCategoryRetriever {
 			// No recognized cats — fall back to reasoning + presentation as a safe default.
 			wanted = [.reasoning, .presentation]
 		}
+		let wantedStr = wanted.map(\.rawValue).sorted().joined(separator: ",")
+		print("[HookDiscovery] pass=goal_decomposition hook_categories=[\(wantedStr)]")
 
+		// Pass 2: candidate_retrieval — filter registry by hook categories.
 		let all = registry.all
 			.filter { wanted.contains($0.category) }
 			.filter { $0.permissionLevel != .unavailable && $0.category != .dangerous }
@@ -270,8 +302,9 @@ private enum HookCategoryRetriever {
 		// Prefer implemented hooks; fall back to unimplemented only if nothing else matched.
 		let implemented = all.filter(\.isImplemented)
 		let base = implemented.isEmpty ? all : implemented
+		print("[HookDiscovery] pass=candidate_retrieval total_in_cats=\(all.count) implemented=\(implemented.count) selected=\(base.count)")
 
-		// Pass 2: neighbor expansion via pairing hints.
+		// Pass 3: compatibility_filter — neighbor expansion via pairing hints.
 		// For each retrieved hook, add its declared pairings if they're implemented and
 		// not already included. This populates richer chains (e.g. compare → extract_product_attributes)
 		// without any cat-specific hardcoding.
@@ -290,7 +323,9 @@ private enum HookCategoryRetriever {
 			}
 		}
 		// Cap expansion to avoid context bloat: max 4 neighbor additions.
-		expanded += Array(toAdd.prefix(4))
+		let capped = Array(toAdd.prefix(4))
+		expanded += capped
+		print("[HookDiscovery] pass=compatibility_filter kept=\(base.count) neighbors_added=\(capped.count) total=\(expanded.count)")
 
 		return expanded
 	}
@@ -494,6 +529,7 @@ private enum HookGraphPlanner {
 		}()
 
 		let missing = missingCats(needCats: needCats, usedHooks: uniqueUsed, ids: ids)
+		print("[HookDiscovery] pass=chain_assembly chain=[\(ids.joined(separator: ","))] missing_cats=[\(missing.joined(separator: ","))]")
 		return Plan(hookIds: ids, usedHooks: uniqueUsed, missingCategories: missing)
 	}
 
