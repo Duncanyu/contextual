@@ -143,6 +143,8 @@ struct GeneratedExecutionProposalActivationResult: Equatable, Sendable {
 	let createdAt: Date
 	/// When set, floating UI may reference this synthetic action id (`generated_exec:…`).
 	let floatingGeneratedProposalId: String?
+	/// T18.6B — True when candidates exist but chime-in policy suppressed everything (floating AND panel).
+	let isPolicySuppressed: Bool
 
 	static let empty = GeneratedExecutionProposalActivationResult(
 		visibleProposals: [],
@@ -154,7 +156,8 @@ struct GeneratedExecutionProposalActivationResult: Equatable, Sendable {
 		timingDecision: .suppressAll,
 		warnings: [],
 		createdAt: Date(),
-		floatingGeneratedProposalId: nil
+		floatingGeneratedProposalId: nil,
+		isPolicySuppressed: false
 	)
 }
 

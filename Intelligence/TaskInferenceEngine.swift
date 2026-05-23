@@ -62,6 +62,81 @@ actor TaskInferenceEngine {
 		let cachedAt: Date
 	}
 
+	static let routerSchema: [String: Any] = [
+		"type": "object",
+		"properties": [
+			"decision": [
+				"type": "string",
+				"enum": [
+					"enough_context",
+					"need_more_context",
+					"insufficient_context"
+				]
+			],
+			"request": [
+				"type": "array",
+				// Constrain items to valid context source names only.
+				// Prevents degenerate repetition under grammar-constrained decoding
+				// which would exhaust the num_predict budget before JSON closes.
+				"items": [
+					"type": "string",
+					"enum": ["ocr", "visual_descriptor", "ax_window_text"]
+				],
+				"maxItems": 3
+			],
+			"confidence": [
+				"type": "number"
+			],
+			"reason": [
+				"type": "string"
+			]
+		],
+		"required": [
+			"decision",
+			"request",
+			"confidence"
+		]
+	]
+
+	/// Planner schema — produces 1–3 ranked action candidates for deterministic selection.
+	///
+	/// Each candidate has: title (user-facing action), caps (capability category list),
+	/// confidence (0-1), novelty (how specific to current context), requires (needed context).
+	/// should_surface_softly at top level: gate on whether to surface any proposal at all.
+	///
+	/// maxLength on strings bounds the grammar tree. minItems:1 ensures at least one action.
+	/// num_predict 220 covers 3 compact candidates (~140 tokens) plus JSON structure.
+	static let plannerSchema: [String: Any] = [
+		"type": "object",
+		"properties": [
+			"actions": [
+				"type": "array",
+				"items": [
+					"type": "object",
+					"properties": [
+						"title": ["type": "string", "maxLength": 80] as [String: Any],
+						"caps":  ["type": "string", "maxLength": 60] as [String: Any],
+						"confidence": ["type": "number"] as [String: Any],
+						"novelty": ["type": "number"] as [String: Any],
+						"requires": [
+							"type": "array",
+							"items": [
+								"type": "string",
+								"enum": ["title", "ocr", "selected_text", "clipboard", "ax_window_text", "visual_descriptor"]
+							] as [String: Any],
+							"maxItems": 4
+						] as [String: Any]
+					] as [String: Any],
+					"required": ["title", "caps", "confidence"]
+				] as [String: Any],
+				"minItems": 1,
+				"maxItems": 3
+			] as [String: Any],
+			"should_surface_softly": ["type": "boolean"] as [String: Any]
+		] as [String: Any],
+		"required": ["actions", "should_surface_softly"]
+	]
+
 	private let modelManager: any DynamicGeneratedProposalAvailabilityChecking
 	private let llm: any TaskInferenceLLMGenerating
 	private var cacheByFingerprint: [String: Cached] = [:]
@@ -76,9 +151,18 @@ actor TaskInferenceEngine {
 	/// caused all of those to fail. Keep at 8s until warm-model optimizations are validated.
 	static let routerTimeoutSeconds: TimeInterval = 8.0
 
-	/// Router max tokens. The router only produces a small JSON decision object;
-	/// 48 tokens is more than enough and limits output rambling.
-	static let routerNumPredict: Int = 48
+	/// Planner-specific timeout. qwen2.5:1.5b + schema-constrained decoding needs more headroom
+	/// than the tiny router. Schema enforcement adds per-token grammar overhead; the planner
+	/// also produces a larger JSON object than the router. 6s comfortably covers warm inference
+	/// (~1.5-2.5s) plus any grammar overhead spikes without stalling the pipeline too long.
+	/// Previous value was 2.5s — too tight, caused timeout failures even on warm models.
+	static let plannerTimeoutSeconds: TimeInterval = 6.0
+
+	/// Router max tokens. The router produces a JSON object with decision, request[], confidence, reason.
+	/// A full worst-case response ("need_more_context" + all 3 request items + reason) is ~70-80 tokens
+	/// under schema-constrained decoding. 80 gives enough headroom; 48 caused one failure in 25 where
+	/// the model's constrained generation exhausted the budget before closing the JSON object.
+	static let routerNumPredict: Int = 80
 	static let cacheMaxAgeSeconds: TimeInterval = 28
 	static let cacheStaleMaxAgeSeconds: TimeInterval = 56
 
@@ -103,6 +187,15 @@ actor TaskInferenceEngine {
 	private var isInferenceRunning = false
 	private var activePlannerTask: Task<TaskInferenceResult?, Never>?
 	private var activeFingerprint: String?
+
+	/// Task B: tracks whether the in-flight task has entered the planner phase.
+	/// Set to true after the planner debounce fires. Used to decide whether a minor
+	/// same-app title change should cancel the task or be tolerated.
+	private var activePlannerPhaseStarted = false
+
+	/// Task B: marks the in-flight result as potentially stale due to a minor title
+	/// change that occurred while the planner was running.
+	private var activePlannerTaskMaybeStale = false
 
 	/// Set by ModelAuditManager while benchmarking. During benchmark, Ollama must be
 	/// exclusively available for the audit — live inference would compete for the inference
@@ -156,12 +249,28 @@ actor TaskInferenceEngine {
 			print("[LocalAIReady] ready=yes")
 
 			if let activeFp = activeFingerprint, activeFp != fingerprint {
-				print("[TwoStage] context changed (fp: \(activeFp) -> \(fingerprint)). Cancelling active planner task.")
-				activePlannerTask?.cancel()
-				activePlannerTask = nil
-				activeFingerprint = nil
+				let isMinor = Self.isMinorSameAppChange(old: activeFp, new: fingerprint)
+				if isMinor && activePlannerPhaseStarted {
+					// Task B: planner is past the router+debounce phase for the same app+workflow.
+					// A minor title change (tab switch within same browser session) should not
+					// cancel the in-flight planner. Mark result as maybe-stale; validate at activation.
+					print("[TwoStage] context changed but preserving planner reason=same_app_minor_title_churn")
+					activePlannerTaskMaybeStale = true
+					return nil  // no new inference started; existing planner result will surface
+				} else {
+					let hardCancelReason = isMinor ? "planner_not_yet_started" : "app_or_domain_changed"
+					print("[ProposalStability] reset reason=context_changed old=\(activeFp) new=\(fingerprint)")
+					print("[TwoStage] context changed hard_cancel reason=\(hardCancelReason)")
+					activePlannerTask?.cancel()
+					activePlannerTask = nil
+					activeFingerprint = nil
+					activePlannerPhaseStarted = false
+					activePlannerTaskMaybeStale = false
+				}
 			}
 			activeFingerprint = fingerprint
+			activePlannerPhaseStarted = false
+			activePlannerTaskMaybeStale = false
 
 			let task = Task { [weak self] () -> TaskInferenceResult? in
 				guard let self = self else { return nil }
@@ -179,8 +288,16 @@ actor TaskInferenceEngine {
 			let result = await task.value
 
 			if self.activeFingerprint == fingerprint {
+				// Task B: log stale check before clearing state
+				if self.activePlannerTaskMaybeStale {
+					print("[GeneratedProposalActivation] stale_check anchor_match=no result=maybe_stale fp=\(fingerprint)")
+				} else {
+					print("[GeneratedProposalActivation] stale_check anchor_match=yes fp=\(fingerprint)")
+				}
 				self.activePlannerTask = nil
 				self.activeFingerprint = nil
+				self.activePlannerPhaseStarted = false
+				self.activePlannerTaskMaybeStale = false
 			}
 			return result
 		}
@@ -296,18 +413,22 @@ actor TaskInferenceEngine {
 						model: model,
 						numPredict: numPredict,
 						temperature: temperature,
-						purpose: "task_inference"
+						purpose: "task_inference",
+						schema: Self.plannerSchema
 					)
 					return output
 				} else {
 					// Streaming: stops the moment a balanced {…} is detected — effective latency
 					// is the time to the closing brace, not the full num_predict budget.
+					print("[StructuredOutput] planner schema_enabled=yes")
+					print("[StructuredOutput] format=json_schema")
 					let output = try await self.llm.generateStreamingJSON(
 						prompt: prompt,
 						model: model,
 						numPredict: numPredict,
 						temperature: temperature,
-						purpose: "task_inference"
+						purpose: "task_inference",
+						schema: Self.plannerSchema
 					)
 					return output
 				}
@@ -389,6 +510,13 @@ actor TaskInferenceEngine {
 
 		let elapsedMs = Int(Date().timeIntervalSince(startTime) * 1000)
 		let (parsed, failure) = TaskInferenceParser.parseWithFailure(from: raw, referenceTime: referenceTime)
+		
+		if parsed != nil {
+			print("[StructuredOutput] planner valid_json=yes")
+		} else {
+			let rawPreview = String(raw.prefix(200)).replacingOccurrences(of: "\n", with: "↵")
+			print("[StructuredOutput] invalid_response raw=\"\(rawPreview)\"")
+		}
 
 		guard let parsed else {
 			let outcome: TaskInferencePerfOutcome = failure == .parseMalformedJSON ? .malformedJSON : .parseFailed
@@ -487,9 +615,9 @@ actor TaskInferenceEngine {
 					// Lower token budget for retry — we only need the compact JSON object.
 					// This reduces the chance of the model generating prose after the JSON.
 					if batchMode {
-						return try await self.llm.generate(prompt: retryPrompt, model: model, numPredict: 80, temperature: 0.05, purpose: "task_inference_retry")
+						return try await self.llm.generate(prompt: retryPrompt, model: model, numPredict: 80, temperature: 0.05, purpose: "task_inference_retry", schema: Self.plannerSchema)
 					} else {
-						return try await self.llm.generateStreamingJSON(prompt: retryPrompt, model: model, numPredict: 80, temperature: 0.05, purpose: "task_inference_retry")
+						return try await self.llm.generateStreamingJSON(prompt: retryPrompt, model: model, numPredict: 80, temperature: 0.05, purpose: "task_inference_retry", schema: Self.plannerSchema)
 					}
 				}
 			} catch {
@@ -581,11 +709,32 @@ actor TaskInferenceEngine {
 	) async -> TaskInferenceResult? {
 		if Task.isCancelled { return nil }
 
-		// Stage 0: Build and print lightweight context packet
 		let hasOCR = snapshot.recentOCRExcerpt != nil && !snapshot.recentOCRExcerpt!.isEmpty
 		let hasVisual = snapshot.visualContextAvailability.visualSummaryExcerpt != nil && !snapshot.visualContextAvailability.visualSummaryExcerpt!.isEmpty
 		let hasSel = !(snapshot.selectedText ?? "").isEmpty
 		let hasClip = !(snapshot.clipboardText ?? "").isEmpty
+		let hasTitle = !snapshot.windowTitle.isEmpty
+		
+		// T18.7.4 — Hard gate: do not attempt generation if context is practically empty.
+		// If we lack title, selection, OCR, and visual context, the ONLY remaining data might be clipboard.
+		// If the trigger was just an app switch (metadata_only) and not a fresh clipboard copy,
+		// the clipboard is likely stale and will cause hallucinations.
+		let isFunctionallyEmpty: Bool = {
+			if !hasTitle && !hasSel && !hasOCR && !hasVisual {
+				// We only have clipboard (if even that)
+				if !hasClip { return true }
+				// We have clipboard, but is it a fresh trigger or just stale data from an app switch?
+				if situational.primaryAvailableSource == .metadataOnly { return true }
+			}
+			return false
+		}()
+
+		if isFunctionallyEmpty {
+			print("[TaskInference] skipped reason=\(TaskInferenceSkipReason.lowContext.rawValue) fp=\(fingerprint)")
+			return nil
+		}
+
+		// Stage 0: Build and print lightweight context packet
 		let typingState = situational.metadata["typingState"] ?? "no"
 		let pointerState = situational.metadata["pointerState"] ?? "no"
 		let recentChanges = recentTitles.joined(separator: "|")
@@ -602,16 +751,23 @@ actor TaskInferenceEngine {
 		
 		print("[TwoStageContextPacket] app=\"\(situational.activeAppName)\" title=\"\(situational.windowTitle)\" wf=\"\(situational.inferredWorkflow.rawValue)\" cat=\"\(situational.appCategory.rawValue)\" ocr_avail=\(hasOCR ? "yes" : "no") visual_avail=\(hasVisual ? "yes" : "no") typing=\(typingState) pointer=\(pointerState) has_sel=\(hasSel ? "yes" : "no") has_clip=\(hasClip ? "yes" : "no") recent_changes=\"\(recentChanges)\" available_context_sources=\"\(availableSources)\" visual_descriptor_available=\(hasVisual ? "yes" : "no") visual_descriptor_excerpt=\"\(visualExcerpt)\" visual_descriptor_confidence=\(visualConf) visual_descriptor_age_ms=\(visualAgeMs)")
 
-		// Short debounce before router: absorbs rapid title changes (fast browsing/tab switching)
-		// so we don't fire a router call for every intermediate URL. The planner has its own
-		// 1s debounce; this 300ms guard reduces unnecessary router calls upstream.
+		// Task A — Stability window before router: absorbs rapid title changes (fast browsing /
+		// tab switching) so the router is not fired for every intermediate URL.
+		// 800ms is long enough for most tab-switching bursts to settle, short enough to feel
+		// responsive when the user lands on a stable page.
+		let stabilityWindowStart = Date()
+		let att = ProposalAttemptScope.currentId ?? "none"
+		print("[ProposalStability] waiting fp=\(fingerprint)")
 		do {
-			try await Task.sleep(nanoseconds: 300_000_000) // 300 ms
+			try await Task.sleep(nanoseconds: 800_000_000) // 800 ms stability window
 		} catch {
-			print("[TwoStageRouter] cancelled during pre-router debounce fp=\(fingerprint)")
+			print("[ProposalStability] reset reason=context_changed old=\(fingerprint)")
 			return nil
 		}
 		if Task.isCancelled { return nil }
+		let stabilityElapsedMs = Int(Date().timeIntervalSince(stabilityWindowStart) * 1000)
+		print("[ProposalStability] stable fp=\(fingerprint) elapsed_ms=\(stabilityElapsedMs)")
+		print("[ProposalAttempt] id=\(att) started_after_stability=yes")
 
 		print("[TwoStageRouter] started")
 
@@ -650,12 +806,15 @@ actor TaskInferenceEngine {
 		var routerUsedStreaming = true
 		do {
 			(routerRaw, routerUsedStreaming) = try await withInferenceTimeout(timeoutSeconds: Self.routerTimeoutSeconds) {
-				try await self.llm.generateStreamingJSON(
+				print("[StructuredOutput] router schema_enabled=yes")
+				print("[StructuredOutput] format=json_schema")
+				return try await self.llm.generateStreamingJSON(
 					prompt: routerPrompt,
 					model: routerModel,
 					numPredict: Self.routerNumPredict,
 					temperature: 0.10,
-					purpose: "task_inference_router"
+					purpose: "task_inference_router",
+					schema: Self.routerSchema
 				)
 			}
 		} catch {
@@ -670,15 +829,17 @@ actor TaskInferenceEngine {
 
 		if Task.isCancelled { return nil }
 
-		// Parse router output tolerantly.
+		// Parse router output.
 		guard let routerObj = Self.parseRouterOutput(routerRaw) else {
-			let rawPreview = routerRaw.replacingOccurrences(of: "\n", with: "↵")
+			let rawPreview = String(routerRaw.prefix(200)).replacingOccurrences(of: "\n", with: "↵")
+			print("[StructuredOutput] router valid_json=no raw=\"\(rawPreview)\"")
 			print("[TwoStageRouter] raw=\(rawPreview)")
 			print("[TwoStageRouter] parsed=nil")
 			print("[TwoStageRouter] decision=insufficient_context")
 			print("[TwoStageRouter] JSON parse failed raw=\(routerRaw)")
 			return nil
 		}
+		print("[StructuredOutput] router valid_json=yes")
 
 		let modelDecision: String
 		if let dec = routerObj["decision"] as? String {
@@ -820,6 +981,11 @@ actor TaskInferenceEngine {
 		if Task.isCancelled { return nil }
 		print("[TwoStagePlannerDebounce] fired")
 
+		// Task B: signal that the planner phase has started. From this point, a minor same-app
+		// title change will NOT cancel this task — the existing result will surface with a
+		// stale-check log at activation time.
+		activePlannerPhaseStarted = true
+
 		// Planner phase.
 		let plannerPrompt = TwoStageCompactPlannerPromptBuilder.build(
 			snapshot: snapshot,
@@ -828,6 +994,11 @@ actor TaskInferenceEngine {
 			history: history,
 			referenceTime: referenceTime
 		)
+
+		let plannerNumPredict = 300   // 3 compact candidates ≈ 200 tokens + JSON structure + should_surface_softly prefix
+		let plannerTemperature = 0.05
+		print("[TwoStagePlannerConfig] model=\(plannerModel) num_predict=\(plannerNumPredict) temperature=\(plannerTemperature) timeout_ms=\(Int(Self.plannerTimeoutSeconds * 1000))")
+		print("[TwoStagePlannerTimeout] timeout_ms=\(Int(Self.plannerTimeoutSeconds * 1000))")
 
 		let plannerStart = Date()
 		guard await twoStageLane.acquire(purpose: "planner") else { return nil }
@@ -839,15 +1010,24 @@ actor TaskInferenceEngine {
 		var plannerRaw: String = ""
 		var plannerUsedStreaming = true
 		do {
-			(plannerRaw, plannerUsedStreaming) = try await withInferenceTimeout(timeoutSeconds: 2.5) {
-				try await self.llm.generateStreamingJSON(
+			(plannerRaw, plannerUsedStreaming) = try await withInferenceTimeout(timeoutSeconds: Self.plannerTimeoutSeconds) {
+				print("[StructuredOutput] planner schema_enabled=yes")
+				print("[StructuredOutput] format=json_schema")
+				return try await self.llm.generateStreamingJSON(
 					prompt: plannerPrompt,
 					model: plannerModel,
-					numPredict: 120,
-					temperature: 0.10,
-					purpose: "task_inference_planner"
+					numPredict: plannerNumPredict,
+					temperature: plannerTemperature,
+					purpose: "task_inference_planner",
+					schema: Self.plannerSchema
 				)
 			}
+		} catch let timeoutErr as TaskInferenceTimeoutError where timeoutErr == .timeout {
+			let elapsedMs = Int(Date().timeIntervalSince(plannerStart) * 1000)
+			print("[StructuredOutput] planner timeout elapsed_ms=\(elapsedMs) partial_chars=0")
+			print("[TwoStagePlanner] failed error=timeout elapsed_ms=\(elapsedMs)")
+			await twoStageLane.release(purpose: "planner", elapsedMs: elapsedMs)
+			return nil
 		} catch {
 			print("[TwoStagePlanner] failed error=\(error)")
 			await twoStageLane.release(purpose: "planner", elapsedMs: Int(Date().timeIntervalSince(plannerStart) * 1000))
@@ -859,67 +1039,37 @@ actor TaskInferenceEngine {
 
 		if Task.isCancelled { return nil }
 
-		// Parse compact planner output.
-		guard let plannerObj = Self.parseCompactPlanner(plannerRaw) else {
-			let rawPreview = plannerRaw.replacingOccurrences(of: "\n", with: "↵")
+		// Parse multi-candidate planner output.
+		let rawPreview = String(plannerRaw.prefix(200)).replacingOccurrences(of: "\n", with: "↵")
+		guard let parsed = Self.parsePlannerCandidates(plannerRaw) else {
+			print("[StructuredOutput] planner valid_json=no raw=\"\(rawPreview)\"")
 			print("[TwoStagePlanner] raw=\(rawPreview)")
 			print("[TwoStagePlanner] parsed=nil")
 			print("[TwoStagePlanner] action=no")
 			print("[TwoStagePlanner] quiet=yes reason=parse_failed")
 			return nil
 		}
+		print("[StructuredOutput] planner valid_json=yes")
+		print("[TwoStagePlanner] raw=\(rawPreview)")
 
-		let activity = plannerObj["inferred_activity"] as? String ?? "unknown"
-		let confidence = plannerObj["confidence"] as? Double ?? plannerObj["p"] as? Double ?? 0.85
-		let evidence = plannerObj["evidence"] as? String ?? plannerObj["reason"] as? String ?? "stable context"
-		let goal = plannerObj["candidate_action_title"] as? String ?? plannerObj["t"] as? String ?? ""
-		let shouldChime: Bool
-		if let surfaceVal = plannerObj["should_surface_softly"] as? Bool {
-			shouldChime = surfaceVal
-		} else if let surfaceVal = plannerObj["should_surface_softly"] as? Int {
-			shouldChime = (surfaceVal != 0)
-		} else if let surfaceVal = plannerObj["should_surface_softly"] as? String {
-			let lower = surfaceVal.lowercased()
-			shouldChime = (lower == "true" || lower == "1" || lower == "yes")
-		} else if let aVal = plannerObj["a"] as? Int {
-			shouldChime = (aVal != 0)
-		} else if let aVal = plannerObj["a"] as? Bool {
-			shouldChime = aVal
-		} else {
-			shouldChime = !goal.isEmpty
+		// Select best candidate deterministically.
+		guard let selected = PlannerCandidateSelector.select(
+			from: parsed.candidates,
+			snapshot: snapshot,
+			situational: situational
+		) else {
+			print("[TwoStagePlanner] action=no quiet=yes reason=no_candidates")
+			return nil
 		}
 
-		let categories: [String]
-		if let hVal = plannerObj["suggested_hooks"] as? String {
-			categories = hVal.split(separator: ",")
-				.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-				.filter { !$0.isEmpty }
-		} else if let hArr = plannerObj["suggested_hooks"] as? [String] {
-			categories = hArr.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-				.filter { !$0.isEmpty }
-		} else if let hVal = plannerObj["h"] as? String {
-			categories = hVal.split(separator: ",")
-				.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-				.filter { !$0.isEmpty }
-		} else if let hArr = plannerObj["h"] as? [String] {
-			categories = hArr.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-				.filter { !$0.isEmpty }
-		} else {
-			categories = []
-		}
+		let shouldChime = parsed.shouldSurface
+		let goal = selected.title
+		let confidence = selected.confidence
+		let categories = selected.caps
+		let evidence = selected.whyUseful ?? "planner_candidate"
+		let reqCtx = selected.requires.isEmpty ? ["title"] : selected.requires
 
-		let reqCtx: [String]
-		if let reqArr = plannerObj["required_context"] as? [String] {
-			reqCtx = reqArr
-		} else if let reqStr = plannerObj["required_context"] as? String {
-			reqCtx = reqStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-		} else {
-			reqCtx = ["title"]
-		}
-
-		print("[TwoStagePlanner] raw=\(plannerRaw.replacingOccurrences(of: "\n", with: "↵"))")
-		print("[TwoStagePlanner] parsed=\(plannerObj)")
-		print("[TwoStagePlanner] inferred_activity=\(activity)")
+		print("[TwoStagePlanner] inferred_activity=\(selected.caps.joined(separator: ","))")
 		print("[TwoStagePlanner] evidence=\(evidence)")
 		print("[TwoStagePlanner] required_context=\(reqCtx.joined(separator: "/"))")
 
@@ -1044,6 +1194,19 @@ actor TaskInferenceEngine {
 		return TaskInferencePerfStats.richnessBucket(hasOCR: hasOCR, hasSelectedText: hasSel, hasClipboard: hasClip)
 	}
 
+	/// Task B: returns true when only the title (and possibly diversity count) changed
+	/// but the app bundle and workflow stayed the same. These minor changes should not
+	/// hard-cancel a planner that is already running.
+	///
+	/// Fingerprint format: "bundle|workflow|primary|tXoX|dN|title"
+	private static func isMinorSameAppChange(old: String, new: String) -> Bool {
+		let oldParts = old.split(separator: "|", maxSplits: 5).map(String.init)
+		let newParts = new.split(separator: "|", maxSplits: 5).map(String.init)
+		guard oldParts.count >= 2, newParts.count >= 2 else { return false }
+		// Same bundle and same workflow → minor change
+		return oldParts[0] == newParts[0] && oldParts[1] == newParts[1]
+	}
+
 	private static func normalizeTitle(_ title: String) -> String {
 		let lower = title.lowercased()
 		let trimmed = lower.replacingOccurrences(of: #"[\|\-–—•]+"#, with: " ", options: .regularExpression)
@@ -1122,6 +1285,83 @@ actor TaskInferenceEngine {
 		}
 		return nil
 	}
+
+	// MARK: - Multi-candidate planner parsing (Part A)
+
+	/// A single action candidate from the multi-candidate planner output.
+	struct PlannerCandidate: Sendable {
+		let title: String
+		let caps: [String]          // capability category strings
+		let confidence: Double
+		let novelty: Double
+		let requires: [String]      // ["title", "ocr", ...]
+		let whyUseful: String?
+	}
+
+	/// Parse the new multi-candidate `actions` array format.
+	/// Falls back to old flat format via parseCompactPlanner for backward compat.
+	static func parsePlannerCandidates(_ raw: String) -> (candidates: [PlannerCandidate], shouldSurface: Bool)? {
+		let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard let data = trimmed.data(using: .utf8),
+			  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+			// Try legacy flat format
+			if let legacy = parseCompactPlanner(raw) {
+				let title = legacy["candidate_action_title"] as? String ?? legacy["t"] as? String ?? ""
+				guard !title.isEmpty else { return nil }
+				let capsStr = legacy["suggested_hooks"] as? String ?? legacy["h"] as? String ?? ""
+				let caps = capsStr.split(separator: ",")
+					.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+					.filter { !$0.isEmpty }
+				let conf = legacy["confidence"] as? Double ?? 0.8
+				let surf: Bool
+				if let sv = legacy["should_surface_softly"] as? Bool { surf = sv }
+				else if let sv = legacy["a"] as? Int { surf = sv != 0 }
+				else { surf = !title.isEmpty }
+				let cand = PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: 0.5, requires: ["title"], whyUseful: nil)
+				return (candidates: [cand], shouldSurface: surf)
+			}
+			return nil
+		}
+
+		// New actions array format
+		guard let actions = obj["actions"] as? [[String: Any]], !actions.isEmpty else {
+			// Possibly old flat format wrapped in JSON
+			if let legacy = parseCompactPlanner(raw) {
+				let title = legacy["candidate_action_title"] as? String ?? ""
+				guard !title.isEmpty else { return nil }
+				let capsStr = legacy["suggested_hooks"] as? String ?? ""
+				let caps = capsStr.split(separator: ",")
+					.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+					.filter { !$0.isEmpty }
+				let conf = legacy["confidence"] as? Double ?? 0.8
+				let surf = legacy["should_surface_softly"] as? Bool ?? !title.isEmpty
+				return (candidates: [PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: 0.5, requires: ["title"], whyUseful: nil)], shouldSurface: surf)
+			}
+			return nil
+		}
+
+		let candidates: [PlannerCandidate] = actions.compactMap { action in
+			guard let title = action["title"] as? String, !title.isEmpty else { return nil }
+			let capsStr = action["caps"] as? String ?? ""
+			let caps = capsStr.split(separator: ",")
+				.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+				.filter { !$0.isEmpty }
+			let conf = action["confidence"] as? Double ?? 0.8
+			let novelty = action["novelty"] as? Double ?? 0.5
+			let requires = action["requires"] as? [String] ?? ["title"]
+			let why = action["why_useful"] as? String
+			return PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: novelty, requires: requires, whyUseful: why)
+		}
+		guard !candidates.isEmpty else { return nil }
+
+		let shouldSurface: Bool
+		if let sv = obj["should_surface_softly"] as? Bool { shouldSurface = sv }
+		else { shouldSurface = candidates.max(by: { $0.confidence < $1.confidence }).map { $0.confidence > 0.6 } ?? false }
+
+		return (candidates: candidates, shouldSurface: shouldSurface)
+	}
+
+	// MARK: - Candidate selection (Part B)
 
 	static func parseCompactPlanner(_ raw: String) -> [String: Any]? {
 		let trimmedRaw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1498,5 +1738,148 @@ actor TaskInferenceEngine {
 	}
 
 	// (No hook IDs are passed to the small model. Hook planning happens after inference.)
+}
+
+// MARK: - Planner candidate selection (Part B)
+
+/// Scores and selects the best action candidate from the planner's multi-candidate output.
+/// Applies generic penalties for low-utility actions and bonuses for context availability.
+/// Not a domain-specific gate — no hardcoded "Amazon bad" rules.
+enum PlannerCandidateSelector {
+	static func select(
+		from candidates: [TaskInferenceEngine.PlannerCandidate],
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot
+	) -> TaskInferenceEngine.PlannerCandidate? {
+		guard !candidates.isEmpty else { return nil }
+
+		print("[PlannerCandidates] count=\(candidates.count)")
+		for c in candidates {
+			print("[PlannerCandidate] title=\"\(c.title)\" confidence=\(String(format: "%.2f", c.confidence)) novelty=\(String(format: "%.2f", c.novelty)) requires=[\(c.requires.joined(separator: ","))] capabilities=[\(c.caps.joined(separator: ","))]")
+		}
+
+		let appLower = situational.activeAppName.lowercased()
+		let titleLower = situational.windowTitle.lowercased().prefix(30)
+		let hasOCR = (snapshot.recentOCRExcerpt ?? "").count > 50
+		let hasSel = (snapshot.selectedText ?? "").count > 0
+		let hasClip = (snapshot.clipboardText ?? "").count > 0
+
+		var scored: [(candidate: TaskInferenceEngine.PlannerCandidate, score: Double, reason: String)] = []
+
+		for c in candidates {
+			var score = c.confidence * 0.55 + c.novelty * 0.35
+			var reason = "baseline"
+
+			// T18.7.2 — Normalize capabilities (handle slash-delimited, comma-delimited, etc.)
+			let normalizedCaps: [String] = c.caps.flatMap { cap in
+				cap.lowercased()
+					.components(separatedBy: CharacterSet(charactersIn: "/, "))
+					.map { $0.trimmingCharacters(in: .punctuationCharacters) }
+					.filter { !$0.isEmpty }
+			}
+			
+			let att = ProposalAttemptScope.currentId ?? "none"
+			print("[ProposalAttempt] id=\(att) planner_candidates=\(candidates.count)")
+			print("[PlannerCandidateSelection] title=\"\(c.title)\" normalized_caps=\(normalizedCaps)")
+
+			// Generic low-capability penalty (T18.3.3F): reject candidates that only sense context.
+			// Candidates must have at least one operational capability (extract, reason, compare, etc.)
+			// AND ideally an output capability.
+			let hasOutput = normalizedCaps.contains("output") || normalizedCaps.contains("compare") || normalizedCaps.contains("organize")
+			let hasOperation = normalizedCaps.contains("extract") || normalizedCaps.contains("reason") ||
+							 normalizedCaps.contains("compare") || normalizedCaps.contains("organize") ||
+							 normalizedCaps.contains("control") || normalizedCaps.contains("utility") ||
+							 normalizedCaps.contains("memory") || normalizedCaps.contains("debug") ||
+							 normalizedCaps.contains("study")
+
+			print("[PlannerCandidateSelection] has_operation=\(hasOperation ? "yes" : "no") has_output=\(hasOutput ? "yes" : "no")")
+
+			if normalizedCaps.allSatisfy({ $0 == "context" }) {
+				// Pure sensing candidate with no operation or output.
+				print("[PlannerCandidateSelection] rejected title=\"\(c.title)\" reason=context_only_candidate")
+				continue
+			}
+
+			if !hasOutput && !normalizedCaps.contains("control") {
+				if hasOperation {
+					// T18.7 — Allow intent-only candidates; HookScriptDiscovery will find the output path.
+					print("[PlannerCandidateSelection] selected title=\"\(c.title)\" despite_missing_output reason=hook_discovery_can_add_output")
+					print("[PlannerCandidateSelection] implied_capability=output")
+				} else {
+					// Caps are unreliable (planner sometimes emits generic verbs or filename strings
+					// instead of canonical category tokens). Fall back to title-verb intent inference
+					// before rejecting — derive transform/reason intent from the candidate's title.
+					let titleLower2 = c.title.lowercased()
+					let transformVerbs: [String] = [
+						"edit", "fix", "modify", "update", "refactor", "rewrite", "improve",
+						"clean", "rename", "delete", "add", "create", "generate", "write"
+					]
+					let reasonVerbs: [String] = [
+						"view", "inspect", "review", "explain", "understand", "analyze",
+						"check", "read", "find", "search", "debug", "trace", "diagnose"
+					]
+					if transformVerbs.contains(where: { titleLower2.contains($0) }) {
+						print("[PlannerCandidateSelection] inferred_intent_from_title=transform title=\"\(c.title)\"")
+						print("[PlannerCandidateSelection] accepted reason=title_intent")
+						// Fall through: let this candidate score normally
+					} else if reasonVerbs.contains(where: { titleLower2.contains($0) }) {
+						print("[PlannerCandidateSelection] inferred_intent_from_title=reason title=\"\(c.title)\"")
+						print("[PlannerCandidateSelection] accepted reason=title_intent")
+						// Fall through: let this candidate score normally
+					} else {
+						// No operation, no output, no recognizable title verb — dead-end sensing chain.
+						print("[PlannerCandidateSelection] rejected title=\"\(c.title)\" reason=no_output_path")
+						continue
+					}
+				}
+			}
+
+			if !hasOperation && !normalizedCaps.contains("output") {
+				// Only "context" + "output" is valid but weak utility.
+				score -= 0.15
+				reason = "low_operation_utility"
+			}
+
+			// Generic low-utility penalty: describes current state rather than offering an operation
+			let lower = c.title.lowercased()
+			let openVerbs = ["open ", "view ", "browse ", "go to ", "navigate to ", "visit "]
+			for verb in openVerbs {
+				if lower.hasPrefix(verb) {
+					// Only penalize if the action title mentions the same app or page currently open
+					if lower.contains(appLower) || lower.contains(titleLower) {
+						score -= 0.35
+						reason = "low_utility_describes_current_state"
+						break
+					}
+				}
+			}
+
+			// Context availability bonus: prefer candidates whose requires are already met
+			var contextBonus = 0.0
+			for req in c.requires {
+				switch req {
+				case "ocr":           if hasOCR  { contextBonus += 0.04 }
+				case "selected_text": if hasSel  { contextBonus += 0.04 }
+				case "clipboard":     if hasClip { contextBonus += 0.02 }
+				default: break
+				}
+			}
+			score += contextBonus
+
+			// Novelty boost: highly specific candidates get a small bonus
+			if c.novelty >= 0.8 { score += 0.05 }
+
+			scored.append((c, score, reason))
+		}
+
+		let sorted = scored.sorted { $0.score > $1.score }
+
+		guard let best = sorted.first else { return nil }
+		print("[PlannerCandidateSelection] selected=\"\(best.candidate.title)\" score=\(String(format: "%.3f", best.score)) reason=\"\(best.reason)\"")
+		for rejected in sorted.dropFirst() {
+			print("[PlannerCandidateSelection] rejected title=\"\(rejected.candidate.title)\" reason=\"\(rejected.reason)\"")
+		}
+		return best.candidate
+	}
 }
 

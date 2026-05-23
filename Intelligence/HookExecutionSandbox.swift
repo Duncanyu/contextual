@@ -184,6 +184,22 @@ actor HookExecutionSandbox {
         "retry_once",
         "branch_on_result",
         "present_result",
+        // Shopping / product research (Part F)
+        "extract_product_specs",
+        "extract_price_and_rating",
+        "compare_product_specs",
+        "build_comparison_table",
+        "identify_purchase_tradeoffs",
+        "summarize_visible_reviews",
+        // General research (Part F)
+        "summarize_visible_page",
+        "extract_key_facts",
+        "create_briefing",
+        "compare_options",
+        // Presentation (Part F)
+        "present_table",
+        "present_tradeoff_summary",
+        "present_recommendation",
     ]
 
     /// Fixed test chain for the "Run Hook Sandbox" debug button.
@@ -243,6 +259,22 @@ actor HookExecutionSandbox {
         "retry_once",
         "branch_on_result",
         "present_result",
+        // Shopping / product research (Part F)
+        "extract_product_specs",
+        "extract_price_and_rating",
+        "compare_product_specs",
+        "build_comparison_table",
+        "identify_purchase_tradeoffs",
+        "summarize_visible_reviews",
+        // General research (Part F)
+        "summarize_visible_page",
+        "extract_key_facts",
+        "create_briefing",
+        "compare_options",
+        // Presentation (Part F)
+        "present_table",
+        "present_tradeoff_summary",
+        "present_recommendation",
     ]
 
     /// Seeded sample snapshot used to test hook chaining deterministically.
@@ -331,7 +363,7 @@ actor HookExecutionSandbox {
         // Block hooks outside the safe allowlist.
         guard Self.safeHookIds.contains(hookId) else {
             if let def = registry.definition(for: hookId) {
-                if def.category == .computerControl || def.category == .dangerous {
+                if def.category == .app_control || def.category == .dangerous {
                     return .blockedNotSafe
                 }
             }

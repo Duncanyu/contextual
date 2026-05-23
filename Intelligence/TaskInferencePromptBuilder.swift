@@ -67,12 +67,11 @@ enum TaskInferencePromptBuilder {
 		let needAllowed = "visible_ocr,ax_window_text,browser_text,selected_text,recent_titles,clipboard_if_relevant,visual_descriptor"
 		let needCatsAllowed = "context,extract,reason,output,compare,organize,debug,study"
 		var lines: [String] = [
-			"JSON only. No prose.",
-			"keys=c,g,needCats,p,need,needReason",
-			"c=1: g must use ctx words (title/app/sel/ocr).",
-			"needCats subset: [\(needCatsAllowed)].",
-			"c=0: stay quiet OR request context via need (subset: [\(needAllowed)]).",
-			"Never output hooks/ids/q/a/o fields.",
+			"Task: Infer the user's current goal based on context.",
+			"c=1 if goal can be inferred; c=0 if context is noisy/unclear.",
+			"If c=1, goal must use exact words from context (title/app/sel/ocr).",
+			"Available needCats: [\(needCatsAllowed)].",
+			"If c=0, optionally request more context using 'need' from: [\(needAllowed)].",
 		]
 
 		// Single-line feature packet (real values only; no placeholders).
@@ -120,13 +119,9 @@ enum TaskInferencePromptBuilder {
 
 		let invalid = invalidFields.isEmpty ? "g,needCats" : invalidFields.joined(separator: ",")
 		var parts: [String] = [
-			"JSON only. No text outside JSON.",
-			"Fix invalid fields: [\(invalid)]. reason=\(retryReason).",
-			"keys=c,g,needCats,p,need,needReason",
-			"g must use ctx words: title=\"\(title)\" app=\(app)\(contentHint)",
+			"Task: Fix the invalid fields: [\(invalid)]. reason=\(retryReason).",
+			"The goal (g) must use words from: title=\"\(title)\" app=\(app)\(contentHint)"
 		]
-		// End with schema reminder only (no examples).
-		parts.append("Output JSON object now:")
 		return parts.joined(separator: "\n")
 	}
 

@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastReasonedActions: [any ActionProtocol] = []
 	private var lastReasonedActionsAt: Date?
 	private var lastReasonedTriggerType: TriggerType?
-	private let availableActionsCacheTTLSeconds: TimeInterval = 10
+	private let availableActionsCacheTTLSeconds: TimeInterval = 300
 
 	private var lastReasonedProposal: ActionProposal?
 	private var lastReasonedProposalKey: String?
@@ -60,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	/// Holds the active generated execution runtime so cancel can reach it (T18.4).
 	private var activeGeneratedExecutionRuntime: GeneratedExecutionRuntime?
 
+	private var twoStageWarmupComplete: Bool = false
+	private var deferredWarmupTrigger: (packet: TriggerPacket, context: ContextModel, generation: UInt64)?
+
 	/// T18.6A — Tracks the previous context fingerprint components so we can detect meaningful
 	/// context changes (page nav, app switch, workflow change) and log them.
 	private struct ChimeInContextSnapshot: Equatable {
@@ -90,11 +93,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		// Hook-Based Action Composition self-tests (T18.5; async; metadata-only).
 		// Run with `CONTEXTUAL_RUN_HOOK_COMPOSITION_SELFTEST=1`.
+		if env["CONTEXTUAL_RUN_HOOK_TAXONOMY_SELFTEST"] == "1" {
+			let ok = HookTaxonomySelfTest.run()
+			print("[HookTaxonomySelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_HOOK_PLAN_SELFTEST"] == "1" {
+			Task {
+				HookPlanSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_PLANNER_CANDIDATE_SELFTEST"] == "1" {
+			Task.detached(priority: .userInitiated) {
+				await PlannerCandidateSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_HOOK_SCRIPT_DISCOVERY_SELFTEST"] == "1" {
+			Task {
+				HookScriptDiscoverySelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		// Part H: Live chain self-test — real Ollama calls, three scenarios.
+		// Run with: CONTEXTUAL_RUN_LIVE_CHAIN_SELFTEST=1 <debug binary path>
+		// Expected: [LiveChainSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_LIVE_CHAIN_SELFTEST"] == "1" {
+			Task.detached(priority: .userInitiated) {
+				await LiveChainSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		// Panel visibility + domain filter self-test (Tasks 1 & 2) — pure logic, no LLM calls.
+		// Run with: CONTEXTUAL_RUN_PANEL_DOMAIN_SELFTEST=1 <debug binary path>
+		// Expected: [PanelVisibilityDomainSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_PANEL_DOMAIN_SELFTEST"] == "1" {
+			Task {
+				PanelVisibilityDomainSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_PROPOSAL_PERSISTENCE_SELFTEST"] == "1" {
+			Task {
+				await PanelVisibilityDomainSelfTest.runPersistenceTests()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		// Proposal preservation + final_status self-test.
+		// Run with: CONTEXTUAL_RUN_PROPOSAL_PRESERVATION_SELFTEST=1 <debug binary path>
+		// Expected: [GeneratedProposalPreservationSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_PROPOSAL_PRESERVATION_SELFTEST"] == "1" {
+			Task {
+				GeneratedProposalPreservationSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
 		if env["CONTEXTUAL_RUN_HOOK_COMPOSITION_SELFTEST"] == "1" {
 			Task {
 				let ok = await HookCompositionSelfTests.run()
 				print("[HookCompositionSelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		// Structured output self-test: verifies router + planner use Ollama schema-constrained
+		// generation (format: {JSON Schema}) and produce valid, prose-free JSON every call.
+		// Run with: CONTEXTUAL_RUN_STRUCTURED_OUTPUT_SELFTEST=1 <debug binary path>
+		// Expected: [StructuredOutputSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_STRUCTURED_OUTPUT_SELFTEST"] == "1" {
+			Task.detached(priority: .userInitiated) {
+				await StructuredOutputSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { NSApp.terminate(nil) }
 			}
 			return
 		}
@@ -399,9 +486,13 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 							Task.detached(priority: .utility) {
 								let base = LocalAISettings.shared.modelName
 								// Run parser + composer self-test on startup (no live AI — fast).
-								let selfTestOk = await TaskInferenceSelfTest.run()
-								if !selfTestOk {
-									print("[TaskInferenceSelfTest] WARNING startup self-test failed — parser may reject model output")
+								if ProcessInfo.processInfo.environment["CONTEXTUAL_RUN_TASK_INFERENCE_SELFTEST"] == "1" {
+									let selfTestOk = await TaskInferenceSelfTest.run()
+									if !selfTestOk {
+										print("[TaskInferenceSelfTest] WARNING startup self-test failed — parser may reject model output")
+									}
+								} else {
+									print("[SelfTest] skipped reason=env_not_set")
 								}
 								if LocalAISettings.shared.twoStageTaskInferenceEnabled {
 									print("[TwoStageInference] bypassing old single-stage audit, warmup, and keepalive because two-stage mode is ON")
@@ -415,6 +506,28 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 									await ModelAuditManager.shared.runWarmupIfNeeded(model: routerModel)
 									print("[TwoStageWarmup] warming planner=\(plannerModel)")
 									await ModelAuditManager.shared.runWarmupIfNeeded(model: plannerModel)
+									
+									print("[TwoStageWarmup] ready_for_inference=yes")
+									self.twoStageWarmupComplete = true
+									if let deferred = self.deferredWarmupTrigger {
+										print("[GeneratedProposal] retrying_deferred_after_warmup trigger=\(deferred.packet.triggerType.rawValue)")
+										self.deferredWarmupTrigger = nil
+										Task {
+											await self.updateDynamicOnlyProposals(
+												from: deferred.packet,
+												context: deferred.context,
+												generation: deferred.generation,
+												decision: ReasoningDecision(
+													shouldSurface: true,
+													primaryActionId: nil,
+													rankedActionIds: [],
+													reason: "deferred_retry",
+													confidence: 1.0
+												)
+											)
+										}
+									}
+									
 									// Keep the router resident with a 4-minute keepalive ping loop.
 									// Ollama's default idle unload TTL is 5 minutes; this prevents cold
 									// re-loads during sustained dogfooding sessions.
@@ -574,13 +687,31 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		}
 
 		if DynamicOnlyProposalMode.isEnabled {
-			await updateDynamicOnlyProposals(
-				from: packet,
-				context: context,
-				generation: generation,
-				decision: decision
-			)
-			return
+			let attemptId = String(UUID().uuidString.prefix(6))
+			print("[ProposalAttempt] id=\(attemptId) started app=\(context.activeAppBundleIdentifier ?? "none") title=\(String(context.activeWindowTitle?.prefix(40) ?? "none"))")
+			await ProposalAttemptScope.$currentId.withValue(attemptId) {
+				await updateDynamicOnlyProposals(
+					from: packet,
+					context: context,
+					generation: generation,
+					decision: decision
+				)
+			}
+			
+			let storedVisible = appState.activatedGeneratedProposals.count
+			let uiVisible = appState.dynamicActionDisplaySummary.showsGeneratedPreview ? 1 : 0
+			// Task B: final_status reflects what the user actually sees.
+			// rendered   = UI currently displays a proposal (regardless of stored count)
+			// stored_not_rendered = stored but not yet painted to screen
+			// hidden     = neither stored nor visible in UI
+			let status: String = {
+				if uiVisible > 0 { return "rendered" }
+				if storedVisible > 0 { return "stored_not_rendered" }
+				return "hidden"
+			}()
+			print("[ProposalAttempt] id=\(attemptId) stored_visible=\(storedVisible) ui_visible=\(uiVisible) final_status=\(status)")
+		} else {
+
 		}
 
 		let proposalGateResult = ProposalGenerationGate.evaluate(context: context)
@@ -1079,6 +1210,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		generation: UInt64,
 		decision: ReasoningDecision
 	) async {
+		if LocalAISettings.shared.twoStageTaskInferenceEnabled && !twoStageWarmupComplete {
+			print("[GeneratedProposal] deferred reason=two_stage_warmup_not_ready")
+			deferredWarmupTrigger = (packet, context, generation)
+			return
+		}
+
 		guard generation == contextPipelineGeneration else {
 			GeneratedProposalActivationDiagnostics.logSkip(
 				phase: "skipped_before_situational_synthesis",
@@ -1426,6 +1563,28 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		// Decision quality log — explains utility, novelty, and interruption cost together.
 		print("[ChimeInPolicy] decision_quality score=\(String(format: "%.2f", decision.score)) utility=\(String(format: "%.2f", topScore)) novelty=\(String(format: "%.2f", novelty)) interruption=\(String(format: "%.2f", derivedInterruptionCost)) context=\(contextChanged ? "changed" : "same") mode=\(decision.mode.rawValue)")
 
+		// Executable hook-contract override (Task 1 dogfood visibility):
+		// When ChimeInPolicy suppresses a proposal that is an executable hook-composer contract
+		// with confidence ≥ 0.70, force panel-only display. Floating remains gated normally.
+		// This allows generated hook proposals to appear in the dogfood panel even when the
+		// unified ranking score is in the 0.35–0.45 range.
+		if !decision.shouldSurface && !factors.isActionExecuting {
+			let hasHookContract = activation.visibleProposals.contains {
+				$0.source == .hookComposer &&
+				$0.isExecutableGeneratedProposal &&
+				$0.confidence >= GeneratedExecutionProposalActivator.executableHookContractPanelMinConfidence
+			}
+			if hasHookContract {
+				print("[ChimeInPolicy] panel_override reason=executable_hook_contract score=\(String(format: "%.2f", topScore))")
+				decision = ContextualChimeInDecision(
+					mode: .panelOnly,
+					score: max(decision.score, 0.50),
+					reasons: ["executable_hook_contract"],
+					cooldownRecommendation: nil
+				)
+			}
+		}
+
 		// Resurfacing guarantee (T18.6): if silent ≥3 min and score is passable, allow panel-only.
 		let wasFullySuppressed = !decision.shouldSurface
 		if wasFullySuppressed && !factors.isActionExecuting {
@@ -1462,7 +1621,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 		if !decision.shouldSurface {
 			return GeneratedExecutionProposalActivationResult(
-				visibleProposals: [],
+				visibleProposals: activation.visibleProposals,
 				visibleStaticActionIds: activation.visibleStaticActionIds,
 				suppressedGeneratedCount: activation.suppressedGeneratedCount + activation.visibleProposals.count,
 				suppressedStaticCount: activation.suppressedStaticCount,
@@ -1471,7 +1630,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				timingDecision: .suppressAll,
 				warnings: activation.warnings + ["chime_policy_suppressed"],
 				createdAt: activation.createdAt,
-				floatingGeneratedProposalId: nil
+				floatingGeneratedProposalId: nil,
+				isPolicySuppressed: true
 			)
 		}
 
@@ -1498,11 +1658,24 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				),
 				warnings: activation.warnings,
 				createdAt: activation.createdAt,
-				floatingGeneratedProposalId: nil
+				floatingGeneratedProposalId: nil,
+				isPolicySuppressed: false
 			)
 		}
 
-		return activation
+		return GeneratedExecutionProposalActivationResult(
+			visibleProposals: activation.visibleProposals,
+			visibleStaticActionIds: activation.visibleStaticActionIds,
+			suppressedGeneratedCount: activation.suppressedGeneratedCount,
+			suppressedStaticCount: activation.suppressedStaticCount,
+			topSourceType: activation.topSourceType,
+			rankingSummary: activation.rankingSummary,
+			timingDecision: activation.timingDecision,
+			warnings: activation.warnings,
+			createdAt: activation.createdAt,
+			floatingGeneratedProposalId: activation.floatingGeneratedProposalId,
+			isPolicySuppressed: false
+		)
 	}
 
 	private func registeredToolActions(for packet: TriggerPacket, context: ContextModel) -> [any ActionProtocol] {
@@ -1981,41 +2154,69 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			return
 		}
 
+		let hasActiveGenerated = !appState.activatedGeneratedProposals.isEmpty
+
 		guard let cachedAt = lastReasonedActionsAt else {
+			if hasActiveGenerated {
+				print("[AvailableActions] preserving generated actions reason=active_generated_proposal count=\(appState.activatedGeneratedProposals.count)")
+				return
+			}
 			if !appState.availableActions.isEmpty {
+				let countBefore = appState.availableActions.count
 				appState.availableActions = []
 				appState.currentProposal = nil
 				appState.currentProposalKey = nil
 				appState.refreshProposalContext(for: nil)
-				print("[AvailableActions] cleared cached actions reason=\(reason)")
+				print("[AvailableActions] cleared cached actions reason=\(reason) count_before=\(countBefore)")
 			}
 			return
 		}
 
 		let age = Date().timeIntervalSince(cachedAt)
+		let liveContext = contextBuilder.model
+		
+		// T18.6B — If idle ("no trigger packet") but same app/window, preserve for full TTL.
+		let isSameContext: Bool = {
+			guard let lastApp = lastPipelineActiveAppKey else { return false }
+			return lastApp == liveContext.activeAppBundleIdentifier
+		}()
+
 		if age < availableActionsCacheTTLSeconds, !lastReasonedActions.isEmpty {
-			let liveContext = contextBuilder.model
-			appState.availableActions = lastReasonedActions.filter { $0.canExecute(context: liveContext) }
-			if let p = lastReasonedProposal,
-			   lastReasonedActions.contains(where: { $0.id == p.primaryActionId }),
-			   !appState.isSuggestionOnCooldown(p, context: appState.debugContext) {
-				appState.currentProposal = p
-				appState.currentProposalKey = lastReasonedProposalKey
-				appState.refreshProposalContext(for: p)
+			if reason == "no trigger packet" && !isSameContext {
+				// Different app and no trigger? Clear early, unless generated proposals exist.
+				if hasActiveGenerated {
+					print("[AvailableActions] preserving generated actions reason=active_generated_proposal count=\(appState.activatedGeneratedProposals.count)")
+					return
+				}
 			} else {
-				appState.currentProposal = nil
-				appState.currentProposalKey = nil
-				appState.refreshProposalContext(for: nil)
+				appState.availableActions = lastReasonedActions.filter { $0.canExecute(context: liveContext) }
+				if let p = lastReasonedProposal,
+				   lastReasonedActions.contains(where: { $0.id == p.primaryActionId }),
+				   !appState.isSuggestionOnCooldown(p, context: appState.debugContext) {
+					appState.currentProposal = p
+					appState.currentProposalKey = lastReasonedProposalKey
+					appState.refreshProposalContext(for: p)
+				} else {
+					appState.currentProposal = nil
+					appState.currentProposalKey = nil
+					appState.refreshProposalContext(for: nil)
+				}
+				let now = Date()
+				if lastPreserveLogAt == nil || now.timeIntervalSince(lastPreserveLogAt!) > 2 {
+					lastPreserveLogAt = now
+					let rounded = String(format: "%.1f", age)
+					print("[AvailableActions] preserving cached actions age=\(rounded)s reason=\(reason)")
+				}
+				return
 			}
-			let now = Date()
-			if lastPreserveLogAt == nil || now.timeIntervalSince(lastPreserveLogAt!) > 2 {
-				lastPreserveLogAt = now
-				let rounded = String(format: "%.1f", age)
-				print("[AvailableActions] preserving cached actions age=\(rounded)s")
-			}
+		}
+
+		if hasActiveGenerated {
+			print("[AvailableActions] preserving generated actions reason=active_generated_proposal count=\(appState.activatedGeneratedProposals.count)")
 			return
 		}
 
+		let countBefore = appState.availableActions.count
 		appState.availableActions = []
 		appState.currentProposal = nil
 		appState.currentProposalKey = nil
@@ -2025,7 +2226,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		lastReasonedTriggerType = nil
 		lastReasonedProposal = nil
 		lastReasonedProposalKey = nil
-		print("[AvailableActions] cleared cached actions reason=\(reason)")
+		print("[AvailableActions] cleared cached actions reason=\(reason) count_before=\(countBefore)")
 	}
 
 	private func invokeGeneratedExecutionProposal(candidateId: String) {

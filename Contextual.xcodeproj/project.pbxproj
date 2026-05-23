@@ -11,6 +11,7 @@
 		AA0001020000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002020000000000000002 /* AppDelegate.swift */; };
 		AA00018A00000000000000BA /* Phase14TuningSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029200000000000000BA /* Phase14TuningSelfTest.swift */; };
 		AA00018B00000000000000BB /* Phase15TuningSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029300000000000000BB /* Phase15TuningSelfTest.swift */; };
+		AABB00010000000000000001 /* GeneratedProposalPreservationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00020000000000000001 /* GeneratedProposalPreservationSelfTest.swift */; };
 		AA0001030000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030000000000000003 /* AppState.swift */; };
 		AA0001040000000000000004 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040000000000000004 /* MenuBarController.swift */; };
 		AA0001050000000000000005 /* AssistantPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050000000000000005 /* AssistantPanelView.swift */; };
@@ -239,6 +240,14 @@
 			AA0002270000000000000140 /* TaskInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000140 /* TaskInferenceEngine.swift */; };
 			AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004120000000000000141 /* TaskInferenceSelfTest.swift */; };
 			AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */; };
+			AA0010000000000000000001 /* StructuredOutputSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000001 /* StructuredOutputSelfTest.swift */; };
+			AA0010000000000000000002 /* PlannerCandidateSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000002 /* PlannerCandidateSelfTest.swift */; };
+			AA0010000000000000000003 /* HookScriptDiscoverySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000003 /* HookScriptDiscoverySelfTest.swift */; };
+			AA0010000000000000000004 /* LiveChainSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000004 /* LiveChainSelfTest.swift */; };
+			AA0010000000000000000005 /* HookDomainFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000005 /* HookDomainFilter.swift */; };
+			AA0010000000000000000006 /* PanelVisibilityDomainSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000006 /* PanelVisibilityDomainSelfTest.swift */; };
+			AA0020000000000000000006 /* PanelVisibilityDomainSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelVisibilityDomainSelfTest.swift; sourceTree = "<group>"; };
+			AA0020000000000000000005 /* HookDomainFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookDomainFilter.swift; sourceTree = "<group>"; };
 			AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004140000000000000143 /* TaskInferenceBakeoff.swift */; };
 			AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004150000000000000144 /* HookCompositionSelfTests.swift */; };
 			AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */; };
@@ -253,6 +262,7 @@
 		AA0002020000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AA00029200000000000000BA /* Phase14TuningSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase14TuningSelfTest.swift; sourceTree = "<group>"; };
 		AA00029300000000000000BB /* Phase15TuningSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase15TuningSelfTest.swift; sourceTree = "<group>"; };
+		AABB00020000000000000001 /* GeneratedProposalPreservationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedProposalPreservationSelfTest.swift; sourceTree = "<group>"; };
 		AA0002030000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSuggestionWindowController.swift; sourceTree = "<group>"; };
@@ -486,6 +496,10 @@
 			AA0002C30000000000000F3 /* ModelAuditManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAuditManager.swift; sourceTree = "<group>"; };
 			AA0004120000000000000141 /* TaskInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceSelfTest.swift; sourceTree = "<group>"; };
 			AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePlanningPipeline.swift; sourceTree = "<group>"; };
+			AA0020000000000000000001 /* StructuredOutputSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredOutputSelfTest.swift; sourceTree = "<group>"; };
+			AA0020000000000000000002 /* PlannerCandidateSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCandidateSelfTest.swift; sourceTree = "<group>"; };
+			AA0020000000000000000003 /* HookScriptDiscoverySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookScriptDiscoverySelfTest.swift; sourceTree = "<group>"; };
+			AA0020000000000000000004 /* LiveChainSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveChainSelfTest.swift; sourceTree = "<group>"; };
 			AA0004140000000000000143 /* TaskInferenceBakeoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceBakeoff.swift; sourceTree = "<group>"; };
 			AA0004150000000000000144 /* HookCompositionSelfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookCompositionSelfTests.swift; sourceTree = "<group>"; };
 			AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageCompactPlannerPromptBuilder.swift; sourceTree = "<group>"; };
@@ -527,6 +541,7 @@
 				AA0002020000000000000002 /* AppDelegate.swift */,
 				AA00029200000000000000BA /* Phase14TuningSelfTest.swift */,
 				AA00029300000000000000BB /* Phase15TuningSelfTest.swift */,
+				AABB00020000000000000001 /* GeneratedProposalPreservationSelfTest.swift */,
 				AA0002030000000000000003 /* AppState.swift */,
 				AA0002040000000000000004 /* MenuBarController.swift */,
 				AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */,
@@ -754,6 +769,12 @@
 					AA0002C30000000000000F3 /* ModelAuditManager.swift */,
 					AA0004120000000000000141 /* TaskInferenceSelfTest.swift */,
 					AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */,
+						AA0020000000000000000001 /* StructuredOutputSelfTest.swift */,
+						AA0020000000000000000002 /* PlannerCandidateSelfTest.swift */,
+						AA0020000000000000000003 /* HookScriptDiscoverySelfTest.swift */,
+					AA0020000000000000000004 /* LiveChainSelfTest.swift */,
+					AA0020000000000000000005 /* HookDomainFilter.swift */,
+					AA0020000000000000000006 /* PanelVisibilityDomainSelfTest.swift */,
 					AA0004140000000000000143 /* TaskInferenceBakeoff.swift */,
 					AA0004150000000000000144 /* HookCompositionSelfTests.swift */,
 					AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */,
@@ -924,6 +945,7 @@
 				AA0001020000000000000002 /* AppDelegate.swift in Sources */,
 				AA00018A00000000000000BA /* Phase14TuningSelfTest.swift in Sources */,
 				AA00018B00000000000000BB /* Phase15TuningSelfTest.swift in Sources */,
+				AABB00010000000000000001 /* GeneratedProposalPreservationSelfTest.swift in Sources */,
 				AA0001030000000000000003 /* AppState.swift in Sources */,
 				AA0001040000000000000004 /* MenuBarController.swift in Sources */,
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
@@ -1102,6 +1124,12 @@
 					AA0001C30000000000000F3 /* ModelAuditManager.swift in Sources */,
 					AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */,
 					AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */,
+					AA0010000000000000000001 /* StructuredOutputSelfTest.swift in Sources */,
+					AA0010000000000000000002 /* PlannerCandidateSelfTest.swift in Sources */,
+					AA0010000000000000000003 /* HookScriptDiscoverySelfTest.swift in Sources */,
+					AA0010000000000000000004 /* LiveChainSelfTest.swift in Sources */,
+					AA0010000000000000000005 /* HookDomainFilter.swift in Sources */,
+					AA0010000000000000000006 /* PanelVisibilityDomainSelfTest.swift in Sources */,
 					AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */,
 					AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */,
 					AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */,

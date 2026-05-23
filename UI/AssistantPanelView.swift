@@ -26,6 +26,7 @@ struct AssistantPanelView: View {
 	@State private var debugIntelligenceExpanded: Bool = false
 	@State private var debugPerformanceExpanded: Bool = false
 	@State private var dismissedVisibleGeneratedActionIds: Set<UUID> = []
+	@State private var dismissedGeneratedProposalIds: Set<String> = []
 
 	var body: some View {
 		ScrollView {
@@ -40,8 +41,6 @@ struct AssistantPanelView: View {
 				suggestionSection
 
 				availableActionsSection
-
-				generatedExecutionProposalsSection
 
 				VisibleGeneratedActionsSection(
 					summary: appState.dynamicActionDisplaySummary,
@@ -67,6 +66,11 @@ struct AssistantPanelView: View {
 		.onChange(of: appState.dynamicActionDisplaySummary) { new in
 			if new.previewItems.isEmpty {
 				dismissedVisibleGeneratedActionIds.removeAll()
+			}
+		}
+		.onChange(of: appState.activatedGeneratedProposals) { new in
+			if new.isEmpty {
+				dismissedGeneratedProposalIds.removeAll()
 			}
 		}
 		.frame(width: 300, height: 620)
@@ -100,66 +104,43 @@ struct AssistantPanelView: View {
 
 	// MARK: - Actions
 
-	private var generatedExecutionProposalsSection: some View {
-		Group {
-			if !appState.activatedGeneratedProposals.isEmpty {
-				VStack(alignment: .leading, spacing: 10) {
-					SectionHeader(title: "Generated Proposals")
-					VStack(alignment: .leading, spacing: 8) {
-						ForEach(appState.activatedGeneratedProposals) { item in
-							VStack(alignment: .leading, spacing: 4) {
-								HStack {
-									Text(item.title)
-										.font(.subheadline.weight(.semibold))
-									Spacer(minLength: 4)
-									Text("Generated")
-										.font(.caption2.weight(.medium))
-										.foregroundStyle(.secondary)
-								}
-								if !item.subtitle.isEmpty {
-									Text(item.subtitle)
-										.font(.caption)
-										.foregroundStyle(.secondary)
-								}
-								if !item.expectedOutputSummary.isEmpty {
-									Text(item.expectedOutputSummary)
-										.font(.caption2)
-										.foregroundStyle(.tertiary)
-										.lineLimit(2)
-								}
-								Button(item.source == .reusableGenerated ? "Run" : "Prepare execution") {
-									appState.invokeGeneratedExecutionProposal(id: item.id)
-									print("[GeneratedExecutionUI] run_requested id=\(item.id.prefix(12)) title=\(item.title.prefix(40))")
-								}
-								.buttonStyle(.borderedProminent)
-								.frame(maxWidth: .infinity, alignment: .leading)
-								.disabled(appState.isActionExecuting)
-							}
-							.padding(8)
-							.background(Color.primary.opacity(0.04))
-							.clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-						}
-					}
-					.contextualPanelCard()
-				}
-			}
-		}
-	}
-
 	private var availableActionsSection: some View {
-		VStack(alignment: .leading, spacing: 10) {
+		let visibleGenerated = appState.activatedGeneratedProposals.filter { !dismissedGeneratedProposalIds.contains($0.id) }
+		let hasVisibleGenerated = !visibleGenerated.isEmpty
+		let hasStatic = !appState.availableActions.isEmpty
+
+		return VStack(alignment: .leading, spacing: 10) {
 			SectionHeader(title: "Contextual Assistance")
 			VStack(alignment: .leading, spacing: 10) {
-				if appState.activatedGeneratedProposals.isEmpty {
+				if !hasVisibleGenerated && !hasStatic {
 					Text(generatedProposalEmptyLine)
 						.font(.caption)
 						.foregroundStyle(.secondary)
 						.frame(maxWidth: .infinity, alignment: .leading)
-				} else {
-					Text("Use Generated Proposals below when the assistant has a situational suggestion.")
-						.font(.caption2)
-						.foregroundStyle(.tertiary)
 				}
+
+				if hasVisibleGenerated {
+					VStack(alignment: .leading, spacing: 12) {
+						ForEach(visibleGenerated) { item in
+							generatedProposalCard(item)
+						}
+					}
+					.padding(.bottom, hasStatic ? 10 : 0)
+				}
+
+				if hasStatic {
+					VStack(alignment: .leading, spacing: 8) {
+						ForEach(appState.availableActions, id: \.id) { action in
+							Button(action.name) {
+								appState.invokeAction(id: action.id)
+							}
+							.buttonStyle(.borderedProminent)
+							.frame(maxWidth: .infinity, alignment: .leading)
+							.disabled(appState.isActionExecuting)
+						}
+					}
+				}
+
 				if appState.isActionExecuting {
 					Text(processingLabel)
 						.font(.caption2)
@@ -168,6 +149,54 @@ struct AssistantPanelView: View {
 			}
 			.contextualPanelCard()
 		}
+	}
+
+	@ViewBuilder
+	private func generatedProposalCard(_ item: GeneratedExecutionProposalPanelItem) -> some View {
+		VStack(alignment: .leading, spacing: 6) {
+			HStack {
+				Text(item.title)
+					.font(.subheadline.weight(.semibold))
+				Spacer(minLength: 4)
+				Text("Generated")
+					.font(.caption2.weight(.medium))
+					.foregroundStyle(.secondary)
+			}
+			if !item.subtitle.isEmpty {
+				Text(item.subtitle)
+					.font(.caption)
+					.foregroundStyle(.secondary)
+					.lineLimit(2)
+			}
+			if !item.expectedOutputSummary.isEmpty {
+				Text(item.expectedOutputSummary)
+					.font(.caption2)
+					.foregroundStyle(.tertiary)
+					.lineLimit(2)
+			}
+			HStack(spacing: 12) {
+				Button(item.source == .reusableGenerated ? "Run" : "Prepare execution") {
+					appState.invokeGeneratedExecutionProposal(id: item.id)
+				}
+				.buttonStyle(.borderedProminent)
+				.disabled(appState.isActionExecuting)
+
+				Button("Dismiss") {
+					dismissedGeneratedProposalIds.insert(item.id)
+				}
+				.buttonStyle(.plain)
+				.font(.caption)
+				.foregroundStyle(.secondary)
+			}
+			.padding(.top, 2)
+		}
+		.padding(10)
+		.background(Color.primary.opacity(0.04))
+		.clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+		.overlay(
+			RoundedRectangle(cornerRadius: 10, style: .continuous)
+				.stroke(Color.primary.opacity(0.06), lineWidth: 1)
+		)
 	}
 
 	private var generatedProposalEmptyLine: String {

@@ -11,6 +11,17 @@ enum GeneratedExecutionProposalActivator {
 	static let panelMediumScoreThreshold = 0.52
 	static let panelGeneratedScoreThreshold = 0.40
 	static let preSuppressConfidenceThreshold = 0.44
+	/// Minimum confidence for an executable hook-composer contract to bypass score-based
+	/// panel suppression (Task 1 dogfood visibility fix).
+	static let executableHookContractPanelMinConfidence: Double = 0.70
+
+	/// Returns true when the candidate qualifies as an executable hook-composer contract
+	/// eligible for panel display regardless of unified ranking score.
+	static func isExecutableHookContractOverride(_ candidate: GeneratedExecutionProposalCandidate) -> Bool {
+		candidate.source == .hookComposer &&
+		candidate.isExecutableGeneratedProposal &&
+		candidate.confidence >= executableHookContractPanelMinConfidence
+	}
 
 	static func generatedProposalActionId(for candidateId: String) -> String {
 		"\(generatedProposalIdPrefix)\(candidateId)"
@@ -19,6 +30,9 @@ enum GeneratedExecutionProposalActivator {
 	static func activateProposals(
 		input: GeneratedExecutionProposalActivationInput
 	) -> GeneratedExecutionProposalActivationResult {
+		let att = ProposalAttemptScope.currentId ?? "none"
+		print("[ProposalAttempt] id=\(att) activation_started candidates=\(input.generatedExecutionCandidates.count)")
+
 		let referenceTime = input.referenceTime
 		var preSuppressedGenerated = 0
 		var preSuppressedStatic = 0
@@ -225,7 +239,8 @@ enum GeneratedExecutionProposalActivator {
 				timingDecision: timing,
 				warnings: ranking.warnings,
 				createdAt: referenceTime,
-				floatingGeneratedProposalId: nil
+				floatingGeneratedProposalId: nil,
+				isPolicySuppressed: false
 			)
 		}
 
@@ -271,9 +286,14 @@ enum GeneratedExecutionProposalActivator {
 
 			if candidate.isGeneratedFamily {
 				let isHighConfidenceLLM = candidate.confidence >= 0.8
+				let isHookContract = Self.isExecutableHookContractOverride(candidate)
 				let allowsPanelGenerated = timing.allowsPanelGenerated && score >= panelGeneratedScoreThreshold
 
-				if isHighConfidenceLLM {
+				if isHookContract {
+					// Executable hook contracts bypass score threshold — always show in panel.
+					panelEligible = true
+					panelAllowedReason = "executable_hook_contract"
+				} else if isHighConfidenceLLM {
 					panelEligible = true
 					panelAllowedReason = "llm_success_high_confidence"
 				} else if allowsPanelGenerated {
@@ -338,7 +358,8 @@ enum GeneratedExecutionProposalActivator {
 			timingDecision: timing,
 			warnings: ranking.warnings,
 			createdAt: referenceTime,
-			floatingGeneratedProposalId: floatingId
+			floatingGeneratedProposalId: floatingId,
+			isPolicySuppressed: false
 		)
 	}
 
@@ -651,8 +672,18 @@ enum GeneratedExecutionProposalActivator {
 			&& input.snapshot.workflowConfidence >= 0.45
 			&& !input.snapshot.packetIsStale
 
+		// Bypass panel score threshold for executable hook-composer contracts (Task 1).
+		// These are already validated + executable — show them in the panel even at lower scores.
+		// Uses ranked metadata since candidates aren't directly in scope here.
+		let hasExecutableHookContract = ranking.rankedActions.contains {
+			$0.action.metadata["proposalSource"] == GeneratedExecutionProposalSource.hookComposer.rawValue
+			&& $0.action.metadata["executable"] == "1"
+			&& $0.action.confidence >= executableHookContractPanelMinConfidence
+		}
+
 		let allowsPanel = topScore >= panelGeneratedScoreThreshold
 			|| input.isManualInvocation
+			|| hasExecutableHookContract
 
 		// [FloatingSuggestionDebug] Part 4b — Float gate: shows score vs threshold and blocking condition.
 		// If passes=NO and gap_to_threshold is small, the 0.78 floor is the blocker.

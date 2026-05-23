@@ -9,6 +9,9 @@ enum DynamicGeneratedProposalCandidateMapper {
 		budget: ExecutionBudget,
 		referenceTime: Date = Date()
 	) -> [GeneratedExecutionProposalCandidate] {
+		let att = ProposalAttemptScope.currentId ?? "none"
+		print("[ProposalAttempt] id=\(att) contract_created count=\(result.hookContracts.count)")
+
 		guard result.shouldChimeIn else { return [] }
 
 		return result.proposals.compactMap { proposal in

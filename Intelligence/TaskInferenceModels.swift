@@ -1,5 +1,9 @@
 import Foundation
 
+enum ProposalAttemptScope {
+	@TaskLocal static var currentId: String?
+}
+
 enum TaskInferenceSkipReason: String, Sendable {
 	case modelUnavailable = "model_unavailable"
 	case timeout

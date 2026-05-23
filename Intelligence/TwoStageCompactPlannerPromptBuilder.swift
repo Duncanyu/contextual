@@ -2,16 +2,14 @@
 import Foundation
 
 /// Dedicated prompt builder for the compact planner stage (qwen2.5:1.5b).
-/// Outputs the exact requested semantic structure:
-/// {
-///   "inferred_activity": "activity name",
-///   "confidence": 0.95,
-///   "evidence": "brief evidence description",
-///   "candidate_action_title": "Compare products",
-///   "suggested_hooks": "context,extract,output",
-///   "should_surface_softly": true,
-///   "required_context": ["ocr", "title"]
-/// }
+///
+/// Output format is enforced by Ollama's schema-constrained decoding (format: {JSON Schema}).
+/// The prompt provides BEHAVIORAL guidance only — no JSON template, no code fences,
+/// no examples (those add prefill bytes and are redundant with constrained decoding).
+///
+/// Required output fields (enforced by schema): candidate_action_title, suggested_hooks,
+/// confidence, should_surface_softly.
+/// Optional output fields (parser has safe defaults): inferred_activity, evidence, required_context.
 struct TwoStageCompactPlannerPromptBuilder {
     static func build(
         snapshot: CanonicalGeneratedExecutionContextSnapshot,
@@ -74,35 +72,16 @@ struct TwoStageCompactPlannerPromptBuilder {
 
         let needCatsAllowed = "context,extract,reason,output,compare,organize,debug,study"
 
+        // Multi-candidate behavioral instructions. Format enforced by JSON schema (actions array).
+        // Each action: title (≤10 words, user-centric, present tense, describes an operation not a state),
+        //   caps (comma-list from allowed cats), confidence, novelty (how specific to this context),
+        //   requires (array of needed data sources).
+        // Order: most useful/specific first. novelty=1 if highly specific to current context/page.
+        // should_surface_softly=true when context is actionable (product/shopping/code/clipboard etc.)
         var lines: [String] = [
-            "JSON only. No prose. Output EXACTLY this JSON schema:",
-            "{",
-            "  \"inferred_activity\": \"inferred user activity\",",
-            "  \"confidence\": 0.95,",
-            "  \"evidence\": \"brief explanation of signals/reasons\",",
-            "  \"candidate_action_title\": \"short user-centric title (max 6 words)\",",
-            "  \"suggested_hooks\": \"comma-separated capability categories from [\(needCatsAllowed)]\",",
-            "  \"should_surface_softly\": true,",
-            "  \"required_context\": [\"ocr\", \"title\", \"visual\", \"text\"]",
-            "}",
-            "",
-            "CRITICAL INSTRUCTIONS FOR ACTIONABILITY:",
-            "- The goal is to infer what the user is doing and produce a candidate workflow action when plausible. It is NOT to decide whether the situation is 'interrupt-worthy'.",
-            "- For the common active contexts listed below, you MUST prefer producing a low-risk candidate action (set should_surface_softly: true) instead of quiet (should_surface_softly: false). Do NOT be conservative.",
-            "- Common active contexts include:",
-            "  * product browsing & shopping (e.g., 'Summarize product details', 'Compare product specs')",
-            "  * product comparison (e.g., 'Compare products')",
-            "  * search results pages (e.g., 'Compare search results', 'Analyze results')",
-            "  * orders/tracking pages (e.g., 'Track package details')",
-            "  * job posts/careers (e.g., 'Summarize job requirements', 'Tailor resume')",
-            "  * code/Xcode development (e.g., 'Explain code', 'Find likely issue', 'Summarize file')",
-            "  * copied/clipboard text (e.g., 'Analyze clipboard text')",
-            "  * visible OCR text over 500 characters (e.g., 'Extract text details')",
-            "  * forms/applications/checkouts (e.g., 'Auto-fill form details')",
-            "- In these contexts, formulate a helpful, low-risk, contextual title and set should_surface_softly: true.",
-            "",
-            "Example:",
-            "{\"inferred_activity\":\"shopping\",\"confidence\":0.95,\"evidence\":\"amazon product page visible in title\",\"candidate_action_title\":\"Compare products\",\"suggested_hooks\":\"context,extract,output\",\"should_surface_softly\":true,\"required_context\":[\"ocr\",\"title\"]}"
+            "Produce 2-3 ranked action candidates for the user's current activity. Best/most-specific first.",
+            "Each action: title (≤10 words, user-centric, describe an operation not current state), caps (from: \(needCatsAllowed)), confidence (0-1), novelty (0-1 how page-specific), requires (data needed).",
+            "should_surface_softly=true when context is actionable: product/shopping/search/code/clipboard/OCR.",
         ]
 
         var ctxParts: [String] = []

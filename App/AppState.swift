@@ -452,11 +452,126 @@ final class AppState: ObservableObject {
 		_ result: GeneratedExecutionProposalActivationResult,
 		debugStatus: GeneratedProposalDebugStatus? = nil
 	) {
+		let now = Date()
+		let bundle = debugContext.activeAppBundleIdentifier ?? String(debugContext.activeAppName?.lowercased().prefix(20) ?? "unknown")
+		let titlePrefix = String(debugContext.activeWindowTitle?.prefix(40) ?? "")
+
+		// T18.6B — Smart preservation: keep existing proposals during transient failures/suppressions.
+		//
+		// Task A: Only clear on hard invalidation events (app changed, TTL expired, safety).
+		// Same-app title churn, failed hook discovery, empty candidate results, and transient
+		// no-trigger states must NOT clear a successfully visible proposal.
+		let lastRes = generatedProposalActivationResult
+		let lastBundle = lastRes.warnings.first(where: { $0.hasPrefix("bundle:") })?.replacingOccurrences(of: "bundle:", with: "")
+
+		let ttlExpired = now.timeIntervalSince(generatedProposalActivationResult.createdAt) > 600
+		let bundleChanged = (lastBundle != nil) && (lastBundle != bundle)
+
+		// Compute clear_check log values before the preserve decision
+		let existingCount = activatedGeneratedProposals.count
+		if existingCount > 0 {
+			print("[GeneratedProposalState] clear_check existing=\(existingCount) anchor_match=\(!bundleChanged) ttl_expired=\(ttlExpired) strong_context_change=\(bundleChanged)")
+		}
+
+		let shouldPreserve: Bool = Self.preservationDecision(
+			existingCount: activatedGeneratedProposals.count,
+			newVisibleCount: result.visibleProposals.count,
+			isPolicySuppressed: result.isPolicySuppressed,
+			bundleChanged: bundleChanged,
+			ttlExpired: ttlExpired
+		)
+
+		if shouldPreserve {
+			let failureLabel: String
+			if result.visibleProposals.isEmpty {
+				failureLabel = result.isPolicySuppressed ? "policy_suppressed" : "empty_attempt"
+			} else {
+				failureLabel = "policy_suppressed"
+			}
+			print("[GeneratedProposalState] preserving_existing reason=\(failureLabel) existing=\(activatedGeneratedProposals.count) failure=\(failureLabel)")
+
+			// T18.6B — Update metadata but KEEP previous context warnings so we don't lose the "where" anchor.
+			let lastWarnings = generatedProposalActivationResult.warnings.filter { $0.hasPrefix("bundle:") || $0.hasPrefix("title:") }
+			let resultWithContext = GeneratedExecutionProposalActivationResult(
+				visibleProposals: activatedGeneratedProposals,
+				visibleStaticActionIds: result.visibleStaticActionIds,
+				suppressedGeneratedCount: result.suppressedGeneratedCount,
+				suppressedStaticCount: result.suppressedStaticCount,
+				topSourceType: result.topSourceType,
+				rankingSummary: result.rankingSummary,
+				timingDecision: result.timingDecision,
+				warnings: result.warnings + lastWarnings,
+				createdAt: result.createdAt,
+				floatingGeneratedProposalId: result.floatingGeneratedProposalId,
+				isPolicySuppressed: result.isPolicySuppressed
+			)
+			generatedProposalActivationResult = resultWithContext
+			if let debugStatus {
+				generatedProposalDebugStatus = debugStatus
+			}
+			return
+		}
+
+		if result.visibleProposals.isEmpty {
+			let clearReason: String
+			if bundleChanged { clearReason = "strong_context_change" }
+			else if ttlExpired { clearReason = "ttl_expired" }
+			else { clearReason = "context_invalidated_or_expired" }
+			print("[GeneratedProposalState] clearing reason=\(clearReason)")
+		} else {
+			print("[GeneratedProposalState] replacing visible_generated=\(result.visibleProposals.count) reason=new_success")
+		}
+
 		generatedProposalActivationResult = result
+		// Inject bundle/title into warnings for context-aware preservation check in next cycle.
+		let resultWithContext = GeneratedExecutionProposalActivationResult(
+			visibleProposals: result.visibleProposals,
+			visibleStaticActionIds: result.visibleStaticActionIds,
+			suppressedGeneratedCount: result.suppressedGeneratedCount,
+			suppressedStaticCount: result.suppressedStaticCount,
+			topSourceType: result.topSourceType,
+			rankingSummary: result.rankingSummary,
+			timingDecision: result.timingDecision,
+			warnings: result.warnings + ["bundle:\(bundle)", "title:\(titlePrefix)"],
+			createdAt: result.createdAt,
+			floatingGeneratedProposalId: result.floatingGeneratedProposalId,
+			isPolicySuppressed: result.isPolicySuppressed
+		)
+		generatedProposalActivationResult = resultWithContext
 		activatedGeneratedProposals = result.visibleProposals
 		if let debugStatus {
 			generatedProposalDebugStatus = debugStatus
 		}
+		print("[GeneratedProposalState] app_state_visible_generated=\(activatedGeneratedProposals.count)")
+	}
+
+	/// Determines whether existing visible proposals should be preserved when a new activation
+	/// result arrives. Extracted as a static helper for deterministic self-testing (Task E).
+	///
+	/// Preserve when:
+	/// - There are existing proposals to preserve (existingCount > 0)
+	/// - The new result has no visible proposals or is policy-suppressed (failed/empty attempt)
+	/// - The app bundle has NOT changed (same app)
+	/// - The TTL has NOT expired
+	///
+	/// - Returns: `true` if existing proposals should be kept; `false` to replace/clear.
+	static func preservationDecision(
+		existingCount: Int,
+		newVisibleCount: Int,
+		isPolicySuppressed: Bool,
+		bundleChanged: Bool,
+		ttlExpired: Bool
+	) -> Bool {
+		// Nothing to preserve
+		guard existingCount > 0 else { return false }
+		// New result has content and is not suppressed — replace with fresh proposals
+		if newVisibleCount > 0 && !isPolicySuppressed { return false }
+		// Hard invalidation: app switched
+		if bundleChanged { return false }
+		// Hard invalidation: proposals are stale
+		if ttlExpired { return false }
+		// Failed/empty attempt on same app within TTL — keep existing
+		return true
 	}
 
 	/// App lifecycle injects the latest in-memory executable actions for generated proposals.
@@ -548,6 +663,7 @@ final class AppState: ObservableObject {
 			print("[ProposalCooldown] recorded dismiss key=\(key)")
 		}
 
+		print("[GeneratedProposalState] clearing reason=user_dismissed")
 		currentProposal = nil
 		currentProposalKey = nil
 		refreshProposalContext(for: nil)
@@ -853,7 +969,10 @@ final class AppState: ObservableObject {
 	}
 
 	func refreshDynamicActionDisplaySummary() {
-		let next = DynamicActionDisplayBuilder.build(isActionExecutingForPreviewRanking: isActionExecuting)
+		let next = DynamicActionDisplayBuilder.build(
+			activeProposals: activatedGeneratedProposals,
+			isActionExecutingForPreviewRanking: isActionExecuting
+		)
 		dynamicActionDisplaySummary = next
 		logDynamicActionUXIfNeeded(next)
 		if next.previewItems.isEmpty {
@@ -1028,7 +1147,7 @@ final class AppState: ObservableObject {
 		lastDynamicActionUXLogSignature = sig
 		lastDynamicActionUXLogAt = now
 		print(
-			"[DynamicActionUX] updated count=\(summary.previewItems.count) top=\(top) category=\(summary.previewItems.first?.category.rawValue ?? "nil")"
+			"[DynamicActionUX] shown count=\(summary.previewItems.count) top=\(top) category=\(summary.previewItems.first?.category.rawValue ?? "nil")"
 		)
 	}
 }

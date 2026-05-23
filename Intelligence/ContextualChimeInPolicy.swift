@@ -119,6 +119,8 @@ enum ContextualChimeInPolicy {
 			return suppress(reason: "repeated_low_novelty", score: factors.noveltyScore, cooldown: 120)
 		}
 
+		let isLowNovelty = factors.noveltyScore < noveltyPenaltyThreshold
+
 		// --- Recent dismissal gates ---
 
 		if let dismissalAge = factors.recentDismissalInSeconds {
@@ -202,6 +204,7 @@ enum ContextualChimeInPolicy {
 			&& factors.topInterruptionCost < 0.5
 			&& factors.workflowConfidence >= 0.28  // T18.6B: relaxed from 0.35 — browsing often has moderate confidence
 			&& !factors.isContextStale
+			&& !isLowNovelty
 
 		reasons.append(floatingEligible ? "floating_eligible" : "panel_only")
 		let mode: ContextualChimeInDecision.SurfaceMode = floatingEligible ? .floatingSuggestion : .panelOnly
@@ -286,6 +289,17 @@ enum ContextualChimeInPolicy {
 			visualContextWasRecentlyEnriched: false
 		)
 		check("low_novelty_suppresses", evaluate(factors: repeated).mode == .suppress)
+
+		// Low novelty (but not near-zero) → panel only (T18.6B).
+		let lowNovelty = ContextualChimeInFactors(
+			isManualInvocation: false, workflowType: .browsing, workflowConfidence: 0.6,
+			hasRichContext: true, proposalCount: 2, topProposalScore: 0.65,
+			topInterruptionCost: 0.2, recentDismissalInSeconds: nil, recentAcceptInSeconds: nil,
+			noveltyScore: 0.35, isActionExecuting: false, isContextStale: false,
+			visualContextWasRecentlyEnriched: false
+		)
+		let lnRes = evaluate(factors: lowNovelty)
+		check("low_novelty_panel_only", lnRes.mode == .panelOnly && lnRes.shouldSurface)
 
 		// High score + good context → floating eligible.
 		let highScore = ContextualChimeInFactors(

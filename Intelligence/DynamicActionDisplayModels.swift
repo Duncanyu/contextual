@@ -74,12 +74,44 @@ enum DynamicActionDisplayBuilder {
 	static func build(
 		actions: [GeneratedAction]? = nil,
 		plans: [GeneratedActionPlan]? = nil,
+		activeProposals: [GeneratedExecutionProposalPanelItem]? = nil,
 		workflow: WorkflowInferenceResult? = nil,
 		session: ContextualSessionState? = nil,
 		isActionExecutingForPreviewRanking: Bool = false
 	) -> DynamicActionDisplaySummary {
 		let now = Date()
 		GeneratedActionInteractionTracker.shared.beginDisplayBuild(referenceTime: now)
+
+		// T18.7 — Priority 1: Phase 18 Active Generated Proposals (from AppState).
+		// If these exist, they override legacy Phase 15 actions.
+		if let active = activeProposals, !active.isEmpty {
+			let previewItems = active.map { item in
+				DynamicActionDisplayModel(
+					id: UUID(), // Synthetic ID for UI model
+					title: item.title,
+					shortDescription: item.subtitle,
+					category: .utility, // Valid category for generated proposals
+					assistanceCategoryReason: .intent,
+					workflowLabel: "situational",
+					confidenceBucket: "high", // They already passed confidence gates
+					safetyBadge: .previewOnly,
+					reviewRequired: false,
+					primitiveLabels: [],
+					reasonChips: [],
+					interruptionCostBucket: "low",
+					sourceIntentType: "generated_execution",
+					source: .generatedAction,
+					isExecutable: false,
+					isPreviewOnly: true
+				)
+			}
+			return DynamicActionDisplaySummary(
+				previewItems: previewItems,
+				blockedDebugLines: [],
+				blockedSkippedTotal: 0,
+				previewGroupLabel: "Contextual Assistance"
+			)
+		}
 
 		let acts = actions ?? GeneratedActionEngine.shared.latestActions()
 		let pls = plans ?? GeneratedActionEngine.shared.currentPlans()

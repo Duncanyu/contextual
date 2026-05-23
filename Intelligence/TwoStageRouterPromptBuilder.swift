@@ -29,11 +29,12 @@ struct TwoStageRouterPromptBuilder {
         let hasClip = !(snapshot.clipboardText ?? "").isEmpty
         let clipLen = (snapshot.clipboardText ?? "").count
 
-        // Single-line instruction + schema (compact).
+        // Compact task instruction
         var lines: [String] = [
-            #"JSON only. One object: {"decision":"enough_context","request":[],"reason":"brief","confidence":0.9}"#,
-            #"request values: "ocr","visual_descriptor","ax_window_text". If decision=enough_context, request=[]."#,
-            "enough_context: app+title are clear, OR selected/ocr/visual/ax is present. need_more_context: browser/media/game with no text. Never request context already present.",
+            "Task: Decide if the provided context is sufficient to classify the user's intent.",
+            "If app/title is clear, or ocr/visual/ax/sel is present -> enough_context.",
+            "If blank browser/media/game with no text -> need_more_context.",
+            "If need_more_context, you may request: ocr, visual_descriptor, ax_window_text.",
         ]
 
         // Compact context packet — flags only, no excerpts.

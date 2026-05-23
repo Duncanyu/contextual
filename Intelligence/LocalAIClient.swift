@@ -232,8 +232,9 @@ final class LocalAIClient: @unchecked Sendable {
 		)
 		request.httpBody = try JSONEncoder().encode(payload)
 
-		// Whether to emit detailed per-phase timing under [TwoStageRouterTiming].
+		// Whether to emit detailed per-phase timing under [TwoStageRouterTiming] / [StructuredOutput] planner.
 		let isRouter = purpose == "task_inference_router"
+		let isPlanner = purpose == "task_inference_planner"
 		let purposePart = purpose.map { " purpose=\($0)" } ?? ""
 		let requestStart = Date()
 
@@ -285,10 +286,10 @@ final class LocalAIClient: @unchecked Sendable {
 		} catch {
 			// Catch CancellationError (external timeout fired) or URLError so we can log
 			// the partial output accumulated before cancellation — critical for diagnosing
-			// whether the router timeout is due to: (a) no tokens at all, or (b) partial JSON
-			// that never closed, or (c) prose output before JSON.
+			// whether the timeout is due to: (a) no tokens at all, (b) partial JSON that
+			// never closed, or (c) prose output before JSON.
+			let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
 			if isRouter {
-				let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
 				let preview = accumulated.prefix(300).replacingOccurrences(of: "\n", with: "↵")
 				if accumulated.isEmpty {
 					print("[TwoStageRouterTiming] phase=timeout elapsed_ms=\(ms)")
@@ -296,6 +297,12 @@ final class LocalAIClient: @unchecked Sendable {
 				} else {
 					print("[TwoStageRouterTiming] phase=timeout elapsed_ms=\(ms)")
 					print("[TwoStageRouter] timeout_partial raw=\"\(preview)\" chars=\(accumulated.count)")
+				}
+			} else if isPlanner {
+				let preview = String(accumulated.prefix(300)).replacingOccurrences(of: "\n", with: "↵")
+				print("[StructuredOutput] planner timeout elapsed_ms=\(ms) partial_chars=\(accumulated.count)")
+				if !accumulated.isEmpty {
+					print("[StructuredOutput] planner timeout_partial raw=\"\(preview)\"")
 				}
 			}
 			throw error
