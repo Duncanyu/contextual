@@ -742,7 +742,8 @@ extension InlineAssistanceCandidateBuilder {
 			sourceIntentType: SynthesizedIntentType.explainLikelyError.rawValue,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 		let snapGen = build(input: InlineAssistanceBuildInput(
 			context: ctx,
@@ -776,7 +777,8 @@ extension InlineAssistanceCandidateBuilder {
 			sourceIntentType: SynthesizedIntentType.draftReply.rawValue,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 		let snapRev = build(input: InlineAssistanceBuildInput(
 			context: ctx,
@@ -822,7 +824,8 @@ extension InlineAssistanceCandidateBuilder {
 			sourceIntentType: SynthesizedIntentType.summarizeCurrentArticle.rawValue,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 		let snapBurst = build(input: InlineAssistanceBuildInput(
 			context: ctx,

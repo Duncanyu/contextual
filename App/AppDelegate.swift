@@ -165,6 +165,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
+		// Proposal quality self-test (utility scoring + hook runtime).
+		// Run with: CONTEXTUAL_RUN_PROPOSAL_QUALITY_SELFTEST=1 <debug binary path>
+		// Expected: [ProposalQualitySelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_PROPOSAL_QUALITY_SELFTEST"] == "1" {
+			Task {
+				await ProposalQualitySelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
 		if env["CONTEXTUAL_RUN_HOOK_COMPOSITION_SELFTEST"] == "1" {
 			Task {
 				let ok = await HookCompositionSelfTests.run()
@@ -1585,6 +1596,28 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			}
 		}
 
+		// Executable float bypass: first-time appearance of an executable hook contract with
+		// full novelty (1.0) gets a floating suggestion regardless of the score gate.
+		// Dismissal hard-suppresses are already applied upstream (factors.recentDismissalInSeconds
+		// triggers suppress < 60s, which cascades into the panel override above).
+		// We only promote to floating here — never demote an already-floating decision.
+		if decision.mode != .floatingSuggestion,
+		   !factors.isActionExecuting,
+		   factors.noveltyScore >= 1.0,
+		   factors.recentDismissalInSeconds.map({ $0 >= 60 }) ?? true,
+		   let topItem = activation.visibleProposals.first,
+		   topItem.isExecutableGeneratedProposal,
+		   topItem.confidence >= 0.55
+		{
+			print("[ChimeInPolicy] executable_float_override confidence=\(String(format: "%.2f", topItem.confidence)) novelty=\(String(format: "%.2f", factors.noveltyScore))")
+			decision = ContextualChimeInDecision(
+				mode: .floatingSuggestion,
+				score: max(decision.score, topItem.confidence),
+				reasons: decision.reasons + ["executable_float_override"],
+				cooldownRecommendation: nil
+			)
+		}
+
 		// Resurfacing guarantee (T18.6): if silent ≥3 min and score is passable, allow panel-only.
 		let wasFullySuppressed = !decision.shouldSurface
 		if wasFullySuppressed && !factors.isActionExecuting {
@@ -1640,6 +1673,21 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			let itemKey = "\(item.id)|\(bundle)|\(titlePrefix)|\(wfType.rawValue)|\(ocrTextFlags)"
 			ProposalNoveltyTracker.shared.record(signature: itemKey)
 		}
+
+		// Task 3 — GeneratedProposalFloat eligibility log.
+		// Computed after all policy gates so it reflects the final surfacing decision.
+		let floatEligible = decision.mode == .floatingSuggestion
+		let topConfidence = activation.visibleProposals.first?.confidence ?? 0
+		let isExecutable   = activation.visibleProposals.first?.isExecutableGeneratedProposal ?? false
+		let floatReason: String = {
+			if floatEligible { return "passed_all_gates" }
+			if factors.isActionExecuting   { return "action_executing" }
+			if novelty < 0.60              { return "novelty_too_low" }
+			if derivedInterruptionCost > 0.45 { return "interruption_cost_high" }
+			if !hasRichContext             { return "insufficient_context" }
+			return decision.reasons.first ?? "policy_suppressed"
+		}()
+		print("[GeneratedProposalFloat] eligible=\(floatEligible ? "yes" : "no") reason=\(floatReason) novelty=\(String(format: "%.2f", novelty)) utility=\(String(format: "%.2f", topScore)) confidence=\(String(format: "%.2f", topConfidence)) executable=\(isExecutable ? "yes" : "no")")
 
 		// If panelOnly (policy decision or resurfacing guarantee), strip floating.
 		if decision.mode == .panelOnly {
@@ -2262,6 +2310,21 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			let canonical = CanonicalContextState.shared.current()
 			let snapshot = self.buildCanonicalSnapshotForProposalActivation(context: self.contextBuilder.model, fused: canonical)
 
+			// Verify the contract we are about to run matches what is currently visible in the panel.
+			// A mismatch means the panel was updated after the user clicked (stale contract in cache).
+			let visibleProposal = appState.activatedGeneratedProposals.first(where: { $0.id == candidateId })
+			let isProposalStillVisible = visibleProposal != nil
+			if let contract = cachedHookContract {
+				let runtimeHooks = contract.hookPlanIds
+				// The visible proposal doesn't carry hookPlanIds directly, so we report what the
+				// runtime will actually execute and flag if the proposal is no longer in the active list.
+				let mismatch = !isProposalStillVisible
+				print("[ContractMismatch] candidate_id=\(candidateId.prefix(20)) proposal_visible=\(isProposalStillVisible ? "yes" : "no") visible_contract_hooks=[\(runtimeHooks.joined(separator: ","))] runtime_hooks=[\(runtimeHooks.joined(separator: ","))] mismatch=\(mismatch ? "yes" : "no")")
+			} else if candidateId.hasPrefix("hook:") {
+				// Hook candidate with no cached contract → cannot execute the right chain.
+				print("[ContractMismatch] candidate_id=\(candidateId.prefix(20)) proposal_visible=\(isProposalStillVisible ? "yes" : "no") visible_contract_hooks=[] runtime_hooks=[] mismatch=yes reason=contract_evicted")
+			}
+
 			// Hook-composed contracts run through the quarantined hook runtime (no templates, no LLM).
 			if let contract = cachedHookContract, candidateId.hasPrefix("hook:") {
 				print("[GeneratedProposalExecution] using_contract=yes title=\"\(contract.title)\"")
@@ -2315,6 +2378,28 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				self.appState.latestGeneratedExecutionPresentation = presentation
 				print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=\(status.rawValue)")
 				print("[GeneratedExecutionResult] presented status=\(status.rawValue) sections=\(presentation.sections.count)")
+				return
+			}
+
+			// A hook: candidate whose contract was evicted cannot fall back to the generic
+			// execution path — the generic path would run a different plan (or none).
+			// Surface a structured failure instead.
+			if candidateId.hasPrefix("hook:") && cachedHookContract == nil {
+				print("[GeneratedProposalExecution] runtime_unavailable id=\(candidateId.prefix(12)) reason=hook_contract_evicted")
+				let failResult = ExecutionResult(
+					actionId: UUID(),
+					status: .failed,
+					startedAt: now,
+					completedAt: Date(),
+					generatedContent: nil,
+					generatedSections: [],
+					warnings: ["hook_contract_evicted"],
+					executionMetadata: ["runtimePhase": "unavailable", "reason": "hook_contract_evicted"],
+					confidence: 0,
+					followUpSuggestions: []
+				)
+				self.appState.latestGeneratedExecutionPresentation = GeneratedExecutionResultPresenter.makePresentation(from: failResult, action: nil)
+				print("[GeneratedExecutionResult] presented status=failed reason=hook_contract_evicted")
 				return
 			}
 

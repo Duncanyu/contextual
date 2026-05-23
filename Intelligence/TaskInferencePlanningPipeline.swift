@@ -35,6 +35,19 @@ enum TaskInferencePlanningPipeline {
 			return nil
 		}
 
+		// Task 1 — Situational utility gate.
+		// Evaluated before hook retrieval so we don't waste model budget on low-value chains.
+		let utility = ProposalUtilityScorer.evaluate(
+			goal: inference.possibleUserGoal,
+			cats: cats,
+			snapshot: snapshot,
+			situational: situational
+		)
+		if utility.shouldReject {
+			print("[HookCompositionPipeline] skipped reason=low_utility score=\(String(format: "%.2f", utility.score))")
+			return nil
+		}
+
 		// 1) Retrieve hooks by category (not a global top-k list).
 		async let retrievedAsync: [HookCapabilityDefinition] = HookCategoryRetriever.retrieveAsync(
 			needCats: cats,
@@ -106,6 +119,17 @@ enum TaskInferencePlanningPipeline {
 		let catSig = cats.joined(separator: ",")
 		let catHash = abs(catSig.hashValue)
 
+		// Blend utility score into contract confidence.
+		// Boosted proposals get a small lift; accepted proposals use raw confidence.
+		// This flows into rank scoring and the chime-in float decision.
+		let blendedConfidence: Double = {
+			switch utility.decision {
+			case .boost:  return min(1.0, inference.confidence + utility.score * 0.12)
+			case .accept: return inference.confidence
+			case .reject: return inference.confidence  // shouldn't reach here
+			}
+		}()
+
 		let contract = DynamicGeneratedActionContract(
 			id: "hook:\(fp)|c\(catHash)",
 			title: title,
@@ -115,10 +139,10 @@ enum TaskInferencePlanningPipeline {
 			whyNow: inference.whyNow.isEmpty ? "inferred" : inference.whyNow,
 			hookPlanIds: planHookIds,
 			requiredContext: requiredContext,
-			confidence: inference.confidence,
+			confidence: blendedConfidence,
 			createdAt: referenceTime,
 			expiresAt: referenceTime.addingTimeInterval(max(8, min(60, inference.expirySeconds))),
-			cacheEligibility: inference.confidence >= 0.66,
+			cacheEligibility: blendedConfidence >= 0.66,
 			cacheKey: fp
 		)
 

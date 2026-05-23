@@ -291,7 +291,8 @@ final class GeneratedActionInteractionTracker {
 			sourceIntentType: SynthesizedIntentType.explainLikelyError.rawValue,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 
 		tr.recordShownFromRow(row, surface: .generatedPreview, at: t0)
@@ -316,7 +317,8 @@ final class GeneratedActionInteractionTracker {
 			sourceIntentType: SynthesizedIntentType.explainLikelyError.rawValue,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 		tr.recordShownFromRow(row2, surface: .generatedPreview, at: t0)
 		let adjNeg = tr.sortAdjustment(forAction: Self.minimalGA(intent: .explainLikelyError, categoryWorkflow: .debugging, confidence: 0.9, at: t0), referenceTime: t0)
@@ -356,7 +358,8 @@ final class GeneratedActionInteractionTracker {
 				sourceIntentType: SynthesizedIntentType.summarizeCurrentArticle.rawValue,
 				source: .generatedAction,
 				isExecutable: false,
-				isPreviewOnly: true
+				isPreviewOnly: true,
+			executionCandidateId: nil
 			)
 			tr.recordDismissed(row: r, surface: .debugOnly, referenceTime: t0.addingTimeInterval(Double(i) * 0.01), quietLog: true)
 		}
@@ -596,7 +599,8 @@ final class GeneratedActionInteractionTracker {
 			sourceIntentType: p.intentType,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 	}
 
@@ -620,7 +624,8 @@ final class GeneratedActionInteractionTracker {
 			sourceIntentType: intent,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 	}
 

@@ -16,7 +16,8 @@ struct TwoStageCompactPlannerPromptBuilder {
         situational: SituationalContextSnapshot,
         recentTitles: [String],
         history: ProposalHistoryMetadata?,
-        referenceTime: Date
+        referenceTime: Date,
+        comparisonHint: String? = nil
     ) -> String {
         let app = compact(situational.activeAppName, 28)
         let title = compactTitle(situational.windowTitle, max: 80)
@@ -88,6 +89,7 @@ struct TwoStageCompactPlannerPromptBuilder {
         ctxParts.append("app=\(app)")
         ctxParts.append("title=\(title)")
         if !recent.isEmpty { ctxParts.append("recent=\(recent)") }
+        if let hint = comparisonHint, !hint.isEmpty { ctxParts.append(hint) }
         ctxParts.append("wf=\(wf)")
         ctxParts.append("cat=\(cat)")
         ctxParts.append("ocr_avail=\(hasOCR ? "yes" : "no")")

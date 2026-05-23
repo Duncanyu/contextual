@@ -987,12 +987,16 @@ actor TaskInferenceEngine {
 		activePlannerPhaseStarted = true
 
 		// Planner phase.
+		// Read browsing comparison context (no-op for non-browsing workflows).
+		let comparisonHint: String? = await BrowsingComparisonTracker.shared.comparisonSummary(at: referenceTime)
+
 		let plannerPrompt = TwoStageCompactPlannerPromptBuilder.build(
 			snapshot: snapshot,
 			situational: situational,
 			recentTitles: recentTitles,
 			history: history,
-			referenceTime: referenceTime
+			referenceTime: referenceTime,
+			comparisonHint: comparisonHint
 		)
 
 		let plannerNumPredict = 300   // 3 compact candidates ≈ 200 tokens + JSON structure + should_surface_softly prefix

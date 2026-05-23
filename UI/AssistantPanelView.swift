@@ -44,7 +44,10 @@ struct AssistantPanelView: View {
 
 				VisibleGeneratedActionsSection(
 					summary: appState.dynamicActionDisplaySummary,
-					dismissedIds: $dismissedVisibleGeneratedActionIds
+					dismissedIds: $dismissedVisibleGeneratedActionIds,
+					onExecute: { candidateId in
+						appState.invokeGeneratedExecutionProposal(id: candidateId)
+					}
 				)
 
 				InputPreviewView(context: debugCtx)

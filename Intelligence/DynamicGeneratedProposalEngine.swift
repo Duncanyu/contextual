@@ -1079,6 +1079,15 @@ actor DynamicGeneratedProposalEngine {
 			items.removeFirst(items.count - Self.titleHistoryMaxItems)
 		}
 		titleHistoryByBundle[key] = items
+
+		// Feed browsing title changes into comparison tracker.
+		// BrowsingComparisonTracker deduplicates consecutive identical titles internally.
+		let wf = situational.inferredWorkflow
+		if wf == .browsing || wf == .research {
+			let capturedTitle = title
+			let capturedTime = referenceTime
+			Task { await BrowsingComparisonTracker.shared.record(title: capturedTitle, at: capturedTime) }
+		}
 	}
 
 	private func recentTitles(for situational: SituationalContextSnapshot) -> [String] {

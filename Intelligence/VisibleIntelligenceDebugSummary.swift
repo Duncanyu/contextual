@@ -365,7 +365,8 @@ extension VisibleIntelligenceDebugSummaryBuilder {
 			sourceIntentType: SynthesizedIntentType.explainLikelyError.rawValue,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 		let dyn = DynamicActionDisplaySummary(
 			previewItems: [gaRow],

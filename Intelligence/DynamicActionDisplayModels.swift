@@ -12,7 +12,9 @@ enum DynamicActionDisplaySource: String, Hashable, Sendable, Codable, CaseIterab
 	case generatedPlan = "generated_plan"
 }
 
-/// Non-executable, preview-only display payload for future UX (no raw user content).
+/// Display payload for generated action previews (no raw user content).
+/// When `isExecutable` is true the row carries a real hook contract and the UI
+/// must show an enabled "Prepare execution" button, not the disabled preview fallback.
 struct DynamicActionDisplayModel: Equatable, Sendable, Identifiable {
 	let id: UUID
 	let title: String
@@ -29,10 +31,12 @@ struct DynamicActionDisplayModel: Equatable, Sendable, Identifiable {
 	let interruptionCostBucket: String
 	let sourceIntentType: String
 	let source: DynamicActionDisplaySource
-	/// Always `false` in this phase (non-executable data).
+	/// True when a hook contract is attached and the user can trigger execution.
 	let isExecutable: Bool
-	/// Always `true` in this phase (preview-only).
+	/// True for legacy preview-only rows without a contract.
 	let isPreviewOnly: Bool
+	/// Candidate ID for execution invocation — non-nil only when `isExecutable` is true.
+	let executionCandidateId: String?
 }
 
 /// Bounded preview list plus optional blocked-only debug lines (metadata-only).
@@ -86,23 +90,25 @@ enum DynamicActionDisplayBuilder {
 		// If these exist, they override legacy Phase 15 actions.
 		if let active = activeProposals, !active.isEmpty {
 			let previewItems = active.map { item in
-				DynamicActionDisplayModel(
-					id: UUID(), // Synthetic ID for UI model
+				let executable = item.isExecutableGeneratedProposal
+				return DynamicActionDisplayModel(
+					id: UUID(), // Synthetic ID for SwiftUI list identity
 					title: item.title,
 					shortDescription: item.subtitle,
 					category: .utility, // Valid category for generated proposals
 					assistanceCategoryReason: .intent,
 					workflowLabel: "situational",
 					confidenceBucket: "high", // They already passed confidence gates
-					safetyBadge: .previewOnly,
+					safetyBadge: executable ? .safeReadOnly : .previewOnly,
 					reviewRequired: false,
 					primitiveLabels: [],
-					reasonChips: [],
+					reasonChips: executable ? ["executable"] : ["preview_only"],
 					interruptionCostBucket: "low",
 					sourceIntentType: "generated_execution",
 					source: .generatedAction,
-					isExecutable: false,
-					isPreviewOnly: true
+					isExecutable: executable,
+					isPreviewOnly: !executable,
+					executionCandidateId: executable ? item.id : nil
 				)
 			}
 			return DynamicActionDisplaySummary(
@@ -230,7 +236,8 @@ enum DynamicActionDisplayBuilder {
 			sourceIntentType: a.intentType.rawValue,
 			source: .generatedAction,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 	}
 
@@ -258,7 +265,8 @@ enum DynamicActionDisplayBuilder {
 			sourceIntentType: p.intentType.rawValue,
 			source: .generatedPlan,
 			isExecutable: false,
-			isPreviewOnly: true
+			isPreviewOnly: true,
+			executionCandidateId: nil
 		)
 	}
 

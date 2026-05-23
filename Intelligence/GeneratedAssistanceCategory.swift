@@ -370,14 +370,15 @@ extension GeneratedAssistanceCategoryMapper {
 				assistanceCategoryReason: .intent, workflowLabel: "debugging", confidenceBucket: "high",
 				safetyBadge: .safeReadOnly, reviewRequired: false, primitiveLabels: [], reasonChips: [],
 				interruptionCostBucket: "low", sourceIntentType: "x", source: .generatedAction,
-				isExecutable: false, isPreviewOnly: true
+				isExecutable: false, isPreviewOnly: true,
+				executionCandidateId: nil
 			),
 			DynamicActionDisplayModel(
 				id: UUID(), title: "B", shortDescription: "d", category: .debugging,
 				assistanceCategoryReason: .intent, workflowLabel: "debugging", confidenceBucket: "high",
 				safetyBadge: .safeReadOnly, reviewRequired: false, primitiveLabels: [], reasonChips: [],
 				interruptionCostBucket: "low", sourceIntentType: "x", source: .generatedAction,
-				isExecutable: false, isPreviewOnly: true
+				isExecutable: false, isPreviewOnly: true, executionCandidateId: nil
 			)
 		]
 		a("group_homog", previewSectionSubtitle(for: dbgModels) == "Debugging suggestions")
@@ -389,7 +390,7 @@ extension GeneratedAssistanceCategoryMapper {
 				assistanceCategoryReason: .intent, workflowLabel: "writing", confidenceBucket: "high",
 				safetyBadge: .safeReadOnly, reviewRequired: false, primitiveLabels: [], reasonChips: [],
 				interruptionCostBucket: "low", sourceIntentType: "draft_reply", source: .generatedAction,
-				isExecutable: false, isPreviewOnly: true
+				isExecutable: false, isPreviewOnly: true, executionCandidateId: nil
 			)
 		]
 		a("group_mixed", previewSectionSubtitle(for: mixModels) == "Contextual suggestions")

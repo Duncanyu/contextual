@@ -247,6 +247,12 @@
 			AA0010000000000000000005 /* HookDomainFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000005 /* HookDomainFilter.swift */; };
 			AA0010000000000000000006 /* PanelVisibilityDomainSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000006 /* PanelVisibilityDomainSelfTest.swift */; };
 			AA0020000000000000000006 /* PanelVisibilityDomainSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelVisibilityDomainSelfTest.swift; sourceTree = "<group>"; };
+			AABB00030000000000000001 /* ProposalUtilityScorer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00040000000000000001 /* ProposalUtilityScorer.swift */; };
+			AABB00040000000000000001 /* ProposalUtilityScorer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalUtilityScorer.swift; sourceTree = "<group>"; };
+			AABB00050000000000000001 /* ProposalQualitySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00060000000000000001 /* ProposalQualitySelfTest.swift */; };
+			AABB00060000000000000001 /* ProposalQualitySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalQualitySelfTest.swift; sourceTree = "<group>"; };
+			AABB00070000000000000001 /* BrowsingComparisonTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00080000000000000001 /* BrowsingComparisonTracker.swift */; };
+			AABB00080000000000000001 /* BrowsingComparisonTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingComparisonTracker.swift; sourceTree = "<group>"; };
 			AA0020000000000000000005 /* HookDomainFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookDomainFilter.swift; sourceTree = "<group>"; };
 			AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004140000000000000143 /* TaskInferenceBakeoff.swift */; };
 			AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004150000000000000144 /* HookCompositionSelfTests.swift */; };
@@ -775,6 +781,9 @@
 					AA0020000000000000000004 /* LiveChainSelfTest.swift */,
 					AA0020000000000000000005 /* HookDomainFilter.swift */,
 					AA0020000000000000000006 /* PanelVisibilityDomainSelfTest.swift */,
+					AABB00040000000000000001 /* ProposalUtilityScorer.swift */,
+					AABB00060000000000000001 /* ProposalQualitySelfTest.swift */,
+				AABB00080000000000000001 /* BrowsingComparisonTracker.swift */,
 					AA0004140000000000000143 /* TaskInferenceBakeoff.swift */,
 					AA0004150000000000000144 /* HookCompositionSelfTests.swift */,
 					AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */,
@@ -1130,6 +1139,9 @@
 					AA0010000000000000000004 /* LiveChainSelfTest.swift in Sources */,
 					AA0010000000000000000005 /* HookDomainFilter.swift in Sources */,
 					AA0010000000000000000006 /* PanelVisibilityDomainSelfTest.swift in Sources */,
+					AABB00030000000000000001 /* ProposalUtilityScorer.swift in Sources */,
+					AABB00050000000000000001 /* ProposalQualitySelfTest.swift in Sources */,
+				AABB00070000000000000001 /* BrowsingComparisonTracker.swift in Sources */,
 					AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */,
 					AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */,
 					AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */,

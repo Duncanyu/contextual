@@ -4,6 +4,8 @@ import SwiftUI
 struct VisibleGeneratedActionsSection: View {
 	let summary: DynamicActionDisplaySummary
 	@Binding var dismissedIds: Set<UUID>
+	/// Called with the candidateId when the user taps "Prepare execution" on an executable row.
+	var onExecute: ((String) -> Void)? = nil
 	@State private var expandedWhyIds: Set<UUID> = []
 
 	private var visibleRows: [DynamicActionDisplayModel] {
@@ -62,10 +64,17 @@ struct VisibleGeneratedActionsSection: View {
 					.padding(.horizontal, 6)
 					.padding(.vertical, 2)
 					.background(Capsule().fill(Color.accentColor.opacity(0.14)))
-				Text("Preview only")
-					.font(.caption2)
-					.fontWeight(.medium)
-					.foregroundStyle(.secondary)
+				if row.isExecutable {
+					Text("Executable")
+						.font(.caption2)
+						.fontWeight(.semibold)
+						.foregroundStyle(.green)
+				} else {
+					Text("Preview only")
+						.font(.caption2)
+						.fontWeight(.medium)
+						.foregroundStyle(.secondary)
+				}
 			}
 			Text(row.title)
 				.font(.subheadline)
@@ -126,11 +135,19 @@ struct VisibleGeneratedActionsSection: View {
 			}
 			.buttonStyle(.plain)
 			.foregroundStyle(.secondary)
-			Button("Preview only") {}
-				.buttonStyle(.bordered)
+			if row.isExecutable, let candidateId = row.executionCandidateId {
+				Button("Prepare execution") {
+					onExecute?(candidateId)
+				}
+				.buttonStyle(.borderedProminent)
 				.font(.caption)
-				.disabled(true)
-				.help("Generated suggestions are not executable in this build.")
+			} else {
+				Button("Preview only") {}
+					.buttonStyle(.bordered)
+					.font(.caption)
+					.disabled(true)
+					.help("Generated suggestions are not executable in this build.")
+			}
 		}
 		.padding(.vertical, 4)
 	}

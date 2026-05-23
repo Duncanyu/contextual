@@ -126,7 +126,8 @@ enum VisibleGeneratedActionPanelAdapter {
 				sourceIntentType: "explain_likely_error",
 				source: .generatedAction,
 				isExecutable: false,
-				isPreviewOnly: true
+				isPreviewOnly: true,
+				executionCandidateId: nil
 			)
 		}
 
