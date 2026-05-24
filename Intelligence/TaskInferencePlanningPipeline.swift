@@ -85,16 +85,40 @@ enum TaskInferencePlanningPipeline {
 			return nil
 		}
 		print("[HookPlanLLM] parsed chain=[\(planHookIds.joined(separator: ","))]")
-		let usedHooks = retrieved.filter { planHookIds.contains($0.id) }
 
-		guard !planHookIds.isEmpty else {
+		let initialInputs = HookChainIOValidator.initialInputs(from: snapshot)
+		let validationResult = HookChainIOValidator.validate(
+			hookIds: planHookIds,
+			initialAvailableInputs: initialInputs,
+			registry: registry
+		)
+		var finalHookIds = planHookIds
+		if !validationResult.isValid {
+			let failedHook = validationResult.failedHookId ?? "unknown"
+			let missing = validationResult.missingInputs.map(\.rawValue).sorted().joined(separator: ",")
+			print("[HookValidation] result=fail reason=io_contract_failed hook=\(failedHook) missing=[\(missing)]")
+			
+			if let repaired = HookChainRepairEngine.repair(originalHookIds: planHookIds, initialAvailableInputs: initialInputs, registry: registry) {
+				finalHookIds = repaired
+				print("[HookValidation] result=pass reason=io_contract_satisfied")
+			} else {
+				print("[HookCompositionPipeline] skipped reason=io_contract_failed")
+				return nil
+			}
+		} else {
+			print("[HookValidation] result=pass reason=io_contract_satisfied")
+		}
+
+		let usedHooks = finalHookIds.compactMap { registry.definition(for: $0) }
+
+		guard !finalHookIds.isEmpty else {
 			print("[HookValidation] result=fail reason=no_hooks_available")
 			print("[HookCompositionPipeline] skipped reason=no_valid_hooks")
 			return nil
 		}
 
 		// Fail quietly when the only hooks are anchors (observe_current_context + present_result).
-		let nonAnchorHooks = planHookIds.filter {
+		let nonAnchorHooks = finalHookIds.filter {
 			$0 != "observe_current_context" && $0 != "present_result"
 		}
 		guard !nonAnchorHooks.isEmpty else {
@@ -137,7 +161,7 @@ enum TaskInferencePlanningPipeline {
 			inferredUserGoal: inference.possibleUserGoal,
 			situationSummary: String(situational.situationalSummary.prefix(160)),
 			whyNow: inference.whyNow.isEmpty ? "inferred" : inference.whyNow,
-			hookPlanIds: planHookIds,
+			hookPlanIds: finalHookIds,
 			requiredContext: requiredContext,
 			confidence: blendedConfidence,
 			createdAt: referenceTime,
@@ -146,14 +170,14 @@ enum TaskInferencePlanningPipeline {
 			cacheKey: fp
 		)
 
-		let chain = planHookIds.joined(separator: ",")
+		let chain = finalHookIds.joined(separator: ",")
 		print("[HookRetriever] cats=[\(cats.joined(separator: ","))] retrieved=\(retrieved.count) implemented=\(usedHooks.count)")
 		print("[HookPlanner] chain=\(chain) missingCats=none")
 
 		// [GeneratedActionContract] — final contract summary.
-		let executableFlag = planHookIds.count >= 2 && !usedHooks.isEmpty
+		let executableFlag = finalHookIds.count >= 2 && !usedHooks.isEmpty
 		print("[GeneratedActionContract] executable=\(executableFlag ? "yes" : "no") source=llm_hook_plan title=\"\(contract.title)\" hooks=[\(chain)] confidence=\(String(format: "%.2f", contract.confidence))")
-		print("[HookComposer] synthesized title=\(contract.title) hooks=\(planHookIds.count)")
+		print("[HookComposer] synthesized title=\(contract.title) hooks=\(finalHookIds.count)")
 
 		let proposal = ValidatedDynamicGeneratedProposal(
 			id: contract.id,

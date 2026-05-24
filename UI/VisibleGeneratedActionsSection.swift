@@ -65,10 +65,7 @@ struct VisibleGeneratedActionsSection: View {
 					.padding(.vertical, 2)
 					.background(Capsule().fill(Color.accentColor.opacity(0.14)))
 				if row.isExecutable {
-					Text("Executable")
-						.font(.caption2)
-						.fontWeight(.semibold)
-						.foregroundStyle(.green)
+					executionModeChip(row.executionMode)
 				} else {
 					Text("Preview only")
 						.font(.caption2)
@@ -136,11 +133,7 @@ struct VisibleGeneratedActionsSection: View {
 			.buttonStyle(.plain)
 			.foregroundStyle(.secondary)
 			if row.isExecutable, let candidateId = row.executionCandidateId {
-				Button("Prepare execution") {
-					onExecute?(candidateId)
-				}
-				.buttonStyle(.borderedProminent)
-				.font(.caption)
+				executionButton(row: row, candidateId: candidateId)
 			} else {
 				Button("Preview only") {}
 					.buttonStyle(.bordered)
@@ -150,6 +143,46 @@ struct VisibleGeneratedActionsSection: View {
 			}
 		}
 		.padding(.vertical, 4)
+	}
+
+	// MARK: - Execution mode helpers
+
+	/// Mode chip shown next to the category pill on executable rows.
+	@ViewBuilder
+	private func executionModeChip(_ mode: HookExecutionMode) -> some View {
+		let (label, color): (String, Color) = {
+			switch mode {
+			case .one_shot:             return ("One-shot", .green)
+			case .observe_once:         return ("Observe once", .blue)
+			case .interactive_loop:     return ("Agentic", .purple)
+			case .external_control:     return ("External control", .orange)
+			case .confirmation_required: return ("Needs confirmation", .red)
+			}
+		}()
+		Text(label)
+			.font(.caption2)
+			.fontWeight(.semibold)
+			.foregroundStyle(color)
+	}
+
+	/// Action button whose label and enabled state reflect the execution mode.
+	@ViewBuilder
+	private func executionButton(row: DynamicActionDisplayModel, candidateId: String) -> some View {
+		let mode = row.executionMode
+		if mode.isRuntimeSupported {
+			Button("Prepare execution") {
+				onExecute?(candidateId)
+			}
+			.buttonStyle(.borderedProminent)
+			.font(.caption)
+			.help(mode.userFacingDescription)
+		} else {
+			Button("\(mode.userFacingLabel) (unsupported)") {}
+				.buttonStyle(.bordered)
+				.font(.caption)
+				.disabled(true)
+				.help("\(mode.userFacingDescription). Not yet available at runtime.")
+		}
 	}
 
 	@ViewBuilder

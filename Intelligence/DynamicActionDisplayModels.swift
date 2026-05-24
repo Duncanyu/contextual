@@ -37,6 +37,8 @@ struct DynamicActionDisplayModel: Equatable, Sendable, Identifiable {
 	let isPreviewOnly: Bool
 	/// Candidate ID for execution invocation — non-nil only when `isExecutable` is true.
 	let executionCandidateId: String?
+	/// Execution mode inferred from the hook chain. Defaults to one_shot for legacy rows.
+	var executionMode: HookExecutionMode = .one_shot
 }
 
 /// Bounded preview list plus optional blocked-only debug lines (metadata-only).
@@ -91,6 +93,7 @@ enum DynamicActionDisplayBuilder {
 		if let active = activeProposals, !active.isEmpty {
 			let previewItems = active.map { item in
 				let executable = item.isExecutableGeneratedProposal
+				let mode = item.executionMode
 				return DynamicActionDisplayModel(
 					id: UUID(), // Synthetic ID for SwiftUI list identity
 					title: item.title,
@@ -102,13 +105,14 @@ enum DynamicActionDisplayBuilder {
 					safetyBadge: executable ? .safeReadOnly : .previewOnly,
 					reviewRequired: false,
 					primitiveLabels: [],
-					reasonChips: executable ? ["executable"] : ["preview_only"],
+					reasonChips: executable ? ["executable", mode.rawValue] : ["preview_only"],
 					interruptionCostBucket: "low",
 					sourceIntentType: "generated_execution",
 					source: .generatedAction,
 					isExecutable: executable,
 					isPreviewOnly: !executable,
-					executionCandidateId: executable ? item.id : nil
+					executionCandidateId: executable ? item.id : nil,
+					executionMode: mode
 				)
 			}
 			return DynamicActionDisplaySummary(

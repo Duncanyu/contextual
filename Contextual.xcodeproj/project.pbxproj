@@ -253,6 +253,26 @@
 			AABB00060000000000000001 /* ProposalQualitySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalQualitySelfTest.swift; sourceTree = "<group>"; };
 			AABB00070000000000000001 /* BrowsingComparisonTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00080000000000000001 /* BrowsingComparisonTracker.swift */; };
 			AABB00080000000000000001 /* BrowsingComparisonTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingComparisonTracker.swift; sourceTree = "<group>"; };
+			AABB00090000000000000001 /* HookExecutionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000A0000000000000001 /* HookExecutionMode.swift */; };
+			AABB000A0000000000000001 /* HookExecutionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookExecutionMode.swift; sourceTree = "<group>"; };
+			AABB000B0000000000000001 /* HookContractExecutionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000C0000000000000001 /* HookContractExecutionRouter.swift */; };
+			AABB000C0000000000000001 /* HookContractExecutionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookContractExecutionRouter.swift; sourceTree = "<group>"; };
+			AABB000D0000000000000001 /* HookExecutionModeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000E0000000000000001 /* HookExecutionModeSelfTest.swift */; };
+			AABB000E0000000000000001 /* HookExecutionModeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookExecutionModeSelfTest.swift; sourceTree = "<group>"; };
+			AABB001D0000000000000001 /* HookIOContractSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB001E0000000000000001 /* HookIOContractSelfTest.swift */; };
+			AABB001E0000000000000001 /* HookIOContractSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookIOContractSelfTest.swift; sourceTree = "<group>"; };
+			AABB002D0000000000000001 /* HookChainIOValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB002E0000000000000001 /* HookChainIOValidator.swift */; };
+			AABB002E0000000000000001 /* HookChainIOValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookChainIOValidator.swift; sourceTree = "<group>"; };
+			AABB002F0000000000000001 /* HookIOValidatorSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00300000000000000012 /* HookIOValidatorSelfTest.swift */; };
+			AABB00300000000000000012 /* HookIOValidatorSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookIOValidatorSelfTest.swift; sourceTree = "<group>"; };
+			AABB003D0000000000000001 /* HookIOSemanticBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB003E0000000000000001 /* HookIOSemanticBridge.swift */; };
+			AABB003E0000000000000001 /* HookIOSemanticBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookIOSemanticBridge.swift; sourceTree = "<group>"; };
+			AABB003F0000000000000001 /* HookChainRepairEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00400000000000000001 /* HookChainRepairEngine.swift */; };
+			AABB00400000000000000001 /* HookChainRepairEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookChainRepairEngine.swift; sourceTree = "<group>"; };
+			AABB00410000000000000001 /* HookChainRepairSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00420000000000000012 /* HookChainRepairSelfTest.swift */; };
+			AABB00420000000000000012 /* HookChainRepairSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookChainRepairSelfTest.swift; sourceTree = "<group>"; };
+			AABB00430000000000000001 /* ProposalLifecycleSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00440000000000000012 /* ProposalLifecycleSelfTest.swift */; };
+			AABB00440000000000000012 /* ProposalLifecycleSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalLifecycleSelfTest.swift; sourceTree = "<group>"; };
 			AA0020000000000000000005 /* HookDomainFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookDomainFilter.swift; sourceTree = "<group>"; };
 			AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004140000000000000143 /* TaskInferenceBakeoff.swift */; };
 			AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004150000000000000144 /* HookCompositionSelfTests.swift */; };
@@ -784,6 +804,16 @@
 					AABB00040000000000000001 /* ProposalUtilityScorer.swift */,
 					AABB00060000000000000001 /* ProposalQualitySelfTest.swift */,
 				AABB00080000000000000001 /* BrowsingComparisonTracker.swift */,
+				AABB000A0000000000000001 /* HookExecutionMode.swift */,
+				AABB000C0000000000000001 /* HookContractExecutionRouter.swift */,
+				AABB000E0000000000000001 /* HookExecutionModeSelfTest.swift */,
+				AABB001E0000000000000001 /* HookIOContractSelfTest.swift */,
+				AABB002E0000000000000001 /* HookChainIOValidator.swift */,
+				AABB00300000000000000012 /* HookIOValidatorSelfTest.swift */,
+				AABB003E0000000000000001 /* HookIOSemanticBridge.swift */,
+				AABB00400000000000000001 /* HookChainRepairEngine.swift */,
+				AABB00420000000000000012 /* HookChainRepairSelfTest.swift */,
+				AABB00440000000000000012 /* ProposalLifecycleSelfTest.swift */,
 					AA0004140000000000000143 /* TaskInferenceBakeoff.swift */,
 					AA0004150000000000000144 /* HookCompositionSelfTests.swift */,
 					AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */,
@@ -1142,6 +1172,16 @@
 					AABB00030000000000000001 /* ProposalUtilityScorer.swift in Sources */,
 					AABB00050000000000000001 /* ProposalQualitySelfTest.swift in Sources */,
 				AABB00070000000000000001 /* BrowsingComparisonTracker.swift in Sources */,
+				AABB00090000000000000001 /* HookExecutionMode.swift in Sources */,
+				AABB000B0000000000000001 /* HookContractExecutionRouter.swift in Sources */,
+				AABB000D0000000000000001 /* HookExecutionModeSelfTest.swift in Sources */,
+				AABB001D0000000000000001 /* HookIOContractSelfTest.swift in Sources */,
+				AABB002D0000000000000001 /* HookChainIOValidator.swift in Sources */,
+				AABB002F0000000000000001 /* HookIOValidatorSelfTest.swift in Sources */,
+				AABB003D0000000000000001 /* HookIOSemanticBridge.swift in Sources */,
+				AABB003F0000000000000001 /* HookChainRepairEngine.swift in Sources */,
+				AABB00410000000000000001 /* HookChainRepairSelfTest.swift in Sources */,
+				AABB00430000000000000001 /* ProposalLifecycleSelfTest.swift in Sources */,
 					AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */,
 					AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */,
 					AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */,

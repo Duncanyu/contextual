@@ -31,6 +31,9 @@ struct GeneratedExecutionProposalCandidate: Equatable, Sendable, Identifiable {
 	let generatedActionId: UUID?
 	let primitiveSignature: String?
 	let isExecutableGeneratedProposal: Bool
+	/// Execution mode inferred from the hook contract at candidate-build time.
+	/// Defaults to .one_shot for non-hook-composer candidates; explicitly set for hook contracts.
+	var executionMode: HookExecutionMode = .one_shot
 
 	var isGeneratedFamily: Bool {
 		switch source {
@@ -52,6 +55,8 @@ struct GeneratedExecutionProposalPanelItem: Equatable, Sendable, Identifiable {
 	let confidence: Double
 	let rankScore: Double
 	let isExecutableGeneratedProposal: Bool
+	/// Execution mode propagated from the hook contract at candidate-build time.
+	let executionMode: HookExecutionMode
 	/// Carried for T18.4; not executed in T18.3.
 	let executionActionId: UUID?
 
@@ -65,6 +70,7 @@ struct GeneratedExecutionProposalPanelItem: Equatable, Sendable, Identifiable {
 		self.confidence = candidate.confidence
 		self.rankScore = rankScore
 		self.isExecutableGeneratedProposal = candidate.isExecutableGeneratedProposal
+		self.executionMode = candidate.executionMode
 		self.executionActionId = candidate.executionAction?.id
 	}
 }

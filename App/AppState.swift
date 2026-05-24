@@ -607,8 +607,64 @@ final class AppState: ObservableObject {
 		}
 	}
 
+	func isProposalValid(candidateId: String) -> Bool {
+		let now = Date()
+		if candidateId.hasPrefix("hook:") {
+			if let contract = hookContractByCandidateId[candidateId], now < contract.expiresAt {
+				print("[GeneratedProposalValidity] id=\(candidateId) contract=\(contract.id) exists=true executable=true")
+				return true
+			} else {
+				let contractId = hookContractByCandidateId[candidateId]?.id ?? "nil"
+				print("[GeneratedProposalValidity] id=\(candidateId) contract=\(contractId) exists=\(contractId != "nil" ? "true" : "false") executable=false")
+				return false
+			}
+		}
+		print("[GeneratedProposalValidity] id=\(candidateId) contract=nil exists=true executable=true")
+		return true
+	}
+
+	func validateAndPruneProposals() {
+		let now = Date()
+		var updatedList = [GeneratedExecutionProposalPanelItem]()
+		var changed = false
+		
+		for item in activatedGeneratedProposals {
+			if item.id.hasPrefix("hook:") {
+				if let contract = hookContractByCandidateId[item.id], now < contract.expiresAt {
+					updatedList.append(item)
+					print("[GeneratedProposalValidity] id=\(item.id) contract=\(contract.id) exists=true executable=true")
+				} else {
+					changed = true
+					let contractId = hookContractByCandidateId[item.id]?.id ?? "nil"
+					print("[GeneratedProposalValidity] id=\(item.id) contract=\(contractId) exists=\(contractId != "nil" ? "true" : "false") executable=false")
+					print("[GeneratedProposalEviction] id=\(item.id) contract=\(contractId)")
+				}
+			} else {
+				updatedList.append(item)
+			}
+		}
+		
+		if changed {
+			activatedGeneratedProposals = updatedList
+			refreshDynamicActionDisplaySummary()
+		}
+	}
+
 	func cachedHookContract(candidateId: String) -> DynamicGeneratedActionContract? {
-		hookContractByCandidateId[candidateId]
+		let now = Date()
+		// Prune expired
+		for (id, contract) in hookContractByCandidateId {
+			if now >= contract.expiresAt {
+				hookContractByCandidateId.removeValue(forKey: id)
+			}
+		}
+		let contract = hookContractByCandidateId[candidateId]
+		if candidateId.hasPrefix("hook:") {
+			let exists = contract != nil
+			let executable = exists && now < (contract?.expiresAt ?? now)
+			print("[GeneratedProposalValidity] id=\(candidateId) contract=\(contract?.id ?? "nil") exists=\(exists ? "true" : "false") executable=\(executable ? "true" : "false")")
+		}
+		return contract
 	}
 
 	/// T18.6 — Update proposal visibility state after a publication cycle.
@@ -969,6 +1025,29 @@ final class AppState: ObservableObject {
 	}
 
 	func refreshDynamicActionDisplaySummary() {
+		// Prune evicted hook proposals before building summary so they are auto-removed immediately
+		let now = Date()
+		var updatedList = [GeneratedExecutionProposalPanelItem]()
+		var changed = false
+		for item in activatedGeneratedProposals {
+			if item.id.hasPrefix("hook:") {
+				if let contract = hookContractByCandidateId[item.id], now < contract.expiresAt {
+					updatedList.append(item)
+					print("[GeneratedProposalValidity] id=\(item.id) contract=\(contract.id) exists=true executable=true")
+				} else {
+					changed = true
+					let contractId = hookContractByCandidateId[item.id]?.id ?? "nil"
+					print("[GeneratedProposalValidity] id=\(item.id) contract=\(contractId) exists=\(contractId != "nil" ? "true" : "false") executable=false")
+					print("[GeneratedProposalEviction] id=\(item.id) contract=\(contractId)")
+				}
+			} else {
+				updatedList.append(item)
+			}
+		}
+		if changed {
+			activatedGeneratedProposals = updatedList
+		}
+
 		let next = DynamicActionDisplayBuilder.build(
 			activeProposals: activatedGeneratedProposals,
 			isActionExecutingForPreviewRanking: isActionExecuting

@@ -14,13 +14,20 @@ enum DynamicGeneratedProposalCandidateMapper {
 
 		guard result.shouldChimeIn else { return [] }
 
+		// Build a proposal-id → execution-mode map from the accompanying hook contracts.
+		// Hook-composer proposals carry a contract whose hookPlanIds determine the mode.
+		let contractModeMap: [String: HookExecutionMode] = Dictionary(
+			uniqueKeysWithValues: result.hookContracts.map { ($0.id, $0.executionMode) }
+		)
+
 		return result.proposals.compactMap { proposal in
 			mapCandidate(
 				proposal: proposal,
 				snapshot: snapshot,
 				budget: budget,
 				requiresVisual: result.requiresVisualContext,
-				referenceTime: referenceTime
+				referenceTime: referenceTime,
+				executionMode: contractModeMap[proposal.id] ?? .one_shot
 			)
 		}
 	}
@@ -30,7 +37,8 @@ enum DynamicGeneratedProposalCandidateMapper {
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
 		budget: ExecutionBudget,
 		requiresVisual: Bool,
-		referenceTime: Date
+		referenceTime: Date,
+		executionMode: HookExecutionMode = .one_shot
 	) -> GeneratedExecutionProposalCandidate? {
 		let primitives = proposal.suggestedPrimitives
 		guard !primitives.isEmpty else { return nil }
@@ -96,7 +104,8 @@ enum DynamicGeneratedProposalCandidateMapper {
 			executionAction: execution,
 			generatedActionId: nil,
 			primitiveSignature: primitives.map(\.rawValue).joined(separator: ","),
-			isExecutableGeneratedProposal: true
+			isExecutableGeneratedProposal: true,
+			executionMode: executionMode
 		)
 	}
 }

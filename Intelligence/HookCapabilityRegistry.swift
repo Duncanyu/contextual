@@ -149,7 +149,7 @@ enum HookLifecycleStatus: String, Sendable, Equatable, Codable {
     case confirmation_required
 }
 
-enum HookIOKey: String, Sendable, Equatable, Codable {
+enum HookIOKey: String, Sendable, Equatable, Codable, CaseIterable {
     case current_context
     case window_title
     case selected_text
@@ -183,6 +183,13 @@ enum HookIOKey: String, Sendable, Equatable, Codable {
     case boolean_result
     case structured_json
     case task_list
+    case comparison_table
+    case product_specs
+    case ax_window_text
+    case comparable_items
+    case visual_descriptor
+    case tradeoffs
+    case recommendation
 }
 
 enum HookCost: String, Sendable, Equatable, Codable {
@@ -261,7 +268,17 @@ struct HookCapabilityRegistry: Sendable {
 			print("[HookAudit] implemented=\(implementedAll.count)")
 			print("[HookAudit] placeholders=\(placeholderAll.count)")
 			print("[HookAudit] by_category=\(catSummary)")
+			HookChainRepairEngine.auditStartupRepair(registry: self)
 		}
+	}
+	
+	init(customDefs: [HookCapabilityDefinition]) {
+		self.all = customDefs
+		var map: [String: HookCapabilityDefinition] = [:]
+		for def in customDefs {
+			map[def.id] = def
+		}
+		self.byId = map
 	}
 
 	// MARK: - Public API
@@ -469,7 +486,7 @@ struct HookCapabilityRegistry: Sendable {
 				category: .extraction,
 				            capability: "extract entities",
             requires: [],
-            produces: [],
+            produces: [.extracted_entities],
             permissions: [],
             safety: .safe,
             cost: .medium,
@@ -931,7 +948,7 @@ struct HookCapabilityRegistry: Sendable {
 				category: .presentation,
 				            capability: "present result",
             requires: [],
-            produces: [],
+            produces: [.final_result],
             permissions: [],
             safety: .safe,
             cost: .cheap,
@@ -2110,8 +2127,8 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Compares product specifications across context to surface differences and tradeoffs.",
 				category: .reasoning,
 				capability: "compare product specs",
-				requires: [],
-				produces: [.comparison_summary],
+				requires: [.product_attributes],
+				produces: [.comparison_summary, .comparable_items, .comparison_table],
 				safety: .safe,
 				cost: .medium,
 				whenToUse: "When user is comparing products or has visited multiple product pages",
@@ -2131,7 +2148,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Builds a side-by-side comparison table from extracted product or option data.",
 				category: .transformation,
 				capability: "build comparison table",
-				requires: [],
+				requires: [.comparable_items],
 				produces: [.table],
 				safety: .safe,
 				cost: .cheap,
@@ -2152,8 +2169,8 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Identifies key tradeoffs (price vs. features, range vs. weight) relevant to a purchase decision.",
 				category: .reasoning,
 				capability: "identify purchase tradeoffs",
-				requires: [],
-				produces: [.key_claims],
+				requires: [.prices],
+				produces: [.tradeoffs, .key_claims],
 				safety: .safe,
 				cost: .medium,
 				whenToUse: "When user is evaluating a purchase and tradeoff analysis would help",
@@ -2259,8 +2276,8 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Compares multiple visible options, plans, or choices and highlights the key differences.",
 				category: .reasoning,
 				capability: "compare options",
-				requires: [],
-				produces: [.comparison_summary],
+				requires: [.extracted_entities],
+				produces: [.comparison_summary, .comparable_items, .comparison_table],
 				safety: .safe,
 				cost: .medium,
 				whenToUse: "When multiple options, variants, or alternatives are visible",
@@ -2282,7 +2299,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Renders structured data as a formatted markdown table for the user.",
 				category: .presentation,
 				capability: "present table",
-				requires: [],
+				requires: [.table],
 				produces: [.final_result],
 				safety: .safe,
 				cost: .cheap,
@@ -2302,7 +2319,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Shows a concise tradeoff summary with pros, cons, and a recommendation note.",
 				category: .presentation,
 				capability: "present tradeoff summary",
-				requires: [],
+				requires: [.key_claims],
 				produces: [.final_result],
 				safety: .safe,
 				cost: .cheap,
@@ -2322,7 +2339,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Presents a clear recommendation with reasoning based on extracted and compared data.",
 				category: .presentation,
 				capability: "present recommendation",
-				requires: [],
+				requires: [.comparison_summary],
 				produces: [.final_result],
 				safety: .safe,
 				cost: .cheap,
@@ -2422,3 +2439,16 @@ enum HookTaxonomySelfTest {
 		return failures == 0
 	}
 }
+
+extension HookCapabilityDefinition {
+    var semanticTags: Set<String> {
+        var tags: Set<String> = []
+        tags.insert(category.rawValue)
+        let parts = id.split(separator: "_")
+        for part in parts {
+            tags.insert(String(part))
+        }
+        return tags
+    }
+}
+

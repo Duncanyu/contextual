@@ -316,6 +316,15 @@ actor HookExecutionSandbox {
         print("[HookRuntimeSandbox] seeded_context app=\(snapshot.activeApp) title=\"\(String(snapshot.windowTitle.prefix(80)))\" wf=\(snapshot.inferredWorkflow.rawValue) ocr=\(snapshot.recentOCRExcerpt != nil ? "yes" : "no") visual=\(snapshot.visualContextAvailability.visualSummaryExcerpt != nil ? "yes" : "no")")
 
         let ctx = SandboxContext(snapshot: snapshot, source: source, allowBoundedCapture: allowBoundedCapture, visualScheduler: visualScheduler, budgetSnapshot: budgetSnapshot)
+        
+        var sources: [String] = []
+        if !(snapshot.selectedText ?? "").isEmpty { sources.append("selected_text") }
+        if !(snapshot.clipboardText ?? "").isEmpty { sources.append("clipboard") }
+        if !(snapshot.recentOCRExcerpt ?? "").isEmpty { sources.append("ocr") }
+        if !snapshot.windowTitle.isEmpty { sources.append("window_title") }
+        if snapshot.visualContextAvailability.hasUsableVisual { sources.append("visual") }
+        print("[HookRuntimeContext] available_sources=[\(sources.joined(separator: ","))]")
+
         var steps: [HookSandboxStepResult] = []
 
         for hookId in chain {

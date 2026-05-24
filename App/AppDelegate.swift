@@ -75,10 +75,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastChimeInContext: ChimeInContextSnapshot?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		let env = ProcessInfo.processInfo.environment
+		if env["CONTEXTUAL_RUN_HOOK_IO_CONTRACT_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_IO_VALIDATOR_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_CHAIN_REPAIR_SELFTEST"] == "1" {
+			HookCapabilityRegistry.hookAuditEnabled = true
+		}
 		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
-
-		let env = ProcessInfo.processInfo.environment
+		// Emit startup execution-mode audit (silent; no hook-audit noise during dogfood).
+		HookContractExecutionRouter.auditStartup()
 		if Self.runTaskInferenceBakeoffOnLaunch {
 			Task {
 				let ok = await TaskInferenceBakeoff.runTwoStageProductionSimulation()
@@ -182,6 +186,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				print("[HookCompositionSelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
+			return
+		}
+
+		// Execution mode self-test: verifies taxonomy, inference, routing, and UI labels.
+		// Run with: CONTEXTUAL_RUN_EXECUTION_MODE_SELFTEST=1 <debug binary path>
+		// Expected: [HookExecutionModeSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_EXECUTION_MODE_SELFTEST"] == "1" {
+			HookContractExecutionRouter.auditStartup()
+			HookExecutionSandbox.auditCoverageOnStartup()
+			let ok = HookExecutionModeSelfTest.run()
+			print("[HookExecutionModeSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
+		// Observe-once execution self-test: verifies observe_once routing, pre-capture, snapshot merging, and execution.
+		// Run with: CONTEXTUAL_RUN_OBSERVE_ONCE_SELFTEST=1 <debug binary path>
+		// Expected: [ObserveOnceExecutionSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_OBSERVE_ONCE_SELFTEST"] == "1" {
+			Task {
+				let ok = await ObserveOnceExecutionSelfTest.run()
+				print("[ObserveOnceExecutionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		// Hook IO Contract self-test: verifies hook IO metadata, registry audit, and taxonomy assertions.
+		// Run with: CONTEXTUAL_RUN_HOOK_IO_CONTRACT_SELFTEST=1 <debug binary path>
+		// Expected: [HookIOContractSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_HOOK_IO_CONTRACT_SELFTEST"] == "1" {
+			let ok = HookIOContractSelfTest.run()
+			print("[HookIOContractSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
+		// Hook IO Validator self-test: verifies hook chain IO validation, snapshot inputs mapping, and opportunistic rules.
+		// Run with: CONTEXTUAL_RUN_HOOK_IO_VALIDATOR_SELFTEST=1 <debug binary path>
+		// Expected: [HookIOValidatorSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_HOOK_IO_VALIDATOR_SELFTEST"] == "1" {
+			HookIOValidatorSelfTest.run()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
+		// Hook Chain Repair self-test: verifies bounded symbolic hook repair, semantic bridge, and depth limits.
+		// Run with: CONTEXTUAL_RUN_HOOK_CHAIN_REPAIR_SELFTEST=1 <debug binary path>
+		// Expected: [HookChainRepairSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_HOOK_CHAIN_REPAIR_SELFTEST"] == "1" {
+			HookChainRepairSelfTest.run()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
+		// Proposal Lifecycle self-test: verifies proposal/runtime synchronization, validity, and eviction safety.
+		// Run with: CONTEXTUAL_RUN_PROPOSAL_LIFECYCLE_SELFTEST=1 <debug binary path>
+		// Expected: [ProposalLifecycleSelfTest] ok=true failures=0
+		if env["CONTEXTUAL_RUN_PROPOSAL_LIFECYCLE_SELFTEST"] == "1" {
+			ProposalLifecycleSelfTest.run()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return
 		}
 
@@ -1679,15 +1744,47 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		let floatEligible = decision.mode == .floatingSuggestion
 		let topConfidence = activation.visibleProposals.first?.confidence ?? 0
 		let isExecutable   = activation.visibleProposals.first?.isExecutableGeneratedProposal ?? false
+		
+		let finalTiming: GeneratedExecutionProposalTimingDecision = {
+			if decision.mode == .floatingSuggestion {
+				return GeneratedExecutionProposalTimingDecision(
+					outcome: .allowFloating,
+					reason: "chime_floating",
+					allowsFloatingGenerated: true,
+					allowsPanelGenerated: true
+				)
+			} else if decision.mode == .panelOnly {
+				return GeneratedExecutionProposalTimingDecision(
+					outcome: .allowPanel,
+					reason: "chime_panel_only",
+					allowsFloatingGenerated: false,
+					allowsPanelGenerated: true
+				)
+			} else {
+				return activation.timingDecision
+			}
+		}()
+
 		let floatReason: String = {
-			if floatEligible { return "passed_all_gates" }
+			if finalTiming.allowsFloatingGenerated { return "passed_all_gates" }
 			if factors.isActionExecuting   { return "action_executing" }
 			if novelty < 0.60              { return "novelty_too_low" }
 			if derivedInterruptionCost > 0.45 { return "interruption_cost_high" }
 			if !hasRichContext             { return "insufficient_context" }
 			return decision.reasons.first ?? "policy_suppressed"
 		}()
-		print("[GeneratedProposalFloat] eligible=\(floatEligible ? "yes" : "no") reason=\(floatReason) novelty=\(String(format: "%.2f", novelty)) utility=\(String(format: "%.2f", topScore)) confidence=\(String(format: "%.2f", topConfidence)) executable=\(isExecutable ? "yes" : "no")")
+		
+		// 1. Fix contradictory logs: make floatEligible match finalTiming.allowsFloatingGenerated
+		let finalFloatEligible = finalTiming.allowsFloatingGenerated
+		print("[GeneratedProposalFloat] eligible=\(finalFloatEligible ? "yes" : "no") reason=\(floatReason) novelty=\(String(format: "%.2f", novelty)) utility=\(String(format: "%.2f", topScore)) confidence=\(String(format: "%.2f", topConfidence)) executable=\(isExecutable ? "yes" : "no")")
+
+		// 2. Add deterministic [FloatingProposalGate] log
+		let topItem = activation.visibleProposals.first
+		let hasContract = topId.hasPrefix("hook:") ? (appState.cachedHookContract(candidateId: topId) != nil) : true
+		let executableStatus = topItem?.isExecutableGeneratedProposal ?? false
+		let allowsFloat = finalTiming.allowsFloatingGenerated
+		let finalDecision = allowsFloat && topItem != nil
+		print("[FloatingProposalGate] id=\(topId) contract=\(topId) exists=\(hasContract) executable=\(executableStatus) eligible=\(finalFloatEligible) allows_float=\(allowsFloat) final_decision=\(finalDecision)")
 
 		// If panelOnly (policy decision or resurfacing guarantee), strip floating.
 		if decision.mode == .panelOnly {
@@ -1698,12 +1795,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				suppressedStaticCount: activation.suppressedStaticCount,
 				topSourceType: activation.topSourceType,
 				rankingSummary: activation.rankingSummary,
-				timingDecision: GeneratedExecutionProposalTimingDecision(
-					outcome: .allowPanel,
-					reason: "chime_panel_only",
-					allowsFloatingGenerated: false,
-					allowsPanelGenerated: true
-				),
+				timingDecision: finalTiming,
 				warnings: activation.warnings,
 				createdAt: activation.createdAt,
 				floatingGeneratedProposalId: nil,
@@ -1718,7 +1810,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			suppressedStaticCount: activation.suppressedStaticCount,
 			topSourceType: activation.topSourceType,
 			rankingSummary: activation.rankingSummary,
-			timingDecision: activation.timingDecision,
+			timingDecision: finalTiming,
 			warnings: activation.warnings,
 			createdAt: activation.createdAt,
 			floatingGeneratedProposalId: activation.floatingGeneratedProposalId,
@@ -2284,6 +2376,16 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			return
 		}
 
+		// Verify proposal validity before prep
+		if candidateId.hasPrefix("hook:") {
+			let isValid = appState.isProposalValid(candidateId: candidateId)
+			if !isValid {
+				print("[GeneratedProposalExecution] invoke_ignored reason=hook_contract_evicted id=\(candidateId.prefix(12))")
+				appState.validateAndPruneProposals()
+				return
+			}
+		}
+
 		let actionId = GeneratedExecutionProposalActivator.generatedProposalActionId(for: candidateId)
 		let cachedHookContract = appState.cachedHookContract(candidateId: candidateId)
 		appState.isActionExecuting = true
@@ -2325,60 +2427,106 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[ContractMismatch] candidate_id=\(candidateId.prefix(20)) proposal_visible=\(isProposalStillVisible ? "yes" : "no") visible_contract_hooks=[] runtime_hooks=[] mismatch=yes reason=contract_evicted")
 			}
 
-			// Hook-composed contracts run through the quarantined hook runtime (no templates, no LLM).
+			// Hook-composed contracts run through the deterministic execution router,
+			// then the quarantined hook runtime sandbox (no templates, no LLM).
 			if let contract = cachedHookContract, candidateId.hasPrefix("hook:") {
 				print("[GeneratedProposalExecution] using_contract=yes title=\"\(contract.title)\"")
-				print("[GeneratedProposalExecution] runtime_start id=\(candidateId.prefix(12)) source=generated_contract")
-				self.appState.generatedExecutionPhaseLabel = "Running hook chain…"
 
-				let provider = ScreenCaptureBoundedVisualContextProvider()
-				let scheduler = VisualContextScheduler(provider: provider)
-				let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
-					activeExecutionCount: 1,
-					runtimeState: .executing,
-					permissionAvailability: snapshot.permissionAvailability,
-					activeSamplingRequested: contract.hookPlanIds.contains("run_ocr_once")
-						|| contract.hookPlanIds.contains("gather_visible_context_once")
-				)
+				// Route deterministically from hook metadata — blocks unsupported modes.
+				let routingDecision = HookContractExecutionRouter.route(contract: contract)
 
-				let sandboxResult = await HookExecutionSandbox.shared.execute(
-					chain: contract.hookPlanIds,
-					snapshot: snapshot,
-					mode: .live,
-					source: .generatedContract,
-					allowBoundedCapture: true,
-					visualScheduler: scheduler,
-					budgetSnapshot: budgetSnapshot
-				)
+				switch routingDecision {
+				case .unsupportedForRuntime(let mode, let reason):
+					print("[GeneratedProposalExecution] routing_blocked mode=\(mode.rawValue) reason=\(reason)")
+					let failResult = ExecutionResult(
+						actionId: UUID(), status: .failed, startedAt: now, completedAt: Date(),
+						generatedContent: nil, generatedSections: [],
+						warnings: ["execution_mode_unsupported:\(mode.rawValue)", reason],
+						executionMetadata: ["routingPhase": "blocked", "mode": mode.rawValue, "reason": reason],
+						confidence: 0, followUpSuggestions: []
+					)
+					self.appState.latestGeneratedExecutionPresentation = GeneratedExecutionResultPresenter.makePresentation(from: failResult, action: nil)
+					print("[GeneratedExecutionResult] presented status=failed reason=unsupported_mode mode=\(mode.rawValue)")
+					return
 
-				let status: ExecutionResultStatus = sandboxResult.status == .success ? .success : .failed
-				let chainBody = contract.hookPlanIds.joined(separator: " → ")
-				let outputBody = sandboxResult.finalOutput ?? ""
-				let sections: [ExecutionResultSection] = [
-					ExecutionResultSection(title: "Hook chain", body: chainBody, order: 0),
-					ExecutionResultSection(title: "Output", body: outputBody.isEmpty ? "(no output)" : outputBody, order: 1),
-				]
-				var metadata = sandboxResult.executionMetadata ?? [:]
-				metadata["hook_runtime_source"] = "generated_contract"
-				metadata["hook_runtime_status"] = sandboxResult.status.rawValue
+				case .requiresConfirmation(_, let mode):
+					// Confirmation gate not yet wired — surface as unsupported.
+					print("[GeneratedProposalExecution] routing_blocked mode=\(mode.rawValue) reason=confirmation_gate_not_wired")
+					let failResult = ExecutionResult(
+						actionId: UUID(), status: .failed, startedAt: now, completedAt: Date(),
+						generatedContent: nil, generatedSections: [],
+						warnings: ["confirmation_required_not_yet_wired"],
+						executionMetadata: ["routingPhase": "blocked", "mode": mode.rawValue, "reason": "confirmation_gate_not_wired"],
+						confidence: 0, followUpSuggestions: []
+					)
+					self.appState.latestGeneratedExecutionPresentation = GeneratedExecutionResultPresenter.makePresentation(from: failResult, action: nil)
+					print("[GeneratedExecutionResult] presented status=failed reason=confirmation_gate_not_wired")
+					return
 
-				let result = ExecutionResult(
-					actionId: UUID(),
-					status: status,
-					startedAt: now,
-					completedAt: Date(),
-					generatedContent: nil,
-					generatedSections: sections,
-					warnings: sandboxResult.status == .success ? [] : [sandboxResult.failureReason ?? "hook_runtime_failed"],
-					executionMetadata: metadata,
-					confidence: contract.confidence,
-					followUpSuggestions: []
-				)
-				let presentation = GeneratedExecutionResultPresenter.makePresentation(from: result, action: nil)
-				self.appState.latestGeneratedExecutionPresentation = presentation
-				print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=\(status.rawValue)")
-				print("[GeneratedExecutionResult] presented status=\(status.rawValue) sections=\(presentation.sections.count)")
-				return
+				case .execute(let chain, let mode):
+					print("[GeneratedProposalExecution] runtime_start id=\(candidateId.prefix(12)) source=generated_contract mode=\(mode.rawValue)")
+					self.appState.generatedExecutionPhaseLabel = "Running hook chain…"
+
+					let provider = ScreenCaptureBoundedVisualContextProvider()
+					let scheduler = VisualContextScheduler(provider: provider)
+					let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
+						activeExecutionCount: 1,
+						runtimeState: .executing,
+						permissionAvailability: snapshot.permissionAvailability,
+						activeSamplingRequested: chain.contains("run_ocr_once")
+							|| chain.contains("gather_visible_context_once")
+					)
+
+					var enrichedSnapshot = snapshot
+					if mode == .observe_once {
+						let res = await ObserveOnceExecutor.executePreObservation(
+							snapshot: snapshot,
+							scheduler: scheduler,
+							budgetSnapshot: budgetSnapshot
+						)
+						enrichedSnapshot = res.snapshot
+					}
+
+					let sandboxResult = await HookExecutionSandbox.shared.execute(
+						chain: chain,
+						snapshot: enrichedSnapshot,
+						mode: .live,
+						source: .generatedContract,
+						allowBoundedCapture: true,
+						visualScheduler: scheduler,
+						budgetSnapshot: budgetSnapshot
+					)
+
+					let status: ExecutionResultStatus = sandboxResult.status == .success ? .success : .failed
+					let chainBody = chain.joined(separator: " → ")
+					let outputBody = sandboxResult.finalOutput ?? ""
+					let sections: [ExecutionResultSection] = [
+						ExecutionResultSection(title: "Hook chain", body: chainBody, order: 0),
+						ExecutionResultSection(title: "Output", body: outputBody.isEmpty ? "(no output)" : outputBody, order: 1),
+					]
+					var metadata = sandboxResult.executionMetadata ?? [:]
+					metadata["hook_runtime_source"] = "generated_contract"
+					metadata["hook_runtime_status"] = sandboxResult.status.rawValue
+					metadata["hook_execution_mode"] = mode.rawValue
+
+					let result = ExecutionResult(
+						actionId: UUID(),
+						status: status,
+						startedAt: now,
+						completedAt: Date(),
+						generatedContent: nil,
+						generatedSections: sections,
+						warnings: sandboxResult.status == .success ? [] : [sandboxResult.failureReason ?? "hook_runtime_failed"],
+						executionMetadata: metadata,
+						confidence: contract.confidence,
+						followUpSuggestions: []
+					)
+					let presentation = GeneratedExecutionResultPresenter.makePresentation(from: result, action: nil)
+					self.appState.latestGeneratedExecutionPresentation = presentation
+					print("[GeneratedProposalExecution] runtime_completed id=\(candidateId.prefix(12)) status=\(status.rawValue)")
+					print("[GeneratedExecutionResult] presented status=\(status.rawValue) sections=\(presentation.sections.count)")
+					return
+				}
 			}
 
 			// A hook: candidate whose contract was evicted cannot fall back to the generic
