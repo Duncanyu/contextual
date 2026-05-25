@@ -47,12 +47,19 @@ struct AgenticRuntimeBridge {
     
     /// Classifies a contract into its agentic eligibility level.
     static func classify(contract: DynamicGeneratedActionContract) -> AgenticRuntimeEligibility {
-        // 1. Check existing execution mode
-        if contract.executionModeResult.executionMode == .interactive_loop || 
-           contract.executionModeResult.executionMode == .external_control {
+        // 0. Contracts constructed by composeIntentFirst() carry the "agentic:" id prefix.
+        // This prefix IS the authoritative routing signal — no hook-id or keyword check needed.
+        // Every proposal with id.hasPrefix("agentic:") is an agentic_runtime_candidate by construction.
+        if contract.id.hasPrefix("agentic:") {
             return .agentic_runtime_candidate
         }
-        
+
+        // 1. Check existing execution mode
+        if contract.executionModeResult.inferredMode == .interactive_loop ||
+           contract.executionModeResult.inferredMode == .external_control {
+            return .agentic_runtime_candidate
+        }
+
         // 2. Check for agentic-family hook IDs
         let agenticHookIds: Set<String> = [
             "scroll_view", "click_screen_coordinate", "click_ui_element_by_id",
@@ -67,9 +74,17 @@ struct AgenticRuntimeBridge {
         }
         
         // 3. Check goal for implied agentic behavior (e.g. "scroll", "reviews not visible")
-        let goal = contract.goal.lowercased()
-        if goal.contains("scroll") || goal.contains("find") || goal.contains("click") || goal.contains("navigate") {
-            return .agentic_runtime_candidate
+        let goal = contract.inferredUserGoal.lowercased()
+        let agenticKeywords: Set<String> = [
+            "scroll", "find", "click", "navigate", "research", 
+            "compare", "reviews", "amazon", "shopping", "evaluate",
+            "pros", "cons", "tradeoffs", "findings"
+        ]
+        
+        for word in agenticKeywords {
+            if goal.contains(word) {
+                return .agentic_runtime_candidate
+            }
         }
         
         // 4. Check for multi-step comparison/search across sources
@@ -78,7 +93,7 @@ struct AgenticRuntimeBridge {
         }
         
         // 5. Default based on HookExecutionMode
-        if contract.executionModeResult.executionMode == .observe_once {
+        if contract.executionModeResult.inferredMode == .observe_once {
             return .observe_once_chain
         }
         
@@ -101,12 +116,12 @@ struct AgenticRuntimeBridge {
         
         let plan = AgenticTaskPlan(
             id: UUID().uuidString,
-            goal: contract.goal,
+            goal: contract.inferredUserGoal,
             workflow: workflow,
             sourceProposalId: contract.id,
             allowedActionFamilies: families,
             requiredObservations: contract.requiredContext.map { $0.rawValue },
-            successCriteria: [contract.expectedOutcome],
+            successCriteria: [contract.inferredUserGoal],
             stopConditions: [.success_criteria_met, .max_steps_reached, .user_cancelled],
             maxSteps: 5,
             maxLLMCalls: 5,
@@ -138,6 +153,7 @@ struct AgenticRuntimeBridge {
             if id.contains("navigate") { families.insert(.navigate) }
             if id.contains("tab") { families.insert(.switch_tab) }
             if id.contains("ocr") || id.contains("read") { families.insert(.read_screen) }
+            if id.contains("find") { families.insert(.find_on_page) }
             if id.contains("extract") { families.insert(.extract) }
             if id.contains("summarize") { families.insert(.summarize) }
             if id.contains("present") { families.insert(.present) }

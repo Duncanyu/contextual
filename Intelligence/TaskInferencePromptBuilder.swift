@@ -25,8 +25,8 @@ enum TaskInferencePromptBuilder {
 		let cat = situational.appCategory.rawValue
 
 		let hasOCR = situational.ocrSignal.availability == .available
-		let hasSel = situational.selectedTextSignal.availability == .available
-		let hasClip = situational.clipboardSignal.availability == .available && situational.clipboardSignal.canBePrimary
+		let hasSel = AgenticPivot.isSelectedTextInfluenceEnabled && situational.selectedTextSignal.availability == .available
+		let hasClip = AgenticPivot.isClipboardInfluenceEnabled && situational.clipboardSignal.availability == .available && situational.clipboardSignal.canBePrimary
 
 		let ocrFlag = hasOCR ? "1" : "0"
 		let selFlag = hasSel ? "1" : "0"

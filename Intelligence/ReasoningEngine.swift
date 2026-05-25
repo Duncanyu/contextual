@@ -105,13 +105,17 @@ final class ReasoningEngine {
 	private func dynamicOnlySurfaceDecision(triggerType: TriggerType, context: ContextModel) -> ReasoningDecision {
 		let confidence: Double
 		let reason: String
+		var shouldSurface = true
+
 		switch triggerType {
 		case .selectedTextEligible:
 			confidence = 0.72
 			reason = "dynamic_only_selected_text"
+			if !AgenticPivot.isSelectedTextInfluenceEnabled { shouldSurface = false }
 		case .clipboardTextEligible:
 			confidence = looksErrorLikeClipboard() ? 0.68 : 0.58
 			reason = "dynamic_only_clipboard"
+			if !AgenticPivot.isClipboardInfluenceEnabled { shouldSurface = false }
 		case .manualInvocation:
 			confidence = 0.5
 			reason = "dynamic_only_manual"
@@ -121,7 +125,7 @@ final class ReasoningEngine {
 		}
 		_ = context
 		return ReasoningDecision(
-			shouldSurface: true,
+			shouldSurface: shouldSurface,
 			primaryActionId: nil,
 			rankedActionIds: [],
 			reason: reason,

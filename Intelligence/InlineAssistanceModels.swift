@@ -464,9 +464,10 @@ enum InlineAssistanceCandidateBuilder {
 		let now = Date()
 
 		// Static selection-adjacent chips (metadata only).
-		let strongSel = input.context.selectedTextAvailable
+		let strongSel = AgenticPivot.isSelectedTextInfluenceEnabled
+			&& input.context.selectedTextAvailable
 			&& input.context.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount
-		let isSelPrimary = input.fused?.primaryTextSource == .selectedText
+		let isSelPrimary = AgenticPivot.isSelectedTextInfluenceEnabled && (input.fused?.primaryTextSource == .selectedText)
 
 		let timing = ProposalTimingGate.evaluate(
 			isManualInvocation: input.isManualInvocation,

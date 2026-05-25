@@ -141,10 +141,14 @@ enum DynamicGeneratedProposalParser {
 		} else if validated.isEmpty && !items.isEmpty {
 			if anyGenericRejected {
 				warnings.append("diag:parse_generic_rejected")
+			} else if unknownPrimitiveCount > 0 {
+				// Unknown-primitive rejection is more specific than a generic missing-key tag;
+				// it takes priority so StatusBuilder maps to parseUnknownPrimitivesOnly rather
+				// than parseMissingRequiredKey (which fires when missingKey=="primitives" for
+				// the same root cause: all primitives were unknown and filtered out).
+				warnings.append("diag:parse_unknown_primitives:\(unknownPrimitiveCount)")
 			} else if let k = missingKey {
 				warnings.append("diag:parse_missing_key:\(k)")
-			} else if unknownPrimitiveCount > 0 {
-				warnings.append("diag:parse_unknown_primitives:\(unknownPrimitiveCount)")
 			} else if confidenceIssue {
 				warnings.append("diag:parse_confidence_too_low")
 			}
@@ -244,7 +248,8 @@ enum DynamicGeneratedProposalParser {
 			suggestedPrimitives: primitives,
 			interruptionCost: clamp01(item.interruptionCost ?? 0.3),
 			confidence: confidence,
-			usefulnessHint: "llm_dynamic"
+			usefulnessHint: "llm_dynamic",
+			agenticPlan: nil
 		)
 	}
 

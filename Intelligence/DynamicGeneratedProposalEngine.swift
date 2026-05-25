@@ -56,10 +56,14 @@ actor DynamicGeneratedProposalEngine {
 	// Task inference: short-lived cache of previously successful action contracts (accelerator only).
 	private var dynamicActionCacheByKey: [String: DynamicGeneratedActionContract] = [:]
 
-	private static let autoVisualGatherCooldownSeconds: TimeInterval = 70
+	private static var autoVisualGatherCooldownSeconds: TimeInterval {
+		AgenticPivot.useEarlierProposalSurfacing ? 30 : 70
+	}
 	/// Model-requested escalation is allowed once per fingerprint per this window.
 	/// Shorter than auto-gather so it fires for new pages even if auto-gather ran recently.
-	private static let contextEscalationCooldownSeconds: TimeInterval = 90
+	private static var contextEscalationCooldownSeconds: TimeInterval {
+		AgenticPivot.useEarlierProposalSurfacing ? 45 : 90
+	}
 	private static let titleHistoryMaxItems = 12
 	private static let dynamicActionCacheTTLSeconds: TimeInterval = 180
 
@@ -650,8 +654,9 @@ actor DynamicGeneratedProposalEngine {
 			)
 		}
 
+		let cooldownSeconds: TimeInterval = AgenticPivot.useEarlierProposalSurfacing ? 10 : 30
 		if let history, let dismissedAt = history.lastDismissedAt,
-		   referenceTime.timeIntervalSince(dismissedAt) < 30
+		   referenceTime.timeIntervalSince(dismissedAt) < cooldownSeconds
 		{
 			return DynamicGeneratedProposalResult(
 				status: .quietByGate,
@@ -1049,7 +1054,7 @@ actor DynamicGeneratedProposalEngine {
 			return max(0.08, min(0.65, base - max(0, (contract.confidence - 0.7)) * 0.12))
 		}()
 
-		return ValidatedDynamicGeneratedProposal(
+		let proposal = ValidatedDynamicGeneratedProposal(
 			id: contract.id,
 			title: contract.title,
 			description: contract.userFacingQuestion,
@@ -1060,8 +1065,11 @@ actor DynamicGeneratedProposalEngine {
 			suggestedPrimitives: primitives,
 			interruptionCost: interruptionCost,
 			confidence: contract.confidence,
-			usefulnessHint: "hook_composer_cache"
+			usefulnessHint: "hook_composer_cache",
+			agenticPlan: nil
 		)
+
+		return proposal
 	}
 
 	// MARK: - Task inference memory + synthesis cache (metadata-only)

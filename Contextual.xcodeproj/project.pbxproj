@@ -276,6 +276,17 @@
 			AA0020000000000000000005 /* HookDomainFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookDomainFilter.swift; sourceTree = "<group>"; };
 			AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004140000000000000143 /* TaskInferenceBakeoff.swift */; };
 			AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004150000000000000144 /* HookCompositionSelfTests.swift */; };
+			AA00022C0000000000000145 /* AgenticRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004160000000000000145 /* AgenticRuntime.swift */; };
+			AA00022D0000000000000146 /* AgenticRuntimeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004170000000000000146 /* AgenticRuntimeSelfTest.swift */; };
+			AA00022E0000000000000147 /* AgenticObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004180000000000000147 /* AgenticObserver.swift */; };
+			AA00022F0000000000000148 /* AgenticDecider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004190000000000000148 /* AgenticDecider.swift */; };
+			AA0002300000000000000149 /* AgenticLoopSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041A0000000000000149 /* AgenticLoopSelfTest.swift */; };
+			AA0002310000000000000150 /* AgenticControlPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041B0000000000000150 /* AgenticControlPolicy.swift */; };
+			AA0002320000000000000151 /* AgenticControlSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041C0000000000000151 /* AgenticControlSelfTest.swift */; };
+			AA0002330000000000000152 /* AgenticPerceptionRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041D0000000000000152 /* AgenticPerceptionRefreshCoordinator.swift */; };
+			AA0002340000000000000153 /* AgenticPerceptionRefreshSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041E0000000000000153 /* AgenticPerceptionRefreshSelfTest.swift */; };
+			AA0002350000000000000154 /* AgenticIntentGrounding.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041F0000000000000154 /* AgenticIntentGrounding.swift */; };
+			AA0002360000000000000155 /* AgenticIntentGroundingSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000155 /* AgenticIntentGroundingSelfTest.swift */; };
 			AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */; };
 			AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */; };
 			AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000242 /* TwoStageLaneManager.swift */; };
@@ -528,6 +539,17 @@
 			AA0020000000000000000004 /* LiveChainSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveChainSelfTest.swift; sourceTree = "<group>"; };
 			AA0004140000000000000143 /* TaskInferenceBakeoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceBakeoff.swift; sourceTree = "<group>"; };
 			AA0004150000000000000144 /* HookCompositionSelfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookCompositionSelfTests.swift; sourceTree = "<group>"; };
+			AA0004160000000000000145 /* AgenticRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticRuntime.swift; sourceTree = "<group>"; };
+			AA0004170000000000000146 /* AgenticRuntimeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticRuntimeSelfTest.swift; sourceTree = "<group>"; };
+			AA0004180000000000000147 /* AgenticObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticObserver.swift; sourceTree = "<group>"; };
+			AA0004190000000000000148 /* AgenticDecider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticDecider.swift; sourceTree = "<group>"; };
+			AA00041A0000000000000149 /* AgenticLoopSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticLoopSelfTest.swift; sourceTree = "<group>"; };
+			AA00041B0000000000000150 /* AgenticControlPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticControlPolicy.swift; sourceTree = "<group>"; };
+			AA00041C0000000000000151 /* AgenticControlSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticControlSelfTest.swift; sourceTree = "<group>"; };
+		AA00041D0000000000000152 /* AgenticPerceptionRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticPerceptionRefreshCoordinator.swift; sourceTree = "<group>"; };
+		AA00041E0000000000000153 /* AgenticPerceptionRefreshSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticPerceptionRefreshSelfTest.swift; sourceTree = "<group>"; };
+		AA00041F0000000000000154 /* AgenticIntentGrounding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticIntentGrounding.swift; sourceTree = "<group>"; };
+		AA0004210000000000000155 /* AgenticIntentGroundingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticIntentGroundingSelfTest.swift; sourceTree = "<group>"; };
 			AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageCompactPlannerPromptBuilder.swift; sourceTree = "<group>"; };
 			AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageRouterPromptBuilder.swift; sourceTree = "<group>"; };
 			AA0004110000000000000242 /* TwoStageLaneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageLaneManager.swift; sourceTree = "<group>"; };
@@ -816,6 +838,17 @@
 				AABB00440000000000000012 /* ProposalLifecycleSelfTest.swift */,
 					AA0004140000000000000143 /* TaskInferenceBakeoff.swift */,
 					AA0004150000000000000144 /* HookCompositionSelfTests.swift */,
+				AA0004160000000000000145 /* AgenticRuntime.swift */,
+				AA0004170000000000000146 /* AgenticRuntimeSelfTest.swift */,
+				AA0004180000000000000147 /* AgenticObserver.swift */,
+				AA0004190000000000000148 /* AgenticDecider.swift */,
+				AA00041A0000000000000149 /* AgenticLoopSelfTest.swift */,
+				AA00041B0000000000000150 /* AgenticControlPolicy.swift */,
+				AA00041C0000000000000151 /* AgenticControlSelfTest.swift */,
+				AA00041D0000000000000152 /* AgenticPerceptionRefreshCoordinator.swift */,
+				AA00041E0000000000000153 /* AgenticPerceptionRefreshSelfTest.swift */,
+				AA00041F0000000000000154 /* AgenticIntentGrounding.swift */,
+				AA0004210000000000000155 /* AgenticIntentGroundingSelfTest.swift */,
 					AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */,
 					AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */,
 					AA0004110000000000000242 /* TwoStageLaneManager.swift */,
@@ -1184,6 +1217,17 @@
 				AABB00430000000000000001 /* ProposalLifecycleSelfTest.swift in Sources */,
 					AA00022A0000000000000143 /* TaskInferenceBakeoff.swift in Sources */,
 					AA00022B0000000000000144 /* HookCompositionSelfTests.swift in Sources */,
+				AA00022C0000000000000145 /* AgenticRuntime.swift in Sources */,
+				AA00022D0000000000000146 /* AgenticRuntimeSelfTest.swift in Sources */,
+				AA00022E0000000000000147 /* AgenticObserver.swift in Sources */,
+				AA00022F0000000000000148 /* AgenticDecider.swift in Sources */,
+				AA0002300000000000000149 /* AgenticLoopSelfTest.swift in Sources */,
+				AA0002310000000000000150 /* AgenticControlPolicy.swift in Sources */,
+				AA0002320000000000000151 /* AgenticControlSelfTest.swift in Sources */,
+				AA0002330000000000000152 /* AgenticPerceptionRefreshCoordinator.swift in Sources */,
+				AA0002340000000000000153 /* AgenticPerceptionRefreshSelfTest.swift in Sources */,
+				AA0002350000000000000154 /* AgenticIntentGrounding.swift in Sources */,
+				AA0002360000000000000155 /* AgenticIntentGroundingSelfTest.swift in Sources */,
 					AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */,
 					AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */,
 					AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */,

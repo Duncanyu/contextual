@@ -548,6 +548,8 @@ enum AgenticPlanSelfTests {
         check("scenario3_eligibility", AgenticRuntimeBridge.classify(contract: contract3) == .agentic_runtime_candidate)
         
         // Scenario 4: Coding/debugging with visible OCR but no interaction remains fixed or observe_once
+        // NOTE: "Explain this error" might now be agentic if "evaluate" or other keywords match, 
+        // but here we check it doesn't match the browser keywords.
         let contract4 = mockContract(goal: "Explain this error", hooks: ["read_screen_ocr", "summarize_text"])
         let eligibility4 = AgenticRuntimeBridge.classify(contract: contract4)
         check("scenario4_eligibility", eligibility4 == .observe_once_chain || eligibility4 == .fixed_hook_chain)
@@ -567,10 +569,22 @@ enum AgenticPlanSelfTests {
             failures.append("plan_derivation_failed")
         }
         
+        // Scenario 8: New escalation keywords
+        let contract7 = mockContract(goal: "Research amazon prices", hooks: [])
+        check("amazon_keyword_escalation", AgenticRuntimeBridge.classify(contract: contract7) == .agentic_runtime_candidate)
+        
+        let contract8 = mockContract(goal: "Evaluate pros and cons", hooks: [])
+        check("pros_cons_keyword_escalation", AgenticRuntimeBridge.classify(contract: contract8) == .agentic_runtime_candidate)
+        
+        // Scenario 9: Intent-first planning state
+        check("intent_first_enabled", AgenticPivot.useIntentFirstPlanning)
+        check("clipboard_influence_disabled", !AgenticPivot.isClipboardInfluenceEnabled)
+        check("selected_text_influence_disabled", !AgenticPivot.isSelectedTextInfluenceEnabled)
+        
         // Scenario 7: Verify that existing hook execution modes still map correctly
         let contract6 = mockContract(goal: "Test", hooks: ["scroll_view"])
-        check("interactive_loop_is_agentic", contract6.executionMode == .interactive_loop)
-        check("interactive_loop_eligibility", AgenticRuntimeBridge.classify(contract: contract6) == .agentic_runtime_candidate)
+        check("external_control_is_agentic", contract6.executionMode == .external_control)
+        check("external_control_eligibility", AgenticRuntimeBridge.classify(contract: contract6) == .agentic_runtime_candidate)
         
         let ok = failures.isEmpty
         print("[AgenticPlanSelfTest] finished ok=\(ok) failures=\(failures.count)")

@@ -90,7 +90,7 @@ enum WorkflowAwareProposalRanker {
 			!$0.isStale && $0.confidence >= minGeneratedInfluenceConfidence
 		}
 
-		let strongSelected = context.selectedTextAvailable
+		let strongSelected = AgenticPivot.isSelectedTextInfluenceEnabled && context.selectedTextAvailable
 			&& context.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount
 			&& packet.triggerType == .selectedTextEligible
 

@@ -122,6 +122,7 @@ final class TriggerEngine {
 	}
 
 	private func evaluateClipboard(_ context: ContextModel) -> TriggerPacket? {
+		guard AgenticPivot.isClipboardInfluenceEnabled else { return nil }
 		guard context.lastSourceTrigger == .clipboardTextChanged else { return nil }
 		guard context.clipboardTextAvailable else { return nil }
 		guard context.clipboardTextLength > Self.clipboardMinCharacterCount else { return nil }
@@ -139,6 +140,7 @@ final class TriggerEngine {
 	}
 
 	private func evaluateSelectedText(_ context: ContextModel) -> TriggerPacket? {
+		guard AgenticPivot.isSelectedTextInfluenceEnabled else { return nil }
 		guard context.lastSourceTrigger == .selectedTextChanged else { return nil }
 		guard context.selectedTextAvailable else { return nil }
 		guard context.selectedTextLength > Self.selectedTextMinCharacterCount else { return nil }

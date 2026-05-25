@@ -711,8 +711,16 @@ actor TaskInferenceEngine {
 
 		let hasOCR = snapshot.recentOCRExcerpt != nil && !snapshot.recentOCRExcerpt!.isEmpty
 		let hasVisual = snapshot.visualContextAvailability.visualSummaryExcerpt != nil && !snapshot.visualContextAvailability.visualSummaryExcerpt!.isEmpty
-		let hasSel = !(snapshot.selectedText ?? "").isEmpty
-		let hasClip = !(snapshot.clipboardText ?? "").isEmpty
+		
+		if !AgenticPivot.isSelectedTextInfluenceEnabled && snapshot.selectedText != nil {
+			print("[AgenticPivot] suppressed selected_text influence")
+		}
+		if !AgenticPivot.isClipboardInfluenceEnabled && snapshot.clipboardText != nil {
+			print("[AgenticPivot] suppressed clipboard influence")
+		}
+
+		let hasSel = AgenticPivot.isSelectedTextInfluenceEnabled && !(snapshot.selectedText ?? "").isEmpty
+		let hasClip = AgenticPivot.isClipboardInfluenceEnabled && !(snapshot.clipboardText ?? "").isEmpty
 		let hasTitle = !snapshot.windowTitle.isEmpty
 		
 		// T18.7.4 — Hard gate: do not attempt generation if context is practically empty.
@@ -758,8 +766,11 @@ actor TaskInferenceEngine {
 		let stabilityWindowStart = Date()
 		let att = ProposalAttemptScope.currentId ?? "none"
 		print("[ProposalStability] waiting fp=\(fingerprint)")
+		
+		let stabilityNanoseconds: UInt64 = AgenticPivot.useEarlierProposalSurfacing ? 350_000_000 : 800_000_000
+		
 		do {
-			try await Task.sleep(nanoseconds: 800_000_000) // 800 ms stability window
+			try await Task.sleep(nanoseconds: stabilityNanoseconds)
 		} catch {
 			print("[ProposalStability] reset reason=context_changed old=\(fingerprint)")
 			return nil

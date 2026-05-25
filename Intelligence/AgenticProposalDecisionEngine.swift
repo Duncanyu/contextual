@@ -14,7 +14,9 @@ actor AgenticProposalDecisionEngine {
 	static let shared = AgenticProposalDecisionEngine()
 
 	private var timeoutCooldowns: [String: Date] = [:]
-	private let cooldownDuration: TimeInterval = 45
+	private var timeoutCooldownDuration: TimeInterval {
+		AgenticPivot.useEarlierProposalSurfacing ? 15 : 45
+	}
 	private let microEngine = MicroDecisionEngine()
 
 	// MARK: - Public API
@@ -28,7 +30,7 @@ actor AgenticProposalDecisionEngine {
 
 		// 1. Timeout cooldown: skip if this context fingerprint recently caused a large-model timeout.
 		if let timedOutAt = timeoutCooldowns[fingerprint],
-		   referenceTime.timeIntervalSince(timedOutAt) < cooldownDuration
+		   referenceTime.timeIntervalSince(timedOutAt) < timeoutCooldownDuration
 		{
 			let elapsed = Int(referenceTime.timeIntervalSince(timedOutAt))
 			log(event: "decision_stage", value: "timeout_cooldown", extra: "elapsed_s=\(elapsed) fingerprint=\(fingerprint)")
@@ -36,9 +38,10 @@ actor AgenticProposalDecisionEngine {
 		}
 
 		// 2. Signal quality flags.
-		let hasText = situational.selectedTextSignal.availability == .available
+		let hasText = (AgenticPivot.isSelectedTextInfluenceEnabled && situational.selectedTextSignal.availability == .available)
 			|| situational.ocrSignal.availability == .available
-		let hasClipboard = situational.clipboardSignal.availability == .available
+		let hasClipboard = AgenticPivot.isClipboardInfluenceEnabled 
+			&& situational.clipboardSignal.availability == .available
 			&& situational.clipboardSignal.canBePrimary
 		let hasWorkflow = situational.inferredWorkflow != .unknown && situational.workflowConfidence >= 0.35
 		let hasMetadata = !snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -110,9 +113,9 @@ actor AgenticProposalDecisionEngine {
 	func recordTimeout(fingerprint: String, at time: Date) {
 		timeoutCooldowns[fingerprint] = time
 		// Prune entries older than 2× the cooldown to avoid unbounded growth.
-		let cutoff = time.addingTimeInterval(-cooldownDuration * 2)
+		let cutoff = time.addingTimeInterval(-timeoutCooldownDuration * 2)
 		timeoutCooldowns = timeoutCooldowns.filter { $0.value > cutoff }
-		log(event: "timeout_fingerprint_recorded", value: fingerprint, extra: "cooldown_s=\(Int(cooldownDuration))")
+		log(event: "timeout_fingerprint_recorded", value: fingerprint, extra: "cooldown_s=\(Int(timeoutCooldownDuration))")
 	}
 
 	/// Privacy-safe fingerprint for timeout tracking (no raw text, no OCR payloads).
@@ -186,12 +189,18 @@ actor AgenticProposalDecisionEngine {
 		if hasClipboard { score += 0.25 }
 		if hasWorkflow { score += 0.2 }
 		score += situational.contextFreshness * 0.15
+		
+		// Part 1 Pivot: boost workflow confidence if transient sources are disabled
+		if !AgenticPivot.isClipboardInfluenceEnabled && !AgenticPivot.isSelectedTextInfluenceEnabled && hasWorkflow {
+			score += 0.2
+		}
+		
 		return min(1.0, score)
 	}
 
 	private func estimatedTextLength(from situational: SituationalContextSnapshot) -> Int {
-		let textBucket = situational.selectedTextSignal.lengthBucket
-		let clipBucket = situational.clipboardSignal.lengthBucket
+		let textBucket = AgenticPivot.isSelectedTextInfluenceEnabled ? situational.selectedTextSignal.lengthBucket : .none
+		let clipBucket = AgenticPivot.isClipboardInfluenceEnabled ? situational.clipboardSignal.lengthBucket : .none
 		let ocrBucket = situational.ocrSignal.lengthBucket
 		let best = [textBucket, clipBucket, ocrBucket]
 			.max(by: { bucketOrdinal($0) < bucketOrdinal($1) }) ?? .none

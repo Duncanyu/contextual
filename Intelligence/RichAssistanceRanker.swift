@@ -116,9 +116,12 @@ struct RichAssistancePreviewContext: Equatable, Sendable {
 		let fused = CanonicalContextState.shared.current()
 		let typing = TypingActivitySource.shared.currentContext()
 		let pointer = PointerActivitySource.shared.currentContext()
-		let strongSel = (fused?.hasSelectedText == true)
+		
+		let hasSelection = AgenticPivot.isSelectedTextInfluenceEnabled && (fused?.hasSelectedText == true)
+		let strongSel = hasSelection
 			&& ((fused?.textLength ?? 0) >= TriggerEngine.selectedTextMinCharacterCount)
-		let isSelPrimary = fused.map { $0.primaryTextSource == .selectedText } ?? false
+		let isSelPrimary = hasSelection && (fused?.primaryTextSource == .selectedText)
+		
 		let timing = ProposalTimingGate.evaluate(
 			isManualInvocation: false,
 			isActionExecuting: isActionExecuting,
@@ -427,7 +430,8 @@ enum RichAssistanceRanker {
 			reasons.append(RichAssistanceRankingReason.staticBaseRelevance.rawValue)
 		}
 		if actionId == "explain_text" {
-			if let f = fused, f.hasSelectedText, f.textLength >= TriggerEngine.selectedTextMinCharacterCount {
+			if AgenticPivot.isSelectedTextInfluenceEnabled,
+			   let f = fused, f.hasSelectedText, f.textLength >= TriggerEngine.selectedTextMinCharacterCount {
 				score = max(score, 0.88)
 				reasons.append(RichAssistanceRankingReason.staticBaseRelevance.rawValue)
 			}
@@ -589,7 +593,8 @@ enum RichAssistanceRanker {
 
 		switch timing.outcome {
 		case .suppress:
-			let strongSel = (fused?.hasSelectedText == true)
+			let hasSelection = AgenticPivot.isSelectedTextInfluenceEnabled && (fused?.hasSelectedText == true)
+			let strongSel = hasSelection
 				&& ((fused?.textLength ?? 0) >= TriggerEngine.selectedTextMinCharacterCount)
 				&& (fused?.primaryTextSource == .selectedText)
 			if !strongSel {

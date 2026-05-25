@@ -323,6 +323,10 @@ final class AppState: ObservableObject {
 	/// Used to route user-invoked "Prepare execution" through the quarantined hook runtime.
 	/// Refreshed on each publication cycle (no persistence required).
 	private var hookContractByCandidateId: [String: DynamicGeneratedActionContract] = [:]
+	/// Ephemeral mapping from activated candidate id → AgenticTaskPlan.
+	/// Present only for agentic_runtime_candidate proposals; nil for fixed-chain candidates.
+	/// Routes execution to AgenticRuntime instead of GeneratedExecutionRuntime.
+	private var agenticPlanByCandidateId: [String: AgenticTaskPlan] = [:]
 
 	var onEnableLocalAI: (() -> Void)?
 	var onDisableLocalAI: (() -> Void)?
@@ -582,16 +586,31 @@ final class AppState: ObservableObject {
 		for candidate in candidates {
 			guard let action = candidate.executionAction else { continue }
 			generatedExecutionActionByCandidateId[candidate.id] = action
+			// Cache AgenticTaskPlan when present — routes execution to AgenticRuntime.
+			if let plan = candidate.agenticPlan {
+				agenticPlanByCandidateId[candidate.id] = plan
+				print("[AgenticPlanCache] stored id=\(candidate.id.prefix(40)) goal=\(plan.goal.prefix(60))")
+			}
 		}
 		for (id, action) in generatedExecutionActionByCandidateId {
 			if now >= action.expirationDate {
 				generatedExecutionActionByCandidateId.removeValue(forKey: id)
+				agenticPlanByCandidateId.removeValue(forKey: id)
 			}
 		}
 	}
 
 	func cachedGeneratedExecutionAction(candidateId: String) -> GeneratedExecutionAction? {
 		generatedExecutionActionByCandidateId[candidateId]
+	}
+
+	func cachedAgenticPlan(candidateId: String) -> AgenticTaskPlan? {
+		if let plan = agenticPlanByCandidateId[candidateId] {
+			print("[AgenticPlanCache] lookup id=\(candidateId.prefix(40)) found=yes")
+			return plan
+		}
+		print("[AgenticPlanCache] lookup id=\(candidateId.prefix(40)) found=no")
+		return nil
 	}
 
 	func cacheHookContracts(_ contracts: [DynamicGeneratedActionContract]) {

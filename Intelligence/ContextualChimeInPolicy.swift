@@ -76,12 +76,22 @@ enum ContextualChimeInPolicy {
 
 	// MARK: - Thresholds (named for legibility)
 
-	private static let suppressScoreFloor: Double = 0.40      // T18.6: loosened from 0.42
-	private static let panelOnlyScoreFloor: Double = 0.48     // T18.6B: lowered from 0.52 — more floating on confident fresh context
-	private static let noveltySuppress: Double = 0.12          // T18.6: loosened from 0.25 — only suppress near-zero novelty
+	private static var suppressScoreFloor: Double {
+		AgenticPivot.useEarlierProposalSurfacing ? 0.35 : 0.40
+	}
+	private static var panelOnlyScoreFloor: Double {
+		AgenticPivot.useEarlierProposalSurfacing ? 0.42 : 0.48
+	}
+	private static var noveltySuppress: Double {
+		AgenticPivot.useEarlierProposalSurfacing ? 0.05 : 0.12
+	}
 	private static let noveltyPenaltyThreshold: Double = 0.55  // T18.6: loosened from 0.65
-	private static let dismissalHardSuppress: TimeInterval = 60
-	private static let dismissalSoftSuppress: TimeInterval = 180
+	private static var dismissalHardSuppress: TimeInterval {
+		AgenticPivot.useEarlierProposalSurfacing ? 30 : 60
+	}
+	private static var dismissalSoftSuppress: TimeInterval {
+		AgenticPivot.useEarlierProposalSurfacing ? 90 : 180
+	}
 	private static let acceptedBoost: Double = 0.06
 
 	static func evaluate(factors: ContextualChimeInFactors) -> ContextualChimeInDecision {

@@ -314,3 +314,38 @@ enum GeneratedProposalDebugStatusBuilder {
 	}
 
 }
+
+/// Central configuration for the Phase 4A Agentic Runtime Pivot.
+/// These flags control the shift from fixed hook-chain planning to bounded agentic workflows.
+enum AgenticPivot {
+    
+    // MARK: - Part 1: Transient Context Suppression
+    
+    /// Disables the influence of clipboard text on proposal generation and ranking.
+    static let isClipboardInfluenceEnabled = false
+    
+    /// Disables the influence of selected text on proposal generation and ranking.
+    static let isSelectedTextInfluenceEnabled = false
+    
+    // MARK: - Part 2 & 3: Planning Pivot
+    
+    /// Whether the planner should prioritize high-level intent over detailed hook chains.
+    static let useIntentFirstPlanning = true
+    
+    /// Whether all proposals should be routed through the unified bounded agentic runtime.
+    static let useUnifiedAgenticRuntime = true
+    
+    // MARK: - Part 4: Surfacing & Persistence
+    
+    /// Whether proposals should surface earlier (e.g., bypassing some heuristic stability gates).
+    static let useEarlierProposalSurfacing = true
+    
+    /// Whether proposals should remain visible longer (e.g., briefly surviving tab switches).
+    static let usePersistentProposals = true
+    
+    // MARK: - Helpers
+    
+    static func logPivotState() {
+        print("[AgenticPivot] state: clipboard_influence=\(isClipboardInfluenceEnabled) selected_text_influence=\(isSelectedTextInfluenceEnabled) intent_first=\(useIntentFirstPlanning) unified_runtime=\(useUnifiedAgenticRuntime) early_surfacing=\(useEarlierProposalSurfacing) persistence=\(usePersistentProposals)")
+    }
+}

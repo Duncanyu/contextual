@@ -235,4 +235,5 @@ struct ValidatedDynamicGeneratedProposal: Equatable, Sendable, Identifiable {
 	let interruptionCost: Double
 	let confidence: Double
 	let usefulnessHint: String
+	let agenticPlan: AgenticTaskPlan?
 }

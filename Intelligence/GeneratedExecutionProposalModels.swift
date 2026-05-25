@@ -34,6 +34,9 @@ struct GeneratedExecutionProposalCandidate: Equatable, Sendable, Identifiable {
 	/// Execution mode inferred from the hook contract at candidate-build time.
 	/// Defaults to .one_shot for non-hook-composer candidates; explicitly set for hook contracts.
 	var executionMode: HookExecutionMode = .one_shot
+	/// AgenticTaskPlan for agentic_runtime_candidate proposals; nil for fixed-chain proposals.
+	/// When present, proposal routes to AgenticRuntime instead of GeneratedExecutionRuntime.
+	var agenticPlan: AgenticTaskPlan? = nil
 
 	var isGeneratedFamily: Bool {
 		switch source {

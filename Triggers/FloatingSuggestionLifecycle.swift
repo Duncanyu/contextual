@@ -27,10 +27,10 @@ final class FloatingSuggestionLifecycle {
 
 	private var entries: [String: Entry] = [:]
 
-	private let shownWindow: TimeInterval = 30
-	private let autoDismissWindow: TimeInterval = 30
-	private let acceptedWindow: TimeInterval = 60
-	private let manualWindow: TimeInterval = 180
+	private var shownWindow: TimeInterval { AgenticPivot.usePersistentProposals ? 10 : 30 }
+	private var autoDismissWindow: TimeInterval { AgenticPivot.usePersistentProposals ? 10 : 30 }
+	private var acceptedWindow: TimeInterval { AgenticPivot.usePersistentProposals ? 30 : 60 }
+	private var manualWindow: TimeInterval { AgenticPivot.usePersistentProposals ? 90 : 180 }
 	private let pruneAge: TimeInterval = 12 * 60
 
 	/// Clears floating suppression state when leaving screen-OCR input channel (T12.10).

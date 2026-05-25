@@ -12,6 +12,7 @@ enum TaskInferencePlanningPipeline {
 	struct PlanningOutput: Sendable, Equatable {
 		let contract: DynamicGeneratedActionContract
 		let proposal: ValidatedDynamicGeneratedProposal
+		let agenticPlan: AgenticTaskPlan?
 	}
 
 	static func compose(
@@ -35,7 +36,17 @@ enum TaskInferencePlanningPipeline {
 			return nil
 		}
 
-		// Task 1 — Situational utility gate.
+		if AgenticPivot.useIntentFirstPlanning {
+			return await composeIntentFirst(
+				inference: inference,
+				snapshot: snapshot,
+				situational: situational,
+				cats: cats,
+				referenceTime: referenceTime
+			)
+		}
+
+		// --- Legacy fixed hook-chain path below ---
 		// Evaluated before hook retrieval so we don't waste model budget on low-value chains.
 		let utility = ProposalUtilityScorer.evaluate(
 			goal: inference.possibleUserGoal,
@@ -165,7 +176,7 @@ enum TaskInferencePlanningPipeline {
 			requiredContext: requiredContext,
 			confidence: blendedConfidence,
 			createdAt: referenceTime,
-			expiresAt: referenceTime.addingTimeInterval(max(8, min(60, inference.expirySeconds))),
+			expiresAt: referenceTime.addingTimeInterval(max(30, min(180, inference.expirySeconds))),
 			cacheEligibility: blendedConfidence >= 0.66,
 			cacheKey: fp
 		)
@@ -179,6 +190,8 @@ enum TaskInferencePlanningPipeline {
 		print("[GeneratedActionContract] executable=\(executableFlag ? "yes" : "no") source=llm_hook_plan title=\"\(contract.title)\" hooks=[\(chain)] confidence=\(String(format: "%.2f", contract.confidence))")
 		print("[HookComposer] synthesized title=\(contract.title) hooks=\(finalHookIds.count)")
 
+		let agenticPlan = AgenticRuntimeBridge.derivePlan(from: contract, workflow: workflow.rawValue)
+
 		let proposal = ValidatedDynamicGeneratedProposal(
 			id: contract.id,
 			title: contract.title,
@@ -190,10 +203,107 @@ enum TaskInferencePlanningPipeline {
 			suggestedPrimitives: primitives,
 			interruptionCost: interruptionCost(workflow: workflow, confidence: contract.confidence),
 			confidence: contract.confidence,
-			usefulnessHint: "hook_composer_model"
+			usefulnessHint: "hook_composer_model",
+			agenticPlan: agenticPlan
 		)
 
-		return PlanningOutput(contract: contract, proposal: proposal)
+		return PlanningOutput(contract: contract, proposal: proposal, agenticPlan: agenticPlan)
+	}
+
+	// MARK: - Intent-First Planning (Agentic Pivot)
+
+	private static func composeIntentFirst(
+		inference: TaskInferenceResult,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		cats: [String],
+		referenceTime: Date
+	) async -> PlanningOutput? {
+		let workflow = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
+		let intent = mapIntent(from: situational.inferredIntent)
+		
+		let title = synthesizeTitle(goal: inference.possibleUserGoal, workflow: workflow, intent: intent)
+		let question = synthesizeQuestion(goal: inference.possibleUserGoal, title: title)
+		
+		// Use anchors as a base plan. The runtime will expand this.
+		let baseHooks = ["observe_current_context", "present_result"]
+		
+		let fp = TaskInferenceEngine.fingerprint(snapshot: snapshot, situational: situational, recentTitles: [])
+		let catSig = cats.joined(separator: ",")
+		let catHash = abs(catSig.hashValue)
+
+		let requiredContext = mapRequiredContext(from: cats)
+
+		let contract = DynamicGeneratedActionContract(
+			id: "agentic:\(fp)|c\(catHash)",
+			title: title,
+			userFacingQuestion: question,
+			inferredUserGoal: inference.possibleUserGoal,
+			situationSummary: String(situational.situationalSummary.prefix(160)),
+			whyNow: inference.whyNow.isEmpty ? "inferred" : inference.whyNow,
+			hookPlanIds: baseHooks,
+			requiredContext: requiredContext,
+			confidence: inference.confidence,
+			createdAt: referenceTime,
+			expiresAt: referenceTime.addingTimeInterval(max(30, min(180, inference.expirySeconds))),
+			cacheEligibility: inference.confidence >= 0.60,
+			cacheKey: fp
+		)
+
+		print("[AgenticComposition] goal=\"\(contract.inferredUserGoal)\" confidence=\(String(format: "%.2f", contract.confidence))")
+
+		let agenticPlan = AgenticRuntimeBridge.derivePlan(from: contract, workflow: workflow.rawValue)
+
+		let proposal = ValidatedDynamicGeneratedProposal(
+			id: contract.id,
+			title: contract.title,
+			description: contract.userFacingQuestion,
+			workflowType: workflow,
+			intentType: intent,
+			expectedOutcome: contract.inferredUserGoal,
+			requiredContextTypes: contract.requiredContext,
+			suggestedPrimitives: [], // Primitive selection moves to runtime (agentic path)
+			interruptionCost: 0.35,
+			confidence: contract.confidence,
+			// Prefix "hook_composer" so the mapper and activator treat this
+			// like a hook-composer proposal (lenient context check, hookComposer source).
+			// The suffix "_agentic" distinguishes it from legacy fixed-chain proposals.
+			usefulnessHint: "hook_composer_agentic",
+			agenticPlan: agenticPlan
+		)
+
+		return PlanningOutput(contract: contract, proposal: proposal, agenticPlan: agenticPlan)
+	}
+
+	private static func mapIntent(from synth: SynthesizedIntentType?) -> IntentType {
+		guard let synth else { return .unknown }
+		switch synth {
+		case .summarizeCurrentArticle, .summarizeCodeChange: return .summarize
+		case .explainLikelyError, .explainApiResponse, .explainScreenContext: return .explain
+		case .extractActionItems: return .extract
+		case .turnNotesIntoChecklist: return .structure
+		case .compareSelectedSnippets: return .compare
+		case .identifyPossibleBugSource: return .explain
+		case .draftReply: return .unknown
+		case .reviewSelectedText: return .classify
+		case .unknown: return .unknown
+		}
+	}
+
+	private static func mapRequiredContext(from cats: [String]) -> [ContextRequirementType] {
+		var reqs: Set<ContextRequirementType> = []
+		for cat in cats {
+			switch cat {
+			case "context": reqs.insert(.textSnippet)
+			case "extract": reqs.insert(.textSnippet)
+			case "reason":  reqs.insert(.textSnippet)
+			case "compare": reqs.insert(.textSnippet)
+			case "debug":   reqs.insert(.screenCapture)
+			case "study":   reqs.insert(.textSnippet)
+			default: break
+			}
+		}
+		return Array(reqs).sorted(by: { $0.rawValue < $1.rawValue })
 	}
 
 	// MARK: - Helpers

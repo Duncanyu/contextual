@@ -879,11 +879,16 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 		// Phase 14: activity-aware proposal timing gate (Triggers layer; metadata-only).
 		let canonical = CanonicalContextState.shared.current()
+		
+		let hasSelectionInfluence = AgenticPivot.isSelectedTextInfluenceEnabled && context.selectedTextAvailable
+		let hasStrongSelectedText = hasSelectionInfluence && context.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount
+		let isSelectedTextPrimary = hasSelectionInfluence && packet.triggerType == .selectedTextEligible
+		
 		let timing = ProposalTimingGate.evaluate(
 			isManualInvocation: packet.triggerType == .manualInvocation,
 			isActionExecuting: appState.isActionExecuting,
-			hasStrongSelectedText: context.selectedTextAvailable && context.selectedTextLength >= TriggerEngine.selectedTextMinCharacterCount,
-			isSelectedTextPrimary: packet.triggerType == .selectedTextEligible,
+			hasStrongSelectedText: hasStrongSelectedText,
+			isSelectedTextPrimary: isSelectedTextPrimary,
 			canonicalFreshness: canonical?.freshnessScore,
 			canonicalConfidence: canonical?.confidence,
 			typing: typingCtx,
@@ -2599,6 +2604,55 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				"[GeneratedProposalExecution] selected id=\(candidateId.prefix(12)) template=\(resolvedTemplateId ?? "unknown") visual_required=\(visualRequired ? "yes" : "no")"
 			)
 
+			// MARK: Agentic routing invariant
+			// Primary signal: AgenticTaskPlan cached at proposal-build time.
+			// Belt-and-suspenders: candidateId.hasPrefix("agentic:") is an unconditional routing gate —
+			// any proposal constructed by composeIntentFirst() carries this prefix and MUST never
+			// enter GeneratedExecutionRuntime (which rejects empty primitives as invalid_plan).
+			let cachedPlan = self.appState.cachedAgenticPlan(candidateId: candidateId)
+			let isAgenticByIdPrefix = candidateId.hasPrefix("agentic:")
+			let isAgenticRoute = cachedPlan != nil || isAgenticByIdPrefix
+
+			let invariantReason: String
+			if cachedPlan != nil { invariantReason = "plan_present" }
+			else if isAgenticByIdPrefix { invariantReason = "agentic_id_prefix_no_plan" }
+			else { invariantReason = "none" }
+			print("[AgenticRuntimeInvariant] status=\(isAgenticRoute ? "pass" : "pass_legacy") reason=\(invariantReason) id=\(candidateId.prefix(40))")
+
+			if isAgenticRoute {
+				let routeReason: String
+				if cachedPlan != nil {
+					routeReason = "agentic_task_plan_present"
+				} else {
+					routeReason = "agentic_id_prefix"
+				}
+				print("[AgenticRuntimeRouting] route=agentic_runtime reason=\(routeReason) id=\(candidateId.prefix(12)) goal=\(cachedPlan?.goal.prefix(60) ?? "unknown")")
+				self.appState.generatedExecutionPhaseLabel = "Preparing agentic execution…"
+
+				let agenticRuntime = AgenticRuntime()
+				let agenticResult = await agenticRuntime.execute(
+					plan: cachedPlan,
+					action: action,
+					snapshot: snapshot,
+					referenceTime: now
+				)
+				let execResult = agenticResult.toExecutionResult(
+					actionId: action.id,
+					confidence: action.confidence,
+					startedAt: now
+				)
+				let presentation = GeneratedExecutionResultPresenter.makePresentation(from: execResult, action: action)
+				self.appState.latestGeneratedExecutionPresentation = presentation
+				self.appState.latestActionId = actionId
+				self.appState.latestActionTimestamp = Date()
+				self.appState.latestActionResult = nil
+				print("[AgenticRuntimeRouting] complete id=\(candidateId.prefix(12)) status=\(agenticResult.status.rawValue) phase=\(agenticResult.runtimePhase) sections=\(presentation.sections.count)")
+				return
+			}
+
+			// MARK: Legacy fixed-chain routing
+			print("[AgenticRuntimeRouting] route=legacy_generated_runtime reason=fixed_plan id=\(candidateId.prefix(12)) primitives=\(action.executionPlan.primitives.count)")
+
 			// Visual enrichment is execution-scoped and optional: scheduler is injected only here.
 			let provider = ScreenCaptureBoundedVisualContextProvider()
 			let scheduler = VisualContextScheduler(provider: provider)
@@ -3469,6 +3523,64 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[TaskInferenceSelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_PROPOSAL_FAILURE_DIAG_SELFTEST=1` to validate failure reason labels.
+		if env["CONTEXTUAL_RUN_PROPOSAL_FAILURE_DIAG_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await GeneratedProposalFailureDiagnosticsSelfTest.run()
+				print("[GeneratedProposalFailureDiagnosticsSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_AGENTIC_RUNTIME_SELFTEST=1` to validate Phase 4B routing and shell.
+		if env["CONTEXTUAL_RUN_AGENTIC_RUNTIME_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await AgenticRuntimeSelfTest.run()
+				print("[AgenticRuntimeSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_AGENTIC_LOOP_SELFTEST=1` to validate Phase 4C/4D observe→decide→act loop.
+		if env["CONTEXTUAL_RUN_AGENTIC_LOOP_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await AgenticLoopSelfTest.run()
+				print("[AgenticLoopSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_AGENTIC_CONTROL_SELFTEST=1` to validate Phase 4D controlled interactions.
+		if env["CONTEXTUAL_RUN_AGENTIC_CONTROL_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await AgenticControlSelfTest.run()
+				print("[AgenticControlSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_PERCEPTION_REFRESH_SELFTEST=1` to validate Phase 4E perception refresh.
+		if env["CONTEXTUAL_RUN_PERCEPTION_REFRESH_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await AgenticPerceptionRefreshSelfTest.run()
+				print("[AgenticPerceptionRefreshSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_AGENTIC_INTENT_GROUNDING_SELFTEST=1` to validate Phase 4F intent grounding.
+		if env["CONTEXTUAL_RUN_AGENTIC_INTENT_GROUNDING_SELFTEST"] == "1" {
+			let ok = AgenticIntentGroundingSelfTest.run()
+			print("[AgenticIntentGroundingSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
 

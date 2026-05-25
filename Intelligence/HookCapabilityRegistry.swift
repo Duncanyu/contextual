@@ -1259,11 +1259,12 @@ struct HookCapabilityRegistry: Sendable {
 			),
 			HookCapabilityDefinition(
 				id: "summarize_web_page",
-				description: "Summarize web page.",
+				description: "Produces a structured summary of the current web page content.",
 				category: .reasoning,
-				            capability: "summarize web page",
-            requires: [],
-            produces: [],
+				capability: "summarize web page",
+				requires: [.page_text], // Strengthened: was empty
+				produces: [.summary_text],
+
             permissions: [],
             safety: .sensitive,
             cost: .medium,
@@ -2085,7 +2086,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Extracts structured product specifications (capacity, speed, dimensions, compatibility) from visible text.",
 				category: .extraction,
 				capability: "extract product specs",
-				requires: [],
+				requires: [.page_text], // Strengthened: was empty
 				produces: [.product_attributes, .structured_json],
 				safety: .safe,
 				cost: .medium,
@@ -2190,7 +2191,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Summarizes user reviews visible on the current page into key sentiment themes.",
 				category: .reasoning,
 				capability: "summarize visible reviews",
-				requires: [],
+				requires: [.page_text], // Strengthened: was empty
 				produces: [.summary_text],
 				safety: .safe,
 				cost: .medium,
@@ -2213,7 +2214,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Produces a concise summary of the main content currently visible on screen.",
 				category: .reasoning,
 				capability: "summarize visible page",
-				requires: [],
+				requires: [.page_text], // Strengthened: was empty
 				produces: [.summary_text],
 				safety: .safe,
 				cost: .medium,
@@ -2234,7 +2235,7 @@ struct HookCapabilityRegistry: Sendable {
 				description: "Extracts the most important facts, figures, dates, or claims from visible content.",
 				category: .extraction,
 				capability: "extract key facts",
-				requires: [],
+				requires: [.page_text], // Strengthened: was empty
 				produces: [.key_claims],
 				safety: .safe,
 				cost: .medium,

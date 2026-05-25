@@ -17,10 +17,15 @@ enum GeneratedExecutionProposalActivator {
 
 	/// Returns true when the candidate qualifies as an executable hook-composer contract
 	/// eligible for panel display regardless of unified ranking score.
+	/// Agentic (intent-first) proposals use a lower confidence floor because they are
+	/// synthesized from a higher-level inference pass rather than validated hook chains.
 	static func isExecutableHookContractOverride(_ candidate: GeneratedExecutionProposalCandidate) -> Bool {
-		candidate.source == .hookComposer &&
-		candidate.isExecutableGeneratedProposal &&
-		candidate.confidence >= executableHookContractPanelMinConfidence
+		guard candidate.source == .hookComposer, candidate.isExecutableGeneratedProposal else { return false }
+		let isAgentic = (candidate.explainabilitySummary ?? "").contains("hook_composer_agentic")
+		// Agentic intent-first proposals use a lower confidence floor (0.50) since they skip
+		// the full hook-chain validation pass. Legacy fixed-chain contracts keep the 0.70 floor.
+		let minConf: Double = isAgentic ? 0.50 : executableHookContractPanelMinConfidence
+		return candidate.confidence >= minConf
 	}
 
 	static func generatedProposalActionId(for candidateId: String) -> String {
@@ -32,6 +37,12 @@ enum GeneratedExecutionProposalActivator {
 	) -> GeneratedExecutionProposalActivationResult {
 		let att = ProposalAttemptScope.currentId ?? "none"
 		print("[ProposalAttempt] id=\(att) activation_started candidates=\(input.generatedExecutionCandidates.count)")
+
+		// [ProposalActivationBridge] entry summary — shows what arrived from the mapper.
+		let bridgeSourcePipeline = input.generatedExecutionCandidates.first.map {
+			($0.explainabilitySummary ?? "unknown").components(separatedBy: "|").first ?? "unknown"
+		} ?? "empty"
+		print("[ProposalActivationBridge] activation_entry synthesized_count=\(input.generatedExecutionCandidates.count) reusable_count=\(input.reusableRecords.count) source_pipeline=\(bridgeSourcePipeline) snapshot_freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) workflow_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence)) stale=\(input.snapshot.packetIsStale)")
 
 		let referenceTime = input.referenceTime
 		var preSuppressedGenerated = 0
@@ -668,17 +679,23 @@ enum GeneratedExecutionProposalActivator {
 			)
 		}
 
+		// Float requires: score above threshold + non-stale context.
+		// workflowConfidence floor is relaxed (0.35) when earlier surfacing is active —
+		// the agentic runtime can operate on browser context without strong workflow inference.
+		let wfConfFloor: Double = AgenticPivot.useEarlierProposalSurfacing ? 0.35 : 0.45
 		let allowsFloating = topScore >= floatingStrongScoreThreshold
-			&& input.snapshot.workflowConfidence >= 0.45
+			&& input.snapshot.workflowConfidence >= wfConfFloor
 			&& !input.snapshot.packetIsStale
 
-		// Bypass panel score threshold for executable hook-composer contracts (Task 1).
-		// These are already validated + executable — show them in the panel even at lower scores.
-		// Uses ranked metadata since candidates aren't directly in scope here.
+		// Bypass panel score threshold for executable hook-composer contracts.
+		// Uses a 0.50 floor (lower than the per-candidate 0.70) because the timing check
+		// runs before per-candidate mode inspection. The candidate-level isExecutableHookContractOverride
+		// applies the correct floor (0.70 for legacy chains, 0.50 for agentic intent-first).
+		// Here we just need to know "is there at least one hookComposer candidate worth showing".
 		let hasExecutableHookContract = ranking.rankedActions.contains {
 			$0.action.metadata["proposalSource"] == GeneratedExecutionProposalSource.hookComposer.rawValue
 			&& $0.action.metadata["executable"] == "1"
-			&& $0.action.confidence >= executableHookContractPanelMinConfidence
+			&& $0.action.confidence >= 0.50
 		}
 
 		let allowsPanel = topScore >= panelGeneratedScoreThreshold
@@ -690,7 +707,7 @@ enum GeneratedExecutionProposalActivator {
 		let floatGapStr = String(format: "%.3f", floatingStrongScoreThreshold - topScore)
 		let floatBlockReason: String = {
 			if topScore < floatingStrongScoreThreshold { return "score_below_\(floatingStrongScoreThreshold)" }
-			if input.snapshot.workflowConfidence < 0.45 { return "wf_conf_\(String(format: "%.2f", input.snapshot.workflowConfidence))_below_0.45" }
+			if input.snapshot.workflowConfidence < wfConfFloor { return "wf_conf_\(String(format: "%.2f", input.snapshot.workflowConfidence))_below_\(wfConfFloor)" }
 			if input.snapshot.packetIsStale { return "packet_stale" }
 			return "none"
 		}()
@@ -828,6 +845,7 @@ enum GeneratedExecutionProposalActivator {
 
 	private static func logSuppressed(id: String, reason: String) {
 		print("[GeneratedProposalActivation] generated_proposal_suppressed id=\(id.prefix(8)) reason=\(reason)")
+		print("[ProposalActivationBridge] pre_suppress_drop proposal_id=\(id.prefix(60)) suppression_reason=\(reason)")
 	}
 
 	private static func logTiming(decision: GeneratedExecutionProposalTimingDecision, allowed: Bool) {
@@ -850,5 +868,14 @@ enum GeneratedExecutionProposalActivator {
 			"[GeneratedProposalActivation] considered=\(considered) visible_generated=\(visibleGenerated) visible_static=\(visibleStatic) ratio=\(ratio) top=\(topSource?.rawValue ?? "none") timing=\(timing.outcome.rawValue)"
 		)
 		print("[GeneratedProposalActivation] visible_generated=\(visibleGenerated)")
+		// [ProposalActivationBridge] final outcome — single authoritative line for pipeline tracing.
+		let suppressionReason: String = {
+			if visibleGenerated > 0 { return "none" }
+			if timing.outcome == .suppressAll { return "timing_suppress_all" }
+			if timing.outcome == .deferProposal { return "timing_defer" }
+			if considered == 0 { return "no_candidates_reached_activator" }
+			return "ranking_or_score_suppressed"
+		}()
+		print("[ProposalActivationBridge] activation_complete activation_candidate_count=\(considered) visible_generated=\(visibleGenerated) suppression_reason=\(suppressionReason) timing_outcome=\(timing.outcome.rawValue) allows_panel=\(timing.allowsPanelGenerated) allows_float=\(timing.allowsFloatingGenerated)")
 	}
 }
