@@ -112,6 +112,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
+		if env["CONTEXTUAL_RUN_CAPABILITY_CONSTRAINED_PROPOSAL_SELFTEST"] == "1" {
+			let ok = CapabilityConstrainedProposalSelfTest.run()
+			print("[CapabilityConstrainedProposalSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_STRONG_CONTEXT_ANCHOR_SELFTEST"] == "1" {
+			let ok = StrongContextAnchorSelfTest.run()
+			print("[StrongContextAnchorSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_FAST_PROPOSAL_SHELL_SELFTEST"] == "1" {
+			Task {
+				let ok = await TaskInferenceSelfTest.runFastProposalShellSelfTest()
+				print("[FastProposalShellSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_PLANNER_REFINEMENT_ALIGNMENT_SELFTEST"] == "1" {
+			let ok = PlannerRefinementAlignmentSelfTest.run()
+			print("[PlannerRefinementAlignmentSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
 		if env["CONTEXTUAL_RUN_PLANNER_CANDIDATE_SELFTEST"] == "1" {
 			Task.detached(priority: .userInitiated) {
 				await PlannerCandidateSelfTest.run()
@@ -153,6 +183,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_PROPOSAL_PERSISTENCE_SELFTEST"] == "1" {
 			Task {
 				await PanelVisibilityDomainSelfTest.runPersistenceTests()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_PROPOSAL_REACTIVITY_SELFTEST"] == "1" {
+			Task {
+				let ok = await ProposalReactivitySelfTest.run()
+				print("[ProposalReactivitySelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 			return
@@ -576,8 +615,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 									// Cold-start for qwen2.5:0.5b is ~8-10s (GGUF load from disk).
 									// A startup warmup ensures the first router call responds in ~100ms.
 									// Sequential to respect OLLAMA_NUM_PARALLEL=1 — router first.
-									let routerModel = "qwen2.5:0.5b"
-									let plannerModel = "qwen2.5:1.5b"
+									let routerModel = TaskInferenceEngine.routerModelName
+									let plannerModel = TaskInferenceEngine.plannerModelName
 									print("[TwoStageWarmup] warming router=\(routerModel)")
 									await ModelAuditManager.shared.runWarmupIfNeeded(model: routerModel)
 									print("[TwoStageWarmup] warming planner=\(plannerModel)")
@@ -1080,7 +1119,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			existingStaticActions: ordered.map(\.id),
 			reusableActions: [],
 			budget: .conservative,
-			history: proposalHistory
+			history: proposalHistory,
+			isWarmupReady: twoStageWarmupComplete
 		)
 		// T18.3.6B: Explicit pipeline trace — log engine result and library record count before activator.
 		print("[ProposalPipeline] engine_result status=\(llmResult.status.rawValue) library_records=\(llmResult.libraryRecords.count) should_chime=\(llmResult.shouldChimeIn) reason=\(llmResult.reason)")
@@ -1292,9 +1332,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		decision: ReasoningDecision
 	) async {
 		if LocalAISettings.shared.twoStageTaskInferenceEnabled && !twoStageWarmupComplete {
-			print("[GeneratedProposal] deferred reason=two_stage_warmup_not_ready")
-			deferredWarmupTrigger = (packet, context, generation)
-			return
+			print("[GeneratedProposal] attempt_started_before_warmup reason=allowing_lightweight_shell")
+			// We no longer return early; we let the engine attempt a lightweight model-free shell.
 		}
 
 		guard generation == contextPipelineGeneration else {
@@ -1332,7 +1371,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			reusableActions: [],
 			budget: .conservative,
 			history: proposalHistory,
-			situational: prepared.situational
+			situational: prepared.situational,
+			isWarmupReady: twoStageWarmupComplete
 		)
 		// T18.3.6B: Explicit pipeline trace — log engine result and library record count before activator.
 		print("[ProposalPipeline] engine_result status=\(llmResult.status.rawValue) library_records=\(llmResult.libraryRecords.count) should_chime=\(llmResult.shouldChimeIn) reason=\(llmResult.reason)")
@@ -3581,6 +3621,132 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			let ok = AgenticIntentGroundingSelfTest.run()
 			print("[AgenticIntentGroundingSelfTest] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_STATEFUL_AGENTIC_LOOP_SELFTEST=1` to validate Phase 4S stateful loop logic.
+		if env["CONTEXTUAL_RUN_STATEFUL_AGENTIC_LOOP_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await StatefulAgenticLoopSelfTest.run()
+				print("[StatefulAgenticLoopSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_EVIDENCE_QUALITY_GATE_SELFTEST=1` to validate Phase 4T evidence quality gate logic.
+		if env["CONTEXTUAL_RUN_EVIDENCE_QUALITY_GATE_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await EvidenceQualityGateSelfTest.run()
+				print("[EvidenceQualityGateSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_AGENTIC_EVIDENCE_GATE_SELFTEST=1` to validate evidence requirements/gate.
+		if env["CONTEXTUAL_RUN_AGENTIC_EVIDENCE_GATE_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await AgenticEvidenceGateSelfTest.run()
+				print("[AgenticEvidenceGateSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 4P — Run with `CONTEXTUAL_RUN_PROPOSAL_CONTEXT_ISOLATION_SELFTEST=1`
+		// to validate proposal-context isolation, stale-entity rejection, and
+		// planner-recovery validation consistency.
+		if env["CONTEXTUAL_RUN_PROPOSAL_CONTEXT_ISOLATION_SELFTEST"] == "1" {
+			let ok = ProposalContextIsolationSelfTest.run()
+			print("[ProposalContextIsolationSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 4Q — Run with `CONTEXTUAL_RUN_PLANNER_CAPABILITY_ENVELOPE_SELFTEST=1`
+		// to validate runtime capability envelope, strict-retry prompt, and
+		// [CapabilityRepair] log family.
+		if env["CONTEXTUAL_RUN_PLANNER_CAPABILITY_ENVELOPE_SELFTEST"] == "1" {
+			let ok = PlannerCapabilityEnvelopeSelfTest.run()
+			print("[PlannerCapabilityEnvelopeSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 4R — Run with `CONTEXTUAL_RUN_PARTIAL_PLANNER_RECOVERY_SELFTEST=1`
+		// to validate partial-JSON salvage trailing-candidate recovery and the
+		// router grounding-sufficiency upgrade.
+		if env["CONTEXTUAL_RUN_PARTIAL_PLANNER_RECOVERY_SELFTEST"] == "1" {
+			let ok = PartialPlannerRecoverySelfTest.run()
+			print("[PartialPlannerRecoverySelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 4R — Run with `CONTEXTUAL_RUN_RUNTIME_GROUNDING_PRESERVATION_SELFTEST=1`
+		// to validate grounded evidence preservation + terminal-step control guard.
+		if env["CONTEXTUAL_RUN_RUNTIME_GROUNDING_PRESERVATION_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await RuntimeGroundingPreservationSelfTest.run()
+				print("[RuntimeGroundingPreservationSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_EVIDENCE_EXTRACTION_BRIDGE_SELFTEST=1` to validate extraction bridge.
+		if env["CONTEXTUAL_RUN_EVIDENCE_EXTRACTION_BRIDGE_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await AgenticEvidenceExtractionBridgeSelfTest.run()
+				print("[AgenticEvidenceExtractionBridgeSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_EMAIL_REVIEW_EVIDENCE_SELFTEST=1` to validate email-domain evidence families.
+		if env["CONTEXTUAL_RUN_EMAIL_REVIEW_EVIDENCE_SELFTEST"] == "1" {
+			Task {
+				await EmailReviewEvidenceSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_EXECUTION_FOCUS_HANDOFF_SELFTEST=1` to validate focus handoff and runtime guards.
+		if env["CONTEXTUAL_RUN_EXECUTION_FOCUS_HANDOFF_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await ExecutionFocusHandoffSelfTest.run()
+				print("[ExecutionFocusHandoffSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_ROUTER_EMPTY_ESCALATION_SELFTEST=1` to validate Phase 4U router empty-escalation recovery logic.
+		if env["CONTEXTUAL_RUN_ROUTER_EMPTY_ESCALATION_SELFTEST"] == "1" {
+			Task {
+				let ok = await RouterEmptyEscalationSelfTest.run()
+				print("[RouterEmptyEscalationSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_GOAL_EVIDENCE_ALIGNMENT_SELFTEST=1` to validate Phase 4U goal/evidence alignment logic.
+		if env["CONTEXTUAL_RUN_GOAL_EVIDENCE_ALIGNMENT_SELFTEST"] == "1" {
+			GoalEvidenceAlignmentSelfTest.run()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_EVIDENCE_STATE_CORRECTNESS_SELFTEST=1` to validate Phase 4V evidence correctness logic.
+		if env["CONTEXTUAL_RUN_EVIDENCE_STATE_CORRECTNESS_SELFTEST"] == "1" {
+			Task {
+				await EvidenceStateCorrectnessSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
 			return true
 		}
 

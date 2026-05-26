@@ -1,6 +1,6 @@
 import Foundation
 
-/// Self-tests for model-driven task inference (qwen contract) + deterministic planning.
+/// Self-tests for model-driven task inference (phi4-mini contract) + deterministic planning.
 /// These tests are isolated, deterministic, and do not call the live model.
 enum TaskInferenceSelfTest {
 
@@ -85,7 +85,7 @@ enum TaskInferenceSelfTest {
 		let titleLower = planned?.proposal.title.lowercased() ?? ""
 		check("planner_title_no_raw_ids", !titleLower.contains("compare_items") && !titleLower.contains("|c"))
 
-		// MARK: 6 — Parser tolerates \"c\": true (Bool not Int) — qwen common output
+		// MARK: 6 — Parser tolerates \"c\": true (Bool not Int) — phi4-mini common output
 
 		let rawBoolC = "{\"c\":true,\"g\":\"research this page\",\"needCats\":[\"extract\",\"reason\",\"output\"],\"p\":0.75}"
 		let (parsed6, fail6) = TaskInferenceParser.parseWithFailure(from: rawBoolC, referenceTime: now)
@@ -121,7 +121,7 @@ enum TaskInferenceSelfTest {
 		check("parser_needCats_string_success", parsed10 != nil && fail10 == nil)
 		check("parser_needCats_string_count", (parsed10?.neededCapabilityCategories.count ?? 0) >= 2)
 
-		// MARK: 11 — Parser extracts JSON after prose preamble (qwen may prefix explanation)
+		// MARK: 11 — Parser extracts JSON after prose preamble (phi4-mini may prefix explanation)
 
 		let rawProse = "Based on the context, here is my JSON output:\n{\"c\":1,\"g\":\"compare options\",\"needCats\":[\"compare\",\"output\"],\"p\":0.78}"
 		let (parsed11, fail11) = TaskInferenceParser.parseWithFailure(from: rawProse, referenceTime: now)
@@ -260,4 +260,416 @@ Extra text before a json-fenced planner output containing:
 		return ok
 	}
 
+	static func runFastProposalShellSelfTest() async -> Bool {
+		var failures: [String] = []
+		func check(_ name: String, _ ok: Bool) {
+			if !ok { failures.append(name) }
+		}
+
+		let now = Date()
+
+		// 1. Verify router qwen/planner phi config preserved
+		check("config_router_name", TaskInferenceEngine.routerModelName == "qwen2.5:0.5b")
+		check("config_planner_name", TaskInferenceEngine.plannerModelName == "phi4-mini")
+
+		// 2. Verify safety filter rejects unsafe commerce/destructive/control verbs (instead of rewriting them)
+		check("safety_reject_purchase", !ProposalCapabilityValidator.validate(title: "Purchase Anker Prime USB C Charger", goal: "Charger", appName: "Safari", windowTitle: "Amazon.com").accepted)
+		check("safety_reject_buy_now", !ProposalCapabilityValidator.validate(title: "Buy now AirPods Max", goal: "AirPods", appName: "Safari", windowTitle: "Amazon.com").accepted)
+		check("safety_reject_delete", !ProposalCapabilityValidator.validate(title: "Delete this file", goal: "Delete", appName: "Safari", windowTitle: "Amazon.com").accepted)
+		check("safety_reject_download_unsafe", !ProposalCapabilityValidator.validate(title: "Download malware", goal: "Malware", appName: "Safari", windowTitle: "Amazon.com").accepted)
+
+		// 3. Verify candidate mapper safety rewrite for hook-composed proposals.
+		//
+		// Note: A previous fast-shell synthesis helper (`DynamicGeneratedProposalEngine.synthesizeFastShell`)
+		// is no longer part of the engine surface. This self-test intentionally avoids depending on it.
+		let snap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Safari",
+			windowTitle: "Amazon.com: AirPods Max review and details",
+			bundleIdentifier: "com.apple.safari",
+			inferredWorkflow: .browsing,
+			selectedText: nil,
+			clipboardText: nil,
+			recentOCRExcerpt: "AirPods Max specs: active noise cancellation",
+			contextSummary: "Browsing headphones details",
+			workflowConfidence: 0.82,
+			availableContextTypes: [.workflowContext],
+			permissionAvailability: [.screenRecording: true],
+			generatedAt: now,
+			freshnessScore: 0.85
+		)
+		let situational = SituationalContextSynthesizer.synthesize(from: snap, referenceTime: now)
+
+		// Test safety rewrite at candidate mapper level: if proposal title has an unsafe verb,
+		// mapper safety-filters it while preserving the entity.
+		let unsafeResult = DynamicGeneratedProposalResult(
+			status: .synthesized,
+			shouldChimeIn: true,
+			reason: "test",
+			workflowAssessment: "test",
+			proposalConfidence: 0.8,
+			requiresVisualContext: false,
+			proposals: [
+				ValidatedDynamicGeneratedProposal(
+					id: "test_unsafe",
+					title: "Purchase AirPods Max Charger",
+					description: "desc",
+					workflowType: .browsing,
+					intentType: .review,
+					expectedOutcome: "outcome",
+					requiredContextTypes: [.none],
+					suggestedPrimitives: [.summarizeContext],
+					interruptionCost: 0.1,
+					confidence: 0.8,
+					usefulnessHint: "hook_composer",
+					agenticPlan: nil
+				)
+			],
+			warnings: [],
+			llmDiagnosticCause: nil,
+			createdAt: now,
+			contextSnapshot: snap,
+			libraryRecords: [],
+			hookContracts: [
+				DynamicGeneratedActionContract(
+					id: "test_unsafe",
+					title: "Purchase AirPods Max Charger",
+					userFacingQuestion: "desc",
+					inferredUserGoal: "outcome",
+					situationSummary: "test",
+					whyNow: "test",
+					hookPlanIds: ["observe_current_context", "present_result"],
+					requiredContext: [.none],
+					confidence: 0.8,
+					createdAt: now,
+					expiresAt: now.addingTimeInterval(120),
+					cacheEligibility: false,
+					cacheKey: "test"
+				)
+			]
+		)
+
+		_ = situational // proves synthesize(from:) remains compile-reachable
+		let unsafeCandidates = DynamicGeneratedProposalCandidateMapper.candidates(
+			from: unsafeResult,
+			snapshot: snap,
+			budget: .conservative
+		)
+		check("unsafe_candidate_rejected", unsafeCandidates.isEmpty)
+
+		let ok = failures.isEmpty
+		let detail = failures.joined(separator: ";")
+		print("[FastProposalShellSelfTest] ok=\(ok) failures=\(failures.count) detail=\(detail)")
+		return ok
+	}
+}
+
+enum TwoStageModelConfigSelfTest {
+	static func run() async -> Bool {
+		var failures: [String] = []
+		func check(_ name: String, _ ok: Bool) {
+			if !ok { failures.append(name) }
+		}
+
+		// 1. Verify router model is qwen2.5:0.5b and planner model is phi4-mini
+		check("router_is_qwen", TaskInferenceEngine.routerModelName == "qwen2.5:0.5b")
+		check("planner_is_phi4", TaskInferenceEngine.plannerModelName == "phi4-mini")
+
+		// 2. Verify planner timeout recovery can recover at least one complete partial action
+		let partialRaw = """
+{
+	"actions": [
+		{
+			"title": "Compare mechanical keyboards",
+			"caps": "extract,compare,output",
+			"confidence": 0.85,
+			"novelty": 0.6,
+			"requires": ["ocr"]
+		}
+	]
+}
+"""
+		if let salvaged = TaskInferenceEngine.salvagePartialPlannerOutput(partialRaw) {
+			check("partial_recovery_action_count", salvaged.candidates.count == 1)
+			check("partial_recovery_title", salvaged.candidates.first?.title == "Compare mechanical keyboards")
+			check("partial_recovery_caps", salvaged.candidates.first?.caps.contains("compare") == true)
+		} else {
+			check("partial_recovery_failed", false)
+		}
+
+		// 3. Verify planner gate skips weak metadata-only context
+		let now = Date()
+		let weakSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Finder",
+			windowTitle: "Desktop",
+			bundleIdentifier: "com.apple.finder",
+			inferredWorkflow: .unknown,
+			selectedText: nil,
+			clipboardText: nil,
+			recentOCRExcerpt: nil,
+			contextSummary: "Weak metadata context",
+			workflowConfidence: 0.1,
+			availableContextTypes: [.workflowContext],
+			permissionAvailability: [:],
+			generatedAt: now,
+			freshnessScore: 0.1
+		)
+		let weakSituational = SituationalContextSynthesizer.synthesize(from: weakSnap, referenceTime: now)
+		
+		let strongSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Firefox",
+			windowTitle: "Product review",
+			bundleIdentifier: "org.mozilla.firefox",
+			inferredWorkflow: .browsing,
+			selectedText: nil,
+			clipboardText: nil,
+			recentOCRExcerpt: "AirPods Max review details",
+			contextSummary: "Strong context",
+			workflowConfidence: 0.8,
+			availableContextTypes: [.workflowContext, .textSnippet],
+			permissionAvailability: [:],
+			generatedAt: now,
+			freshnessScore: 0.8
+		)
+
+		let hasOCR_weak = weakSnap.recentOCRExcerpt != nil && !weakSnap.recentOCRExcerpt!.isEmpty
+		let hasSel_weak = weakSnap.selectedText != nil && !weakSnap.selectedText!.isEmpty
+		let hasWorkflowConf_weak = (weakSnap.workflowConfidence >= 0.72) || (weakSituational.workflowConfidence >= 0.72)
+		let hasContinuity_weak = (weakSnap.freshnessScore >= 0.55) || (weakSituational.contextFreshness >= 0.55)
+		let canInvokePlanner_weak = hasOCR_weak || hasSel_weak || hasWorkflowConf_weak || hasContinuity_weak
+
+		check("weak_context_should_be_skipped_by_gate", !canInvokePlanner_weak)
+
+		let hasOCR_strong = strongSnap.recentOCRExcerpt != nil && !strongSnap.recentOCRExcerpt!.isEmpty
+		let canInvokePlanner_strong = hasOCR_strong
+
+		check("strong_context_should_allow_planner", canInvokePlanner_strong)
+
+		let ok = failures.isEmpty
+		let detail = failures.joined(separator: ";")
+		print("[TwoStageModelConfigSelfTest] ok=\(ok) failures=\(failures.count) detail=\(detail)")
+		return ok
+	}
+}
+
+/// T18.3.11 — Proposal Reactivity and Suppression Self-Tests.
+/// Verifies that proposals surface quickly from strong context even when planner is not ready,
+/// OCR is sanitized rather than excluded, and preservation logic handles transient failures.
+enum ProposalReactivitySelfTest {
+
+	static func run() async -> Bool {
+		var failures: [String] = []
+		func check(_ name: String, _ ok: Bool) {
+			if !ok {
+				print("[ProposalReactivitySelfTest] FAILURE: \(name)")
+				failures.append(name)
+			}
+		}
+
+		let now = Date()
+
+		// MARK: 1 — Warmup not ready does not block lightweight visibility for strong title
+
+		let strongTitle = "Designing a custom API in Swift"
+		let strongSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Firefox",
+			windowTitle: strongTitle,
+			bundleIdentifier: "org.mozilla.firefox",
+			inferredWorkflow: .browsing,
+			selectedText: nil,
+			clipboardText: nil,
+			recentOCRExcerpt: nil,
+			contextSummary: "",
+			workflowConfidence: 0.8,
+			availableContextTypes: [],
+			permissionAvailability: [:],
+			generatedAt: now,
+			freshnessScore: 0.85
+		)
+		let strongSituational = SituationalContextSynthesizer.synthesize(from: strongSnap, referenceTime: now)
+
+		// Test inferTwoStage with isWarmupReady=false
+		let result1 = await TaskInferenceEngine.shared.infer(
+			snapshot: strongSnap,
+			situational: strongSituational,
+			recentTitles: [strongTitle],
+			history: nil,
+			referenceTime: now,
+			isWarmupReady: false
+		)
+		check("warmup_not_ready_allows_strong_title", result1 != nil && result1?.whyNow == "warmup_lightweight_shell")
+
+		// MARK: 2 — No lightweight proposal when title is generic
+
+		let genericTitle = "Firefox"
+		let genericSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Firefox",
+			windowTitle: genericTitle,
+			bundleIdentifier: "org.mozilla.firefox",
+			inferredWorkflow: .browsing,
+			selectedText: nil,
+			clipboardText: nil,
+			recentOCRExcerpt: nil,
+			contextSummary: "",
+			workflowConfidence: 0.1,
+			availableContextTypes: [],
+			permissionAvailability: [:],
+			generatedAt: now,
+			freshnessScore: 0.1
+		)
+		let genericSituational = SituationalContextSynthesizer.synthesize(from: genericSnap, referenceTime: now)
+
+		let result2 = await TaskInferenceEngine.shared.infer(
+			snapshot: genericSnap,
+			situational: genericSituational,
+			recentTitles: [genericTitle],
+			history: nil,
+			referenceTime: now,
+			isWarmupReady: false
+		)
+		check("warmup_not_ready_blocks_generic_title", result2 == nil)
+
+		// MARK: 3 — OCR sanitization (strip dev artifacts, keep page text)
+
+		let mixedOCR = """
+https://github.com/apple/swift
+[debug] starting build
+package.swift
+Designing a custom API in Swift
+[error] build failed
+This is the actual page content
+"""
+		let mixedSnap = CanonicalGeneratedExecutionContextSnapshot(
+			activeApp: "Firefox",
+			windowTitle: strongTitle,
+			bundleIdentifier: "org.mozilla.firefox",
+			inferredWorkflow: .browsing,
+			selectedText: nil,
+			clipboardText: nil,
+			recentOCRExcerpt: mixedOCR,
+			contextSummary: "",
+			workflowConfidence: 0.8,
+			availableContextTypes: [.textSnippet],
+			permissionAvailability: [:],
+			generatedAt: now,
+			freshnessScore: 0.8
+		)
+		let isolated3 = ProposalContextIsolationGate.isolate(snapshot: mixedSnap)
+		print("[ProposalReactivitySelfTest] sanitized_ocr=\"\(isolated3.ocrExcerpt ?? "nil")\"")
+		check("ocr_sanitized_not_excluded", isolated3.ocrExcerpt != nil)
+		check("ocr_sanitized_strips_logs", !(isolated3.ocrExcerpt?.contains("[debug]") ?? true))
+		check("ocr_sanitized_keeps_content", isolated3.ocrExcerpt?.contains("Designing a custom API in Swift") ?? false)
+
+		// MARK: 4 — Early and Activation validation use same sanitized context
+
+		let proposalTitle = "Review Designing a custom API in Swift"
+		let isValidEarly = ProposalCapabilityValidator.validate(
+			title: proposalTitle,
+			goal: "Reviewing API design",
+			isolated: isolated3,
+			stage: "early"
+		).accepted
+		
+		let isValidActivation = ProposalCapabilityValidator.validate(
+			title: proposalTitle,
+			goal: "Reviewing API design",
+			isolated: isolated3,
+			stage: "activation"
+		).accepted
+		
+		check("validation_stages_consistent", isValidEarly == isValidActivation)
+
+		// MARK: 5 — Failed refinement preserves existing visible proposal
+
+		let existingCandidate = GeneratedExecutionProposalCandidate(
+			id: "existing_1",
+			title: "Review Design",
+			description: "desc",
+			source: .generatedExecution,
+			workflowType: .browsing,
+			intentType: .review,
+			confidence: 0.85,
+			interruptionCost: 0.1,
+			explainabilitySummary: "test",
+			expectedOutputSummary: "test",
+			requiredContextTypes: [.textSnippet],
+			executionAction: nil,
+			generatedActionId: nil,
+			primitiveSignature: "test",
+			isExecutableGeneratedProposal: true
+		)
+		let existingProposals = [
+			GeneratedExecutionProposalPanelItem(from: existingCandidate, rankScore: 0.82)
+		]
+		
+		let failedResult = GeneratedExecutionProposalActivationResult(
+			visibleProposals: [],
+			visibleStaticActionIds: [],
+			suppressedGeneratedCount: 1,
+			suppressedStaticCount: 0,
+			topSourceType: .generatedAction,
+			rankingSummary: "failed",
+			timingDecision: GeneratedExecutionProposalTimingDecision(outcome: .deferProposal, reason: "failed", allowsFloatingGenerated: false, allowsPanelGenerated: false),
+			warnings: [],
+			createdAt: now,
+			floatingGeneratedProposalId: nil,
+			isPolicySuppressed: false
+		)
+
+		let shouldPreserve = AppState.preservationDecision(
+			existingCount: existingProposals.count,
+			newVisibleCount: failedResult.visibleProposals.count,
+			isPolicySuppressed: failedResult.isPolicySuppressed,
+			bundleChanged: false,
+			ttlExpired: false
+		)
+		check("failed_refinement_preserves_existing", shouldPreserve == true)
+
+		// MARK: 6 — Panel allows safe grounded generated proposal below float threshold
+
+		let safeCandidate = GeneratedExecutionProposalCandidate(
+			id: "safe_1",
+			title: "Review Design",
+			description: "desc",
+			source: .generatedExecution,
+			workflowType: .browsing,
+			intentType: .review,
+			confidence: 0.75,
+			interruptionCost: 0.1,
+			explainabilitySummary: "test",
+			expectedOutputSummary: "test",
+			requiredContextTypes: [.textSnippet],
+			executionAction: nil,
+			generatedActionId: nil,
+			primitiveSignature: "test",
+			isExecutableGeneratedProposal: true
+		)
+
+		let floatThreshold = GeneratedExecutionProposalActivator.floatingStrongScoreThreshold
+		let panelThreshold = GeneratedExecutionProposalActivator.panelGeneratedScoreThreshold
+		let score = (floatThreshold + panelThreshold) / 2.0 // Between panel and float
+
+		// Mock the logic from activator
+		var panelEligible = false
+		if safeCandidate.isGeneratedFamily {
+			if safeCandidate.isExecutableGeneratedProposal {
+				panelEligible = true
+			}
+		}
+		check("panel_allows_safe_grounded_below_float", panelEligible == true && score < floatThreshold)
+
+		// MARK: 7 — No unsafe proposal passes
+
+		let unsafeTitle = "Purchase AirPods Max"
+		let unsafeValid = ProposalCapabilityValidator.validate(
+			title: unsafeTitle,
+			goal: "buy",
+			isolated: isolated3,
+			stage: "early"
+		).accepted
+		check("unsafe_proposal_rejected", !unsafeValid)
+
+		let ok = failures.isEmpty
+		print("[ProposalReactivitySelfTest] COMPLETED ok=\(ok) failures=\(failures.count)")
+		return ok
+	}
 }

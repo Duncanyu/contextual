@@ -21,7 +21,7 @@ final class IntelligenceProposalSelector {
 		#endif
 	}
 
-	/// T12.10: slightly lower so confident micro agreement keeps heuristic without phi3.
+	/// T12.10: slightly lower so confident micro agreement keeps heuristic without phi4-mini.
 	private static let overrideConfidenceThreshold: Double = 0.74
 	/// Easier to honor micro/cache “stay quiet” without floating churn.
 	private static let suppressConfidenceThreshold: Double = 0.82
@@ -231,7 +231,7 @@ final class IntelligenceProposalSelector {
 			logMicroSkippedModelNotLoadedIfNeeded(strength: suggestionStrength, lenBucket: request.textLength / 25, dbgBase: dbgBase)
 		}
 
-		// MARK: Step 4 — Local LLM fallback (phi3 path)
+		// MARK: Step 4 — Local LLM fallback (phi4-mini path)
 		// T12.10: cheap budget gates first — only probe Ollama when a real LLM call could be allowed.
 
 		let premodel = budget.evaluatePremodel(
@@ -314,7 +314,7 @@ final class IntelligenceProposalSelector {
 
 	// MARK: - Tier resolution
 
-	/// True when this tier’s rewrite should be ignored for notes/article (keep heuristic / skip phi3).
+	/// True when this tier’s rewrite should be ignored for notes/article (keep heuristic / skip phi4-mini).
 	private static func blocksWeakRewriteForLongForm(decision: IntelligenceDecisionResponse, contextType: ContextType) -> Bool {
 		guard contextType == .notes || contextType == .article else { return false }
 		guard decision.bestActionId == "rewrite_text" else { return false }

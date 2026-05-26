@@ -156,7 +156,7 @@ final class AppState: ObservableObject {
 		taskInferenceBatchMode = settings.taskInferenceBatchMode
 		if settings.twoStageTaskInferenceEnabled {
 			taskInferenceDisabled = false
-			activeTaskInferenceModel = "qwen2.5:0.5b + 1.5b"
+			activeTaskInferenceModel = "phi4-mini"
 		} else {
 			taskInferenceDisabled = settings.taskInferenceModel == ModelTierConfig.noViableModel
 			activeTaskInferenceModel = settings.effectiveTaskInferenceModel
@@ -179,18 +179,18 @@ final class AppState: ObservableObject {
 		}
 	}
 
-	/// Pull qwen2.5:0.5b (the recommended fast inference model) then re-run audit.
+	/// Pull phi4-mini (the recommended fast inference model) then re-run audit.
 	func installRecommendedInferenceModel() {
 		guard !modelAuditRunning else { return }
 		modelAuditRunning = true
 		Task.detached(priority: .utility) {
-			print("[ModelSelection] installing_recommended model=qwen2.5:0.5b")
-			let ok = await ModelManager.shared.pullModel(named: "qwen2.5:0.5b")
+			print("[ModelSelection] installing_recommended model=phi4-mini")
+			let ok = await ModelManager.shared.pullModel(named: "phi4-mini")
 			if ok {
 				let base = LocalAISettings.shared.modelName
 				await ModelAuditManager.shared.runAudit(baseModel: base)
 			} else {
-				print("[ModelSelection] install_failed model=qwen2.5:0.5b")
+				print("[ModelSelection] install_failed model=phi4-mini")
 			}
 			await MainActor.run { self.modelAuditRunning = false }
 			await self.refreshModelAuditInfo()
@@ -298,6 +298,18 @@ final class AppState: ObservableObject {
 
 	@Published var floatingSuggestion: SuggestionViewModel?
 	@Published var isFloatingSuggestionVisible: Bool = false
+
+	/// Phase 4M: True between `ExecutionFocusHandoff.prepare()` and `finalize()`.
+	/// Views that contribute to OCR (panel chrome, processing overlays) should
+	/// honor this flag and dim/hide while a generated execution is running, so
+	/// the runtime's screenshot does not capture assistant chrome instead of
+	/// page content. Resets to false on completion.
+	@Published private(set) var isExecutionUISuspended: Bool = false
+
+	/// Internal entry point used by the focus-handoff coordinator. Not for UI usage.
+	func _setExecutionUISuspended(_ value: Bool) {
+		isExecutionUISuspended = value
+	}
 
 	let floatingSuggestionLifecycle = FloatingSuggestionLifecycle()
 	private var activeFloatingLifecycleBinding: ActiveFloatingLifecycleBinding?
@@ -488,11 +500,11 @@ final class AppState: ObservableObject {
 		if shouldPreserve {
 			let failureLabel: String
 			if result.visibleProposals.isEmpty {
-				failureLabel = result.isPolicySuppressed ? "policy_suppressed" : "empty_attempt"
+				failureLabel = "refinement_failed_no_valid_replacement"
 			} else {
 				failureLabel = "policy_suppressed"
 			}
-			print("[GeneratedProposalState] preserving_existing reason=\(failureLabel) existing=\(activatedGeneratedProposals.count) failure=\(failureLabel)")
+			print("[GeneratedProposalState] preserving existing reason=\(failureLabel) existing=\(activatedGeneratedProposals.count)")
 
 			// T18.6B — Update metadata but KEEP previous context warnings so we don't lose the "where" anchor.
 			let lastWarnings = generatedProposalActivationResult.warnings.filter { $0.hasPrefix("bundle:") || $0.hasPrefix("title:") }
@@ -559,7 +571,7 @@ final class AppState: ObservableObject {
 	/// - The TTL has NOT expired
 	///
 	/// - Returns: `true` if existing proposals should be kept; `false` to replace/clear.
-	static func preservationDecision(
+	nonisolated static func preservationDecision(
 		existingCount: Int,
 		newVisibleCount: Int,
 		isPolicySuppressed: Bool,
@@ -587,9 +599,45 @@ final class AppState: ObservableObject {
 			guard let action = candidate.executionAction else { continue }
 			generatedExecutionActionByCandidateId[candidate.id] = action
 			// Cache AgenticTaskPlan when present — routes execution to AgenticRuntime.
-			if let plan = candidate.agenticPlan {
-				agenticPlanByCandidateId[candidate.id] = plan
-				print("[AgenticPlanCache] stored id=\(candidate.id.prefix(40)) goal=\(plan.goal.prefix(60))")
+			if var plan = candidate.agenticPlan {
+				let alignment = AgenticGoalAlignmentValidator.validate(
+					title: candidate.title,
+					goal: plan.goal,
+					workflow: plan.workflow,
+					appName: latestCanonicalSnapshot?.activeApp ?? "Unknown",
+					bundleId: latestCanonicalSnapshot?.bundleIdentifier ?? "",
+					windowTitle: latestCanonicalSnapshot?.windowTitle ?? "",
+					ocrExcerpt: latestCanonicalSnapshot?.recentOCRExcerpt,
+					axExcerpt: nil
+				)
+				if alignment.status == AgenticGoalAlignmentDecision.Status.rejected {
+					print("[AgenticPlanCache] rejected reason=goal_alignment_failed")
+					continue
+				}
+				if alignment.status == AgenticGoalAlignmentDecision.Status.repaired {
+					plan = AgenticTaskPlan(
+						id: plan.id,
+						goal: alignment.alignedGoal, // Repaired goal
+						workflow: plan.workflow,
+						sourceProposalId: plan.sourceProposalId,
+						allowedActionFamilies: plan.allowedActionFamilies,
+						requiredObservations: plan.requiredObservations,
+						successCriteria: plan.successCriteria,
+						stopConditions: plan.stopConditions,
+						maxSteps: plan.maxSteps,
+						maxLLMCalls: plan.maxLLMCalls,
+						maxOCRCalls: plan.maxOCRCalls,
+						maxRuntimeSeconds: plan.maxRuntimeSeconds,
+						requiresPermission: plan.requiresPermission,
+						safetyLevel: plan.safetyLevel,
+						createdAt: plan.createdAt
+					)
+					agenticPlanByCandidateId[candidate.id] = plan
+					print("[AgenticPlanCache] stored id=\(candidate.id.prefix(40)) goal=\(plan.goal.prefix(60)) reason=goal_alignment_repaired")
+				} else {
+					agenticPlanByCandidateId[candidate.id] = plan
+					print("[AgenticPlanCache] stored id=\(candidate.id.prefix(40)) goal=\(plan.goal.prefix(60))")
+				}
 			}
 		}
 		for (id, action) in generatedExecutionActionByCandidateId {

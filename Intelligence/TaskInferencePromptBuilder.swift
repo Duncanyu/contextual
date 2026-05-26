@@ -63,7 +63,7 @@ enum TaskInferencePromptBuilder {
 		// IMPORTANT: Never include concrete example values (specific goals/questions).
 		// Concrete examples cause small models to copy them verbatim (example leakage).
 		//
-		// Contract: qwen outputs ONLY goal + capability categories (no hook IDs).
+		// Contract: phi4-mini outputs ONLY goal + capability categories (no hook IDs).
 		let needAllowed = "visible_ocr,ax_window_text,browser_text,selected_text,recent_titles,clipboard_if_relevant,visual_descriptor"
 		let needCatsAllowed = "context,extract,reason,output,compare,organize,debug,study"
 		var lines: [String] = [

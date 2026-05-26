@@ -264,6 +264,13 @@ enum AgenticStopCondition: String, Codable, Sendable, CaseIterable {
     case unsafe_action_required
     case stuck_no_progress
     case user_cancelled
+    // Phase 4O — evidence-aware stop conditions
+    /// All required evidence requirements were satisfied; loop ended cleanly.
+    case evidence_satisfied
+    /// Budget exhausted but at least one required evidence slot was not satisfied.
+    case partial_evidence_budget_exhausted
+    /// No remaining legal action could make progress on missing evidence.
+    case no_more_safe_actions
 }
 
 // MARK: - Eligibility

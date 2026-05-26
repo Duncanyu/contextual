@@ -142,6 +142,10 @@ enum TaskInferencePlanningPipeline {
 		let intent = inferIntent(from: primitives)
 
 		let title = synthesizeTitle(goal: inference.possibleUserGoal, workflow: workflow, intent: intent)
+		guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			print("[HookCompositionPipeline] skipped reason=no_contextual_title")
+			return nil
+		}
 		let question = synthesizeQuestion(goal: inference.possibleUserGoal, title: title)
 
 		let requiredContext = minimizedRequiredContext(
@@ -223,6 +227,10 @@ enum TaskInferencePlanningPipeline {
 		let intent = mapIntent(from: situational.inferredIntent)
 		
 		let title = synthesizeTitle(goal: inference.possibleUserGoal, workflow: workflow, intent: intent)
+		guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			print("[HookCompositionPipeline] skipped reason=no_contextual_title")
+			return nil
+		}
 		let question = synthesizeQuestion(goal: inference.possibleUserGoal, title: title)
 		
 		// Use anchors as a base plan. The runtime will expand this.
@@ -337,10 +345,9 @@ enum TaskInferencePlanningPipeline {
 			let capped = String(g.prefix(64))
 			return capped.prefix(1).uppercased() + capped.dropFirst()
 		}
-		if workflow != .unknown, intent != .unknown {
-			return "Help with \(workflow.rawValue) (\(intent.rawValue))"
-		}
-		return "Help with the current context"
+		// Phase 4Q: never synthesize a canned user-visible title. If the model did not
+		// provide a grounded goal string, we suppress instead of emitting a template.
+		return ""
 	}
 
 	private static func synthesizeQuestion(goal: String, title: String) -> String {
@@ -348,7 +355,9 @@ enum TaskInferencePlanningPipeline {
 		if !g.isEmpty {
 			return "Want me to help with: \(String(g.prefix(90)))?"
 		}
-		return "Want help with this?"
+		// Title-less proposals should not surface, but keep a safe default for
+		// internal debugging if a caller still requests a question.
+		return ""
 	}
 
 	private static func minimizedRequiredContext(
@@ -401,7 +410,7 @@ private enum HookCategoryRetriever {
 	/// Maps the 9 parser-allowed capability categories to HookCategory sets.
 	/// Must exactly match the `allowedCats` set in TaskInferenceParser.buildResult and
 	/// the `catsAllowed` string in TaskInferencePromptBuilder.
-	/// DO NOT add `debug` or `study` — they are not in the parser's allowed set and qwen
+	/// DO NOT add `debug` or `study` — they are not in the parser's allowed set and phi4-mini
 	/// never outputs them. Adding them here would be dead code.
 	static func hookCategories(for cat: String) -> Set<HookCategory> {
 		switch cat {
@@ -534,7 +543,7 @@ private enum HookPlanningSafetyChecker {
 /// read_selected_text is excluded if no selection exists; OCR hooks excluded if screen permission denied.
 enum HookScriptDiscovery {
 
-    private static let model = "qwen2.5:1.5b"
+    private static let model = "phi4-mini"
     private static let numPredict = 150   // Accommodates the 'reason' string in the new JSON schema
     private static let temperature = 0.05
     private static let stepTimeoutSeconds: TimeInterval = 4.0
@@ -588,6 +597,7 @@ enum HookScriptDiscovery {
         let att = ProposalAttemptScope.currentId ?? "none"
         print("[ProposalAttempt] id=\(att) hook_discovery_started")
         print("[HookScriptDiscovery] started goal=\"\(String(goal.prefix(60)))\"")
+        print("[SemanticPlanner] provider=\(model)")
 
         for step in 1...maxSteps {
             // Stop if chain ends with presentation/app_control
@@ -1096,7 +1106,7 @@ enum HookLLMPlanner {
 
     // MARK: - Configuration
 
-    private static let model = "qwen2.5:1.5b"
+    private static let model = "phi4-mini"
     private static let numPredict = 120
     private static let temperature = 0.05
     private static let timeoutSeconds: TimeInterval = 6.0
@@ -1114,6 +1124,9 @@ enum HookLLMPlanner {
         let isSelfTest = ProcessInfo.processInfo.environment["CONTEXTUAL_RUN_HOOK_PLAN_SELFTEST"] == "1"
         let mode = isSelfTest ? "mock" : "live"
         print("[HookPlanLLM] mode=\(mode) started candidates=\(candidateHooks.count)")
+        if !isSelfTest {
+            print("[SemanticPlanner] provider=\(model)")
+        }
 
         // Mock execution for self-test
         if isSelfTest {

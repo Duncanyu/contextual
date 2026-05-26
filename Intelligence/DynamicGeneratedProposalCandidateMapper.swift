@@ -9,6 +9,7 @@ enum DynamicGeneratedProposalCandidateMapper {
 		budget: ExecutionBudget,
 		referenceTime: Date = Date()
 	) -> [GeneratedExecutionProposalCandidate] {
+		let effectiveSnapshot = result.contextSnapshot ?? snapshot
 		let att = ProposalAttemptScope.currentId ?? "none"
 		print("[ProposalAttempt] id=\(att) contract_created count=\(result.hookContracts.count)")
 
@@ -21,12 +22,12 @@ enum DynamicGeneratedProposalCandidateMapper {
 		// Extract semantic anchors from the current snapshot and reject proposals that are
 		// semantically misaligned before they become visible to the user.
 		let extractor = AgenticIntentGroundingExtractor()
-		let grounding = extractor.extract(from: snapshot)
+		let grounding = extractor.extract(from: effectiveSnapshot)
 		let sanityFilter = AgenticProposalSanityFilter()
 		let groundedProposals = sanityFilter.filter(
 			proposals: result.proposals,
 			grounding: grounding,
-			snapshot: snapshot
+			snapshot: effectiveSnapshot
 		)
 		let sanityRejected = result.proposals.count - groundedProposals.count
 		if sanityRejected > 0 {
@@ -39,10 +40,98 @@ enum DynamicGeneratedProposalCandidateMapper {
 			uniqueKeysWithValues: result.hookContracts.map { ($0.id, $0.executionMode) }
 		)
 
-		let mapped = groundedProposals.compactMap { proposal in
-			mapCandidate(
-				proposal: proposal,
-				snapshot: snapshot,
+		// Phase 4P — Isolate the snapshot once so all candidates are validated
+		// against the same sanitized active context (clipboard / dev / log
+		// artifacts excluded). Early stage validation that ran in the planner
+		// now uses the same isolated context, so early ≠ activation rejections
+		// can no longer disagree on the same title.
+		let isolated = ProposalContextIsolationGate.isolate(snapshot: effectiveSnapshot)
+
+		let mapped = groundedProposals.compactMap { proposal -> GeneratedExecutionProposalCandidate? in
+			let validation = ProposalCapabilityValidator.validate(
+				title: proposal.title,
+				goal: proposal.expectedOutcome,
+				isolated: isolated,
+				stage: "activation"
+			)
+			guard validation.accepted else {
+				print("[ProposalValidation] rejected stage=activation reason=unsupported_title title=\"\(proposal.title)\" detail=\(validation.reason)")
+				return nil
+			}
+
+			let alignment = AgenticGoalAlignmentValidator.validate(
+				title: proposal.title,
+				goal: proposal.expectedOutcome,
+				workflow: proposal.workflowType.rawValue,
+				appName: effectiveSnapshot.activeApp,
+				bundleId: effectiveSnapshot.bundleIdentifier ?? "",
+				windowTitle: effectiveSnapshot.windowTitle,
+				ocrExcerpt: effectiveSnapshot.recentOCRExcerpt,
+				axExcerpt: nil
+			)
+
+			if alignment.status == .rejected {
+				print("[ProposalValidation] rejected reason=goal_alignment_failed title=\"\(proposal.title)\" goal=\"\(proposal.expectedOutcome)\"")
+				return nil
+			}
+
+			var finalProposal = proposal
+			if alignment.status == .repaired {
+				print("[ProposalValidation] repaired reason=redundant_search_to_extract_context original=\"\(proposal.expectedOutcome)\" repaired=\"\(alignment.alignedGoal)\"")
+				// Phase 4Q — surface the capability-repair as a dedicated log family so
+				// dogfood can see when a navigation/search candidate was internally
+				// redirected to an in-envelope gather goal (visible title is preserved
+				// when safe; the existing safety validator above rejects anything unsafe).
+				let repairReason: String = {
+					switch alignment.detectedIssue {
+					case "redundant_search_current_context": return "unsupported_search_current_context"
+					case "generic_summary_on_product_page": return "generic_summary_on_product_page"
+					default: return alignment.detectedIssue.isEmpty ? "capability_aligned" : alignment.detectedIssue
+					}
+				}()
+				print("[CapabilityRepair] applied=yes reason=\(repairReason)")
+				print("[CapabilityRepair] original=\"\(proposal.expectedOutcome)\"")
+				print("[CapabilityRepair] repaired_goal=\"\(alignment.alignedGoal)\"")
+				print("[CapabilityRepair] visible_title_policy=preserve_if_safe_else_reject")
+				var alignedPlan: AgenticTaskPlan? = nil
+				if let originalPlan = proposal.agenticPlan {
+					alignedPlan = AgenticTaskPlan(
+						id: originalPlan.id,
+						goal: alignment.alignedGoal,
+						workflow: originalPlan.workflow,
+						sourceProposalId: originalPlan.sourceProposalId,
+						allowedActionFamilies: originalPlan.allowedActionFamilies,
+						requiredObservations: originalPlan.requiredObservations,
+						successCriteria: originalPlan.successCriteria,
+						stopConditions: originalPlan.stopConditions,
+						maxSteps: originalPlan.maxSteps,
+						maxLLMCalls: originalPlan.maxLLMCalls,
+						maxOCRCalls: originalPlan.maxOCRCalls,
+						maxRuntimeSeconds: originalPlan.maxRuntimeSeconds,
+						requiresPermission: originalPlan.requiresPermission,
+						safetyLevel: originalPlan.safetyLevel,
+						createdAt: originalPlan.createdAt
+					)
+				}
+				finalProposal = ValidatedDynamicGeneratedProposal(
+					id: proposal.id,
+					title: proposal.title,
+					description: proposal.description,
+					workflowType: proposal.workflowType,
+					intentType: proposal.intentType,
+					expectedOutcome: alignment.alignedGoal,
+					requiredContextTypes: proposal.requiredContextTypes,
+					suggestedPrimitives: proposal.suggestedPrimitives,
+					interruptionCost: proposal.interruptionCost,
+					confidence: proposal.confidence,
+					usefulnessHint: proposal.usefulnessHint,
+					agenticPlan: alignedPlan
+				)
+			}
+
+			return mapCandidate(
+				proposal: finalProposal,
+				snapshot: effectiveSnapshot,
 				budget: budget,
 				requiresVisual: result.requiresVisualContext,
 				referenceTime: referenceTime,
@@ -134,6 +223,23 @@ enum DynamicGeneratedProposalCandidateMapper {
 		let explainability = "\(sourceTag)|\(proposal.usefulnessHint)|primitives=\(primSigPart)|contract=\(proposal.id.prefix(60))"
 		let generationSource: GenerationSource = isHookComposer ? .hookComposer : .generatedAction
 
+		let targetAnchor: TargetWindowAnchor? = {
+			guard let bundle = snapshot.bundleIdentifier else { return nil }
+			let fp = TargetWindowAnchor.fingerprint(
+				bundleIdentifier: bundle,
+				windowTitle: snapshot.windowTitle,
+				workflow: proposal.workflowType
+			)
+			return TargetWindowAnchor(
+				bundleIdentifier: bundle,
+				appName: snapshot.activeApp,
+				windowTitle: snapshot.windowTitle,
+				contextFingerprint: fp,
+				createdAt: referenceTime,
+				sourceCandidateId: proposal.id
+			)
+		}()
+
 		let execution = GeneratedExecutionAction(
 			title: proposal.title,
 			description: proposal.description,
@@ -145,6 +251,7 @@ enum DynamicGeneratedProposalCandidateMapper {
 			executionPlan: plan,
 			explainabilitySummary: explainability,
 			generationSource: generationSource,
+			targetAnchor: targetAnchor,
 			createdAt: referenceTime,
 			expirationDate: referenceTime.addingTimeInterval(180),
 			isReusable: false,

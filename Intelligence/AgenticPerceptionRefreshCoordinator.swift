@@ -186,6 +186,136 @@ struct AgenticPerceptionRefreshCoordinator: Sendable {
 		)
 	}
 
+	// MARK: - Phase 4H: Initial capture / priming
+
+	/// Phase 4H: Live OCR/AX priming at execution start.
+	///
+	/// Called before step 1 when the proposal snapshot has no usable OCR.
+	///
+	/// Logs:
+	///   [PerceptionRefresh] initial_capture started ...
+	///   [PerceptionRefresh] initial_capture screenshot_acquired=yes/no
+	///   [PerceptionRefresh] initial_capture ocr_chars=...
+	///   [PerceptionRefresh] initial_capture ax_chars=...
+	///   [PerceptionRefresh] initial_capture completed ...
+	func initialCapture(
+		previousSnapshot: CanonicalGeneratedExecutionContextSnapshot,
+		previousSnapshotID: UUID?,
+		ocrBudgetRemaining: Bool,
+		targetAnchor: TargetWindowAnchor? = nil,
+		dryRun: Bool = false
+	) async -> AgenticPerceptionRefreshResult {
+		let startedAt = Date()
+		let snapshotID = UUID()
+		print("[PerceptionRefresh] initial_capture started snapshot_id=\(snapshotID.uuidString.prefix(8)) dry_run=\(dryRun)")
+
+		if dryRun {
+			// Deterministic dry-run: inject synthetic OCR/AX so runtime can exercise the priming path
+			// without requiring screen recording permission.
+			let syntheticOCR = previousSnapshot.recentOCRExcerpt ?? "dry_run_ocr: product price rating"
+			let syntheticAX = "dry_run_ax: button link heading"
+			let provisional = buildFreshSnapshot(
+				previousSnapshot: previousSnapshot,
+				freshOCR: syntheticOCR,
+				freshAXText: syntheticAX,
+				snapshotID: snapshotID
+			)
+			let elapsed = Int(Date().timeIntervalSince(startedAt) * 1000)
+			print("[PerceptionRefresh] initial_capture screenshot_acquired=no reason=dry_run")
+			print("[PerceptionRefresh] initial_capture ocr_chars=\(syntheticOCR.count)")
+			print("[PerceptionRefresh] initial_capture ax_chars=\(syntheticAX.count)")
+			print("[PerceptionRefresh] initial_capture completed elapsed_ms=\(elapsed) ocr_acquired=yes ax_acquired=yes")
+			return AgenticPerceptionRefreshResult(
+				freshSnapshot: provisional,
+				snapshotID: snapshotID,
+				previousSnapshotID: previousSnapshotID,
+				textHash: Self.computeTextHash(ocr: syntheticOCR, selectedText: provisional.selectedText),
+				freshOCR: syntheticOCR,
+				freshAXText: syntheticAX,
+				success: true,
+				failedStage: nil,
+				capturedAt: Date(),
+				elapsedMs: elapsed
+			)
+		}
+
+		guard ScreenCaptureSource.isScreenRecordingAuthorized() else {
+			print("[PerceptionRefresh] initial_capture failed stage=screenshot reason=no_screen_recording_permission")
+			return buildFailedResult(
+				snapshotID: snapshotID,
+				previousSnapshotID: previousSnapshotID,
+				previousSnapshot: previousSnapshot,
+				failedStage: "screenshot",
+				startedAt: startedAt
+			)
+		}
+
+		guard let frame = ScreenCaptureSource.captureSingleFrame() else {
+			print("[PerceptionRefresh] initial_capture failed stage=screenshot reason=capture_returned_nil")
+			return buildFailedResult(
+				snapshotID: snapshotID,
+				previousSnapshotID: previousSnapshotID,
+				previousSnapshot: previousSnapshot,
+				failedStage: "screenshot",
+				startedAt: startedAt
+			)
+		}
+		print("[PerceptionRefresh] initial_capture screenshot_acquired=yes size=\(frame.width)x\(frame.height)")
+
+		var freshOCR: String? = nil
+		if ocrBudgetRemaining {
+			let ocrResult = await OCRProcessor.shared.recognizeText(from: frame.image)
+			let text = ocrResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+			if !text.isEmpty {
+				freshOCR = String(text.prefix(CanonicalGeneratedExecutionContextSnapshot.maxExcerptLength))
+			}
+			print("[PerceptionRefresh] initial_capture ocr_chars=\(freshOCR?.count ?? 0) lines=\(ocrResult.lineCount)")
+		} else {
+			print("[PerceptionRefresh] initial_capture ocr_skipped reason=budget_exhausted")
+		}
+
+		var freshAXText: String? = nil
+		let activeAX = AXWindowContentSource.shared.extractActiveWindowContent()
+		if let activeAX, !activeAX.visibleTextFragments.isEmpty {
+			// If a target anchor is provided and the active AX window is the assistant,
+			// skip AX text so we don't ground against assistant UI.
+			let assistantBundle = Bundle.main.bundleIdentifier
+			if let targetAnchor,
+			   let assistantBundle,
+			   activeAX.bundleIdentifier == assistantBundle,
+			   targetAnchor.bundleIdentifier != assistantBundle {
+				print("[TargetWindowCapture] exact_window_capture=no fallback=screen_only reason=ax_frontmost_is_assistant target_bundle=\(targetAnchor.bundleIdentifier)")
+			} else {
+				let joined = activeAX.visibleTextFragments.prefix(20).joined(separator: " ")
+				freshAXText = String(joined.prefix(CanonicalGeneratedExecutionContextSnapshot.maxExcerptLength))
+			}
+		}
+		print("[PerceptionRefresh] initial_capture ax_chars=\(freshAXText?.count ?? 0)")
+
+		let freshSnapshot = buildFreshSnapshot(
+			previousSnapshot: previousSnapshot,
+			freshOCR: freshOCR,
+			freshAXText: freshAXText,
+			snapshotID: snapshotID
+		)
+		let textHash = Self.computeTextHash(ocr: freshOCR, selectedText: freshSnapshot.selectedText)
+		let elapsed = Int(Date().timeIntervalSince(startedAt) * 1000)
+		print("[PerceptionRefresh] initial_capture completed elapsed_ms=\(elapsed) ocr_acquired=\(freshOCR != nil ? "yes" : "no") ax_acquired=\(freshAXText != nil ? "yes" : "no")")
+
+		return AgenticPerceptionRefreshResult(
+			freshSnapshot: freshSnapshot,
+			snapshotID: snapshotID,
+			previousSnapshotID: previousSnapshotID,
+			textHash: textHash,
+			freshOCR: freshOCR,
+			freshAXText: freshAXText,
+			success: freshOCR != nil || freshAXText != nil,
+			failedStage: nil,
+			capturedAt: Date(),
+			elapsedMs: elapsed
+		)
+	}
+
 	// MARK: - Snapshot builder
 
 	/// Builds a fresh snapshot from the previous one, replacing stale OCR with
@@ -201,7 +331,7 @@ struct AgenticPerceptionRefreshCoordinator: Sendable {
 		let mergedOCR = freshOCR ?? previousSnapshot.recentOCRExcerpt
 		let freshnessScore: Double = freshOCR != nil ? 0.90 : 0.65
 
-		return CanonicalGeneratedExecutionContextSnapshot(
+		let provisional = CanonicalGeneratedExecutionContextSnapshot(
 			activeApp: previousSnapshot.activeApp,
 			windowTitle: previousSnapshot.windowTitle,
 			bundleIdentifier: previousSnapshot.bundleIdentifier,
@@ -228,6 +358,10 @@ struct AgenticPerceptionRefreshCoordinator: Sendable {
 			fusedPacketId: snapshotID,  // snapshotID tracked as packet ID for identity
 			packetIsStale: false
 		)
+		if let freshAXText, !freshAXText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+			return provisional.merging(axWindowTextExcerpt: freshAXText, referenceTime: now)
+		}
+		return provisional
 	}
 
 	// MARK: - Dry run

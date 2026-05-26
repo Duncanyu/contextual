@@ -103,6 +103,8 @@ struct GeneratedExecutionAction: Equatable, Sendable, Codable, Identifiable {
 	let executionPlan: ExecutionPlan
 	let explainabilitySummary: String
 	let generationSource: GenerationSource
+	/// Proposal-time execution anchor for correcting foreground-app drift during execution (Phase 4J).
+	let targetAnchor: TargetWindowAnchor?
 	let createdAt: Date
 	let expirationDate: Date
 	let isReusable: Bool
@@ -120,6 +122,7 @@ struct GeneratedExecutionAction: Equatable, Sendable, Codable, Identifiable {
 		executionPlan: ExecutionPlan,
 		explainabilitySummary: String,
 		generationSource: GenerationSource,
+		targetAnchor: TargetWindowAnchor? = nil,
 		createdAt: Date,
 		expirationDate: Date,
 		isReusable: Bool,
@@ -138,6 +141,7 @@ struct GeneratedExecutionAction: Equatable, Sendable, Codable, Identifiable {
 		self.executionPlan = executionPlan
 		self.explainabilitySummary = explainabilitySummary
 		self.generationSource = generationSource
+		self.targetAnchor = targetAnchor
 		self.createdAt = createdAt
 		self.expirationDate = expirationDate
 		self.isReusable = isReusable

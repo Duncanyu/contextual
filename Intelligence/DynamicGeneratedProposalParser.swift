@@ -183,6 +183,7 @@ enum DynamicGeneratedProposalParser {
 			warnings: warnings,
 			llmDiagnosticCause: nil,
 			createdAt: referenceTime,
+			contextSnapshot: nil,
 			libraryRecords: [],
 			hookContracts: []
 		)

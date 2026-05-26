@@ -3,7 +3,7 @@
 // Tests three specific scenarios: shopping, coding, no-selection.
 //
 // Triggered by: CONTEXTUAL_RUN_LIVE_CHAIN_SELFTEST=1
-// Uses real Ollama calls (qwen2.5:1.5b) — requires Ollama running.
+// Uses real Ollama calls (phi4-mini) — requires Ollama running.
 //
 // Expected output:
 //   [LiveChainSelfTest] started

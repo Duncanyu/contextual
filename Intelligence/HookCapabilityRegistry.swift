@@ -232,11 +232,16 @@ struct HookCapabilityRegistry: Sendable {
 	/// Enabled automatically by hook composition self-tests and the debug compose trigger.
 	nonisolated(unsafe) static var hookAuditEnabled: Bool = false
 
+	/// Active installed hook catalog used by discovery/planning.
+	/// After the hook library reset, this is intentionally empty by default.
 	let all: [HookCapabilityDefinition]
 	private let byId: [String: HookCapabilityDefinition]
+	/// Sandbox-only hook definitions (quarantined) used by HookExecutionSandbox.
+	/// These are NOT part of discovery/planning.
+	private let sandboxById: [String: HookCapabilityDefinition]
 
 	init() {
-		let defs = Self.foundationalCatalog()
+		let defs = Self.buildInstalledCatalog()
 		self.all = defs
 		// Defensive: avoid crashing the entire app if a hook ID is accidentally duplicated.
 		// (This has occurred in practice and surfaced as a Swiftinterface fatal error.)
@@ -251,6 +256,13 @@ struct HookCapabilityRegistry: Sendable {
 			print("[HookRegistry] duplicate_ids_detected count=\(uniqueDupes.count) ids=[\(uniqueDupes.joined(separator: ","))]")
 		}
 		self.byId = map
+		self.sandboxById = Dictionary(uniqueKeysWithValues: Self.sandboxOnlyCatalog().map { ($0.id, $0) })
+
+		if defs.isEmpty {
+			print("[HookCatalog] active=empty reason=hook_library_reset")
+		} else {
+			print("[HookCatalog] active=legacy count=\(defs.count)")
+		}
 
 		// [HookAudit] — startup summary of all hooks in the registry.
 		let implementedAll = defs.filter(\.isImplemented)
@@ -279,11 +291,12 @@ struct HookCapabilityRegistry: Sendable {
 			map[def.id] = def
 		}
 		self.byId = map
+		self.sandboxById = Dictionary(uniqueKeysWithValues: Self.sandboxOnlyCatalog().map { ($0.id, $0) })
 	}
 
 	// MARK: - Public API
 
-	func definition(for id: String) -> HookCapabilityDefinition? { byId[id] }
+	func definition(for id: String) -> HookCapabilityDefinition? { byId[id] ?? sandboxById[id] }
 
 	/// Comma-separated list of all implemented, non-dangerous hook IDs for prompt injection.
 	func allowedIdsList() -> String {
@@ -331,6 +344,8 @@ struct HookCapabilityRegistry: Sendable {
 
 	// MARK: - Definitions
 
+	/// Legacy foundational catalog retained for reference behind an explicit debug flag.
+	/// This is intentionally NOT active by default.
     static func foundationalCatalog() -> [HookCapabilityDefinition] {
         [
 			HookCapabilityDefinition(
@@ -2357,6 +2372,90 @@ struct HookCapabilityRegistry: Sendable {
 			),
         ]
     }
+
+	/// Active installed catalog for discovery/planning.
+	/// Default: empty. Enable legacy catalog only with explicit DEBUG env var.
+	private static func buildInstalledCatalog() -> [HookCapabilityDefinition] {
+		#if DEBUG
+		if ProcessInfo.processInfo.environment["CONTEXTUAL_ENABLE_LEGACY_HOOK_CATALOG"] == "1" {
+			return foundationalCatalog()
+		}
+		#endif
+		return []
+	}
+
+	/// Minimal sandbox-only catalog so HookExecutionSandbox can run a fixed safe chain even
+	/// while discovery/planning hooks are reset.
+	private static func sandboxOnlyCatalog() -> [HookCapabilityDefinition] {
+		[
+			HookCapabilityDefinition(
+				id: "observe_current_context",
+				description: "Captures a snapshot of the active window/app state.",
+				category: .sensing,
+				lifecycleStatus: .implemented,
+				requiredContextTypes: [.none],
+				permission: .none,
+				permissionLevel: .none,
+				outputType: .metadata,
+				mappedPrimitive: nil
+			),
+			HookCapabilityDefinition(
+				id: "gather_visible_context_once",
+				description: "Perform one bounded screen peek (no loops) to enrich context.",
+				category: .sensing,
+				lifecycleStatus: .implemented,
+				requiredContextTypes: [.screenCapture, .fusedVisual],
+				permission: .screenRecording,
+				permissionLevel: .screenRecording,
+				outputType: .metadata,
+				mappedPrimitive: nil
+			),
+			HookCapabilityDefinition(
+				id: "run_ocr_once",
+				description: "Perform OCR once on a bounded captured visual context.",
+				category: .sensing,
+				lifecycleStatus: .implemented,
+				requiredContextTypes: [.fusedVisual],
+				permission: .screenRecording,
+				permissionLevel: .screenRecording,
+				outputType: .text,
+				mappedPrimitive: nil
+			),
+			HookCapabilityDefinition(
+				id: "extract_entities",
+				description: "Extract lightweight entities from available text context.",
+				category: .extraction,
+				lifecycleStatus: .implemented,
+				requiredContextTypes: [.textSnippet],
+				permission: .none,
+				permissionLevel: .none,
+				outputType: .bullets,
+				mappedPrimitive: nil
+			),
+			HookCapabilityDefinition(
+				id: "extract_product_attributes",
+				description: "Extract simple product attributes (price/rating) from available text context.",
+				category: .extraction,
+				lifecycleStatus: .implemented,
+				requiredContextTypes: [.textSnippet],
+				permission: .none,
+				permissionLevel: .none,
+				outputType: .table,
+				mappedPrimitive: nil
+			),
+			HookCapabilityDefinition(
+				id: "present_result",
+				description: "Present a structured result from prior hook outputs.",
+				category: .presentation,
+				lifecycleStatus: .implemented,
+				requiredContextTypes: [.none],
+				permission: .none,
+				permissionLevel: .none,
+				outputType: .text,
+				mappedPrimitive: nil
+			),
+		]
+	}
 }
 import Foundation
 
@@ -2452,4 +2551,3 @@ extension HookCapabilityDefinition {
         return tags
     }
 }
-

@@ -1,7 +1,7 @@
 // TwoStageRouterPromptBuilder.swift
 import Foundation
 
-/// Dedicated prompt builder for the cheap router stage (qwen2.5:0.5b).
+/// Dedicated prompt builder for the cheap router stage (phi4-mini).
 ///
 /// Kept aggressively compact (<700 bytes target) to minimize model prefill time.
 /// The router only decides whether enough context exists for the planner —
@@ -33,8 +33,9 @@ struct TwoStageRouterPromptBuilder {
         var lines: [String] = [
             "Task: Decide if the provided context is sufficient to classify the user's intent.",
             "If app/title is clear, or ocr/visual/ax/sel is present -> enough_context.",
-            "If blank browser/media/game with no text -> need_more_context.",
-            "If need_more_context, you may request: ocr, visual_descriptor, ax_window_text.",
+            "If enough_context, propose a natural, context-specific `proposed_title` and `proposed_goal`.",
+            "If need_more_context or insufficient_context, set BOTH proposed_title and proposed_goal to \"\".",
+            "If decision is need_more_context, request at least one available context source from: ocr, ax, selection, window_title, visual_snapshot.",
         ]
 
         // Compact context packet — flags only, no excerpts.

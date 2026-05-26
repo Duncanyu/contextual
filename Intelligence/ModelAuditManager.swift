@@ -26,15 +26,15 @@ private struct SmokeTestResult: Sendable {
 /// Discovers installed local Ollama models and benchmarks candidates for task inference.
 ///
 /// Fast-model-first strategy:
-/// - Task inference needs a tiny, fast, JSON-reliable model (not phi3 or other heavy models).
-/// - Preferred: qwen2.5:0.5b (~390MB) > qwen2.5:1.5b > llama3.2:1b > smollm2 > tinyllama
-/// - If none are installed, automatically pulls qwen2.5:0.5b.
-/// - Planner/executor tiers remain on the user's configured base model (phi3, etc.).
+/// - Task inference needs a tiny, fast, JSON-reliable model (not heavy models).
+/// - Preferred: phi4-mini
+/// - If none are installed, automatically pulls phi4-mini.
+/// - Planner/executor tiers remain on the user's configured base model (phi4-mini, etc.).
 ///
 /// Contention prevention:
 /// - Acquires TaskInferenceEngine.auditGate before every benchmark run so that live task
 ///   inference cannot compete with benchmark requests for Ollama's inference queue.
-///   Without this gate, phi3 live-inference occupies Ollama while qwen2.5:0.5b is being
+///   Without this gate, other live-inference occupies Ollama while phi4-mini is being
 ///   benchmarked, causing the fast model to appear as 100% timeout — a false negative.
 actor ModelAuditManager {
 	static let shared = ModelAuditManager()
@@ -42,19 +42,14 @@ actor ModelAuditManager {
 	// MARK: - Model catalogue
 
 	/// Ordered preference for fast task inference models (< 2 GB, reliable JSON, < 2s warm).
-	/// phi3 / mistral / llama3 are intentionally ABSENT — they belong on planner/executor tier.
+	/// heavy models are intentionally ABSENT — they belong on planner/executor tier.
 	private static let fastInferenceCandidates: [String] = [
-		"qwen2.5:0.5b",   // 390 MB — best speed/quality ratio for compact JSON
-		"qwen2.5:1.5b",   // 1.0 GB — better reasoning, still fast
-		"llama3.2:1b",    // 1.3 GB — strong instruction following
-		"smollm2:135m",   // 270 MB — fastest raw speed, minimal reasoning
-		"smollm2:360m",   // 400 MB — better than 135m, still tiny
-		"smollm2",        // default smollm2 tag
-		"tinyllama",      // 640 MB — reliable JSON follower
+		"qwen2.5:0.5b",
+		"phi4-mini",
 	]
 
-	/// Auto-pull when no fast model is installed. qwen2.5:0.5b is 390 MB, pulls in ~30-90s.
-	private static let autoPullModel = "qwen2.5:0.5b"
+	/// Auto-pull when no fast model is installed. phi4-mini pulls in ~30-90s.
+	private static let autoPullModel = "phi4-mini"
 
 	// MARK: - Timing constants
 
@@ -113,12 +108,12 @@ actor ModelAuditManager {
 		print("[ModelAudit] discovered=[\(installed.joined(separator: ","))]")
 
 		// ── Two-stage model readiness verification ─────────────────────────────────
-		// Log which models are available for router (qwen2.5:0.5b) and planner (qwen2.5:1.5b).
-		// Only these two models are permitted for task inference — do NOT report phi3 readiness.
+		// Log which models are available for router (qwen2.5:0.5b) and planner (phi4-mini).
+		// Only these two models are permitted for task inference — do NOT report heavy model readiness.
 		let routerAvailable = installed.contains { modelNameMatches($0, candidate: "qwen2.5:0.5b") }
-		let plannerAvailable = installed.contains { modelNameMatches($0, candidate: "qwen2.5:1.5b") }
+		let plannerAvailable = installed.contains { modelNameMatches($0, candidate: "phi4-mini") }
 		print("[TwoStageModelReady] router=qwen2.5:0.5b available=\(routerAvailable ? "yes" : "no")")
-		print("[TwoStageModelReady] planner=qwen2.5:1.5b available=\(plannerAvailable ? "yes" : "no")")
+		print("[TwoStageModelReady] planner=phi4-mini available=\(plannerAvailable ? "yes" : "no")")
 
 		if installed.isEmpty {
 			print("[ModelAudit] no_models_found cannot_benchmark")
@@ -139,7 +134,7 @@ actor ModelAuditManager {
 		}
 
 		// ── Step 3: build candidate list (fast models only) ───────────────────────
-		// phi3/heavy models are excluded unless they are the ONLY thing available.
+		// heavy models are excluded unless they are the ONLY thing available.
 		var toTest: [String] = Self.fastInferenceCandidates.compactMap { candidate in
 			installed.first { name in modelNameMatches(name, candidate: candidate) }
 		}
@@ -158,8 +153,8 @@ actor ModelAuditManager {
 
 		// ── Step 4: acquire audit gate ────────────────────────────────────────────
 		// This prevents live inference from competing with benchmark requests for
-		// Ollama's inference queue. Without it, phi3 live-inference can occupy the
-		// queue for 5-7s, making every qwen2.5:0.5b benchmark sample time out.
+		// Ollama's inference queue. Without it, other live-inference can occupy the
+		// queue for 5-7s, making every phi4-mini benchmark sample time out.
 		await TaskInferenceEngine.shared.setAuditGate(true)
 
 		// Wait for any currently-running inference to finish (max 9s).
@@ -211,9 +206,9 @@ actor ModelAuditManager {
 		// ── Step 6: release audit gate ────────────────────────────────────────────
 		await TaskInferenceEngine.shared.setAuditGate(false)
 
-		// ── Step 7: select winner ─────────────────────────────────────────────────
+		// select winner ─────────────────────────────────────────────────
 		// Require at least 1/3 samples to parse successfully. If nothing meets the bar,
-		// do NOT fall back to phi3 — log the failure and leave the previous selection.
+		// do NOT fall back — log the failure and leave the previous selection.
 		let viable = results.filter { $0.parseSuccessRate > 0 }
 		guard let best = viable.min(by: {
 			let diff = $0.parseSuccessRate - $1.parseSuccessRate
@@ -224,7 +219,7 @@ actor ModelAuditManager {
 			print("[ModelSelection] task_inference_disabled reason=no_viable_model")
 			print("[ModelValidation] failed all_models_rejected")
 			// Store the "none" sentinel — the engine reads this and disables inference
-			// explicitly rather than silently falling back to phi3.
+			// explicitly rather than silently falling back.
 			LocalAISettings.shared.taskInferenceModel = ModelTierConfig.noViableModel
 			ActiveModelTierConfig.shared.update(.from(settings: LocalAISettings.shared, auditSelected: ModelTierConfig.noViableModel))
 			return

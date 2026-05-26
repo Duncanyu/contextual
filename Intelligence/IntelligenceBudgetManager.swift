@@ -74,7 +74,7 @@ final class IntelligenceBudgetManager {
 		var score = baseScore(request: request, strength: suggestionStrength)
 		score = min(1.0, max(0.0, score))
 
-		// T12.10: slightly stricter — fewer phi3 proposal calls on marginal contexts.
+		// T12.10: slightly stricter — fewer phi4-mini proposal calls on marginal contexts.
 		if score < 0.58 {
 			return .denied(deny("low_score", score: score, now: now))
 		}

@@ -129,6 +129,7 @@ enum DynamicGeneratedProposalEngineSelfTest {
 			warnings: [],
 			llmDiagnosticCause: nil,
 			createdAt: Date(),
+			contextSnapshot: weakSnap,
 			libraryRecords: [],
 			hookContracts: []
 		)

@@ -178,6 +178,15 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 	let warnings: [String]
 	let llmDiagnosticCause: DynamicGeneratedProposalLLMDiagnosticCause?
 	let createdAt: Date
+	/// Optional context snapshot override used by the engine for the attempt.
+	///
+	/// Phase 4R: when a strong context anchor is preserved (or when bounded context enrichment
+	/// merges OCR/AX/visual descriptors), proposal generation may operate on an "effective"
+	/// snapshot that differs from the raw snapshot passed in by the caller.
+	///
+	/// Downstream activation/validation must use the SAME snapshot to avoid early-vs-activation
+	/// grounding mismatches.
+	let contextSnapshot: CanonicalGeneratedExecutionContextSnapshot?
 	/// Reusable templates returned from the library (T18.3.5).
 	/// Non-empty only when the live path found a library hit — no LLM was called.
 	/// Pass directly to GeneratedExecutionProposalActivationInput.reusableRecords.
@@ -198,6 +207,7 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 		warnings: [],
 		llmDiagnosticCause: nil,
 		createdAt: Date(),
+		contextSnapshot: nil,
 		libraryRecords: [],
 		hookContracts: []
 	)
@@ -217,6 +227,7 @@ struct DynamicGeneratedProposalResult: Equatable, Sendable {
 			warnings: [cause.rawValue],
 			llmDiagnosticCause: cause,
 			createdAt: Date(),
+			contextSnapshot: nil,
 			libraryRecords: [],
 			hookContracts: []
 		)

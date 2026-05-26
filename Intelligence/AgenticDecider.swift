@@ -88,7 +88,7 @@ enum AgenticLoopDecisionSource: String, Sendable {
 ///
 /// Model path (optional):
 ///   - Only if heuristic confidence < 0.85 AND LLM budget remains
-///   - Model: qwen2.5:0.5b, numPredict: 100, temperature: 0.1
+///   - Model: phi4-mini, numPredict: 100, temperature: 0.1
 ///   - Hard timeout: 5 seconds; no retries
 ///   - On failure: deterministic heuristic fallback
 ///
@@ -108,10 +108,21 @@ struct AgenticDecider: Sendable {
 		ocrCallsUsed: Int,
 		ocrCallsBudget: Int,
 		legalActions: Set<AgenticNextAction> = Set(AgenticNextAction.allCases),
-		forceObserveNext: Bool = false
+		forceObserveNext: Bool = false,
+		semanticReadiness: SemanticReadiness? = nil,
+		evidenceState: AgenticEvidenceState? = nil,
+		evidenceObservations: [AgenticEvidenceObservation] = [],
+		priorActions: [String] = [],
+		ineffectiveControlCount: Int = 0,
+		entities: [GroundedSemanticEntity] = [],
+		facts: [StructuredFact] = []
 	) async -> AgenticLoopDecision {
 		let latestQuality = observations.last?.quality.rawValue ?? "none"
-		print("[AgenticDecide] started step=\(stepIndex) observations=\(observations.count) facts=\(extractedFacts.count) quality=\(latestQuality) llm=\(llmCallsUsed)/\(llmCallsBudget) ocr=\(ocrCallsUsed)/\(ocrCallsBudget) legal=[\(legalActions.map(\.rawValue).sorted().joined(separator: ","))]")
+		let evGate: String = {
+			guard let s = evidenceState else { return "n/a" }
+			return s.allRequiredSatisfied ? "satisfied" : "missing:\(s.missing.map { $0.rawValue }.joined(separator: ","))"
+		}()
+		print("[AgenticDecide] started step=\(stepIndex) observations=\(observations.count) facts=\(extractedFacts.count) quality=\(latestQuality) evidence_gate=\(evGate) llm=\(llmCallsUsed)/\(llmCallsBudget) ocr=\(ocrCallsUsed)/\(ocrCallsBudget) legal=[\(legalActions.map(\.rawValue).sorted().joined(separator: ","))]")
 
 		let heuristicDecision = heuristic(
 			goal: goal,
@@ -121,7 +132,14 @@ struct AgenticDecider: Sendable {
 			stepIndex: stepIndex,
 			maxSteps: maxSteps,
 			legalActions: legalActions,
-			forceObserveNext: forceObserveNext
+			forceObserveNext: forceObserveNext,
+			semanticReadiness: semanticReadiness,
+			evidenceState: evidenceState,
+			evidenceObservations: evidenceObservations,
+			priorActions: priorActions,
+			ineffectiveControlCount: ineffectiveControlCount,
+			entities: entities,
+			facts: facts
 		)
 
 		// If heuristic is confident enough or LLM budget is exhausted, use it directly
@@ -153,7 +171,14 @@ struct AgenticDecider: Sendable {
 		stepIndex: Int,
 		maxSteps: Int,
 		legalActions: Set<AgenticNextAction>,
-		forceObserveNext: Bool
+		forceObserveNext: Bool,
+		semanticReadiness: SemanticReadiness?,
+		evidenceState: AgenticEvidenceState? = nil,
+		evidenceObservations: [AgenticEvidenceObservation] = [],
+		priorActions: [String] = [],
+		ineffectiveControlCount: Int = 0,
+		entities: [GroundedSemanticEntity] = [],
+		facts: [StructuredFact] = []
 	) -> AgenticLoopDecision {
 
 		// 0. Post-control forced observation
@@ -182,6 +207,208 @@ struct AgenticDecider: Sendable {
 
 		let latestObs = observations.last
 		let browserGoal = isBrowserProductGoal(goal: goal, workflow: workflow)
+		let stepsRemainingNow = maxSteps - stepIndex
+		let budgetExhausted = stepsRemainingNow <= 1
+
+		// 1.5 Phase 4S/4T — Evidence-first / Quality-Gated Loop Decisions
+		if let ev = evidenceState {
+			if ev.allRequiredSatisfied {
+				// Quality Gate Check (Phase 4T)
+				let quality = EvidenceQualityGate.evaluate(
+					goal: goal,
+					state: ev,
+					observations: evidenceObservations,
+					entities: entities,
+					facts: facts
+				)
+
+				let isCompareGoal = AgenticEvidenceRequirementsInferrer.classifyFamily(goal: goal.lowercased(), workflow: "") == .compare
+				let hasValidComparison = !isCompareGoal || ComparisonEvidenceValidator.validate(state: ev, observations: evidenceObservations, entities: entities, facts: facts).isValid
+
+				if quality.overallScore < EvidenceQualityGate.overallScoreThreshold {
+					print("[LoopTermination] requested=evidence_satisfied allowed=no reason=low_evidence_quality")
+					if !budgetExhausted {
+						if legalActions.contains(.scroll_small) {
+							return AgenticLoopDecision(
+								nextAction: .scroll_small,
+								reason: "Evidence satisfied but blocked by Quality Gate: low overall score (score=\(String(format: "%.2f", quality.overallScore))) — try scroll_small to improve",
+								confidence: 0.90,
+								source: .heuristic,
+								findQuery: nil
+							)
+						} else if legalActions.contains(.observe_once) {
+							return AgenticLoopDecision(
+								nextAction: .observe_once,
+								reason: "Evidence satisfied but blocked by Quality Gate: low overall score — observe again",
+								confidence: 0.90,
+								source: .heuristic,
+								findQuery: nil
+							)
+						}
+					}
+				} else if !hasValidComparison {
+					print("[LoopTermination] requested=evidence_satisfied allowed=no reason=invalid_comparison_candidates")
+					if !budgetExhausted {
+						if legalActions.contains(.scroll_small) {
+							return AgenticLoopDecision(
+								nextAction: .scroll_small,
+								reason: "Evidence satisfied but blocked by Quality Gate: invalid comparison candidates — try scroll_small to find another candidate",
+								confidence: 0.90,
+								source: .heuristic,
+								findQuery: nil
+							)
+						}
+					}
+				} else {
+					print("[LoopTermination] requested=evidence_satisfied allowed=yes reason=quality_gate_passed")
+
+					// Evidence satisfied and quality gate passed! extract/summarize/present
+					if extractedFacts.isEmpty && legalActions.contains(.extract_facts) {
+						print("[AgenticDecision] mode=evidence_satisfied action=extract_facts")
+						return AgenticLoopDecision(
+							nextAction: .extract_facts,
+							reason: "Evidence satisfied — proceed to extract facts",
+							confidence: 0.95,
+							source: .heuristic,
+							findQuery: nil
+						)
+					} else if legalActions.contains(.summarize_observation) && !extractedFacts.contains(where: { $0.hasPrefix("Summary:") }) {
+						print("[AgenticDecision] mode=evidence_satisfied action=summarize_observation")
+						return AgenticLoopDecision(
+							nextAction: .summarize_observation,
+							reason: "Evidence satisfied — summarize observations",
+							confidence: 0.93,
+							source: .heuristic,
+							findQuery: nil
+						)
+					} else if legalActions.contains(.present_answer) {
+						print("[AgenticDecision] mode=evidence_satisfied action=present_answer")
+						return AgenticLoopDecision(
+							nextAction: .present_answer,
+							reason: "Evidence satisfied — present final answer",
+							confidence: 0.95,
+							source: .heuristic,
+							findQuery: nil
+						)
+					}
+				}
+			} else if budgetExhausted {
+				// Budget exhausted with missing evidence — present useful partial answer
+				if legalActions.contains(.present_answer) {
+					print("[AgenticDecision] mode=partial_budget_exhausted action=present_answer")
+					return AgenticLoopDecision(
+						nextAction: .present_answer,
+						reason: "Budget exhausted with missing evidence: \(ev.missing.map { $0.rawValue }.joined(separator: ",")) — present partial answer",
+						confidence: 0.92,
+						source: .heuristic,
+						findQuery: nil
+					)
+				}
+			} else if ev.shouldGatherMore {
+				// If evidence is missing and safe actions remain, gather!
+				let missingKind = ev.firstMissing?.kind ?? .unknown
+				let missingList = ev.missing.map { $0.rawValue }.joined(separator: ",")
+				
+				let queryPlan = Self.determineEvidenceFindQuery(
+					missingKind: missingKind,
+					evidenceObservations: evidenceObservations,
+					goal: goal
+				)
+				let preferredQuery = queryPlan.query
+
+				let isLastFind = (priorActions.last == AgenticNextAction.find_on_page.rawValue)
+				let isLastScroll = (priorActions.last == AgenticNextAction.scroll_small.rawValue)
+				let lastControlIneffective = (ineffectiveControlCount > 0) && (isLastFind || isLastScroll)
+
+				let findUsed = priorActions.contains(AgenticNextAction.find_on_page.rawValue)
+				
+				let preferredAction: AgenticNextAction
+				let reason: String
+				let query: String?
+
+				if lastControlIneffective {
+					// Previous control action was ineffective. Switch strategies or safe action!
+					if isLastScroll && missingKind == .comparisonCandidate && legalActions.contains(.find_on_page) {
+						preferredAction = .find_on_page
+						let strategyQuery = "similar"
+						query = strategyQuery
+						reason = "Previous scroll_small was ineffective — try find_on_page to search for similar comparison candidates"
+						print("[AgenticDecision] mode=strategy_switch previous=scroll_small ineffective=yes next=find_on_page missing=comparison_candidate")
+						print("[FindQuery] kind=comparison_candidate query=\(strategyQuery) source=evidence_requirement")
+					} else if isLastFind && legalActions.contains(.scroll_small) {
+						preferredAction = .scroll_small
+						reason = "Previous find_on_page was ineffective — try scroll_small to reveal more content"
+						query = nil
+					} else if isLastScroll && legalActions.contains(.find_on_page) && !findUsed {
+						preferredAction = .find_on_page
+						reason = "Previous scroll_small was ineffective — try find_on_page to search"
+						query = preferredQuery
+					} else {
+						// Ineffective control safety fallback: do not keep control-looping blindly
+						if extractedFacts.isEmpty && legalActions.contains(.extract_facts) {
+							preferredAction = .extract_facts
+							reason = "Previous controls ineffective — extract what facts we have"
+							query = nil
+						} else if legalActions.contains(.observe_once) {
+							preferredAction = .observe_once
+							reason = "Previous controls ineffective — observe again"
+							query = nil
+						} else {
+							preferredAction = .present_answer
+							reason = "Previous controls ineffective — present partial answer"
+							query = nil
+						}
+					}
+				} else if findUsed && legalActions.contains(.scroll_small) {
+					// find_on_page already used, prefer scroll down to find next candidate
+					preferredAction = .scroll_small
+					reason = "find_on_page already used — prefer scroll_small to reveal lower-page content"
+					query = nil
+				} else {
+					let recommended = ev.recommendedAction
+					if recommended == .findOnPage && legalActions.contains(.find_on_page) {
+						preferredAction = .find_on_page
+						reason = "Evidence gate: missing \(missingKind.rawValue) — search for \(preferredQuery)"
+						query = preferredQuery
+					} else if recommended == .scrollSmall && legalActions.contains(.scroll_small) {
+						preferredAction = .scroll_small
+						reason = "Evidence gate: missing \(missingKind.rawValue) — scroll down to revealspecs/candidates"
+						query = nil
+					} else if legalActions.contains(.find_on_page) {
+						preferredAction = .find_on_page
+						reason = "Evidence gate (fallback): missing \(missingKind.rawValue) — search for \(preferredQuery)"
+						query = preferredQuery
+					} else if legalActions.contains(.scroll_small) {
+						preferredAction = .scroll_small
+						reason = "Evidence gate (fallback): missing \(missingKind.rawValue) — scroll down"
+						query = nil
+					} else {
+						if extractedFacts.isEmpty && legalActions.contains(.extract_facts) {
+							preferredAction = .extract_facts
+							reason = "Evidence gate: missing \(missingKind.rawValue) but no control actions left — extract facts"
+							query = nil
+						} else if legalActions.contains(.observe_once) {
+							preferredAction = .observe_once
+							reason = "Evidence gate: missing \(missingKind.rawValue) — observe again"
+							query = nil
+						} else {
+							preferredAction = .present_answer
+							reason = "Evidence gate: missing \(missingKind.rawValue) — present partial answer"
+							query = nil
+						}
+					}
+				}
+
+				print("[AgenticDecision] mode=evidence_gathering missing=\(missingKind.rawValue) action=\(preferredAction.rawValue)")
+				return AgenticLoopDecision(
+					nextAction: preferredAction,
+					reason: reason,
+					confidence: 0.92,
+					source: .heuristic,
+					findQuery: query
+				)
+			}
+		}
 
 		// 2. Quality-aware control routing for browser/product/review goals.
 		//    metadata_only or weak quality means no real page text (no selectedText, no ocrExcerpt).
@@ -296,6 +523,38 @@ struct AgenticDecider: Sendable {
 					nextAction: .extract_facts,
 					reason: "Real page content available (quality=\(obs.quality.rawValue)) — extract key facts relevant to goal",
 					confidence: 0.88,
+					source: .heuristic,
+					findQuery: nil
+				)
+			}
+		}
+
+		// 7.5 Semantic readiness quality gate continuation check
+		if let readiness = semanticReadiness, !readiness.readyForFinalAnswer {
+			if legalActions.contains(.find_on_page) {
+				let query = AgenticControlPolicy.determineFindQuery(goal: goal)
+				return AgenticLoopDecision(
+					nextAction: .find_on_page,
+					reason: "Semantic readiness is LOW (\(readiness.reason)) — search for more context using find",
+					confidence: 0.90,
+					source: .heuristic,
+					findQuery: query
+				)
+			}
+			if legalActions.contains(.scroll_small) {
+				return AgenticLoopDecision(
+					nextAction: .scroll_small,
+					reason: "Semantic readiness is LOW (\(readiness.reason)) — scroll page to find more specifications or price",
+					confidence: 0.85,
+					source: .heuristic,
+					findQuery: nil
+				)
+			}
+			if legalActions.contains(.present_answer) {
+				return AgenticLoopDecision(
+					nextAction: .present_answer,
+					reason: "Semantic readiness is LOW and no perception actions remain — presenting partial answer",
+					confidence: 0.95,
 					source: .heuristic,
 					findQuery: nil
 				)
@@ -449,7 +708,7 @@ struct AgenticDecider: Sendable {
 			let response = try await withTimeout(seconds: 5.0) {
 				try await LocalAIClient.shared.generate(
 					prompt: prompt,
-					model: "qwen2.5:0.5b",
+					model: "phi4-mini",
 					numPredict: 100,
 					temperature: 0.1,
 					purpose: "agentic_loop_decide",
@@ -522,6 +781,96 @@ struct AgenticDecider: Sendable {
 			group.cancelAll()
 			return result
 		}
+	}
+
+	// MARK: - Phase 4P: Evidence-aware query planning
+
+	private struct EvidenceQueryPlan {
+		let query: String
+		let reason: String
+	}
+
+	private static func determineEvidenceFindQuery(
+		missingKind: AgenticEvidenceKind,
+		evidenceObservations: [AgenticEvidenceObservation],
+		goal: String
+	) -> EvidenceQueryPlan {
+		let plan: EvidenceQueryPlan
+		switch missingKind {
+		case .productTitle:
+			if let candidate = evidenceObservations
+				.filter({ $0.kind == .productTitle })
+				.sorted(by: { $0.confidence > $1.confidence })
+				.first {
+				if let token = firstUsefulToken(candidate.text) {
+					plan = EvidenceQueryPlan(query: token, reason: "window_title_entity")
+					print("[FindQuery] kind=productTitle query=\(token) source=evidence_requirement")
+					return plan
+				}
+			}
+			let fallback = AgenticControlPolicy.determineFindQuery(goal: goal)
+			let q = fallback == "product" ? "details" : fallback
+			plan = EvidenceQueryPlan(query: q, reason: "goal_fallback")
+			print("[FindQuery] kind=productTitle query=\(q) source=evidence_requirement")
+			return plan
+
+		case .specs:
+			// Check if goal has "wattage" or "ports"
+			let g = goal.lowercased()
+			if g.contains("wattage") || g.contains("watt") {
+				plan = EvidenceQueryPlan(query: "wattage", reason: "goal_specs")
+			} else if g.contains("port") || g.contains("ports") {
+				plan = EvidenceQueryPlan(query: "ports", reason: "goal_specs")
+			} else if let spec = evidenceObservations
+				.filter({ $0.kind == .specs })
+				.sorted(by: { $0.confidence > $1.confidence })
+				.first, let token = firstUsefulToken(spec.text) {
+				plan = EvidenceQueryPlan(query: token, reason: "missing_specs")
+			} else {
+				plan = EvidenceQueryPlan(query: "details", reason: "missing_specs")
+			}
+			print("[FindQuery] kind=specs query=\(plan.query) source=evidence_requirement")
+			return plan
+
+		case .reviewCount, .reviewText:
+			plan = EvidenceQueryPlan(query: "reviews", reason: "missing_reviews")
+			print("[FindQuery] kind=\(missingKind.rawValue) query=reviews source=evidence_requirement")
+			return plan
+
+		case .rating:
+			plan = EvidenceQueryPlan(query: "rating", reason: "missing_rating")
+			print("[FindQuery] kind=rating query=rating source=evidence_requirement")
+			return plan
+
+		case .price:
+			plan = EvidenceQueryPlan(query: "price", reason: "missing_price")
+			print("[FindQuery] kind=price query=price source=evidence_requirement")
+			return plan
+
+		case .comparisonCandidate:
+			plan = EvidenceQueryPlan(query: "compare", reason: "missing_comparison")
+			print("[FindQuery] kind=comparisonCandidate query=compare source=evidence_requirement")
+			return plan
+
+		default:
+			let q = AgenticControlPolicy.determineFindQuery(forMissingKind: missingKind, goal: goal)
+			plan = EvidenceQueryPlan(query: q, reason: "default_kind_mapping")
+			print("[FindQuery] kind=\(missingKind.rawValue) query=\(q) source=evidence_requirement")
+			return plan
+		}
+	}
+
+	private static func firstUsefulToken(_ text: String) -> String? {
+		let t = text.lowercased()
+		let tokens = t
+			.components(separatedBy: CharacterSet.alphanumerics.inverted)
+			.filter { !$0.isEmpty }
+		for tok in tokens {
+			if tok.count < 3 { continue }
+			if AgenticControlPolicy.findQueryBlocklist.contains(tok) { continue }
+			return tok
+		}
+		return nil
 	}
 }
 

@@ -190,7 +190,7 @@ final class ModelManager: @unchecked Sendable {
 			await MainActor.run {
 				updateState(.ready)
 			}
-			Self.dedupedPrint("status_ready", "[ModelManager] status=ready model=\(modelName)")
+			Self.dedupedPrint("status_ready", "[ModelManager] status=ready backend=ollama active_router=qwen2.5:0.5b active_planner=phi4-mini")
 			Self.invalidateGenerationCache()
 			return
 		}
@@ -225,7 +225,7 @@ final class ModelManager: @unchecked Sendable {
 	}
 
 	/// Pull a specific model by name. Used by `ModelAuditManager` to install fast inference
-	/// models (e.g. qwen2.5:0.5b) when no suitable small model is found.
+	/// models (e.g. phi4-mini) when no suitable small model is found.
 	/// Returns `true` on success, `false` on failure (disk, network, CLI missing).
 	func pullModel(named modelName: String) async -> Bool {
 		guard Self.resolveOllamaExecutablePath() != nil else {
@@ -279,7 +279,7 @@ final class ModelManager: @unchecked Sendable {
 		case .reachable(let names):
 			if Self.tagsListContainsModel(names, modelName: name) {
 				await MainActor.run { updateState(.ready) }
-				Self.dedupedPrint("pull_skip_have", "[ModelManager] status=ready model=\(name)")
+				Self.dedupedPrint("pull_skip_have", "[ModelManager] status=ready backend=ollama active_router=qwen2.5:0.5b active_planner=phi4-mini")
 				Self.invalidateGenerationCache()
 				return
 			}
@@ -340,7 +340,7 @@ final class ModelManager: @unchecked Sendable {
 			self.inFlightGenerationTask = nil
 			self.availabilityLock.unlock()
 			if r {
-				Self.dedupedPrint("gen_ready", "[ModelManager] status=ready model=\(model)")
+				Self.dedupedPrint("gen_ready", "[ModelManager] status=ready backend=ollama active_router=qwen2.5:0.5b active_planner=phi4-mini")
 			} else {
 				Self.dedupedPrint("gen_no", "[ModelManager] status=unavailable reason=generation_gate")
 			}
@@ -356,10 +356,10 @@ final class ModelManager: @unchecked Sendable {
 		case .unreachable:
 			return false
 		case .reachable(let names):
-			// Primary: accept if the configured model (phi3/planner) is installed.
+			// Primary: accept if the configured model (phi4-mini/planner) is installed.
 			// Fallback: accept if the required task inference model is installed.
-			// This prevents task inference from being blocked when the user has qwen2.5:0.5b
-			// installed but not phi3 — the task inference model check is handled by
+			// This prevents task inference from being blocked when the user has phi4-mini
+			// installed — the task inference model check is handled by
 			// ModelAuditManager / ActiveModelTierConfig, not this gate.
 			// Any installed model means Ollama is functional; the model-specific check
 			// is done downstream via ActiveModelTierConfig.taskInferenceModel.

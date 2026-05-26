@@ -38,7 +38,7 @@ struct ModelTierConfig: Sendable, Equatable {
 	/// Build from persistent settings plus an optional audit-selected override for task inference.
 	///
 	/// Priority: explicit `auditSelected` > `settings.taskInferenceModel` (persisted) > `settings.modelName`.
-	/// This ensures a previously-selected fast model (e.g. qwen2.5:0.5b) is restored on launch
+	/// This ensures a previously-selected fast model (e.g. phi4-mini) is restored on launch
 	/// without waiting for the 1-hour audit cooldown to expire.
 	/// Sentinel stored in `taskInferenceModel` when the audit found no viable model.
 	static let noViableModel = "none"
@@ -66,7 +66,7 @@ final class ActiveModelTierConfig: @unchecked Sendable {
 
 	private let lock = NSLock()
 	/// Initialise from persisted settings so a previously-selected fast task inference model
-	/// (e.g. qwen2.5:0.5b) is active immediately on launch, before the audit re-runs.
+	/// (e.g. phi4-mini) is active immediately on launch, before the audit re-runs.
 	private var _config: ModelTierConfig = .from(settings: LocalAISettings.shared)
 
 	private init() {}

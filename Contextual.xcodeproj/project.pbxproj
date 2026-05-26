@@ -188,6 +188,11 @@
 		AA0001FC000000000000010C /* UnifiedActionRankingDebug.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FC000000000000010C /* UnifiedActionRankingDebug.swift */; };
 		AA0001FD000000000000010D /* Phase17StabilitySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002FD000000000000010D /* Phase17StabilitySelfTest.swift */; };
 		AA0001E7000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E0000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift */; };
+		8ED5656EC70B4AA383740801 /* StrongContextAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 239EA6A1FCFD40E3963E7D68 /* StrongContextAnchor.swift */; };
+		58B688576810432FBD5202D1 /* CanonicalGeneratedExecutionContextSnapshot+Copying.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044886D372A84A21A850DB3E /* CanonicalGeneratedExecutionContextSnapshot+Copying.swift */; };
+		5E01E9356E3E4FAA9540D271 /* SituationalContextSnapshot+Copying.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6409C55ADB3492DB4B68F32 /* SituationalContextSnapshot+Copying.swift */; };
+		11F17F5481CA40D1B576AADC /* StrongContextAnchorSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29B61C9907CD47F39ADE614C /* StrongContextAnchorSelfTest.swift */; };
+		DDCEB3D4627F4A56A0A2CA53 /* EmailReviewEvidenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A216F1AEE9E74ADEBB7CD367 /* EmailReviewEvidenceSelfTest.swift */; };
 		AA0001E8000000000000010F /* GeneratedExecutionContextBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */; };
 		AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */; };
 		AA0001EA0000000000000111 /* SparseVisualPeekPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */; };
@@ -239,6 +244,7 @@
 			AA000226000000000000013F /* TaskInferenceParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000410000000000000013F /* TaskInferenceParser.swift */; };
 			AA0002270000000000000140 /* TaskInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000140 /* TaskInferenceEngine.swift */; };
 			AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004120000000000000141 /* TaskInferenceSelfTest.swift */; };
+			AA0002280000000000000199 /* RouterEmptyEscalationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004120000000000000199 /* RouterEmptyEscalationSelfTest.swift */; };
 			AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */; };
 			AA0010000000000000000001 /* StructuredOutputSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000001 /* StructuredOutputSelfTest.swift */; };
 			AA0010000000000000000002 /* PlannerCandidateSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0020000000000000000002 /* PlannerCandidateSelfTest.swift */; };
@@ -287,10 +293,51 @@
 			AA0002340000000000000153 /* AgenticPerceptionRefreshSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041E0000000000000153 /* AgenticPerceptionRefreshSelfTest.swift */; };
 			AA0002350000000000000154 /* AgenticIntentGrounding.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041F0000000000000154 /* AgenticIntentGrounding.swift */; };
 			AA0002360000000000000155 /* AgenticIntentGroundingSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000155 /* AgenticIntentGroundingSelfTest.swift */; };
+			AA0002360000000000000300 /* StatefulAgenticLoopSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000300 /* StatefulAgenticLoopSelfTest.swift */; };
+			AA0002360000000000000301 /* AgenticStepThought.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000301 /* AgenticStepThought.swift */; };
+			AA0002360000000000000302 /* EvidenceQualityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000302 /* EvidenceQualityGate.swift */; };
+			AA0002360000000000000303 /* EvidenceValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000303 /* EvidenceValidator.swift */; };
+			AA0002360000000000000304 /* EvidenceQualityGateSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000304 /* EvidenceQualityGateSelfTest.swift */; };
+			AA0002360000000000000305 /* AgenticGoalAlignmentValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000305 /* AgenticGoalAlignmentValidator.swift */; };
+			AA0002360000000000000306 /* GoalEvidenceAlignmentSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000306 /* GoalEvidenceAlignmentSelfTest.swift */; };
+			AA0002360000000000000307 /* EvidenceStateCorrectnessSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000307 /* EvidenceStateCorrectnessSelfTest.swift */; };
 			AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */; };
 			AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */; };
 			AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000242 /* TwoStageLaneManager.swift */; };
 			AA0001BE000000000000E5 /* VisibleIntelligenceDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002BE000000000000E5 /* VisibleIntelligenceDebugView.swift */; };
+			41B74E3BE3FBC69667812E29 /* AccessibilityGroundingExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34234664F5E20A10D46A32DB /* AccessibilityGroundingExtractor.swift */; };
+			96EDF009AD7FA65E37EBCF64 /* AgenticEvidenceExtractionBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9CB3242B4B5824DC85A67A5 /* AgenticEvidenceExtractionBridge.swift */; };
+			4891AD570CE72D0FE7408083 /* AgenticEvidenceExtractionBridgeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11946586D7D0ACE2FA067B1 /* AgenticEvidenceExtractionBridgeSelfTest.swift */; };
+			34FDE16D559BAC6B1850A73E /* AgenticEvidenceGateSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990A06A691F11FFBC05E4B22 /* AgenticEvidenceGateSelfTest.swift */; };
+			8563A92768309092F8591133 /* AgenticEvidenceRequirements.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E2F5451C9ADE11681AE7C3C /* AgenticEvidenceRequirements.swift */; };
+			A7E1F2C39B14D0AC5612EF11 /* ProposalContextIsolationGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C2A14F8B6E0F77A1234E55 /* ProposalContextIsolationGate.swift */; };
+			B82C7F3A41509DCB7E80AA62 /* ProposalContextIsolationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E03DAB128F90C0177AB1E5C7 /* ProposalContextIsolationSelfTest.swift */; };
+			C04E1AB7392B5D6B7E0D6F90 /* PlannerCapabilityRepairGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA9F03A7E1C0D3FAB4E1245 /* PlannerCapabilityRepairGate.swift */; };
+			D15B902C84E47BAF311F70CE /* PlannerCapabilityEnvelopeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCE40193A55F02D58B91DA1 /* PlannerCapabilityEnvelopeSelfTest.swift */; };
+			E20F4D9C8615A0BE19A4FE63 /* RouterGroundingHeuristic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A88B6C3F50E7CD4B0925BCC /* RouterGroundingHeuristic.swift */; };
+				F396827EAB12409D6FCD56AA /* PartialPlannerRecoverySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B70CE6F1D3E08AB5CF7AD90 /* PartialPlannerRecoverySelfTest.swift */; };
+				D0E5B1F3A7C94B2E8F1A3C4D /* RuntimeGroundingPreservationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D3E2F1A0B9C8D7E6F5A4B3 /* RuntimeGroundingPreservationSelfTest.swift */; };
+				B26DE4576FD39C781DDF4128 /* AssistantChromeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45814F2B1B4BA787BF7E899C /* AssistantChromeFilter.swift */; };
+			97DE96FDDE79A118A1F38CB7 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 727FD3C4514261CA05AC6899 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift */; };
+			8859C422A883A4B87E606255 /* ExecutionFocusHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3116D8520F7C1BF6E5A52B00 /* ExecutionFocusHandoff.swift */; };
+			CFAB08FB154F23978F3A918C /* ExecutionFocusHandoffSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1C11DAFB182E3810ACB0A30 /* ExecutionFocusHandoffSelfTest.swift */; };
+			90ECD20DF4B3AF885E9F4468 /* GeneratedChromeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2898F4386114DA435D0BD06 /* GeneratedChromeFilter.swift */; };
+			BE1AE065848A5D11D2F8AD24 /* GroundedSemanticEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEAE240F9B98F8FF6BEEE3D0 /* GroundedSemanticEntity.swift */; };
+			BFB34553F228C2841E160636 /* GroundedSemanticExtractionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9921497FDCC5F018FE78B809 /* GroundedSemanticExtractionSelfTest.swift */; };
+			B9EA248FFEED5133BBD975A3 /* GroundedSemanticExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2832565235F43CE1AC13D713 /* GroundedSemanticExtractor.swift */; };
+			3C2EFF9FA3D74DE945A90D7D /* GroundedTargetResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC724DC2187B87549C520543 /* GroundedTargetResolver.swift */; };
+			90EE3D03BE2BD5C6EEB97601 /* OCRGroundingExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 928EC1364F6B6E171145B807 /* OCRGroundingExtractor.swift */; };
+			C6CF23D5D1A509D0E34B0E71 /* PersistentGroundedRuntimeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54AF39D2909CCB47DCB7B1FB /* PersistentGroundedRuntimeSelfTest.swift */; };
+			5E002223DFC36F912ED5F272 /* PlannerRefinementAlignmentGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA2F42E4AFE5AB1F9310D77 /* PlannerRefinementAlignmentGate.swift */; };
+			6B79C3579C6DC8C8C5744F24 /* PlannerRefinementAlignmentSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F169C0F699284740F42792AA /* PlannerRefinementAlignmentSelfTest.swift */; };
+			509B41A008882AA673201E59 /* CapabilityConstrainedProposalSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C00C70C929A0190DCE4637 /* CapabilityConstrainedProposalSelfTest.swift */; };
+			693DC081808C74747E29B315 /* ScreenStateGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0E693857270C2AA028E360 /* ScreenStateGraph.swift */; };
+			BA113C23F85E5C1DFA30A228 /* ScreenStateGraphSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5CDA6120DE860783A6B223 /* ScreenStateGraphSelfTest.swift */; };
+			0C9C12D634ABA99737FB807B /* StructuredFactBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B580A6952DBAF4A4E7CAD03 /* StructuredFactBuilder.swift */; };
+			E8994D452639243AFE38B963 /* TargetWindowAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9B74CF1900E76D76102F76 /* TargetWindowAnchor.swift */; };
+			AB1A304E03A44F2DDB9F8046 /* TargetWindowAnchoringSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1570D63645E12AB9A153D499 /* TargetWindowAnchoringSelfTest.swift */; };
+			E6B2D6F5C1B75A1B2C3D4E5F /* ProposalCapabilityValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A1C5E4B0A64F0A1B2C3D4E /* ProposalCapabilityValidator.swift */; };
+
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -478,6 +525,11 @@
 		AA0002FC000000000000010C /* UnifiedActionRankingDebug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedActionRankingDebug.swift; sourceTree = "<group>"; };
 		AA0002FD000000000000010D /* Phase17StabilitySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase17StabilitySelfTest.swift; sourceTree = "<group>"; };
 		AA0003E0000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalGeneratedExecutionContextSnapshot.swift; sourceTree = "<group>"; };
+		239EA6A1FCFD40E3963E7D68 /* StrongContextAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrongContextAnchor.swift; sourceTree = "<group>"; };
+		044886D372A84A21A850DB3E /* CanonicalGeneratedExecutionContextSnapshot+Copying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CanonicalGeneratedExecutionContextSnapshot+Copying.swift"; sourceTree = "<group>"; };
+		A6409C55ADB3492DB4B68F32 /* SituationalContextSnapshot+Copying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SituationalContextSnapshot+Copying.swift"; sourceTree = "<group>"; };
+		29B61C9907CD47F39ADE614C /* StrongContextAnchorSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrongContextAnchorSelfTest.swift; sourceTree = "<group>"; };
+		A216F1AEE9E74ADEBB7CD367 /* EmailReviewEvidenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailReviewEvidenceSelfTest.swift; sourceTree = "<group>"; };
 		AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionContextBridge.swift; sourceTree = "<group>"; };
 		AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgedGeneratedExecutionContextProvider.swift; sourceTree = "<group>"; };
 		AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparseVisualPeekPolicy.swift; sourceTree = "<group>"; };
@@ -532,6 +584,7 @@
 			AA0002C20000000000000F2 /* ModelTierConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTierConfig.swift; sourceTree = "<group>"; };
 			AA0002C30000000000000F3 /* ModelAuditManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAuditManager.swift; sourceTree = "<group>"; };
 			AA0004120000000000000141 /* TaskInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceSelfTest.swift; sourceTree = "<group>"; };
+			AA0004120000000000000199 /* RouterEmptyEscalationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterEmptyEscalationSelfTest.swift; sourceTree = "<group>"; };
 			AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePlanningPipeline.swift; sourceTree = "<group>"; };
 			AA0020000000000000000001 /* StructuredOutputSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredOutputSelfTest.swift; sourceTree = "<group>"; };
 			AA0020000000000000000002 /* PlannerCandidateSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCandidateSelfTest.swift; sourceTree = "<group>"; };
@@ -550,9 +603,50 @@
 		AA00041E0000000000000153 /* AgenticPerceptionRefreshSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticPerceptionRefreshSelfTest.swift; sourceTree = "<group>"; };
 		AA00041F0000000000000154 /* AgenticIntentGrounding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticIntentGrounding.swift; sourceTree = "<group>"; };
 		AA0004210000000000000155 /* AgenticIntentGroundingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticIntentGroundingSelfTest.swift; sourceTree = "<group>"; };
+		AA0004210000000000000300 /* StatefulAgenticLoopSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatefulAgenticLoopSelfTest.swift; sourceTree = "<group>"; };
+		AA0004210000000000000301 /* AgenticStepThought.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticStepThought.swift; sourceTree = "<group>"; };
+		AA0004210000000000000302 /* EvidenceQualityGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceQualityGate.swift; sourceTree = "<group>"; };
+		AA0004210000000000000303 /* EvidenceValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceValidator.swift; sourceTree = "<group>"; };
+		AA0004210000000000000304 /* EvidenceQualityGateSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceQualityGateSelfTest.swift; sourceTree = "<group>"; };
+		AA0004210000000000000305 /* AgenticGoalAlignmentValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticGoalAlignmentValidator.swift; sourceTree = "<group>"; };
+		AA0004210000000000000306 /* GoalEvidenceAlignmentSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalEvidenceAlignmentSelfTest.swift; sourceTree = "<group>"; };
+		AA0004210000000000000307 /* EvidenceStateCorrectnessSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceStateCorrectnessSelfTest.swift; sourceTree = "<group>"; };
 			AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageCompactPlannerPromptBuilder.swift; sourceTree = "<group>"; };
 			AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageRouterPromptBuilder.swift; sourceTree = "<group>"; };
 			AA0004110000000000000242 /* TwoStageLaneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageLaneManager.swift; sourceTree = "<group>"; };
+			34234664F5E20A10D46A32DB /* AccessibilityGroundingExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityGroundingExtractor.swift; sourceTree = "<group>"; };
+			A9CB3242B4B5824DC85A67A5 /* AgenticEvidenceExtractionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticEvidenceExtractionBridge.swift; sourceTree = "<group>"; };
+			C11946586D7D0ACE2FA067B1 /* AgenticEvidenceExtractionBridgeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticEvidenceExtractionBridgeSelfTest.swift; sourceTree = "<group>"; };
+			990A06A691F11FFBC05E4B22 /* AgenticEvidenceGateSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticEvidenceGateSelfTest.swift; sourceTree = "<group>"; };
+			7E2F5451C9ADE11681AE7C3C /* AgenticEvidenceRequirements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticEvidenceRequirements.swift; sourceTree = "<group>"; };
+			D9C2A14F8B6E0F77A1234E55 /* ProposalContextIsolationGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalContextIsolationGate.swift; sourceTree = "<group>"; };
+			E03DAB128F90C0177AB1E5C7 /* ProposalContextIsolationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalContextIsolationSelfTest.swift; sourceTree = "<group>"; };
+			5DA9F03A7E1C0D3FAB4E1245 /* PlannerCapabilityRepairGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCapabilityRepairGate.swift; sourceTree = "<group>"; };
+			7BCE40193A55F02D58B91DA1 /* PlannerCapabilityEnvelopeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCapabilityEnvelopeSelfTest.swift; sourceTree = "<group>"; };
+			1A88B6C3F50E7CD4B0925BCC /* RouterGroundingHeuristic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterGroundingHeuristic.swift; sourceTree = "<group>"; };
+				2B70CE6F1D3E08AB5CF7AD90 /* PartialPlannerRecoverySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartialPlannerRecoverySelfTest.swift; sourceTree = "<group>"; };
+				C4D3E2F1A0B9C8D7E6F5A4B3 /* RuntimeGroundingPreservationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeGroundingPreservationSelfTest.swift; sourceTree = "<group>"; };
+				45814F2B1B4BA787BF7E899C /* AssistantChromeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantChromeFilter.swift; sourceTree = "<group>"; };
+			727FD3C4514261CA05AC6899 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift"; sourceTree = "<group>"; };
+			3116D8520F7C1BF6E5A52B00 /* ExecutionFocusHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionFocusHandoff.swift; sourceTree = "<group>"; };
+			C1C11DAFB182E3810ACB0A30 /* ExecutionFocusHandoffSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionFocusHandoffSelfTest.swift; sourceTree = "<group>"; };
+			F2898F4386114DA435D0BD06 /* GeneratedChromeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedChromeFilter.swift; sourceTree = "<group>"; };
+			BEAE240F9B98F8FF6BEEE3D0 /* GroundedSemanticEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundedSemanticEntity.swift; sourceTree = "<group>"; };
+			9921497FDCC5F018FE78B809 /* GroundedSemanticExtractionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundedSemanticExtractionSelfTest.swift; sourceTree = "<group>"; };
+			2832565235F43CE1AC13D713 /* GroundedSemanticExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundedSemanticExtractor.swift; sourceTree = "<group>"; };
+			BC724DC2187B87549C520543 /* GroundedTargetResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundedTargetResolver.swift; sourceTree = "<group>"; };
+			928EC1364F6B6E171145B807 /* OCRGroundingExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRGroundingExtractor.swift; sourceTree = "<group>"; };
+			54AF39D2909CCB47DCB7B1FB /* PersistentGroundedRuntimeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentGroundedRuntimeSelfTest.swift; sourceTree = "<group>"; };
+			BEA2F42E4AFE5AB1F9310D77 /* PlannerRefinementAlignmentGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerRefinementAlignmentGate.swift; sourceTree = "<group>"; };
+			F169C0F699284740F42792AA /* PlannerRefinementAlignmentSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerRefinementAlignmentSelfTest.swift; sourceTree = "<group>"; };
+			E4C00C70C929A0190DCE4637 /* CapabilityConstrainedProposalSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityConstrainedProposalSelfTest.swift; sourceTree = "<group>"; };
+			2C0E693857270C2AA028E360 /* ScreenStateGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenStateGraph.swift; sourceTree = "<group>"; };
+			8D5CDA6120DE860783A6B223 /* ScreenStateGraphSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenStateGraphSelfTest.swift; sourceTree = "<group>"; };
+			4B580A6952DBAF4A4E7CAD03 /* StructuredFactBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredFactBuilder.swift; sourceTree = "<group>"; };
+			3F9B74CF1900E76D76102F76 /* TargetWindowAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetWindowAnchor.swift; sourceTree = "<group>"; };
+			1570D63645E12AB9A153D499 /* TargetWindowAnchoringSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetWindowAnchoringSelfTest.swift; sourceTree = "<group>"; };
+			D5A1C5E4B0A64F0A1B2C3D4E /* ProposalCapabilityValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalCapabilityValidator.swift; sourceTree = "<group>"; };
+
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -762,6 +856,11 @@
 				AA0002C4000000000000EA /* GeneratedExecutionRuntime.swift */,
 				AA0002C5000000000000EB /* GeneratedExecutionContext.swift */,
 				AA0003E0000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift */,
+				239EA6A1FCFD40E3963E7D68 /* StrongContextAnchor.swift */,
+				044886D372A84A21A850DB3E /* CanonicalGeneratedExecutionContextSnapshot+Copying.swift */,
+				A6409C55ADB3492DB4B68F32 /* SituationalContextSnapshot+Copying.swift */,
+				29B61C9907CD47F39ADE614C /* StrongContextAnchorSelfTest.swift */,
+				A216F1AEE9E74ADEBB7CD367 /* EmailReviewEvidenceSelfTest.swift */,
 				AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */,
 				AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */,
 				AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */,
@@ -816,6 +915,7 @@
 					AA0002C20000000000000F2 /* ModelTierConfig.swift */,
 					AA0002C30000000000000F3 /* ModelAuditManager.swift */,
 					AA0004120000000000000141 /* TaskInferenceSelfTest.swift */,
+					AA0004120000000000000199 /* RouterEmptyEscalationSelfTest.swift */,
 					AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */,
 						AA0020000000000000000001 /* StructuredOutputSelfTest.swift */,
 						AA0020000000000000000002 /* PlannerCandidateSelfTest.swift */,
@@ -849,6 +949,14 @@
 				AA00041E0000000000000153 /* AgenticPerceptionRefreshSelfTest.swift */,
 				AA00041F0000000000000154 /* AgenticIntentGrounding.swift */,
 				AA0004210000000000000155 /* AgenticIntentGroundingSelfTest.swift */,
+				AA0004210000000000000300 /* StatefulAgenticLoopSelfTest.swift */,
+				AA0004210000000000000301 /* AgenticStepThought.swift */,
+				AA0004210000000000000302 /* EvidenceQualityGate.swift */,
+				AA0004210000000000000303 /* EvidenceValidator.swift */,
+				AA0004210000000000000304 /* EvidenceQualityGateSelfTest.swift */,
+				AA0004210000000000000305 /* AgenticGoalAlignmentValidator.swift */,
+				AA0004210000000000000306 /* GoalEvidenceAlignmentSelfTest.swift */,
+				AA0004210000000000000307 /* EvidenceStateCorrectnessSelfTest.swift */,
 					AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */,
 					AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */,
 					AA0004110000000000000242 /* TwoStageLaneManager.swift */,
@@ -902,6 +1010,39 @@
 				AA00027F00000000000000A8 /* RichContextProposalSelfTest.swift */,
 				AA0002640000000000000073 /* MicroDecisionFeatureEncoder.swift */,
 				AA0002650000000000000074 /* MicroDecisionClassifier.mlmodel */,
+				34234664F5E20A10D46A32DB /* AccessibilityGroundingExtractor.swift */,
+				A9CB3242B4B5824DC85A67A5 /* AgenticEvidenceExtractionBridge.swift */,
+				C11946586D7D0ACE2FA067B1 /* AgenticEvidenceExtractionBridgeSelfTest.swift */,
+				990A06A691F11FFBC05E4B22 /* AgenticEvidenceGateSelfTest.swift */,
+				7E2F5451C9ADE11681AE7C3C /* AgenticEvidenceRequirements.swift */,
+				D9C2A14F8B6E0F77A1234E55 /* ProposalContextIsolationGate.swift */,
+				E03DAB128F90C0177AB1E5C7 /* ProposalContextIsolationSelfTest.swift */,
+				5DA9F03A7E1C0D3FAB4E1245 /* PlannerCapabilityRepairGate.swift */,
+				7BCE40193A55F02D58B91DA1 /* PlannerCapabilityEnvelopeSelfTest.swift */,
+					1A88B6C3F50E7CD4B0925BCC /* RouterGroundingHeuristic.swift */,
+					2B70CE6F1D3E08AB5CF7AD90 /* PartialPlannerRecoverySelfTest.swift */,
+					C4D3E2F1A0B9C8D7E6F5A4B3 /* RuntimeGroundingPreservationSelfTest.swift */,
+					45814F2B1B4BA787BF7E899C /* AssistantChromeFilter.swift */,
+				727FD3C4514261CA05AC6899 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift */,
+				3116D8520F7C1BF6E5A52B00 /* ExecutionFocusHandoff.swift */,
+				C1C11DAFB182E3810ACB0A30 /* ExecutionFocusHandoffSelfTest.swift */,
+				F2898F4386114DA435D0BD06 /* GeneratedChromeFilter.swift */,
+				BEAE240F9B98F8FF6BEEE3D0 /* GroundedSemanticEntity.swift */,
+				9921497FDCC5F018FE78B809 /* GroundedSemanticExtractionSelfTest.swift */,
+				2832565235F43CE1AC13D713 /* GroundedSemanticExtractor.swift */,
+				BC724DC2187B87549C520543 /* GroundedTargetResolver.swift */,
+				928EC1364F6B6E171145B807 /* OCRGroundingExtractor.swift */,
+				54AF39D2909CCB47DCB7B1FB /* PersistentGroundedRuntimeSelfTest.swift */,
+				BEA2F42E4AFE5AB1F9310D77 /* PlannerRefinementAlignmentGate.swift */,
+				F169C0F699284740F42792AA /* PlannerRefinementAlignmentSelfTest.swift */,
+				E4C00C70C929A0190DCE4637 /* CapabilityConstrainedProposalSelfTest.swift */,
+				2C0E693857270C2AA028E360 /* ScreenStateGraph.swift */,
+				8D5CDA6120DE860783A6B223 /* ScreenStateGraphSelfTest.swift */,
+				4B580A6952DBAF4A4E7CAD03 /* StructuredFactBuilder.swift */,
+				3F9B74CF1900E76D76102F76 /* TargetWindowAnchor.swift */,
+				1570D63645E12AB9A153D499 /* TargetWindowAnchoringSelfTest.swift */,
+				D5A1C5E4B0A64F0A1B2C3D4E /* ProposalCapabilityValidator.swift */,
+
 				AA000231000000000000002F /* OCRProcessor.swift */,
 			);
 			path = Intelligence;
@@ -1141,6 +1282,11 @@
 				AA0001C4000000000000EA /* GeneratedExecutionRuntime.swift in Sources */,
 				AA0001C5000000000000EB /* GeneratedExecutionContext.swift in Sources */,
 				AA0001E7000000000000010E /* CanonicalGeneratedExecutionContextSnapshot.swift in Sources */,
+				8ED5656EC70B4AA383740801 /* StrongContextAnchor.swift in Sources */,
+				58B688576810432FBD5202D1 /* CanonicalGeneratedExecutionContextSnapshot+Copying.swift in Sources */,
+				5E01E9356E3E4FAA9540D271 /* SituationalContextSnapshot+Copying.swift in Sources */,
+				11F17F5481CA40D1B576AADC /* StrongContextAnchorSelfTest.swift in Sources */,
+				DDCEB3D4627F4A56A0A2CA53 /* EmailReviewEvidenceSelfTest.swift in Sources */,
 				AA0001E8000000000000010F /* GeneratedExecutionContextBridge.swift in Sources */,
 				AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */,
 				AA0001EA0000000000000111 /* SparseVisualPeekPolicy.swift in Sources */,
@@ -1195,6 +1341,7 @@
 					AA0001C20000000000000F2 /* ModelTierConfig.swift in Sources */,
 					AA0001C30000000000000F3 /* ModelAuditManager.swift in Sources */,
 					AA0002280000000000000141 /* TaskInferenceSelfTest.swift in Sources */,
+					AA0002280000000000000199 /* RouterEmptyEscalationSelfTest.swift in Sources */,
 					AA0002290000000000000142 /* TaskInferencePlanningPipeline.swift in Sources */,
 					AA0010000000000000000001 /* StructuredOutputSelfTest.swift in Sources */,
 					AA0010000000000000000002 /* PlannerCandidateSelfTest.swift in Sources */,
@@ -1228,6 +1375,14 @@
 				AA0002340000000000000153 /* AgenticPerceptionRefreshSelfTest.swift in Sources */,
 				AA0002350000000000000154 /* AgenticIntentGrounding.swift in Sources */,
 				AA0002360000000000000155 /* AgenticIntentGroundingSelfTest.swift in Sources */,
+				AA0002360000000000000300 /* StatefulAgenticLoopSelfTest.swift in Sources */,
+				AA0002360000000000000301 /* AgenticStepThought.swift in Sources */,
+				AA0002360000000000000302 /* EvidenceQualityGate.swift in Sources */,
+				AA0002360000000000000303 /* EvidenceValidator.swift in Sources */,
+				AA0002360000000000000304 /* EvidenceQualityGateSelfTest.swift in Sources */,
+				AA0002360000000000000305 /* AgenticGoalAlignmentValidator.swift in Sources */,
+				AA0002360000000000000306 /* GoalEvidenceAlignmentSelfTest.swift in Sources */,
+				AA0002360000000000000307 /* EvidenceStateCorrectnessSelfTest.swift in Sources */,
 					AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */,
 					AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */,
 					AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */,
@@ -1279,6 +1434,39 @@
 				AA00015B0000000000000066 /* IntelligenceDebugLogger.swift in Sources */,
 				AA00015C0000000000000069 /* MicroDecisionFeatureEncoder.swift in Sources */,
 				AA0001260000000000000026 /* OCRProcessor.swift in Sources */,
+				41B74E3BE3FBC69667812E29 /* AccessibilityGroundingExtractor.swift in Sources */,
+				96EDF009AD7FA65E37EBCF64 /* AgenticEvidenceExtractionBridge.swift in Sources */,
+				4891AD570CE72D0FE7408083 /* AgenticEvidenceExtractionBridgeSelfTest.swift in Sources */,
+				34FDE16D559BAC6B1850A73E /* AgenticEvidenceGateSelfTest.swift in Sources */,
+				8563A92768309092F8591133 /* AgenticEvidenceRequirements.swift in Sources */,
+				A7E1F2C39B14D0AC5612EF11 /* ProposalContextIsolationGate.swift in Sources */,
+				B82C7F3A41509DCB7E80AA62 /* ProposalContextIsolationSelfTest.swift in Sources */,
+				C04E1AB7392B5D6B7E0D6F90 /* PlannerCapabilityRepairGate.swift in Sources */,
+				D15B902C84E47BAF311F70CE /* PlannerCapabilityEnvelopeSelfTest.swift in Sources */,
+					E20F4D9C8615A0BE19A4FE63 /* RouterGroundingHeuristic.swift in Sources */,
+					F396827EAB12409D6FCD56AA /* PartialPlannerRecoverySelfTest.swift in Sources */,
+					D0E5B1F3A7C94B2E8F1A3C4D /* RuntimeGroundingPreservationSelfTest.swift in Sources */,
+					B26DE4576FD39C781DDF4128 /* AssistantChromeFilter.swift in Sources */,
+				97DE96FDDE79A118A1F38CB7 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift in Sources */,
+				8859C422A883A4B87E606255 /* ExecutionFocusHandoff.swift in Sources */,
+				CFAB08FB154F23978F3A918C /* ExecutionFocusHandoffSelfTest.swift in Sources */,
+				90ECD20DF4B3AF885E9F4468 /* GeneratedChromeFilter.swift in Sources */,
+				BE1AE065848A5D11D2F8AD24 /* GroundedSemanticEntity.swift in Sources */,
+				BFB34553F228C2841E160636 /* GroundedSemanticExtractionSelfTest.swift in Sources */,
+				B9EA248FFEED5133BBD975A3 /* GroundedSemanticExtractor.swift in Sources */,
+				3C2EFF9FA3D74DE945A90D7D /* GroundedTargetResolver.swift in Sources */,
+				90EE3D03BE2BD5C6EEB97601 /* OCRGroundingExtractor.swift in Sources */,
+				C6CF23D5D1A509D0E34B0E71 /* PersistentGroundedRuntimeSelfTest.swift in Sources */,
+				5E002223DFC36F912ED5F272 /* PlannerRefinementAlignmentGate.swift in Sources */,
+				6B79C3579C6DC8C8C5744F24 /* PlannerRefinementAlignmentSelfTest.swift in Sources */,
+				509B41A008882AA673201E59 /* CapabilityConstrainedProposalSelfTest.swift in Sources */,
+				693DC081808C74747E29B315 /* ScreenStateGraph.swift in Sources */,
+				BA113C23F85E5C1DFA30A228 /* ScreenStateGraphSelfTest.swift in Sources */,
+				0C9C12D634ABA99737FB807B /* StructuredFactBuilder.swift in Sources */,
+				E8994D452639243AFE38B963 /* TargetWindowAnchor.swift in Sources */,
+				AB1A304E03A44F2DDB9F8046 /* TargetWindowAnchoringSelfTest.swift in Sources */,
+				E6B2D6F5C1B75A1B2C3D4E5F /* ProposalCapabilityValidator.swift in Sources */,
+
 				AA0001080000000000000008 /* SourceEvent.swift in Sources */,
 				AA0001090000000000000009 /* SourceManager.swift in Sources */,
 			);

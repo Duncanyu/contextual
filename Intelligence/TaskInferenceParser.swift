@@ -169,7 +169,7 @@ enum TaskInferenceParser {
 			  let dict = obj as? [String: Any]
 		else { return nil }
 
-		// Contract: qwen must NOT output hooks/ids or user-facing question templates.
+		// Contract: phi4-mini must NOT output hooks/ids or user-facing question templates.
 		let forbidden: Set<String> = [
 			"h", "hooks", "caps", "capabilities", "neededCapabilities",
 			"q", "question", "userFacingQuestion",

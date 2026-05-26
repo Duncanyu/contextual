@@ -229,9 +229,9 @@ enum AgenticControlSelfTest {
 			windowTitle: "AirPods 4 Technical Specs - Apple",
 			bundleIdentifier: "com.apple.safari",
 			inferredWorkflow: .browsing,
-			selectedText: "AirPods 4: Up to 30 hours battery with case.",
+			selectedText: "AirPods 4 specs\n140W fast charging\n30 hours battery",
 			clipboardText: nil,
-			recentOCRExcerpt: "Price: $129. Released September 2024. H2 chip.",
+			recentOCRExcerpt: "Price: $129\n140W GaN specs\nH2 chip",
 			contextSummary: "User is reading the AirPods 4 specs page.",
 			workflowConfidence: 0.9,
 			freshnessScore: 0.95
@@ -275,9 +275,9 @@ enum AgenticControlSelfTest {
 			windowTitle: "AirPods 4 Technical Specs - Apple",
 			bundleIdentifier: "com.apple.safari",
 			inferredWorkflow: .browsing,
-			selectedText: "AirPods 4: Up to 30 hours battery with case, Active Noise Cancellation.",
+			selectedText: "AirPods 4 specs\n30 hours battery\n140W GaN",
 			clipboardText: nil,
-			recentOCRExcerpt: "Price: $129. Released September 2024. H2 chip.",
+			recentOCRExcerpt: "Price: $129\n140W GaN specs\nH2 chip",
 			contextSummary: "User is reading the AirPods 4 specs page.",
 			workflowConfidence: 0.9,
 			freshnessScore: 0.95

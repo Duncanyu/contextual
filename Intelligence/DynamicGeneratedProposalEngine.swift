@@ -55,6 +55,9 @@ actor DynamicGeneratedProposalEngine {
 	private var titleHistoryByBundle: [String: [TaskInferenceTitleObservation]] = [:]
 	// Task inference: short-lived cache of previously successful action contracts (accelerator only).
 	private var dynamicActionCacheByKey: [String: DynamicGeneratedActionContract] = [:]
+	// Phase 4R — Strong context anchor (in-memory) to avoid transient weak browser titles
+	// (profile/account/settings) overwriting a recently-seen strong page context.
+	private var strongContextAnchor: StrongContextAnchor?
 
 	private static var autoVisualGatherCooldownSeconds: TimeInterval {
 		AgenticPivot.useEarlierProposalSurfacing ? 30 : 70
@@ -137,7 +140,8 @@ actor DynamicGeneratedProposalEngine {
 		budget: ExecutionBudget = .conservative,
 		history: ProposalHistoryMetadata? = nil,
 		situational: SituationalContextSnapshot? = nil,
-		referenceTime: Date = Date()
+		referenceTime: Date = Date(),
+		isWarmupReady: Bool = true
 	) async -> DynamicGeneratedProposalResult {
 		// Emit active architecture mode on every attempt so traces are always unambiguous.
 		let fallback = ProposalLoggingFlags.templateFallbackEnabled ? "yes" : "no"
@@ -154,28 +158,37 @@ actor DynamicGeneratedProposalEngine {
 			SituationalContextDiagnostics.log(situationalContext)
 		}
 
+		// MARK: - Strong context preservation (Phase 4R)
+		// Preserve a recently-seen strong page title + OCR excerpt when the current browser
+		// title becomes weak/transient (profile/account/settings) or OCR becomes code-like.
+		let anchored = applyStrongContextAnchorIfNeeded(
+			snapshot: snapshot,
+			situational: situationalContext,
+			referenceTime: referenceTime
+		)
+
 		// MARK: - Automatic bounded visual context enrichment (T18.3.7B)
 		// When context is metadata-only and perception says visual is useful/recommended, attempt a
 		// single bounded visual peek BEFORE library retrieval. This is gated (cooldown, permission,
 		// budget, thermal) and never loops/polls. If denied, continue with metadata-only proposals.
 
-		var effectiveSnapshot = snapshot
-		var effectiveSituational = situationalContext
+		var effectiveSnapshot = anchored.snapshot
+		var effectiveSituational = anchored.situational
 		if shouldAttemptAutoVisualGather(
-			snapshot: snapshot,
-			situational: situationalContext,
+			snapshot: effectiveSnapshot,
+			situational: effectiveSituational,
 			referenceTime: referenceTime
 		) {
-			let fingerprint = Self.autoVisualGatherFingerprint(snapshot: snapshot, situational: situationalContext)
+			let fingerprint = Self.autoVisualGatherFingerprint(snapshot: effectiveSnapshot, situational: effectiveSituational)
 			if shouldAttemptAutoVisualGatherForFingerprint(fingerprint, referenceTime: referenceTime) {
 				recordAutoVisualGatherAttempt(fingerprint, at: referenceTime)
-				let workflow = situationalContext.inferredWorkflow.rawValue
+				let workflow = effectiveSituational.inferredWorkflow.rawValue
 				print(
 					"[VisualContextGathering] requested reason=metadata_only_perception_recommended workflow=\(workflow) fp=\(fingerprint)"
 				)
 
 				let gateEval = await sparseVisualPeekGate.evaluate(
-					snapshot: snapshot,
+					snapshot: effectiveSnapshot,
 					referenceTime: referenceTime
 				)
 				if gateEval.shouldDeny {
@@ -184,7 +197,7 @@ actor DynamicGeneratedProposalEngine {
 					)
 				} else {
 					let peekDecision = SparseVisualPeekPolicy.shouldRequestVisualPeek(
-						snapshot: snapshot,
+						snapshot: effectiveSnapshot,
 						action: nil,
 						explicitManualRequest: false,
 						gateEvaluation: gateEval,
@@ -195,9 +208,9 @@ actor DynamicGeneratedProposalEngine {
 							"[VisualContextGathering] denied reason=\(peekDecision.denyReason?.rawValue ?? "policy") fp=\(fingerprint)"
 						)
 					} else {
-						let wf = WorkflowExecutionMapper.workflowType(from: situationalContext.inferredWorkflow)
+						let wf = WorkflowExecutionMapper.workflowType(from: effectiveSituational.inferredWorkflow)
 						let intent: IntentType = {
-							if let it = situationalContext.inferredIntent {
+							if let it = effectiveSituational.inferredIntent {
 								return WorkflowExecutionMapper.intentType(from: it)
 							}
 							return .unknown
@@ -231,7 +244,7 @@ actor DynamicGeneratedProposalEngine {
 							),
 							maxDescriptionCharacters: 0,
 							budget: autoBudget,
-							permissionAvailability: snapshot.permissionAvailability,
+							permissionAvailability: effectiveSnapshot.permissionAvailability,
 							createdAt: referenceTime,
 							expiresAt: referenceTime.addingTimeInterval(6)
 						)
@@ -243,7 +256,7 @@ actor DynamicGeneratedProposalEngine {
 							let budgetSnapshot = GeneratedExecutionBudgetSnapshot(
 								activeExecutionCount: 0,
 								runtimeState: .idle,
-								permissionAvailability: snapshot.permissionAvailability,
+								permissionAvailability: effectiveSnapshot.permissionAvailability,
 								activeSamplingRequested: true
 							)
 						let visualResult = await scheduler.collect(
@@ -254,22 +267,22 @@ actor DynamicGeneratedProposalEngine {
 						if visualOK {
 							await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
 								let classification = VisualContextWorkflowClassifier.classify(
-									appCategory: situationalContext.appCategory,
-									windowTitle: situationalContext.windowTitle,
+									appCategory: effectiveSituational.appCategory,
+									windowTitle: effectiveSituational.windowTitle,
 									visualTags: visualResult.visualTags,
 									ocrExcerpt: visualResult.ocrExcerpt,
-									priorWorkflow: situationalContext.inferredWorkflow,
-									priorConfidence: situationalContext.workflowConfidence
+									priorWorkflow: effectiveSituational.inferredWorkflow,
+									priorConfidence: effectiveSituational.workflowConfidence
 								)
-								let titleHint = BrowserTitleHeuristics.domainHint(from: situationalContext.windowTitle) ?? "none"
+								let titleHint = BrowserTitleHeuristics.domainHint(from: effectiveSituational.windowTitle) ?? "none"
 								let tagsHint = visualResult.visualTags.prefix(4).joined(separator: ",")
 								let tagsPart = tagsHint.isEmpty ? "none" : tagsHint
 								let confPart = String(format: "%.2f", classification.confidence)
 								print(
-									"[VisualContextClassification] before_workflow=\(situationalContext.inferredWorkflow.rawValue) after_workflow=\(classification.workflow.rawValue) app=\(situationalContext.activeAppName) title_hint=\(titleHint) tags=\(tagsPart) ocr_hint=\(classification.ocrHint) conf=\(confPart)"
+									"[VisualContextClassification] before_workflow=\(effectiveSituational.inferredWorkflow.rawValue) after_workflow=\(classification.workflow.rawValue) app=\(effectiveSituational.activeAppName) title_hint=\(titleHint) tags=\(tagsPart) ocr_hint=\(classification.ocrHint) conf=\(confPart)"
 								)
 
-							let enriched = snapshot.merging(
+							let enriched = effectiveSnapshot.merging(
 								visualResult: visualResult,
 								priorWorkflow: classification.workflow,
 								priorWorkflowConfidence: classification.confidence,
@@ -315,7 +328,8 @@ actor DynamicGeneratedProposalEngine {
 			situational: effectiveSituational,
 			recentTitles: recentTitles,
 			history: history,
-			referenceTime: referenceTime
+			referenceTime: referenceTime,
+			isWarmupReady: isWarmupReady
 		)
 
 		// MARK: Context escalation (PART A) — model requested more context
@@ -352,7 +366,8 @@ actor DynamicGeneratedProposalEngine {
 						recentTitles: recentTitles,
 						history: history,
 						referenceTime: referenceTime,
-						isEnrichedPass: true
+						isEnrichedPass: true,
+						isWarmupReady: isWarmupReady
 					)
 				} else {
 					let elapsed = Int(Date().timeIntervalSince(escalationStart) * 1000)
@@ -373,7 +388,8 @@ actor DynamicGeneratedProposalEngine {
 					reason: "task_inference_quiet",
 					warnings: ["diag:task_inference_quiet"],
 					cause: nil,
-					referenceTime: referenceTime
+					referenceTime: referenceTime,
+					contextSnapshot: effectiveSnapshot
 				)
 			}
 
@@ -403,9 +419,67 @@ actor DynamicGeneratedProposalEngine {
 					warnings: [],
 					llmDiagnosticCause: nil,
 					createdAt: referenceTime,
+					contextSnapshot: effectiveSnapshot,
 					libraryRecords: [],
 					hookContracts: [composed.contract]
 				)
+			}
+
+			// Phase 4R — If compose failed (often due to low grounding / transient title churn),
+			// perform ONE isolated retry using the last strong context anchor when available.
+			if let anchor = strongContextAnchor, !anchored.usedAnchor, !anchor.isExpired(at: referenceTime) {
+				let aBundle = anchor.bundleIdentifier?.lowercased() ?? ""
+				let cBundle = effectiveSnapshot.bundleIdentifier?.lowercased() ?? ""
+				if !aBundle.isEmpty, !cBundle.isEmpty, aBundle == cBundle {
+					print("[ProposalGeneration] retrying reason=activation_low_grounding using_strong_anchor=yes")
+					print("[ProposalContext] using_strong_anchor=yes")
+					let wfConfidence = max(0.55, effectiveSituational.workflowConfidence)
+					let retrySnapshot = effectiveSnapshot.replacing(
+						windowTitle: anchor.windowTitle,
+						recentOCRExcerpt: anchor.ocrExcerpt,
+						inferredWorkflow: anchor.workflow,
+						workflowConfidence: wfConfidence
+					)
+					let retrySituational = effectiveSituational.replacing(
+						windowTitle: anchor.windowTitle,
+						inferredWorkflow: anchor.workflow,
+						workflowConfidence: wfConfidence
+					)
+					if let retryInference = await TaskInferenceEngine.shared.infer(
+						snapshot: retrySnapshot,
+						situational: retrySituational,
+						recentTitles: recentTitles,
+						history: history,
+						referenceTime: referenceTime,
+						isEnrichedPass: true,
+						isWarmupReady: isWarmupReady
+					), retryInference.shouldChime,
+					   let retryComposed = await TaskInferencePlanningPipeline.compose(
+						inference: retryInference,
+						snapshot: retrySnapshot,
+						situational: retrySituational,
+						recentTitles: recentTitles,
+						referenceTime: referenceTime
+					   )
+					{
+						print("[DynamicActionSynthesis] source=hook_composer_retry synthesized title=\(retryComposed.contract.title) confidence=\(String(format: "%.2f", retryComposed.contract.confidence)) why_now=\(retryComposed.contract.whyNow)")
+						return DynamicGeneratedProposalResult(
+							status: .synthesized,
+							shouldChimeIn: true,
+							reason: "hook_composer_retry",
+							workflowAssessment: "hook_composer_retry",
+							proposalConfidence: retryComposed.contract.confidence,
+							requiresVisualContext: retryComposed.contract.requiredContext.contains(.screenCapture) || retryComposed.contract.requiredContext.contains(.fusedVisual),
+							proposals: [retryComposed.proposal],
+							warnings: [],
+							llmDiagnosticCause: nil,
+							createdAt: referenceTime,
+							contextSnapshot: retrySnapshot,
+							libraryRecords: [],
+							hookContracts: [retryComposed.contract]
+						)
+					}
+				}
 			}
 
 			print("[DynamicActionSynthesis] skipped reason=compose_failed")
@@ -443,6 +517,7 @@ actor DynamicGeneratedProposalEngine {
 				warnings: [],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
+				contextSnapshot: effectiveSnapshot,
 				libraryRecords: [],
 				hookContracts: [cached]
 			)
@@ -457,7 +532,8 @@ actor DynamicGeneratedProposalEngine {
 				reason: "no_task_inference_action",
 				warnings: ["diag:no_task_inference_action"],
 				cause: nil,
-				referenceTime: referenceTime
+				referenceTime: referenceTime,
+				contextSnapshot: effectiveSnapshot
 			)
 		}
 
@@ -522,6 +598,7 @@ actor DynamicGeneratedProposalEngine {
 				warnings: [],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
+				contextSnapshot: effectiveSnapshot,
 				libraryRecords: records,
 				hookContracts: []
 			)
@@ -571,7 +648,8 @@ actor DynamicGeneratedProposalEngine {
 					reason: "needs_more_context",
 					warnings: [tag],
 					cause: nil,
-					referenceTime: referenceTime
+					referenceTime: referenceTime,
+					contextSnapshot: effectiveSnapshot
 				)
 			}
 			let tag = decision.reason == "timeout_cooldown"
@@ -583,7 +661,8 @@ actor DynamicGeneratedProposalEngine {
 				reason: decision.reason,
 				warnings: [tag],
 				cause: nil,
-				referenceTime: referenceTime
+				referenceTime: referenceTime,
+				contextSnapshot: effectiveSnapshot
 			)
 		}
 
@@ -594,7 +673,8 @@ actor DynamicGeneratedProposalEngine {
 			reason: "no_template_in_library",
 			warnings: ["diag:no_template_in_library"],
 			cause: nil,
-			referenceTime: referenceTime
+			referenceTime: referenceTime,
+			contextSnapshot: effectiveSnapshot
 		)
 
 		// NOTE: Live large-model proposal synthesis is intentionally disabled in the hot path.
@@ -633,6 +713,7 @@ actor DynamicGeneratedProposalEngine {
 				warnings: ["no_fused_context"],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
+				contextSnapshot: snapshot,
 				libraryRecords: [],
 				hookContracts: []
 			)
@@ -649,6 +730,7 @@ actor DynamicGeneratedProposalEngine {
 				warnings: ["stale_context"],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
+				contextSnapshot: snapshot,
 				libraryRecords: [],
 				hookContracts: []
 			)
@@ -669,6 +751,7 @@ actor DynamicGeneratedProposalEngine {
 				warnings: ["post_dismiss_cooldown"],
 				llmDiagnosticCause: nil,
 				createdAt: referenceTime,
+				contextSnapshot: snapshot,
 				libraryRecords: [],
 				hookContracts: []
 			)
@@ -702,6 +785,7 @@ actor DynamicGeneratedProposalEngine {
 			warnings: parsed.warnings + (kept.count < parsed.proposals.count ? ["repetition_filtered"] : []),
 			llmDiagnosticCause: parsed.llmDiagnosticCause,
 			createdAt: parsed.createdAt,
+			contextSnapshot: parsed.contextSnapshot,
 			libraryRecords: [],
 			hookContracts: parsed.hookContracts
 		)
@@ -972,7 +1056,8 @@ actor DynamicGeneratedProposalEngine {
 		reason: String,
 		warnings: [String],
 		cause: DynamicGeneratedProposalLLMDiagnosticCause?,
-		referenceTime: Date
+		referenceTime: Date,
+		contextSnapshot: CanonicalGeneratedExecutionContextSnapshot? = nil
 	) -> DynamicGeneratedProposalResult {
 		DynamicGeneratedProposalResult(
 			status: status,
@@ -985,6 +1070,7 @@ actor DynamicGeneratedProposalEngine {
 			warnings: warnings,
 			llmDiagnosticCause: cause,
 			createdAt: referenceTime,
+			contextSnapshot: contextSnapshot,
 			libraryRecords: [],
 			hookContracts: []
 		)
@@ -1139,5 +1225,69 @@ actor DynamicGeneratedProposalEngine {
 		dynamicActionCacheByKey = dynamicActionCacheByKey.filter { _, value in
 			value.createdAt >= cutoff && value.expiresAt > referenceTime
 		}
+	}
+
+	// MARK: - Strong Context Anchor (Phase 4R)
+
+	private struct StrongAnchorApplication: Sendable {
+		let snapshot: CanonicalGeneratedExecutionContextSnapshot
+		let situational: SituationalContextSnapshot
+		let usedAnchor: Bool
+	}
+
+	private func applyStrongContextAnchorIfNeeded(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		referenceTime: Date
+	) -> StrongAnchorApplication {
+		let decision = StrongContextAnchorHeuristic.evaluate(
+			now: referenceTime,
+			currentTitle: situational.windowTitle,
+			currentOCR: snapshot.recentOCRExcerpt,
+			currentWorkflow: situational.inferredWorkflow,
+			currentBundleId: snapshot.bundleIdentifier,
+			anchor: strongContextAnchor
+		)
+
+		if decision.shouldStore {
+			strongContextAnchor = StrongContextAnchor(
+				appName: situational.activeAppName,
+				bundleIdentifier: snapshot.bundleIdentifier,
+				windowTitle: situational.windowTitle,
+				ocrExcerpt: snapshot.recentOCRExcerpt,
+				axExcerpt: nil,
+				workflow: situational.inferredWorkflow,
+				storedAt: referenceTime
+			)
+			print("[StrongContextAnchor] stored title=\(sanitizeTitleForLog(situational.windowTitle)) workflow=\(situational.inferredWorkflow.rawValue)")
+			return StrongAnchorApplication(snapshot: snapshot, situational: situational, usedAnchor: false)
+		}
+
+		if decision.shouldPreserve, let anchor = strongContextAnchor {
+			print("[StrongContextAnchor] preserved reason=\(decision.reason) current=\(sanitizeTitleForLog(situational.windowTitle))")
+			print("[ProposalContext] using_strong_anchor=yes")
+			let wfConfidence = max(0.55, situational.workflowConfidence)
+			let preservedSnapshot = snapshot.replacing(
+				windowTitle: anchor.windowTitle,
+				recentOCRExcerpt: anchor.ocrExcerpt,
+				inferredWorkflow: anchor.workflow,
+				workflowConfidence: wfConfidence
+			)
+			let preservedSituational = situational.replacing(
+				windowTitle: anchor.windowTitle,
+				inferredWorkflow: anchor.workflow,
+				workflowConfidence: wfConfidence
+			)
+			return StrongAnchorApplication(snapshot: preservedSnapshot, situational: preservedSituational, usedAnchor: true)
+		}
+
+		return StrongAnchorApplication(snapshot: snapshot, situational: situational, usedAnchor: false)
+	}
+
+	private func sanitizeTitleForLog(_ title: String) -> String {
+		let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+		if trimmed.isEmpty { return "none" }
+		let out = trimmed.count > 72 ? String(trimmed.prefix(72)) : trimmed
+		return out.replacingOccurrences(of: "\n", with: " ")
 	}
 }

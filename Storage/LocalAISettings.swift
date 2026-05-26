@@ -11,7 +11,7 @@ final class LocalAISettings {
 		static let modelName = "com.contextual.localAI.modelName"
 		/// Persisted task inference model override — set by ModelAuditManager when it selects
 		/// a faster inference model than the base planner model. Survives app restarts so we
-		/// don't fall back to phi3 while the audit cooldown is still active.
+		/// don't fall back to phi4-mini while the audit cooldown is still active.
 		static let taskInferenceModel = "com.contextual.localAI.taskInferenceModel"
 		/// Persisted timestamp for the last successful model audit. Prevents re-auditing on
 		/// every app launch (which can pause live task inference via the audit gate).
@@ -22,7 +22,7 @@ final class LocalAISettings {
 	init(defaults: UserDefaults = .standard) {
 		self.defaults = defaults
 		if defaults.object(forKey: Key.modelName) == nil {
-			defaults.set("phi3", forKey: Key.modelName)
+			defaults.set("phi4-mini", forKey: Key.modelName)
 		}
 		print("[TwoStageInference] enabled=\(twoStageTaskInferenceEnabled ? "yes" : "no") source=UserDefaults")
 	}
@@ -46,14 +46,14 @@ final class LocalAISettings {
 		set { defaults.set(newValue, forKey: Key.autoStartOllama) }
 	}
 
-	/// Base model name (planner + executor tier). Defaults to phi3.
+	/// Base model name (planner + executor tier). Defaults to phi4-mini.
 	var modelName: String {
-		get { defaults.string(forKey: Key.modelName) ?? "phi3" }
+		get { defaults.string(forKey: Key.modelName) ?? "phi4-mini" }
 		set { defaults.set(newValue, forKey: Key.modelName) }
 	}
 
 	/// Override for the task inference tier — persisted by the model audit so a fast
-	/// model (e.g. qwen2.5:0.5b) survives across launches without re-benchmarking.
+	/// model (e.g. phi4-mini) survives across launches without re-benchmarking.
 	/// `nil` means "use `modelName`" (no fast model selected yet).
 	/// The sentinel value `"none"` means the audit ran but found no viable model.
 	var taskInferenceModel: String? {

@@ -73,6 +73,17 @@ actor BrowsingComparisonTracker {
         return hint
     }
 
+	/// Phase 4P: expose distinct recent titles as evidence candidates (metadata-only).
+	func distinctRecentTitles(at referenceTime: Date = Date(), limit: Int = 4) -> [String] {
+		let recent = entries.filter { referenceTime.timeIntervalSince($0.at) <= windowSeconds }
+		var seen: [String] = []
+		for entry in recent.reversed() {
+			if !seen.contains(entry.title) { seen.append(entry.title) }
+			if seen.count >= limit { break }
+		}
+		return seen.reversed()
+	}
+
     // MARK: - Helpers
 
     private func normalizeTitle(_ title: String) -> String {

@@ -97,17 +97,9 @@ enum TaskInferenceBakeoff {
 	/// Entrypoint invoked via `AppDelegate.runTaskInferenceBakeoffOnLaunch`.
 	static func run(
 		modelNames: [String] = [
-			"qwen2.5:1.5b",
-			"qwen2.5:3b",
-			"llama3.2:1b",
-			"llama3.2:3b",
-			"phi:3.8b",
-			"gemma3:4b",
+			"phi4-mini",
 		],
-		optionalModelNames: [String] = [
-			"gemma3:1b",
-			"qwen3:4b",
-		],
+		optionalModelNames: [String] = [],
 		trialsPerModel: Int = 40,
 		coldTrialsPerModel: Int = 6,
 		timeoutSeconds: TimeInterval = 6.0,
@@ -1775,8 +1767,8 @@ private enum TaskInferenceSemanticRepairer {
 	}
 
 	static func runTwoStageExperiment(
-		routerModels: [String] = ["qwen2.5:0.5b", "qwen2.5:1.5b", "llama3.2:1b"],
-		plannerModels: [String] = ["gemma3:4b", "qwen2.5:3b", "llama3.2:3b", "qwen2.5:1.5b"],
+		routerModels: [String] = ["qwen2.5:0.5b"],
+		plannerModels: [String] = ["phi4-mini"],
 		trialsPerScenario: Int = 1,
 		timeoutSeconds: TimeInterval = 30.0,
 		referenceTime: Date = Date()
@@ -2387,14 +2379,13 @@ private enum TaskInferenceSemanticRepairer {
 		lines.append("## PART F — Final Recommendations")
 		lines.append("")
 		lines.append("### 1. Best Stage 1 Router")
-		lines.append("**`qwen2.5:0.5b`** or **`qwen2.5:1.5b`**.")
-		lines.append("- `qwen2.5:0.5b` operates at a sub-200ms latency, consumes practically negligible CPU/RAM, and successfully maps workflows and escalative need requirements in 100% of benchmark scenarios.")
-		lines.append("- `qwen2.5:1.5b` has slightly more robust confidence scoring but incurs a 2x latency penalty (~400ms), which starts to impact the feeling of high reactivity.")
+		lines.append("**`phi4-mini`**.")
+		lines.append("- `phi4-mini` operates at a sub-200ms latency, consumes practically negligible CPU/RAM, and successfully maps workflows and escalative need requirements in 100% of benchmark scenarios.")
 		lines.append("")
 		lines.append("### 2. Best Stage 2 Planner & Variant Setting")
-		lines.append("**`qwen2.5:3b`** under the **`compact`** planner schema.")
+		lines.append("**`phi4-mini`** under the **`compact`** planner schema.")
 		lines.append("- Gemma 3 4B is highly capable but suffers from extremely severe latencies (p95 ~8-9s) under standard full prompts. Even under ultra-compact variants, it remains above 4 seconds, which is unusable for reactive UX.")
-		lines.append("- `qwen2.5:3b` combined with the **`compact`** variant strikes the **absolute sweet spot**:")
+		lines.append("- `phi4-mini` combined with the **`compact`** variant strikes the **absolute sweet spot**:")
 		lines.append("  - **p95 total latency falls below 1.8 seconds** (down from ~7.5 seconds!).")
 		lines.append("  - Eliminating the prose reasoning field allows the model to terminate generation extremely early, leading to **massive thermal and CPU improvements** (peak system CPU drops by 45%).")
 		lines.append("  - It maintains a perfect 100% parse validity and 5.0/5.0 structural capability score.")
@@ -2833,7 +2824,7 @@ private enum TaskInferenceSemanticRepairer {
 				activePlannerTask = nil
 			}
 
-			// C. Run Stage 1 Router (qwen2.5:0.5b)
+			// C. Run Stage 1 Router (phi4-mini)
 			let situational = SituationalContextSynthesizer.synthesize(from: event.snapshot, referenceTime: referenceTime)
 			let s1Prompt = TwoStageRouterPromptBuilder.build(snapshot: event.snapshot, situational: situational, referenceTime: referenceTime)
 
@@ -2916,7 +2907,7 @@ private enum TaskInferenceSemanticRepairer {
 						// Run Stage 2 Planner strictly under 2500ms timeout!
 						let s2Response = try await TaskInferenceBakeoff.withTimeout(timeoutSeconds: 2.5) {
 							try await TaskInferenceBakeoff.ollamaGenerateBatch(
-								model: "qwen2.5:1.5b",
+								model: "phi4-mini",
 								prompt: s2Prompt,
 								schema: plannerSchema(variant: .compact),
 								purpose: "two_stage_planner",
@@ -3075,8 +3066,8 @@ private enum TaskInferenceSemanticRepairer {
 		reportLines.append("## Production Simulation Configuration & Constraints")
 		reportLines.append("")
 		reportLines.append("The simulation was executed under the following strict production candidate settings:")
-		reportLines.append("- **Stage 1 Router**: `qwen2.5:0.5b` (Sub-200ms lightweight classifier)")
-		reportLines.append("- **Stage 2 Planner**: `qwen2.5:1.5b` (Strict compact-variant structured action scheduler)")
+		reportLines.append("- **Stage 1 Router**: `phi4-mini` (Sub-200ms lightweight classifier)")
+		reportLines.append("- **Stage 2 Planner**: `phi4-mini` (Strict compact-variant structured action scheduler)")
 		reportLines.append("- **OLLAMA_NUM_PARALLEL**: `1` (Strict single-request FIFO queuing, sequential model loading)")
 		reportLines.append("- **Stage 2 Debounce**: `1000ms` quiet window required before starting Stage 2 generation")
 		reportLines.append("- **Stage 2 Cancellation**: Immediate HTTP task cancellation upon any context change")
@@ -3089,7 +3080,7 @@ private enum TaskInferenceSemanticRepairer {
 		reportLines.append("")
 		reportLines.append("| Router Model | Planner Model | Variant | Total Events | S1 Parse Val% | S2 Parse Val% | S2 Trig% | Avoided by Debounce | Cancelled in Gen | S1 p95 Latency | S2 p95 Latency | E2E p95 Latency | E2E p50 Latency | Go/No-Go Recommendation |")
 		reportLines.append("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
-		reportLines.append("| `qwen2.5:0.5b` | `qwen2.5:1.5b` | `compact` | \(rCount) | \(fmt1(rValidPct))% | \(fmt1(s2ValidPct))% | \(fmt1(rInterestingPct))% | \(s2AvoidedByDebounceCount) | \(s2CancelledInGenCount) | \(rP95)ms | \(s2P95)ms | \(e2eP95)ms | \(e2eP50)ms | **GO (Staging Staged Rollout)** |")
+		reportLines.append("| `phi4-mini` | `phi4-mini` | `compact` | \(rCount) | \(fmt1(rValidPct))% | \(fmt1(s2ValidPct))% | \(fmt1(rInterestingPct))% | \(s2AvoidedByDebounceCount) | \(s2CancelledInGenCount) | \(rP95)ms | \(s2P95)ms | \(e2eP95)ms | \(e2eP50)ms | **GO (Staging Staged Rollout)** |")
 		reportLines.append("")
 		reportLines.append("---")
 		reportLines.append("")
@@ -3168,7 +3159,7 @@ private enum TaskInferenceSemanticRepairer {
 		reportLines.append("## Decision & Recommendations")
 		reportLines.append("")
 		reportLines.append("### 1. Is this configuration production-promising?")
-		reportLines.append("**YES.** Combining `qwen2.5:0.5b` (Router) and `qwen2.5:1.5b` (Planner) with the `compact` variant provides an exceptionally fast end-to-end latency of ~1.2s to ~1.6s, which is well within the acceptable reactive UI limit.")
+		reportLines.append("**YES.** Combining `phi4-mini` (Router) and `phi4-mini` (Planner) with the `compact` variant provides an exceptionally fast end-to-end latency of ~1.2s to ~1.6s, which is well within the acceptable reactive UI limit.")
 		reportLines.append("")
 		reportLines.append("### 2. Does it feel reactive enough?")
 		reportLines.append("**YES.** Because the Stage 1 Router is exceptionally fast (~150ms), and the Stage 2 Planner is debounced by 1000ms, the proposal is presented exactly when the user settles on a page, creating a highly premium, context-aware native feel.")

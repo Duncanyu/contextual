@@ -3,7 +3,7 @@
 // and that PlannerCandidateSelector picks a useful one.
 //
 // Triggered by: CONTEXTUAL_RUN_PLANNER_CANDIDATE_SELFTEST=1
-// Uses real Ollama calls (qwen2.5:1.5b) — requires Ollama running.
+// Uses real Ollama calls (phi4-mini) — requires Ollama running.
 //
 // Expected output:
 //   [PlannerCandidateSelfTest] started
@@ -20,7 +20,7 @@ struct PlannerCandidateSelfTest {
 
         let llm = LocalAIClient.shared
         let schema = TaskInferenceEngine.plannerSchema
-        let model = "qwen2.5:1.5b"
+        let model = "phi4-mini"
         let numPredict = 220
         let temperature = 0.05
 

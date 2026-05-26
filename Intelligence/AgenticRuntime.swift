@@ -10,6 +10,14 @@ enum AgenticRuntimeStatus: String, Sendable, Equatable, Codable, CaseIterable {
 	case preview_ready
 	/// Runtime completed a bounded step sequence successfully.
 	case controlled_success
+	/// Runtime extracted grounded facts/entities, but later control attempts did not
+	/// uncover additional evidence before bounds were reached.
+	case partial_grounded_success
+	/// Runtime captured grounded observation context (OCR/AX/targets) but did not
+	/// produce reliable structured facts.
+	case grounded_observation_only
+	/// Runtime made no meaningful progress (no grounded evidence extracted).
+	case no_progress
 	/// Stopped because an unsafe action was required and not allowed.
 	case blocked_unsafe_action
 	/// No AgenticTaskPlan was provided.
@@ -21,6 +29,39 @@ enum AgenticRuntimeStatus: String, Sendable, Equatable, Codable, CaseIterable {
 }
 
 // MARK: - Session State
+
+/// World-state snapshot at a specific point in time (Phase 4S).
+struct AgenticWorldStateSnapshot: Sendable, Equatable {
+	let ocrHash: String
+	let axHash: String
+	let graphNodeCount: Int
+	let groundedTargetTitles: [String]
+	let evidenceSatisfied: Set<String>
+	let evidenceMissing: Set<String>
+	let timestamp: Date
+
+	static func capture(
+		session: AgenticSessionState,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot
+	) -> AgenticWorldStateSnapshot {
+		let ocrHash = AgenticPerceptionRefreshCoordinator.computeTextHash(ocr: snapshot.recentOCRExcerpt, selectedText: nil) ?? "none"
+		let axHash = AgenticPerceptionRefreshCoordinator.computeTextHash(ocr: nil, selectedText: snapshot.contextSummary) ?? "none"
+		let graphNodeCount = session.screenStateGraph?.nodes.count ?? 0
+		let groundedTargetTitles = session.groundedTargets.map { $0.title }
+		let evidenceSatisfied = Set(session.evidenceState?.satisfied.map { $0.rawValue } ?? [])
+		let evidenceMissing = Set(session.evidenceState?.missing.map { $0.rawValue } ?? [])
+		
+		return AgenticWorldStateSnapshot(
+			ocrHash: ocrHash,
+			axHash: axHash,
+			graphNodeCount: graphNodeCount,
+			groundedTargetTitles: groundedTargetTitles,
+			evidenceSatisfied: evidenceSatisfied,
+			evidenceMissing: evidenceMissing,
+			timestamp: Date()
+		)
+	}
+}
 
 /// Mutable state threaded through the Phase 4D loop.
 struct AgenticSessionState: Sendable {
@@ -68,6 +109,34 @@ struct AgenticSessionState: Sendable {
 	/// Text hash of the most recently completed observation.
 	var lastObservationTextHash: String?
 
+	// MARK: - Phase 4G: Screen grounding
+
+	/// Most recent screen-state graph built from OCR/AX.
+	var screenStateGraph: ScreenStateGraph?
+	/// Ranked grounded targets resolved from the graph.
+	var groundedTargets: [GroundedTarget]
+	/// Primary grounded target when confidence is sufficient.
+	var primaryGroundedTarget: GroundedTarget?
+
+	// MARK: - Phase 4I: Grounded semantic extraction
+
+	/// Semantic entities extracted from grounded targets/nodes.
+	var semanticEntities: [GroundedSemanticEntity]
+	/// Structured facts built from semantic entities (canonical payload).
+	var structuredFacts: [StructuredFact]
+	/// Semantic readiness evaluation.
+	var semanticReadiness: SemanticReadiness?
+
+	// MARK: - Phase 4O: Evidence requirements + state
+
+	/// Required + optional evidence requirements derived from goal + workflow.
+	var evidenceRequirements: [AgenticEvidenceRequirement]
+	/// Latest evidence-state snapshot. Recomputed after observe_once and after
+	/// extract_facts so the decider always reasons against current state.
+	var evidenceState: AgenticEvidenceState?
+	/// Phase 4P: normalized evidence observations bridged from raw perception.
+	var evidenceObservations: [AgenticEvidenceObservation]
+
 	/// After this many consecutive ineffective controls, stop the loop.
 	static let maxIneffectiveControls = 2
 }
@@ -89,6 +158,12 @@ struct AgenticRuntimeResult: Sendable, Equatable {
 	let extractedFacts: [String]
 	/// Final answer produced by the loop (nil if stopped without answer).
 	let finalAnswer: String?
+
+	// MARK: - Phase 4G: Grounding summary
+
+	let groundedTargetCount: Int
+	let groundedPrimaryTitle: String?
+	let groundedPrimaryRole: String?
 }
 
 struct AgenticBudgetRemaining: Sendable, Equatable {
@@ -161,6 +236,7 @@ actor AgenticRuntime {
 		plan: AgenticTaskPlan?,
 		action: GeneratedExecutionAction?,
 		snapshot: CanonicalGeneratedExecutionContextSnapshot? = nil,
+		targetAnchor: TargetWindowAnchor? = nil,
 		referenceTime: Date = Date(),
 		dryRun: Bool = false
 	) async -> AgenticRuntimeResult {
@@ -182,7 +258,10 @@ actor AgenticRuntime {
 				actionId: actionId,
 				actionsExecuted: [],
 				extractedFacts: [],
-				finalAnswer: nil
+				finalAnswer: nil,
+				groundedTargetCount: 0,
+				groundedPrimaryTitle: nil,
+				groundedPrimaryRole: nil
 			)
 		}
 
@@ -204,7 +283,10 @@ actor AgenticRuntime {
 				actionId: actionId,
 				actionsExecuted: [],
 				extractedFacts: [],
-				finalAnswer: nil
+				finalAnswer: nil,
+				groundedTargetCount: 0,
+				groundedPrimaryTitle: nil,
+				groundedPrimaryRole: nil
 			)
 		}
 
@@ -227,12 +309,22 @@ actor AgenticRuntime {
 				actionId: actionId,
 				actionsExecuted: [],
 				extractedFacts: [],
-				finalAnswer: nil
+				finalAnswer: nil,
+				groundedTargetCount: 0,
+				groundedPrimaryTitle: nil,
+				groundedPrimaryRole: nil
 			)
 		}
 
 		if let snapshot {
-			return await runLoop(plan: plan, snapshot: snapshot, actionId: actionId, startedAt: startedAt, dryRun: dryRun)
+			return await runLoop(
+				plan: plan,
+				snapshot: snapshot,
+				targetAnchor: targetAnchor,
+				actionId: actionId,
+				startedAt: startedAt,
+				dryRun: dryRun
+			)
 		} else {
 			return buildPreviewResult(plan: plan, action: action, actionId: actionId, startedAt: startedAt)
 		}
@@ -243,6 +335,7 @@ actor AgenticRuntime {
 	private func runLoop(
 		plan: AgenticTaskPlan,
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		targetAnchor: TargetWindowAnchor?,
 		actionId: UUID?,
 		startedAt: Date,
 		dryRun: Bool
@@ -274,8 +367,32 @@ actor AgenticRuntime {
 			worldStateTransitions: [],
 			discoveredEntities: [],
 			lastObservationSnapshotID: nil,
-			lastObservationTextHash: nil
+			lastObservationTextHash: nil,
+			screenStateGraph: nil,
+			groundedTargets: [],
+			primaryGroundedTarget: nil,
+			semanticEntities: [],
+			structuredFacts: [],
+			semanticReadiness: nil,
+			evidenceRequirements: [],
+			evidenceState: nil,
+			evidenceObservations: []
 		)
+
+		// Phase 4O: derive the evidence requirements for this goal up-front.
+		session.evidenceRequirements = AgenticEvidenceRequirementsInferrer.infer(
+			goal: plan.goal,
+			workflow: plan.workflow,
+			windowTitle: snapshot.windowTitle,
+			evidenceObservations: session.evidenceObservations,
+			semanticEntities: session.semanticEntities,
+			contextCategory: snapshot.bundleIdentifier
+		)
+		do {
+			let required = session.evidenceRequirements.filter { $0.required }.map { $0.kind.rawValue }.joined(separator: ",")
+			let optional = session.evidenceRequirements.filter { !$0.required }.map { $0.kind.rawValue }.joined(separator: ",")
+			print("[EvidenceRequirements] goal=\"\(plan.goal.prefix(80))\" required=\(required) optional=\(optional)")
+		}
 
 		// Phase 4E: debug visible mode and perception coordinator
 		let debugVisible = ProcessInfo.processInfo.environment["DEBUG_AGENTIC_VISIBLE_CONTROL"] == "1"
@@ -286,11 +403,88 @@ actor AgenticRuntime {
 		// Working snapshot — replaced after each successful perception refresh
 		var currentSnapshot = snapshot
 
+		// Phase 4J: If the assistant became active due to the user click, restore the proposal-time
+		// target app/window identity so downstream grounding and logs reflect the correct target.
+		if let targetAnchor,
+		   let assistantBundle = Bundle.main.bundleIdentifier,
+		   currentSnapshot.bundleIdentifier == assistantBundle,
+		   targetAnchor.bundleIdentifier != assistantBundle {
+			currentSnapshot = currentSnapshot.applyingTargetAnchor(targetAnchor, workflowOverride: nil)
+			print("[TargetWindowAnchor] restored bundle=\(targetAnchor.bundleIdentifier) title=\"\(targetAnchor.windowTitle.prefix(60))\"")
+		}
+
 		let observer = AgenticObserver()
 		let decider = AgenticDecider()
 		let policy = AgenticControlPolicy()
 
 		print("[AgenticLoop] started goal=\(plan.goal.prefix(60)) workflow=\(plan.workflow) maxSteps=\(plan.maxSteps) maxScrolls=\(session.maxScrolls) maxFinds=\(session.maxFinds) dry_run=\(dryRun)")
+
+		// MARK: Phase 4H — Live OCR/AX priming at execution start
+		// If the proposal snapshot has no usable OCR, acquire a fresh bounded screenshot+OCR+AX
+		// BEFORE step 1. This avoids stale snapshot reuse and prevents observe_once from
+		// immediately terminating due to missing context.
+		// Phase 4M: priming OCR uses a SEPARATE budget from the agentic loop's
+		// per-step OCR budget. Previously this incremented `session.ocrCallsUsed`,
+		// which caused the very first `observe_once` to hit
+		//   ocr_skipped reason=budget_exhausted
+		// even though the runtime had a fresh, usable OCR excerpt sitting on
+		// `currentSnapshot.recentOCRExcerpt`. The loop OCR budget is reserved
+		// strictly for in-loop observations and post-control refreshes.
+		var primingOCRConsumed = false
+		if !dryRun {
+			let hasUsableOCR = !(currentSnapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			if !hasUsableOCR {
+				print("[ScreenStateGraphRuntime] priming_live_ocr=yes reason=proposal_snapshot_missing_ocr dry_run=\(dryRun)")
+				if let targetAnchor {
+					print("[TargetWindowCapture] using_anchor=yes current_active=\(snapshot.activeApp) target=\(targetAnchor.appName)")
+				}
+				// Priming always runs — it does not consume the loop OCR budget.
+				let priming = await coordinator.initialCapture(
+					previousSnapshot: currentSnapshot,
+					previousSnapshotID: session.lastObservationSnapshotID,
+					ocrBudgetRemaining: true,
+					targetAnchor: targetAnchor,
+					dryRun: false
+				)
+				// Replace snapshot even if capture partially failed; the coordinator will return the
+				// best-available snapshot while preserving safety.
+				currentSnapshot = priming.freshSnapshot
+				primingOCRConsumed = (priming.freshOCR != nil)
+
+				let primed = !(currentSnapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+				let source = primed ? "fresh_ocr" : "priming_failed"
+				let axPresent = (currentSnapshot.contextSummary ?? "").contains("ax=") ? "yes" : "no"
+				print("[ScreenStateGraphRuntime] priming_completed source=\(source) ocr_chars=\(currentSnapshot.recentOCRExcerpt?.count ?? 0) ax_present=\(axPresent)")
+			}
+		}
+		// Phase 4M log: surface the priming-vs-loop OCR budget separation so dogfood
+		// makes it obvious that priming did not eat the loop budget.
+		print("[AgenticLoop] priming_ocr_used=\(primingOCRConsumed ? "yes" : "no") loop_ocr_used=\(session.ocrCallsUsed)/\(plan.maxOCRCalls)")
+
+		// Phase 4G: build initial screen graph + grounded targets (after priming, before step 1)
+		updateScreenGrounding(
+			session: &session,
+			snapshot: currentSnapshot,
+			targetAnchor: targetAnchor,
+			goal: plan.goal,
+			workflow: plan.workflow,
+			stepLabel: "init",
+			reason: "execution_start"
+		)
+
+		let initComparisonRequired = session.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
+		let initComparisonTitles = initComparisonRequired
+			? await BrowsingComparisonTracker.shared.distinctRecentTitles(at: Date())
+			: []
+		Self.assessEvidence(
+			session: &session,
+			goal: plan.goal,
+			workflow: plan.workflow,
+			snapshot: currentSnapshot,
+			comparisonTitles: initComparisonTitles,
+			source: "init",
+			step: 0
+		)
 
 		for step in 1...plan.maxSteps {
 			session.stepIndex = step
@@ -305,13 +499,22 @@ actor AgenticRuntime {
 
 			print("[AgenticLoop] step=\(step)/\(plan.maxSteps) llm=\(session.llmCallsUsed)/\(plan.maxLLMCalls) ocr=\(session.ocrCallsUsed)/\(plan.maxOCRCalls) scrolls=\(session.scrollsUsed)/\(session.maxScrolls) finds=\(session.findsUsed)/\(session.maxFinds) elapsed=\(formatElapsed(elapsed)) snapshot_fresh=\(currentSnapshot.freshnessScore >= 0.85 ? "yes" : "no")")
 
+			// Phase 4M: Re-check frontmost app at every step. If the user clicked away
+			// during execution, the policy will strip control actions on mismatch.
+			// `dryRun` skips the AppKit call so unit tests do not depend on focus state.
+			let currentFrontmost: String? = dryRun
+				? targetAnchor?.bundleIdentifier // dry-run: assume focus is correct
+				: await Self.currentFrontmostBundleIdentifier()
+
 			// Build legal menu using currentSnapshot (may be refreshed after prior control)
 			let legalActions = buildLegalMenu(
 				session: session,
 				snapshot: currentSnapshot,
 				plan: plan,
 				policy: policy,
-				dryRun: dryRun
+				dryRun: dryRun,
+				targetAnchor: targetAnchor,
+				currentFrontmostBundle: currentFrontmost
 			)
 			print("[AgenticActionMenu] actions=[\(legalActions.map(\.rawValue).sorted().joined(separator: ","))]")
 
@@ -327,14 +530,81 @@ actor AgenticRuntime {
 				ocrCallsUsed: session.ocrCallsUsed,
 				ocrCallsBudget: plan.maxOCRCalls,
 				legalActions: legalActions,
-				forceObserveNext: session.forceObserveNext
+				forceObserveNext: session.forceObserveNext,
+				semanticReadiness: session.semanticReadiness,
+				evidenceState: session.evidenceState,
+				evidenceObservations: session.evidenceObservations,
+				entities: session.semanticEntities,
+				facts: session.structuredFacts
 			)
 			print("[AgenticDecide] menu=[\(legalActions.map(\.rawValue).sorted().joined(separator: ","))] next_action=\(decision.nextAction.rawValue) reason=\(decision.reason.prefix(60)) policy_verified=yes")
 
 			if decision.source == .model { session.llmCallsUsed += 1 }
 
+			// Phase 4S structured step thought log
+			let currentEvSummary = session.evidenceState?.satisfied.map { $0.rawValue }.joined(separator: ",") ?? "none"
+			let missingEv = session.evidenceState?.missing.map { $0.rawValue } ?? []
+			let mappedMissing = missingEv.map { kind -> String in
+				if kind == "review_text" || kind == "review_count" { return "reviews" }
+				if kind == "comparison_candidate" { return "comparisonCandidate" }
+				return kind
+			}.sorted()
+			let curScreenSummary = session.observations.last?.contextSummary ?? "empty"
+			let candidates = legalActions.map { $0.rawValue }.sorted()
+			
+			let expectedChange: String
+			switch decision.nextAction {
+			case .find_on_page:
+				if let firstMissing = session.evidenceState?.firstMissing?.kind {
+					switch firstMissing {
+					case .reviewCount, .reviewText, .rating:
+						expectedChange = "reviews_section_visible"
+					case .specs:
+						expectedChange = "specs_section_visible"
+					case .price:
+						expectedChange = "price_section_visible"
+					case .comparisonCandidate:
+						expectedChange = "comparison_candidate_visible"
+					default:
+						expectedChange = "\(firstMissing.rawValue)_section_visible"
+					}
+				} else {
+					expectedChange = "target_content_visible"
+				}
+			case .scroll_small:
+				expectedChange = "lower_page_content_visible"
+			case .observe_once:
+				expectedChange = "updated_page_context"
+			case .extract_facts:
+				expectedChange = "structured_facts_extracted"
+			case .summarize_observation:
+				expectedChange = "summary_synthesized"
+			case .present_answer:
+				expectedChange = "final_answer_presented"
+			case .stop_success:
+				expectedChange = "loop_terminated_success"
+			case .stop_missing_context:
+				expectedChange = "loop_terminated_missing_context"
+			}
+			
+			let stepThought = AgenticStepThought(
+				stepIndex: step,
+				goal: plan.goal,
+				currentEvidenceSummary: currentEvSummary,
+				missingEvidence: mappedMissing,
+				currentScreenSummary: curScreenSummary,
+				candidateActions: candidates,
+				chosenAction: decision.nextAction.rawValue,
+				reason: decision.reason,
+				expectedObservationChange: expectedChange,
+				confidence: decision.confidence
+			)
+			stepThought.log()
+
 			// Reset forceObserveNext; will be set again if another control action fires
 			session.forceObserveNext = false
+			
+			let beforeSnapshot = AgenticWorldStateSnapshot.capture(session: session, snapshot: currentSnapshot)
 
 			// Execute action (async — may include sleep for control actions)
 			let (actionResult, updatedSession) = await executeAction(
@@ -342,6 +612,7 @@ actor AgenticRuntime {
 				findQuery: decision.findQuery,
 				session: session,
 				snapshot: currentSnapshot,
+				targetAnchor: targetAnchor,
 				observer: observer,
 				plan: plan,
 				step: step,
@@ -368,7 +639,6 @@ actor AgenticRuntime {
 			// MARK: Phase 4E — Post-control perception refresh
 			if decision.nextAction.isControlledInteraction {
 				print("[AgenticLoop] control_action=\(decision.nextAction.rawValue) forcing_observe_after_control=yes launching_perception_refresh=yes")
-				let previousOCRChars = currentSnapshot.recentOCRExcerpt?.count ?? 0
 
 				let refreshResult = await coordinator.refresh(
 					after: decision.nextAction,
@@ -379,43 +649,135 @@ actor AgenticRuntime {
 					dryRun: dryRun
 				)
 
-				// World-state delta and action verification
-				let newOCRChars = refreshResult.freshOCR?.count ?? previousOCRChars
-				let (textChanged, ocrGrew, deltaReason) = AgenticPerceptionRefreshCoordinator.detectDelta(
-					previousHash: session.lastObservationTextHash,
-					newHash: refreshResult.textHash,
-					previousOCRChars: previousOCRChars,
-					newOCRChars: newOCRChars,
-					action: decision.nextAction.rawValue
+				// Replace stale snapshot with fresh one
+				currentSnapshot = refreshResult.freshSnapshot
+
+				// Phase 4G: rebuild graph after fresh post-control perception refresh
+				updateScreenGrounding(
+					session: &session,
+					snapshot: currentSnapshot,
+					targetAnchor: targetAnchor,
+					goal: plan.goal,
+					workflow: plan.workflow,
+					stepLabel: "\(step)",
+					reason: "post_control_refresh"
 				)
-				let actionSucceeded = refreshResult.success && (textChanged || ocrGrew)
-				print("[ActionVerification] action=\(decision.nextAction.rawValue) success=\(actionSucceeded) reason=\(deltaReason)")
+
+				// Phase 4O: re-assess evidence requirements against the new entities
+				let postComparisonRequired = session.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
+				let postComparisonTitles = postComparisonRequired
+					? await BrowsingComparisonTracker.shared.distinctRecentTitles(at: Date())
+					: []
+				Self.assessEvidence(
+					session: &session,
+					goal: plan.goal,
+					workflow: plan.workflow,
+					snapshot: currentSnapshot,
+					comparisonTitles: postComparisonTitles,
+					source: "post_control_refresh",
+					step: step
+				)
+
+				let afterSnapshot = AgenticWorldStateSnapshot.capture(session: session, snapshot: currentSnapshot)
+
+				// World-state delta and action verification (Phase 4S evidence-aware change tracking)
+				let ocrChanged = beforeSnapshot.ocrHash != afterSnapshot.ocrHash
+				let axChanged = beforeSnapshot.axHash != afterSnapshot.axHash
+				let textChanged = ocrChanged || axChanged
+				let graphDelta = afterSnapshot.graphNodeCount - beforeSnapshot.graphNodeCount
+				
+				let newlySatisfied = afterSnapshot.evidenceSatisfied.subtracting(beforeSnapshot.evidenceSatisfied)
+				let evidenceDelta: String
+				if newlySatisfied.isEmpty {
+					evidenceDelta = "none"
+				} else {
+					evidenceDelta = newlySatisfied.map { kind -> String in
+						if kind == "review_text" || kind == "review_count" { return "reviews+" }
+						if kind == "comparison_candidate" { return "comparisonCandidate+" }
+						return "\(kind)+"
+					}.joined(separator: ",")
+				}
+				
+				let evidenceImproved = !newlySatisfied.isEmpty
+				let beforeTargets = Set(beforeSnapshot.groundedTargetTitles)
+				let afterTargets = Set(afterSnapshot.groundedTargetTitles)
+				let newlyAddedTargets = afterTargets.subtracting(beforeTargets)
+				let targetsAdded = !newlyAddedTargets.isEmpty
+				
+				let actionSucceeded: Bool
+				let verificationReason: String
+				let addedInfo: String
+				
+				if evidenceImproved {
+					actionSucceeded = true
+					verificationReason = "evidence_improved"
+					addedInfo = newlySatisfied.map { kind -> String in
+						if kind == "review_text" || kind == "review_count" { return "reviewText" }
+						if kind == "comparison_candidate" { return "comparisonCandidate" }
+						return kind
+					}.joined(separator: ",")
+				} else {
+					actionSucceeded = false
+					verificationReason = "no_evidence_delta"
+					addedInfo = "none"
+				}
+				
+				let textChangedStr = textChanged ? "yes" : "no"
+				let graphDeltaStr = graphDelta >= 0 ? "+\(graphDelta)" : "\(graphDelta)"
+				let confidenceStr = String(format: "%.2f", session.evidenceState?.confidence ?? 0.0)
+				
+				if actionSucceeded {
+					print("[WorldStateTransition] action=\(decision.nextAction.rawValue) text_changed=\(textChangedStr) graph_delta=\(graphDeltaStr) evidence_delta=\(evidenceDelta) confidence=\(confidenceStr)")
+				} else {
+					print("[WorldStateTransition] action=\(decision.nextAction.rawValue) text_changed=\(textChangedStr) graph_delta=\(graphDeltaStr) evidence_delta=none")
+				}
+				
+				let successStr = actionSucceeded ? "yes" : "no"
+				if actionSucceeded {
+					print("[ActionVerification] action=\(decision.nextAction.rawValue) success=\(successStr) reason=\(verificationReason) added=\(addedInfo)")
+				} else {
+					print("[ActionVerification] action=\(decision.nextAction.rawValue) success=\(successStr) reason=\(verificationReason) graph_delta=\(graphDelta)")
+				}
 
 				if actionSucceeded {
-					// World state changed — reset ineffective count, record transition
 					session.ineffectiveControlCount = 0
-					let transition = "step=\(step) action=\(decision.nextAction.rawValue) \(deltaReason)"
+					let transition = "step=\(step) action=\(decision.nextAction.rawValue) \(verificationReason)"
 					session.worldStateTransitions.append(transition)
 				} else {
 					session.ineffectiveControlCount += 1
 					session.failedControlActions.append(decision.nextAction.rawValue)
 					print("[AgenticControlAdaptation] ineffective_count=\(session.ineffectiveControlCount)/\(AgenticSessionState.maxIneffectiveControls) action=\(decision.nextAction.rawValue)")
+					
+					if decision.nextAction == .scroll_small {
+						print("[ScrollStrategy] ineffective_count=\(session.ineffectiveControlCount)")
+					}
 
 					if session.ineffectiveControlCount >= AgenticSessionState.maxIneffectiveControls {
 						print("[AgenticControlAdaptation] stopping reason=max_ineffective_controls_reached detail=control_actions_executed_but_no_environmental_change_detected")
-						session.finalAnswer = "Control actions executed but no meaningful environmental change was detected. The page content did not update after \(session.failedControlActions.count) attempt(s)."
-						session.stopReason = .max_steps_reached
+						// Phase 4R — preserve any grounded facts/entities already extracted.
+						// Do not discard evidence just because later control attempts failed.
+						if session.finalAnswer == nil {
+							session.finalAnswer = buildPremiumAnswer(session: session)
+						}
+						session.stopReason = .partial_evidence_budget_exhausted
 						break
 					}
 				}
-
-				// Replace stale snapshot with fresh one
-				currentSnapshot = refreshResult.freshSnapshot
 			}
 
 			if decision.nextAction.isTerminal {
 				if decision.nextAction == .present_answer || decision.nextAction == .stop_success {
-					session.stopReason = .success_criteria_met
+					// Phase 4O/4T: quality gate is authoritative for success vs partial.
+					if let ev = session.evidenceState, !ev.allRequiredSatisfied {
+						session.stopReason = .partial_evidence_budget_exhausted
+						print("[AgenticLoop] stop=partial_evidence_budget_exhausted missing=\(ev.missing.map { $0.rawValue }.joined(separator: ","))")
+					} else if !AgenticRuntime.evaluateQualityPassed(session: session, plan: plan) {
+						session.stopReason = .partial_evidence_budget_exhausted
+					} else if session.evidenceState?.allRequiredSatisfied == true {
+						session.stopReason = .evidence_satisfied
+					} else {
+						session.stopReason = .success_criteria_met
+					}
 				} else {
 					session.stopReason = .max_steps_reached
 				}
@@ -424,8 +786,14 @@ actor AgenticRuntime {
 		}
 
 		if session.stopReason == nil {
-			session.stopReason = .max_steps_reached
-			if session.finalAnswer == nil { session.finalAnswer = buildFallbackAnswer(session: session) }
+			if let ev = session.evidenceState, !ev.allRequiredSatisfied {
+				session.stopReason = .partial_evidence_budget_exhausted
+			} else if session.evidenceState?.allRequiredSatisfied == true && AgenticRuntime.evaluateQualityPassed(session: session, plan: plan) {
+				session.stopReason = .evidence_satisfied
+			} else {
+				session.stopReason = .partial_evidence_budget_exhausted
+			}
+			if session.finalAnswer == nil { session.finalAnswer = buildPremiumAnswer(session: session) }
 		}
 
 		let elapsed = Date().timeIntervalSince(startedAt)
@@ -442,30 +810,53 @@ actor AgenticRuntime {
 		}
 		print("[AgenticLoop] completed steps=\(session.stepIndex) actions=\(session.actionsExecuted.joined(separator: "→")) control_used=[\(controlActionsUsed.joined(separator: ","))] stop=\(session.stopReason?.rawValue ?? "none") elapsed=\(formatElapsed(elapsed))")
 
-		return AgenticRuntimeResult(
-			status: .controlled_success,
-			plan: plan,
-			stopReason: session.stopReason,
-			phaseSummary: summary,
-			runtimePhase: "4D-controlled-loop",
-			stepsExecuted: session.stepIndex,
+			let status: AgenticRuntimeStatus = {
+				let hasFacts = !session.structuredFacts.isEmpty || !session.semanticEntities.isEmpty || !session.extractedFacts.isEmpty
+				let anyControlsFailed = !session.failedControlActions.isEmpty
+				let anyControlsUsed = controlActionsUsed.isEmpty == false
+				let allRequired = session.evidenceState?.allRequiredSatisfied == true
+				let qualityPassed = AgenticRuntime.evaluateQualityPassed(session: session, plan: plan)
+				if allRequired && qualityPassed { return .controlled_success }
+				if hasFacts {
+					return (anyControlsFailed && anyControlsUsed) ? .partial_grounded_success : .grounded_observation_only
+				}
+				return .no_progress
+			}()
+
+			return AgenticRuntimeResult(
+				status: status,
+				plan: plan,
+				stopReason: session.stopReason,
+				phaseSummary: summary,
+				runtimePhase: "4D-controlled-loop",
+				stepsExecuted: session.stepIndex,
 			budgetRemaining: remaining,
 			actionId: actionId,
 			actionsExecuted: session.actionsExecuted,
 			extractedFacts: session.extractedFacts,
-			finalAnswer: session.finalAnswer
+			finalAnswer: session.finalAnswer,
+			groundedTargetCount: session.groundedTargets.count,
+			groundedPrimaryTitle: session.primaryGroundedTarget?.title,
+			groundedPrimaryRole: session.primaryGroundedTarget?.role.rawValue
 		)
 	}
 
 	// MARK: - Legal Menu Builder
 
 	/// Builds the set of legal actions available for this step, filtered by policy.
+	///
+	/// Phase 4M: `targetAnchor` and `currentFrontmostBundle` are threaded into each
+	/// control-policy context so the policy can block scroll/find on focus mismatch
+	/// (e.g. when the user clicked Execute while Contextual was frontmost and the
+	/// target window did not actually become frontmost yet).
 	private func buildLegalMenu(
 		session: AgenticSessionState,
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
 		plan: AgenticTaskPlan,
 		policy: AgenticControlPolicy,
-		dryRun: Bool
+		dryRun: Bool,
+		targetAnchor: TargetWindowAnchor?,
+		currentFrontmostBundle: String?
 	) -> Set<AgenticNextAction> {
 		// Always-available actions
 		var menu: Set<AgenticNextAction> = [
@@ -473,20 +864,27 @@ actor AgenticRuntime {
 			.present_answer, .stop_missing_context, .stop_success
 		]
 
+		let expectedTargetBundle = targetAnchor?.bundleIdentifier
+
 		// scroll_small: check policy
-		let scrollCtx = AgenticControlPolicyContext(
-			action: .scroll_small,
-			bundleIdentifier: snapshot.bundleIdentifier,
-			windowTitle: snapshot.windowTitle,
-			activeApp: snapshot.activeApp,
-			workflow: plan.workflow,
-			stepIndex: session.stepIndex,
-			priorActions: session.actionsExecuted,
-			scrollsUsed: session.scrollsUsed,
-			findsUsed: session.findsUsed,
-			maxScrolls: session.maxScrolls,
-			maxFinds: session.maxFinds,
-			dryRun: dryRun
+			let scrollCtx = AgenticControlPolicyContext(
+				action: .scroll_small,
+				bundleIdentifier: snapshot.bundleIdentifier,
+				windowTitle: snapshot.windowTitle,
+				activeApp: snapshot.activeApp,
+				workflow: plan.workflow,
+				stepIndex: session.stepIndex,
+				maxSteps: plan.maxSteps,
+				priorActions: session.actionsExecuted,
+				scrollsUsed: session.scrollsUsed,
+				findsUsed: session.findsUsed,
+				ocrCallsUsed: session.ocrCallsUsed,
+				ocrCallsBudget: plan.maxOCRCalls,
+				maxScrolls: session.maxScrolls,
+				maxFinds: session.maxFinds,
+				dryRun: dryRun,
+				expectedTargetBundle: expectedTargetBundle,
+				currentFrontmostBundle: currentFrontmostBundle
 		)
 		let scrollResult = policy.evaluate(scrollCtx)
 		if scrollResult.allowed {
@@ -494,19 +892,24 @@ actor AgenticRuntime {
 		}
 
 		// find_on_page: check policy
-		let findCtx = AgenticControlPolicyContext(
-			action: .find_on_page,
-			bundleIdentifier: snapshot.bundleIdentifier,
-			windowTitle: snapshot.windowTitle,
-			activeApp: snapshot.activeApp,
-			workflow: plan.workflow,
-			stepIndex: session.stepIndex,
-			priorActions: session.actionsExecuted,
-			scrollsUsed: session.scrollsUsed,
-			findsUsed: session.findsUsed,
-			maxScrolls: session.maxScrolls,
-			maxFinds: session.maxFinds,
-			dryRun: dryRun
+			let findCtx = AgenticControlPolicyContext(
+				action: .find_on_page,
+				bundleIdentifier: snapshot.bundleIdentifier,
+				windowTitle: snapshot.windowTitle,
+				activeApp: snapshot.activeApp,
+				workflow: plan.workflow,
+				stepIndex: session.stepIndex,
+				maxSteps: plan.maxSteps,
+				priorActions: session.actionsExecuted,
+				scrollsUsed: session.scrollsUsed,
+				findsUsed: session.findsUsed,
+				ocrCallsUsed: session.ocrCallsUsed,
+				ocrCallsBudget: plan.maxOCRCalls,
+				maxScrolls: session.maxScrolls,
+				maxFinds: session.maxFinds,
+				dryRun: dryRun,
+				expectedTargetBundle: expectedTargetBundle,
+				currentFrontmostBundle: currentFrontmostBundle
 		)
 		let findResult = policy.evaluate(findCtx)
 		if findResult.allowed {
@@ -514,6 +917,127 @@ actor AgenticRuntime {
 		}
 
 		return menu
+	}
+
+	// MARK: - Phase 4G: Screen grounding
+
+	private func updateScreenGrounding(
+		session: inout AgenticSessionState,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		targetAnchor: TargetWindowAnchor?,
+		goal: String,
+		workflow: String,
+		stepLabel: String,
+		reason: String
+	) {
+		guard let graph = buildScreenStateGraph(snapshot: snapshot, targetAnchor: targetAnchor, runtimeGoal: goal) else {
+			session.screenStateGraph = nil
+			session.groundedTargets = []
+			session.primaryGroundedTarget = nil
+			print("[GroundingFailure] reason=empty_graph step=\(stepLabel) goal=\(goal.prefix(40))")
+			return
+		}
+
+		let resolver = GroundedTargetResolver()
+		let resolved = resolver.resolveTargets(goal: goal, workflow: workflow, graph: graph)
+		session.screenStateGraph = graph
+		session.groundedTargets = resolved.targets
+		session.primaryGroundedTarget = resolved.primary
+
+		print("[ScreenStateGraphRuntime] nodes=\(graph.nodes.count) source=\(reason) targets=\(resolved.targets.count)")
+		if let primary = resolved.primary {
+			let conf = String(format: "%.2f", primary.confidence)
+			print("[GroundedRuntimeTarget] title=\"\(primary.title.prefix(60))\" role=\(primary.role.rawValue) confidence=\(conf) step=\(stepLabel)")
+		}
+		let fresh = snapshot.freshnessScore >= 0.85 ? "yes" : "no"
+		print("[GroundingVerification] fresh_observation=\(fresh) graph_nodes=\(graph.nodes.count) targets=\(resolved.targets.count) step=\(stepLabel)")
+	}
+
+	private func buildScreenStateGraph(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		targetAnchor: TargetWindowAnchor?,
+		runtimeGoal: String? = nil
+	) -> ScreenStateGraph? {
+		var graphs: [ScreenStateGraph] = []
+
+		// OCR graph
+		if let ocr = snapshot.recentOCRExcerpt, !ocr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+			let filter = AssistantChromeFilter.filterOCR(
+				ocr,
+				targetBundleIdentifier: targetAnchor?.bundleIdentifier
+			)
+			if filter.suppressedLineCount > 0 {
+				print("[AssistantChromeFilter] suppressed=\(filter.suppressedLineCount) target_bundle=\(targetAnchor?.bundleIdentifier ?? "unknown")")
+			}
+				// Phase 4N: drop lines that mirror the current runtime goal / proposal title
+				// back into OCR. These are generated by Contextual's own panel chrome and
+				// must NEVER ground the runtime against itself.
+				let support = GeneratedChromeFilter.GroundingSupport(
+					windowTitle: snapshot.windowTitle,
+					axText: snapshot.contextSummary
+				)
+				let generated = GeneratedChromeFilter.filter(
+					text: filter.filteredText,
+					runtimeGoal: runtimeGoal,
+					proposalTitle: nil,
+					groundingSupport: support
+				)
+			if generated.suppressedLineCount > 0 {
+				print("[GeneratedChromeFilter] suppressed=\(generated.suppressedLineCount) reason=runtime_goal_echo runtime_goal=\(runtimeGoal?.prefix(40) ?? "nil")")
+			}
+			let ocrGraph = OCRGroundingExtractor().extract(from: generated.filteredText)
+			graphs.append(ocrGraph)
+		}
+
+		// AX graph (best-effort)
+		if let ax = AXWindowContentSource.shared.extractActiveWindowContent(), !ax.visibleTextFragments.isEmpty {
+			let axGraph = AccessibilityGroundingExtractor().extract(from: ax)
+			graphs.append(axGraph)
+		}
+
+		guard !graphs.isEmpty else { return nil }
+		if graphs.count == 1 { return graphs[0] }
+		return mergeGraphs(graphs)
+	}
+
+	private func mergeGraphs(_ graphs: [ScreenStateGraph]) -> ScreenStateGraph {
+		let rootId = ScreenStateGraph.makeStableId(source: .metadata, role: .root, text: "merged_root")
+		var nodes: [ScreenStateNode] = []
+
+		var childIds: [String] = []
+		for g in graphs {
+			// Attach each graph root under merged root.
+			childIds.append(g.rootId)
+			nodes.append(contentsOf: g.nodes)
+		}
+
+		let root = ScreenStateNode(
+			stableId: rootId,
+			role: .root,
+			title: "Screen Root",
+			text: nil,
+			frame: nil,
+			visible: true,
+			interactable: false,
+			confidence: 0.7,
+			source: .metadata,
+			semanticTags: ["merged"],
+			parentId: nil,
+			childIds: childIds,
+			viewportVisibility: 0.6
+		)
+		nodes.insert(root, at: 0)
+
+		return ScreenStateGraph(rootId: rootId, nodes: nodes)
+	}
+
+	// MARK: - Phase 4I: Semantic extraction helpers
+
+	private func entityCounts(_ entities: [GroundedSemanticEntity]) -> (products: Int, prices: Int, features: Int) {
+		let products = entities.filter { $0.type == .productTitle }.count
+		let prices = entities.filter { $0.type == .price }.count
+		let features = entities.filter { $0.type == .feature || $0.type == .specification }.count
+		return (products, prices, features)
 	}
 
 	// MARK: - Action Executor
@@ -525,6 +1049,7 @@ actor AgenticRuntime {
 		findQuery: String?,
 		session: AgenticSessionState,
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		targetAnchor: TargetWindowAnchor?,
 		observer: AgenticObserver,
 		plan: AgenticTaskPlan,
 		step: Int,
@@ -552,15 +1077,101 @@ actor AgenticRuntime {
 			if obs.ocrExcerpt != nil { s.ocrCallsUsed += 1 }
 			s.observations.append(obs)
 			s.lastActionWasControl = false  // reset after the forced post-control observe
+
+			// Phase 4G: build/update graph and targets after observe_once
+			updateScreenGrounding(
+				session: &s,
+				snapshot: snapshot,
+				targetAnchor: targetAnchor,
+				goal: plan.goal,
+				workflow: plan.workflow,
+				stepLabel: "\(step)",
+				reason: "observe_once"
+			)
+
+			// Phase 4O: re-assess evidence requirements against the freshly-built graph.
+			let comparisonRequired = s.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
+			let comparisonTitles = comparisonRequired
+				? await BrowsingComparisonTracker.shared.distinctRecentTitles(at: Date())
+				: []
+			Self.assessEvidence(
+				session: &s,
+				goal: plan.goal,
+				workflow: plan.workflow,
+				snapshot: snapshot,
+				comparisonTitles: comparisonTitles,
+				source: "post_observe",
+				step: step
+			)
+
 			let r = "observed app=\(obs.activeApp) window=\(obs.windowTitle.prefix(40)) quality=\(obs.quality.rawValue) chars=\(obs.contentLength) has_usable=\(obs.hasUsableContent)"
 			print("[AgenticAct] result=\(r)")
 			return (r, s)
 
 		case .extract_facts:
 			print("[AgenticAct] action=extract_facts step=\(step) from=\(s.observations.count) observation(s)")
+			let semantic = GroundedSemanticExtractor()
+			let builder = StructuredFactBuilder()
+
+			let ocrFallback = s.observations.last?.ocrExcerpt
+			let windowTitle = snapshot.windowTitle
+			if let graph = s.screenStateGraph, !s.groundedTargets.isEmpty {
+				let entities = semantic.extract(
+					graph: graph,
+					groundedTargets: s.groundedTargets,
+					ocrFallback: ocrFallback,
+					goal: plan.goal,
+					windowTitle: windowTitle
+				)
+				s.semanticEntities = entities
+				let facts = builder.buildFacts(from: entities, goal: plan.goal, windowTitle: windowTitle)
+				s.structuredFacts = facts
+
+				let rendered = builder.renderFactsForRuntime(facts)
+				s.extractedFacts.append(contentsOf: rendered)
+
+				// Phase 4O: re-assess evidence requirements against the new entities BEFORE
+				// readiness is computed — readiness uses the resulting state.
+				let comparisonRequired = s.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
+				let comparisonTitles = comparisonRequired
+					? await BrowsingComparisonTracker.shared.distinctRecentTitles(at: Date())
+					: []
+				Self.assessEvidence(
+					session: &s,
+					goal: plan.goal,
+					workflow: plan.workflow,
+					snapshot: snapshot,
+					comparisonTitles: comparisonTitles,
+					source: "post_extract",
+					step: step
+				)
+
+				// Evaluate semantic readiness, now gated by the evidence state.
+				let readiness = SemanticReadinessEvaluator.evaluate(
+					facts: facts,
+					entities: entities,
+					goal: plan.goal,
+					evidenceState: s.evidenceState,
+					budgetExhausted: false
+				)
+				s.semanticReadiness = readiness
+
+				let counts = entityCounts(entities)
+				print("[SemanticExtraction] entities=\(entities.count) products=\(counts.products) prices=\(counts.prices) features=\(counts.features)")
+				for e in entities.prefix(18) {
+					let conf = String(format: "%.2f", e.confidence)
+					print("[SemanticEntity] type=\(e.type.rawValue) text=\"\(e.text.prefix(80))\" confidence=\(conf) source=grounded_target")
+				}
+
+				let r = "extracted grounded_entities=\(entities.count) structured_facts=\(facts.count) total_lines=\(s.extractedFacts.count)"
+				print("[AgenticAct] result=\(r)")
+				return (r, s)
+			}
+
+			// Grounding missing → legacy fallback extraction (still bounded)
 			let newFacts = extractFacts(from: s.observations, goal: plan.goal)
 			s.extractedFacts.append(contentsOf: newFacts)
-			let r = "extracted \(newFacts.count) fact(s) total=\(s.extractedFacts.count)"
+			let r = "extracted legacy_facts=\(newFacts.count) total=\(s.extractedFacts.count)"
 			print("[AgenticAct] result=\(r)")
 			return (r, s)
 
@@ -575,7 +1186,7 @@ actor AgenticRuntime {
 
 		case .present_answer:
 			print("[AgenticAct] action=present_answer step=\(step) facts=\(s.extractedFacts.count)")
-			let answer = buildAnswer(observations: s.observations, facts: s.extractedFacts, goal: plan.goal)
+			let answer = buildAnswer(session: s, observations: s.observations, facts: s.extractedFacts, goal: plan.goal)
 			s.finalAnswer = answer
 			let r = "answer_chars=\(answer.count) preview=\(answer.prefix(60))"
 			print("[AgenticAct] produced=\(r)")
@@ -590,7 +1201,7 @@ actor AgenticRuntime {
 		case .stop_success:
 			print("[AgenticAct] action=stop_success step=\(step)")
 			if s.finalAnswer == nil {
-				s.finalAnswer = buildAnswer(observations: s.observations, facts: s.extractedFacts, goal: plan.goal)
+				s.finalAnswer = buildAnswer(session: s, observations: s.observations, facts: s.extractedFacts, goal: plan.goal)
 			}
 			let r = "stop_success answer_chars=\(s.finalAnswer?.count ?? 0)"
 			print("[AgenticAct] produced=\(r)")
@@ -725,31 +1336,20 @@ actor AgenticRuntime {
 	// MARK: - Content Extractors
 
 	private func extractFacts(from observations: [AgenticObservation], goal: String) -> [String] {
+		// Legacy OCR-heavy extractor retained as a fallback for empty grounding.
 		var facts: [String] = []
 		for obs in observations {
-			// Only extract real page content — selectedText and ocrExcerpt.
-			// contextSummary is pipeline-generated metadata, not direct page evidence.
-			if let text = obs.selectedText, !text.isEmpty {
-				facts.append("Selected text: \(text.prefix(200))")
-			}
-			if let ocr = obs.ocrExcerpt, !ocr.isEmpty {
-				facts.append("Screen content: \(ocr.prefix(200))")
-			}
-			// Window context is factual (where the user is)
-			if !obs.windowTitle.isEmpty {
-				facts.append("Active: \(obs.activeApp) — \(obs.windowTitle.prefix(80))")
-			}
+			if let text = obs.selectedText, !text.isEmpty { facts.append("Selected text: \(text.prefix(200))") }
+			if let ocr = obs.ocrExcerpt, !ocr.isEmpty { facts.append("Screen content: \(ocr.prefix(200))") }
+			if !obs.windowTitle.isEmpty { facts.append("Active: \(obs.activeApp) — \(obs.windowTitle.prefix(80))") }
 		}
-		if facts.isEmpty {
-			facts.append("No actionable page content found in current context.")
-		}
-		return facts
+		return facts.isEmpty ? ["No actionable page content found in current context."] : facts
 	}
 
 	private func buildSummary(observations: [AgenticObservation], facts: [String], goal: String) -> String {
 		var parts: [String] = ["Goal: \(goal)"]
 		if !facts.isEmpty {
-			let factPreview = facts.prefix(3).joined(separator: "\n• ")
+			let factPreview = facts.prefix(6).joined(separator: "\n• ")
 			parts.append("Findings:\n• \(factPreview)")
 		}
 		if let latest = observations.last {
@@ -758,14 +1358,280 @@ actor AgenticRuntime {
 		return parts.joined(separator: "\n\n")
 	}
 
-	private func buildAnswer(observations: [AgenticObservation], facts: [String], goal: String) -> String {
+	private func buildAnswer(session: AgenticSessionState, observations: [AgenticObservation], facts: [String], goal: String) -> String {
+		let hasProductEvidence = !session.evidenceObservations.filter {
+			$0.kind == .productTitle || $0.kind == .price || $0.kind == .specs || $0.kind == .rating || $0.kind == .reviewCount
+		}.isEmpty
+		let hasSemanticEvidence = !session.semanticEntities.filter {
+			$0.type == .productTitle || $0.type == .price || $0.type == .specification || $0.type == .feature || $0.type == .rating || $0.type == .reviewCount
+		}.isEmpty
+		
+		if !session.structuredFacts.isEmpty || hasProductEvidence || hasSemanticEvidence {
+			print("[AgenticAnswer] fallback_suppressed reason=useful_evidence_exists")
+			return buildPremiumAnswer(session: session)
+		}
 		if facts.isEmpty {
 			return "No relevant information found for: \(goal)"
 		}
-		return facts.prefix(5).joined(separator: "\n")
+		// Prefer structured semantic facts when present; keep concise.
+		return facts.prefix(12).joined(separator: "\n")
+	}
+
+		nonisolated private func buildPremiumAnswer(session: AgenticSessionState) -> String {
+		let ev = session.evidenceState
+		
+		let isCompareGoal = session.goal.lowercased().contains("compare") || session.goal.lowercased().contains(" vs ") || session.goal.lowercased().contains(" versus ")
+		
+		// Filter garbage/noisy entities and observations
+		let semanticEntities = session.semanticEntities.filter { entity in
+			switch entity.type {
+			case .productTitle:
+				return AgenticEvidenceAssessor.isProductTitleValid(entity.text, goal: session.goal)
+			case .specification, .feature:
+				return AgenticEvidenceAssessor.isSpecValid(entity.text)
+			default:
+				return true
+			}
+		}
+		
+		let evidenceObservations = session.evidenceObservations.filter { obs in
+			switch obs.kind {
+			case .productTitle:
+				return AgenticEvidenceAssessor.isProductTitleValid(obs.text, goal: session.goal)
+			case .specs:
+				return AgenticEvidenceAssessor.isSpecValid(obs.text)
+			default:
+				return true
+			}
+		}
+
+		// Check quality
+		let quality = EvidenceQualityGate.evaluate(
+			goal: session.goal,
+			state: ev ?? AgenticEvidenceState(goal: session.goal, requirements: [], satisfied: [], missing: [], missingOptional: [], confidence: 0, shouldGatherMore: false, recommendedAction: .present),
+			observations: evidenceObservations,
+			entities: semanticEntities,
+			facts: session.structuredFacts
+		)
+		let hasValidComparison = !isCompareGoal || ComparisonEvidenceValidator.validate(state: ev ?? AgenticEvidenceState(goal: session.goal, requirements: [], satisfied: [], missing: [], missingOptional: [], confidence: 0, shouldGatherMore: false, recommendedAction: .present), observations: evidenceObservations, entities: semanticEntities, facts: session.structuredFacts).isValid
+		
+		let isPartial = (ev?.allRequiredSatisfied != true) || (quality.overallScore < EvidenceQualityGate.overallScoreThreshold) || !hasValidComparison || (session.stopReason == .partial_evidence_budget_exhausted)
+		let mode = isPartial ? "partial" : "complete"
+		
+		let foundKinds = ev?.satisfied.map { kind -> String in
+			switch kind {
+			case .productTitle: return "product_title"
+			case .specs: return "specs"
+			case .price: return "price"
+			case .rating: return "rating"
+			case .reviewCount: return "review_count"
+			case .reviewText: return "review_text"
+			case .comparisonCandidate: return "comparison_candidate"
+			case .pageSummary: return "page_summary"
+			case .documentKeyPoint: return "document_key_point"
+			default: return kind.rawValue
+			}
+		} ?? []
+		var uniqueFound = Array(Set(foundKinds)).sorted()
+		if isCompareGoal && !hasValidComparison {
+			uniqueFound.removeAll { $0 == "comparison_candidate" }
+		}
+		
+		var missingKinds = ev?.missing.map { kind -> String in
+			switch kind {
+			case .productTitle: return "product_title"
+			case .specs: return "specs"
+			case .price: return "price"
+			case .rating: return "rating"
+			case .reviewCount: return "review_count"
+			case .reviewText: return "review_text"
+			case .comparisonCandidate: return "comparison_candidate"
+			case .pageSummary: return "page_summary"
+			case .documentKeyPoint: return "document_key_point"
+			default: return kind.rawValue
+			}
+		} ?? []
+		if isCompareGoal && !hasValidComparison {
+			missingKinds.append("comparison_candidate")
+		}
+		if quality.overallScore < EvidenceQualityGate.overallScoreThreshold && !stateHasSpecsAndPrice(session: session) {
+			missingKinds.append("price")
+			missingKinds.append("reviews")
+		}
+		
+		// Remove contradiction: if an item is in uniqueFound, it cannot be in uniqueMissing!
+		var uniqueMissing = Array(Set(missingKinds)).sorted()
+		uniqueMissing.removeAll { uniqueFound.contains($0) }
+		
+		let isEmailDomain = session.evidenceRequirements.contains(where: { req in
+			switch req.kind {
+			case .inboxContext, .messageList, .emailSubject, .emailSnippet, .emailSender, .unreadCount, .timestamp:
+				return true
+			default:
+				return false
+			}
+		})
+
+		if isEmailDomain {
+			print("[AgenticAnswer] domain=email mode=\(mode) evidence_found=\(uniqueFound.joined(separator: ",")) missing=\(uniqueMissing.joined(separator: ","))")
+		} else {
+			print("[AgenticAnswer] mode=\(mode) evidence_found=\(uniqueFound.joined(separator: ",")) missing=\(uniqueMissing.joined(separator: ","))")
+		}
+		
+		var lines: [String] = []
+
+		if isEmailDomain {
+			if isPartial {
+				lines.append("I can see that an inbox view is open, but I do not yet have enough clean visible email evidence to summarize recent emails.")
+				lines.append("")
+			}
+			lines.append("Found:")
+			if let obs = session.observations.last {
+				lines.append("- App/Page: \(obs.activeApp) — \(obs.windowTitle.prefix(80))")
+			}
+
+			let subjects = Array(Set(session.evidenceObservations.filter { $0.kind == .emailSubject }.map(\.text))).prefix(4)
+			if !subjects.isEmpty {
+				lines.append("- Visible subjects: \(subjects.map { String($0.prefix(56)) }.joined(separator: " | "))")
+			}
+			let snippets = Array(Set(session.evidenceObservations.filter { $0.kind == .emailSnippet }.map(\.text))).prefix(4)
+			if !snippets.isEmpty {
+				lines.append("- Visible snippets: \(snippets.map { String($0.prefix(56)) }.joined(separator: " | "))")
+			}
+
+			if isPartial && !uniqueMissing.isEmpty {
+				lines.append("")
+				lines.append("Missing:")
+				for kind in uniqueMissing {
+					switch kind {
+					case "email_subject":
+						lines.append("- clean sender/subject evidence")
+					case "email_snippet":
+						lines.append("- clean message preview/snippet evidence")
+					case "message_list":
+						lines.append("- visible message list evidence")
+					default:
+						lines.append("- \(kind) not found")
+					}
+				}
+			}
+
+			if !session.failedControlActions.isEmpty {
+				lines.append("")
+				lines.append("Note: Some navigation attempts (scroll/find) did not reveal additional evidence before runtime limits were reached.")
+			}
+			return lines.joined(separator: "\n")
+		}
+		
+		if isCompareGoal && isPartial {
+			lines.append("I found one likely product and several reliable specs, but I do not yet have enough clean evidence to compare it with another charger.")
+			lines.append("")
+		}
+		
+		lines.append("Found:")
+		
+		// Clean and validate product name
+		var productTitle = "Unknown Product"
+		if let pt = session.structuredFacts.first(where: { $0.category == "product" })?.title {
+			productTitle = pt
+		} else if let titleEntity = session.semanticEntities.first(where: { $0.type == .productTitle })?.text {
+			productTitle = titleEntity
+		} else if let ptObs = session.evidenceObservations.first(where: { $0.kind == .productTitle })?.text {
+			productTitle = ptObs
+		} else if !session.groundedTargets.isEmpty {
+			productTitle = session.groundedTargets[0].title
+		} else if let windowTitle = session.observations.last?.windowTitle {
+			productTitle = windowTitle
+		}
+		
+			// Strip common browser chrome if it leaked or looks truncated
+			if EvidenceQualityGate.detectTruncation(productTitle) || EvidenceQualityGate.detectChromeLeak(productTitle) || (productTitle.split(separator: " ").count == 1 && productTitle.count <= 3) {
+				productTitle = "Unknown Product"
+			}
+			lines.append("- Product: \(productTitle)")
+		
+		let specs = session.semanticEntities.filter { $0.type == .specification || $0.type == .feature }
+		if !specs.isEmpty {
+			let specStrings = Array(Set(specs.map { $0.normalizedValue ?? $0.text })).filter { !EvidenceQualityGate.detectMashedWord($0) }.prefix(6)
+				if !specStrings.isEmpty {
+					lines.append("- Specs: \(specStrings.joined(separator: ", "))")
+				}
+			} else {
+				let specFacts = session.structuredFacts.filter { $0.category == "specs" }
+				let specObs = session.evidenceObservations.filter { $0.kind == .specs }
+				if !specFacts.isEmpty {
+					let specStrings = specFacts.map { $0.title }.prefix(4)
+					lines.append("- Specs: \(specStrings.joined(separator: ", "))")
+				} else if !specObs.isEmpty {
+					let specStrings = Array(Set(specObs.map { $0.text })).prefix(4)
+					lines.append("- Specs: \(specStrings.joined(separator: ", "))")
+				}
+			}
+		
+		if let priceEntity = session.semanticEntities.first(where: { $0.type == .price })?.text {
+			lines.append("- Price: \(priceEntity)")
+		} else if let priceFact = session.structuredFacts.first(where: { $0.category == "product" })?.attributes["price"] {
+			lines.append("- Price: \(priceFact)")
+		} else if let priceObs = session.evidenceObservations.first(where: { $0.kind == .price })?.text {
+			lines.append("- Price: \(priceObs)")
+		}
+		
+		let ratings = session.semanticEntities.filter { $0.type == .rating }
+		let ratingObs = session.evidenceObservations.first(where: { $0.kind == .rating })?.text
+		if let firstRating = ratings.first?.text {
+			lines.append("- Rating: \(firstRating)")
+		} else if let rob = ratingObs {
+			lines.append("- Rating: \(rob)")
+		}
+		let reviews = session.semanticEntities.filter { $0.type == .reviewCount }
+		let reviewsObs = session.evidenceObservations.first(where: { $0.kind == .reviewCount })?.text
+		if !reviews.isEmpty {
+			let reviewPreview = reviews.first?.text ?? ""
+			lines.append("- Reviews: \(reviewPreview)")
+		} else if let rob = reviewsObs {
+			lines.append("- Reviews: \(rob)")
+		}
+		
+		if isPartial && !uniqueMissing.isEmpty {
+			lines.append("")
+			lines.append("Missing:")
+			for kind in uniqueMissing {
+				switch kind {
+				case "price":
+					lines.append("- clean price/review evidence (price not visible)")
+				case "reviews":
+					lines.append("- reviews not found")
+				case "comparison_candidate":
+					lines.append("- second valid comparison candidate")
+				case "specs":
+					lines.append("- specs not found")
+				default:
+					lines.append("- \(kind) not found")
+				}
+			}
+		}
+		
+			// Phase 4R — if control attempts failed after extracting grounded facts,
+			// preserve facts and mention the control ineffectiveness without
+			// overriding the evidence payload.
+			if !session.failedControlActions.isEmpty {
+				lines.append("")
+				lines.append("Note: Some navigation attempts (scroll/find) did not reveal additional evidence before runtime limits were reached.")
+			}
+
+			return lines.joined(separator: "\n")
+		}
+
+	nonisolated private func stateHasSpecsAndPrice(session: AgenticSessionState) -> Bool {
+		let hasPrice = session.semanticEntities.contains { $0.type == .price }
+		let hasSpecs = session.semanticEntities.contains { $0.type == .specification || $0.type == .feature }
+		return hasPrice && hasSpecs
 	}
 
 	private func buildFallbackAnswer(session: AgenticSessionState) -> String {
+		if !session.structuredFacts.isEmpty {
+			return buildPremiumAnswer(session: session)
+		}
 		if !session.extractedFacts.isEmpty {
 			return session.extractedFacts.prefix(3).joined(separator: "\n")
 		}
@@ -815,6 +1681,12 @@ actor AgenticRuntime {
 		if !session.extractedFacts.isEmpty {
 			lines.append("Facts extracted: \(session.extractedFacts.count)")
 		}
+		if let ev = session.evidenceState {
+			lines.append("Evidence gathered: \(ev.satisfied.map { $0.rawValue }.joined(separator: ", "))")
+			lines.append("Missing evidence: \(ev.missing.map { $0.rawValue }.joined(separator: ", "))")
+			let improved = session.worldStateTransitions.contains(where: { $0.contains("evidence_improved") })
+			lines.append("Evidence improved during loop: \(improved ? "yes" : "no")")
+		}
 		if let answer = session.finalAnswer {
 			lines.append("")
 			lines.append("Answer:\n\(answer)")
@@ -859,8 +1731,80 @@ actor AgenticRuntime {
 				steps: plan.maxSteps, llmCalls: plan.maxLLMCalls,
 				ocrCalls: plan.maxOCRCalls, runtimeSeconds: plan.maxRuntimeSeconds
 			),
-			actionId: actionId, actionsExecuted: [], extractedFacts: [], finalAnswer: nil
+			actionId: actionId,
+			actionsExecuted: [],
+			extractedFacts: [],
+			finalAnswer: nil,
+			groundedTargetCount: 0,
+			groundedPrimaryTitle: nil,
+			groundedPrimaryRole: nil
 		)
+	}
+
+	// MARK: - Phase 4O: Evidence assessment
+
+	/// Recompute the evidence state for the current session and log every gap.
+	///
+	/// Called from observe_once (to evaluate live grounding) and from extract_facts
+	/// (to evaluate the freshly-built semantic entities). The result is stored on
+	/// the session so the decider and the readiness evaluator can read the same
+	/// snapshot without recomputing.
+	static func assessEvidence(
+		session: inout AgenticSessionState,
+		goal: String,
+		workflow: String,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		comparisonTitles: [String],
+		source: String,
+		step: Int
+	) {
+		guard !session.evidenceRequirements.isEmpty else { return }
+		let hasUsableObs = session.observations.contains(where: { $0.hasUsableContent })
+
+		// Phase 4P: bridge raw signals into normalized evidence observations.
+		let observations = AgenticEvidenceExtractionBridge.extract(
+			goal: goal,
+			workflow: workflow,
+			windowTitle: snapshot.windowTitle,
+			ocrText: snapshot.recentOCRExcerpt,
+			axText: snapshot.contextSummary,
+			graph: session.screenStateGraph,
+			semanticEntities: session.semanticEntities,
+			structuredFacts: session.structuredFacts,
+			comparisonTitles: comparisonTitles
+		)
+		session.evidenceObservations = observations
+
+		let state = AgenticEvidenceAssessor.assess(
+			goal: goal,
+			requirements: session.evidenceRequirements,
+			entities: session.semanticEntities,
+			evidenceObservations: observations,
+			extractedFactsCount: session.extractedFacts.count,
+			hasUsableObservation: hasUsableObs
+		)
+		session.evidenceState = state
+
+		let sat = state.satisfied.map { $0.rawValue }.joined(separator: ",")
+		let miss = state.missing.map { $0.rawValue }.joined(separator: ",")
+		let gather = state.shouldGatherMore ? "yes" : "no"
+		print("[EvidenceState] source=\(source) step=\(step) satisfied=\(sat) missing=\(miss) confidence=\(String(format: "%.2f", state.confidence)) should_gather=\(gather)")
+		if let firstMissing = state.firstMissing {
+			print("[EvidenceGap] kind=\(firstMissing.kind.rawValue) action=\(state.recommendedAction.rawValue) reason=missing_required step=\(step)")
+		}
+	}
+
+	// MARK: - Phase 4M: Frontmost-app probe
+
+	/// Returns the bundle identifier of the currently-frontmost macOS application.
+	///
+	/// Hops to MainActor because `NSWorkspace.shared.frontmostApplication` is a
+	/// main-thread-only AppKit API. Returns nil when no frontmost app is
+	/// available (rare; e.g. during early app launch in dry-run tests).
+	static func currentFrontmostBundleIdentifier() async -> String? {
+		await MainActor.run {
+			NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+		}
 	}
 
 	// MARK: - Budget Validation
@@ -887,15 +1831,17 @@ actor AgenticRuntime {
 extension AgenticRuntimeResult {
 
 	func toExecutionResult(actionId: UUID, confidence: Double, startedAt: Date) -> ExecutionResult {
-		let execStatus: ExecutionResultStatus
-		switch self.status {
-		case .preview_ready, .controlled_success:
-			execStatus = .success
-		case .blocked_unsafe_action, .rejected_phase_constraint:
-			execStatus = .partialSuccess
-		case .rejected_missing_plan, .rejected_budget_invalid:
-			execStatus = .failed
-		}
+			let execStatus: ExecutionResultStatus
+			switch self.status {
+			case .preview_ready, .controlled_success:
+				execStatus = .success
+			case .partial_grounded_success, .grounded_observation_only:
+				execStatus = .partialSuccess
+			case .blocked_unsafe_action, .rejected_phase_constraint:
+				execStatus = .partialSuccess
+			case .no_progress, .rejected_missing_plan, .rejected_budget_invalid:
+				execStatus = .failed
+			}
 
 		var sections: [ExecutionResultSection] = []
 		sections.append(ExecutionResultSection(
@@ -982,21 +1928,27 @@ extension AgenticRuntimeResult {
 		if let plan { _ = plan }  // suppress unused warning
 
 
-		let followUps: [String]
-		switch self.status {
-		case .controlled_success:
-			if !controlActions.isEmpty {
-				followUps = ["Controlled interactions: \(controlActions.joined(separator: ", "))"]
-			} else {
-				followUps = []
+			let followUps: [String]
+			switch self.status {
+			case .controlled_success:
+				if !controlActions.isEmpty {
+					followUps = ["Controlled interactions: \(controlActions.joined(separator: ", "))"]
+				} else {
+					followUps = []
+				}
+			case .partial_grounded_success:
+				followUps = ["Some evidence was extracted, but runtime limits prevented gathering additional details."]
+			case .grounded_observation_only:
+				followUps = ["Grounded observation captured; consider re-running after scrolling or revealing more details."]
+			case .no_progress:
+				followUps = ["No grounded evidence extracted — check permissions (Screen Recording / Accessibility) or try again on a content-rich screen."]
+			case .preview_ready:
+				followUps = ["Provide a context snapshot to activate the Phase 4D loop"]
+			case .blocked_unsafe_action, .rejected_phase_constraint:
+				followUps = ["Only observe/extract/present/scroll/find families are allowed in Phase 4D"]
+			case .rejected_missing_plan, .rejected_budget_invalid:
+				followUps = ["Check proposal synthesis pipeline for plan generation"]
 			}
-		case .preview_ready:
-			followUps = ["Provide a context snapshot to activate the Phase 4D loop"]
-		case .blocked_unsafe_action, .rejected_phase_constraint:
-			followUps = ["Only observe/extract/present/scroll/find families are allowed in Phase 4D"]
-		case .rejected_missing_plan, .rejected_budget_invalid:
-			followUps = ["Check proposal synthesis pipeline for plan generation"]
-		}
 
 		return ExecutionResult(
 			actionId: actionId,
@@ -1010,5 +1962,210 @@ extension AgenticRuntimeResult {
 			confidence: confidence,
 			followUpSuggestions: followUps
 		)
+	}
+}
+
+// MARK: - Semantic Readiness Scoring
+
+struct SemanticReadiness: Sendable, Equatable, Codable {
+	let hasReliableProductTitle: Bool
+	let hasUsefulAttributes: Bool
+	let hasReliablePrice: Bool
+	let hasComparisonEvidence: Bool
+	let semanticConfidence: Double
+	let reason: String
+	let readyForFinalAnswer: Bool
+}
+
+struct SemanticReadinessEvaluator: Sendable {
+	/// Phase 4O: when `evidenceState` is supplied, the evaluator treats the
+	/// evidence-requirement gate as authoritative — `ready` cannot be `true`
+	/// while any *required* evidence slot is unsatisfied, regardless of how
+	/// confident the heuristic score looks.
+	///
+	/// When `budgetExhausted` is `true` and required evidence is still
+	/// missing, the readiness reason is tagged `budget_exhausted_missing_evidence`
+	/// so the runtime emits a partial stop condition instead of fake success.
+	static func evaluate(
+		facts: [StructuredFact],
+		entities: [GroundedSemanticEntity],
+		goal: String,
+		evidenceState: AgenticEvidenceState? = nil,
+		budgetExhausted: Bool = false
+	) -> SemanticReadiness {
+		let productFact = facts.first(where: { $0.category == "product" })
+		var hasReliableProductTitle = false
+		var titleConfidence = 0.0
+
+		if let pf = productFact {
+			let title = pf.title.trimmingCharacters(in: .whitespacesAndNewlines)
+			titleConfidence = pf.confidence
+
+			let isURL = title.lowercased().contains("://") || title.lowercased().contains("www.") || title.lowercased().hasSuffix(".com") || title.lowercased().hasSuffix(".ca") || title.lowercased().contains(".ca/") || title.lowercased().contains(".com/")
+			let isGoalEcho = isGoalEchoText(title, goal: goal)
+			let isTruncated = title.hasSuffix("...") || title.hasSuffix("…")
+			let isTooShort = title.count < 10
+
+			if !isURL && !isGoalEcho && !isTruncated && !isTooShort && pf.confidence >= 0.5 {
+				hasReliableProductTitle = true
+			}
+		}
+
+		var hasReliablePrice = false
+		if let pf = productFact, pf.attributes["price"] != nil {
+			let priceEntities = entities.filter { $0.type == .price }
+			if let maxPriceConf = priceEntities.map(\.confidence).max(), maxPriceConf >= 0.5 {
+				hasReliablePrice = true
+			}
+		}
+
+		let attributesCount = entities.filter { $0.type == .specification || $0.type == .feature || $0.type == .rating || $0.type == .reviewCount }.count
+		let hasUsefulAttributes = attributesCount >= 2
+
+		let goalWords = goal.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
+		let isComparisonRequested = goalWords.contains("compare") || goalWords.contains("vs") || goalWords.contains("versus") || goalWords.contains("or")
+
+		let productTitlesCount = entities.filter { $0.type == .productTitle || $0.type == .heading }.count
+		let hasComparisonEvidence = productTitlesCount >= 2 || (isComparisonRequested && attributesCount >= 4)
+
+		var score = 0.0
+		if hasReliableProductTitle { score += 0.4 }
+		if hasUsefulAttributes { score += 0.2 }
+		if hasReliablePrice { score += 0.2 }
+		if isComparisonRequested {
+			if hasComparisonEvidence { score += 0.2 }
+		} else {
+			score += 0.2
+		}
+
+		var ready = false
+		var reason = ""
+
+		if !hasReliableProductTitle {
+			ready = false
+			reason = "Missing or unreliable product title (only fragments or URLs found)"
+		} else if isComparisonRequested && !hasComparisonEvidence {
+			ready = false
+			reason = "Comparison requested, but insufficient comparison evidence (need multiple items or specs)"
+		} else if !hasUsefulAttributes {
+			ready = false
+			reason = "Insufficient attributes/specs extracted for product description"
+		} else if score >= 0.6 {
+			ready = true
+			reason = "Grounded product title with sufficient supporting specifications/price"
+		} else {
+			ready = false
+			reason = "Low overall semantic confidence score (\(String(format: "%.2f", score)))"
+		}
+
+		// Phase 4O: evidence gate is authoritative.
+		// If any required evidence slot is missing, downgrade readiness.
+		// `partial` is communicated by setting `ready=false` with a typed reason
+		// so the runtime stop-condition path can distinguish budget-exhausted
+		// partial answers from clean successes.
+		if let evidenceState, !evidenceState.allRequiredSatisfied {
+			let missingList = evidenceState.missing.map { $0.rawValue }.joined(separator: ",")
+			ready = false
+			if budgetExhausted {
+				reason = "budget_exhausted_missing_evidence missing=\(missingList)"
+				print("[SemanticReadiness] ready=partial reason=budget_exhausted_missing_evidence missing=\(missingList)")
+			} else {
+				reason = "missing_required_evidence missing=\(missingList)"
+				print("[SemanticReadiness] ready=no reason=missing_required_evidence missing=\(missingList)")
+			}
+			return SemanticReadiness(
+				hasReliableProductTitle: hasReliableProductTitle,
+				hasUsefulAttributes: hasUsefulAttributes,
+				hasReliablePrice: hasReliablePrice,
+				hasComparisonEvidence: hasComparisonEvidence,
+				semanticConfidence: min(score, evidenceState.confidence),
+				reason: reason,
+				readyForFinalAnswer: ready
+			)
+		}
+
+		let finalDecision = ready ? "yes" : "no"
+		print("[SemanticReadiness] ready=\(finalDecision) confidence=\(String(format: "%.2f", score)) reason=\"\(reason)\"")
+
+		return SemanticReadiness(
+			hasReliableProductTitle: hasReliableProductTitle,
+			hasUsefulAttributes: hasUsefulAttributes,
+			hasReliablePrice: hasReliablePrice,
+			hasComparisonEvidence: hasComparisonEvidence,
+			semanticConfidence: score,
+			reason: reason,
+			readyForFinalAnswer: ready
+		)
+	}
+
+	private static func isGoalEchoText(_ text: String, goal: String) -> Bool {
+		let t = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+		let g = goal.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+		if t == g { return true }
+		if g.hasPrefix("compare ") && t.hasPrefix("compare ") { return true }
+		if g.contains(t) && g.count - t.count < 15 { return true }
+		return false
+	}
+
+}
+
+extension AgenticRuntime {
+	nonisolated func buildPremiumAnswerTestBridge(session: AgenticSessionState) -> String {
+		return buildPremiumAnswer(session: session)
+	}
+
+	private static func checkEvidenceImproved(session: AgenticSessionState) -> Bool {
+		guard session.stepIndex > 1 else { return true }
+		
+		let currentObs = session.evidenceObservations
+		if let initialObs = session.observations.first {
+			let initialText = ((initialObs.ocrExcerpt ?? "") + " " + (initialObs.contextSummary ?? "")).lowercased()
+			
+			// Find if any new live observation is NOT in the initial text
+			let newLiveAdded = currentObs.contains { o in
+				o.source != .browsingHistory && o.kind != .pageSummary && !initialText.contains(o.text.lowercased())
+			}
+			if newLiveAdded {
+				print("[EvidenceImprovement] improved=yes added=new_live_perception_elements_discovered quality_delta=0.15")
+				return true
+			}
+		}
+
+		if session.extractedFacts.count > 0 {
+			print("[EvidenceImprovement] improved=yes added=extracted_facts_present quality_delta=0.20")
+			return true
+		}
+
+		print("[EvidenceImprovement] improved=no reason=no_new_grounded_evidence")
+		return false
+	}
+
+	private static func evaluateQualityPassed(session: AgenticSessionState, plan: AgenticTaskPlan) -> Bool {
+		guard let ev = session.evidenceState else { return false }
+		
+		let quality = EvidenceQualityGate.evaluate(
+			goal: plan.goal,
+			state: ev,
+			observations: session.evidenceObservations,
+			entities: session.semanticEntities,
+			facts: session.structuredFacts
+		)
+		let isCompareGoal = AgenticEvidenceRequirementsInferrer.classifyFamily(goal: plan.goal.lowercased(), workflow: "") == .compare
+		let hasValidComparison = !isCompareGoal || ComparisonEvidenceValidator.validate(state: ev, observations: session.evidenceObservations, entities: session.semanticEntities, facts: session.structuredFacts).isValid
+		
+		let isStrongStart = session.stepIndex <= 1 && quality.overallScore >= EvidenceQualityGate.overallScoreThreshold && hasValidComparison
+		let wasGrounded = quality.sourceReliability >= 0.5
+		let improved = session.stepIndex > 1 ? checkEvidenceImproved(session: session) : false
+
+		let qualityPassed = (quality.overallScore >= EvidenceQualityGate.overallScoreThreshold) && hasValidComparison && wasGrounded && (improved || isStrongStart)
+
+		if !qualityPassed {
+			let reason = !hasValidComparison ? "invalid_comparison_candidates" : (quality.overallScore < EvidenceQualityGate.overallScoreThreshold ? "low_evidence_quality" : "no_evidence_improvement")
+			print("[LoopTermination] requested=evidence_satisfied allowed=no reason=\(reason)")
+		} else {
+			print("[LoopTermination] requested=evidence_satisfied allowed=yes reason=quality_gate_passed")
+		}
+
+		return qualityPassed
 	}
 }

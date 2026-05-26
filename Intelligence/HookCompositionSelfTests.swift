@@ -2,9 +2,9 @@ import Foundation
 
 /// Hook-Based Action Composition self-tests.
 ///
-/// NOTE: The active foundational hook catalog is fully active by default.
-/// These self-tests verify that composition successfully reaches discovery, maps categories
-/// and outputs valid Dynamic Plans for Case A and Case B, while failing quietly on pure control cases.
+/// NOTE: After the hook library reset, the active hook catalog is intentionally empty by default.
+/// These self-tests verify that composition reaches discovery and then fails quietly (no templates,
+/// no fallback actions, no executable contracts).
 ///
 /// Run with env var: `CONTEXTUAL_RUN_HOOK_COMPOSITION_SELFTEST=1`
 ///
@@ -14,8 +14,8 @@ import Foundation
 ///   [HookAudit] implemented=...
 ///   [HookAudit] placeholders=...
 ///   [HookAudit] by_category=...
-///   [HookCompositionSelfTest] case=compare_products result=pass expected=non-nil
-///   [HookCompositionSelfTest] case=explain_code result=pass expected=non-nil
+///   [HookCompositionSelfTest] case=compare_products result=pass expected=nil
+///   [HookCompositionSelfTest] case=explain_code result=pass expected=nil
 ///   [HookCompositionSelfTest] case=play_music result=pass expected=nil
 ///   [HookCompositionSelfTest] case=turn_on_dnd result=pass expected=nil
 ///   [HookCompositionSelfTest] ok=true failures=0
@@ -31,7 +31,7 @@ enum HookCompositionSelfTests {
 
 		var failures: [String] = []
 
-		// MARK: - Case A: Compare products (expects valid dynamic plan containing compare_items & extract_product_attributes, no extract_tasks)
+		// MARK: - Case A: Compare products (expects nil while catalog is empty)
 
 		let caseAResult = await compositionResult(
 			goal: "compare product prices and features",
@@ -39,24 +39,12 @@ enum HookCompositionSelfTests {
 			workflow: .browsing,
 			registry: registry
 		)
-		let caseAPassed = caseAResult != nil
-		if !caseAPassed {
-			failures.append("compare_products: result was nil")
-			print("[HookCompositionSelfTest] FAIL compare_products: result was nil")
-		} else if let ids = caseAResult?.contract.hookPlanIds {
-			let hasCompare = ids.contains("compare_items")
-			let hasAttr = ids.contains("extract_product_attributes")
-			let leaksTasks = ids.contains("extract_tasks")
-			if !hasCompare || !hasAttr || leaksTasks {
-				failures.append("compare_products: invalid chain \(ids)")
-				print("[HookCompositionSelfTest] FAIL compare_products: invalid chain \(ids)")
-			}
-		}
-		if !failures.contains(where: { $0.hasPrefix("compare_products") }) {
-			print("[HookCompositionSelfTest] case=compare_products result=pass expected=non-nil")
-		}
+		let caseAPassed = caseAResult == nil
+		if !caseAPassed { failures.append("compare_products") }
+		let caseAActual = caseAResult == nil ? "nil" : "non-nil"
+		print("[HookCompositionSelfTest] case=compare_products result=\(caseAPassed ? "pass" : "FAIL") expected=nil actual=\(caseAActual)")
 
-		// MARK: - Case B: Explain code (expects valid dynamic plan containing explain_error or explain_code)
+		// MARK: - Case B: Explain code (expects nil while catalog is empty)
 
 		let caseBResult = await compositionResult(
 			goal: "explain the error in this code",
@@ -64,20 +52,10 @@ enum HookCompositionSelfTests {
 			workflow: .debugging,
 			registry: registry
 		)
-		let caseBPassed = caseBResult != nil
-		if !caseBPassed {
-			failures.append("explain_code: result was nil")
-			print("[HookCompositionSelfTest] FAIL explain_code: result was nil")
-		} else if let ids = caseBResult?.contract.hookPlanIds {
-			let hasExplain = ids.contains("explain_error") || ids.contains("explain_code")
-			if !hasExplain {
-				failures.append("explain_code: invalid chain \(ids)")
-				print("[HookCompositionSelfTest] FAIL explain_code: invalid chain \(ids)")
-			}
-		}
-		if !failures.contains(where: { $0.hasPrefix("explain_code") }) {
-			print("[HookCompositionSelfTest] case=explain_code result=pass expected=non-nil")
-		}
+		let caseBPassed = caseBResult == nil
+		if !caseBPassed { failures.append("explain_code") }
+		let caseBActual = caseBResult == nil ? "nil" : "non-nil"
+		print("[HookCompositionSelfTest] case=explain_code result=\(caseBPassed ? "pass" : "FAIL") expected=nil actual=\(caseBActual)")
 
 		// MARK: - Case C: Play music (control-only → must fail quietly)
 

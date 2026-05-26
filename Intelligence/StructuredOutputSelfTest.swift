@@ -3,7 +3,7 @@
 // native schema-constrained generation (format: {JSON Schema object}).
 //
 // Triggered by: CONTEXTUAL_RUN_STRUCTURED_OUTPUT_SELFTEST=1
-// Run 25 router calls (qwen2.5:0.5b) + 10 planner calls (qwen2.5:1.5b).
+// Run 25 router calls (phi4-mini) + 10 planner calls (phi4-mini).
 // All calls use streaming + schema. No prose, no markdown fences, no parse failures.
 //
 // Expected output:
@@ -27,8 +27,8 @@ struct StructuredOutputSelfTest {
         let llm = LocalAIClient.shared
         let routerSchema = TaskInferenceEngine.routerSchema
         let plannerSchema = TaskInferenceEngine.plannerSchema
-        let routerModel = "qwen2.5:0.5b"
-        let plannerModel = "qwen2.5:1.5b"
+        let routerModel = "phi4-mini"
+        let plannerModel = "phi4-mini"
         let routerTotal = 25
         let plannerTotal = 10
 

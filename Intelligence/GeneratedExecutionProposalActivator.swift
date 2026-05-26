@@ -307,6 +307,10 @@ enum GeneratedExecutionProposalActivator {
 				} else if isHighConfidenceLLM {
 					panelEligible = true
 					panelAllowedReason = "llm_success_high_confidence"
+				} else if candidate.isExecutableGeneratedProposal {
+					// T18.3.4: Any safe, grounded, executable generated proposal should be visible in the panel.
+					panelEligible = true
+					panelAllowedReason = "safe_grounded_generated"
 				} else if allowsPanelGenerated {
 					panelEligible = true
 					panelAllowedReason = "score_above_lower_threshold"
@@ -351,12 +355,14 @@ enum GeneratedExecutionProposalActivator {
 		}
 
 		let topSource = ranking.rankedActions.first?.action.sourceType
+		let hasFastShell = candidates.contains(where: { $0.id.hasPrefix("fast_shell:") })
 		logActivation(
 			considered: candidates.filter(\.isGeneratedFamily).count,
 			visibleGenerated: visibleGenerated.count,
 			visibleStatic: visibleStaticIds.count,
 			topSource: topSource,
-			timing: timing
+			timing: timing,
+			isFastShell: hasFastShell
 		)
 
 		return GeneratedExecutionProposalActivationResult(
@@ -859,7 +865,8 @@ enum GeneratedExecutionProposalActivator {
 		visibleGenerated: Int,
 		visibleStatic: Int,
 		topSource: UnifiedActionSourceType?,
-		timing: GeneratedExecutionProposalTimingDecision
+		timing: GeneratedExecutionProposalTimingDecision,
+		isFastShell: Bool = false
 	) {
 		let ratio = visibleStatic > 0
 			? String(format: "%.2f", Double(visibleGenerated) / Double(max(1, visibleGenerated + visibleStatic)))
@@ -867,7 +874,8 @@ enum GeneratedExecutionProposalActivator {
 		print(
 			"[GeneratedProposalActivation] considered=\(considered) visible_generated=\(visibleGenerated) visible_static=\(visibleStatic) ratio=\(ratio) top=\(topSource?.rawValue ?? "none") timing=\(timing.outcome.rawValue)"
 		)
-		print("[GeneratedProposalActivation] visible_generated=\(visibleGenerated)")
+		let sourceLabel = isFastShell && visibleGenerated > 0 ? " source=fast_shell" : ""
+		print("[GeneratedProposalActivation] visible_generated=\(visibleGenerated)\(sourceLabel)")
 		// [ProposalActivationBridge] final outcome — single authoritative line for pipeline tracing.
 		let suppressionReason: String = {
 			if visibleGenerated > 0 { return "none" }

@@ -112,6 +112,7 @@ final class LocalAIClient: @unchecked Sendable {
 		let inputLength = prompt.utf8.count
 		let purposePart = (purpose?.isEmpty == false) ? " purpose=\(purpose!)" : ""
 		print("[LocalAI] generate_started model=\(model)\(purposePart) inputBytes=\(inputLength)")
+		print("[LocalModelConfig] model=\(model) temp=\(temperature) mode=instruct")
 		do {
 			guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else {
 				throw LocalAIClientError.invalidURL
@@ -184,7 +185,8 @@ final class LocalAIClient: @unchecked Sendable {
 		numPredict: Int,
 		temperature: Double,
 		purpose: String?,
-		schema: [String: Any]? = nil
+		schema: [String: Any]? = nil,
+		onProgress: (@Sendable (String) -> Void)? = nil
 	) async throws -> String {
 		let isTwoStage = LocalAISettings.shared.twoStageTaskInferenceEnabled
 		let lanePurpose: String? = {
@@ -245,6 +247,8 @@ final class LocalAIClient: @unchecked Sendable {
 		} else {
 			print("[LocalAI] streaming_started model=\(model)\(purposePart) inputBytes=\(prompt.utf8.count)")
 		}
+		print("[LocalModelConfig] model=\(model) temp=\(temperature) mode=instruct")
+		print("[GroundedReasoner] structured_mode=yes")
 
 		let (asyncBytes, response) = try await session.bytes(for: request)
 		guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -270,6 +274,7 @@ final class LocalAIClient: @unchecked Sendable {
 				}
 				guard let chunk = try? JSONDecoder().decode(OllamaStreamChunk.self, from: lineData) else { continue }
 				if let token = chunk.response { accumulated += token }
+				onProgress?(accumulated)
 				// Stop as soon as we have a complete JSON object.
 				if hasCompletedJSONObject(accumulated) {
 					let ms = Int(Date().timeIntervalSince(requestStart) * 1000)
