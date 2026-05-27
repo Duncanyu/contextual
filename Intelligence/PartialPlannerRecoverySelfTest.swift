@@ -108,13 +108,13 @@ enum PartialPlannerRecoverySelfTest {
 			check("router_no_upgrade_weak_ocr", decision.shouldUpgrade == false)
 		}
 
-		// MARK: 6 — Router upgrade refuses when an outstanding request can't be satisfied.
+		// MARK: 6 — Router upgrade now bypasses visual_descriptor when grounding is strong.
 
 		do {
 			let ocr = String(repeating: "Anker Prime 27,650mAh 250W Power Bank $129.99 4.7 out of 5 stars\n", count: 5)
 			let decision = RouterGroundingHeuristic.evaluate(
 				modelDecision: "need_more_context",
-				requestedContexts: ["selected_text"], // strict — user has nothing selected
+				requestedContexts: ["visual_descriptor"], // now bypassed for strong product contexts
 				windowTitle: "Anker Prime 27,650mAh 250W Power Bank — Amazon",
 				appName: "Firefox",
 				workflow: "shopping",
@@ -123,7 +123,8 @@ enum PartialPlannerRecoverySelfTest {
 				hasVisualDescriptor: false,
 				hasAXText: false
 			)
-			check("router_no_upgrade_outstanding_request", decision.shouldUpgrade == false)
+			check("router_upgrades_even_with_visual_descriptor_request", decision.shouldUpgrade == true)
+			check("router_upgrade_reason_strong_satisfies_visual", decision.reason == "strong_ocr_ax_title_satisfies_visual_descriptor")
 		}
 
 		// MARK: 7 — Router upgrade refuses on non-content workflow.

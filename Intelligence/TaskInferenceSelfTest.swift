@@ -467,7 +467,7 @@ enum ProposalReactivitySelfTest {
 
 		let now = Date()
 
-		// MARK: 1 — Warmup not ready does not block lightweight visibility for strong title
+		// MARK: 1 — Warmup not ready must not surface raw-title "actions"
 
 		let strongTitle = "Designing a custom API in Swift"
 		let strongSnap = CanonicalGeneratedExecutionContextSnapshot(
@@ -496,7 +496,7 @@ enum ProposalReactivitySelfTest {
 			referenceTime: now,
 			isWarmupReady: false
 		)
-		check("warmup_not_ready_allows_strong_title", result1 != nil && result1?.whyNow == "warmup_lightweight_shell")
+		check("warmup_not_ready_does_not_emit_raw_title_action", result1 == nil)
 
 		// MARK: 2 — No lightweight proposal when title is generic
 

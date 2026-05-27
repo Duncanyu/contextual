@@ -63,6 +63,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var twoStageWarmupComplete: Bool = false
 	private var deferredWarmupTrigger: (packet: TriggerPacket, context: ContextModel, generation: UInt64)?
 
+	// Phase 4S — When fast visibility detects a strong entity/title but cannot
+	// generate a real action intent (router/planner not warmed), store a pending
+	// retry request so proposals recover once warmup completes.
+	struct ActionIntentPendingRequest {
+		let packet: TriggerPacket
+		let context: ContextModel
+		let snapshot: CanonicalGeneratedExecutionContextSnapshot
+		let situational: SituationalContextSnapshot
+		let generation: UInt64
+		let fingerprint: String
+		let title: String
+		let classification: FastVisibilityTitleClassification
+		let storedAt: Date
+		let expiresAt: Date
+	}
+	private var pendingActionIntentRequest: ActionIntentPendingRequest?
+
 	/// T18.6A — Tracks the previous context fingerprint components so we can detect meaningful
 	/// context changes (page nav, app switch, workflow change) and log them.
 	private struct ChimeInContextSnapshot: Equatable {
@@ -126,10 +143,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 
+		if env["CONTEXTUAL_RUN_STRONG_CONTEXT_ROUTER_OVERRIDE_SELFTEST"] == "1" {
+			let ok = StrongContextRouterOverrideSelfTest.run()
+			print("[StrongContextRouterOverrideSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return
+		}
+
 		if env["CONTEXTUAL_RUN_FAST_PROPOSAL_SHELL_SELFTEST"] == "1" {
 			Task {
 				let ok = await TaskInferenceSelfTest.runFastProposalShellSelfTest()
 				print("[FastProposalShellSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_PROPOSAL_ACTION_INTENT_SELFTEST"] == "1" {
+			Task {
+				let ok = await ProposalActionIntentSelfTest.run()
+				print("[ProposalActionIntentSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_ACTION_INTENT_RETRY_SELFTEST"] == "1" {
+			Task {
+				let ok = await ActionIntentRetrySelfTest.run()
+				print("[ActionIntentRetrySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_ACTION_INTENT_PLANNER_BRIDGE_SELFTEST"] == "1" {
+			Task {
+				let ok = await ActionIntentPlannerBridgeSelfTest.run()
+				print("[ActionIntentPlannerBridgeSelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 			return
@@ -175,6 +226,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_PANEL_DOMAIN_SELFTEST"] == "1" {
 			Task {
 				PanelVisibilityDomainSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_VISUAL_TARGETING_SELFTEST"] == "1" {
+			Task {
+				await VisualTargetingCorrectnessSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_REHYDRATION_SELFTEST"] == "1" {
+			Task {
+				await VisualContextRehydrationSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_AGENTIC_LLM_SELFTEST"] == "1" {
+			Task {
+				_ = await AgenticLLMDeciderSelfTest.run()
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 			return
@@ -624,6 +699,27 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 									
 									print("[TwoStageWarmup] ready_for_inference=yes")
 									self.twoStageWarmupComplete = true
+									if let pending = self.popPendingActionIntentIfReady(now: Date(), reason: "planner_became_ready") {
+										Task { @MainActor [packet = pending.packet, context = pending.context, pending = pending] in
+											// Re-run proposals using the latest pipeline generation so the retry
+											// isn't discarded as stale. We intentionally reuse the stored strong
+											// context even if the current active title is transient/weak.
+											let generation = self.contextPipelineGeneration
+											await self.updateDynamicOnlyProposals(
+												from: packet,
+												context: context,
+												generation: generation,
+												decision: ReasoningDecision(
+													shouldSurface: true,
+													primaryActionId: nil,
+													rankedActionIds: [],
+													reason: "pending_action_intent_retry",
+													confidence: 1.0
+												),
+												pendingActionIntentRetry: pending
+											)
+										}
+									}
 									if let deferred = self.deferredWarmupTrigger {
 										print("[GeneratedProposal] retrying_deferred_after_warmup trigger=\(deferred.packet.triggerType.rawValue)")
 										self.deferredWarmupTrigger = nil
@@ -682,6 +778,105 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		print("[ScreenCapture] skipped reason=not_explicit_analyze_screen")
 		sourceManager?.refreshSelectionNow()
 		processSourceEvent(.sourceChanged(.manualTriggerRequested))
+	}
+
+	// MARK: - Phase 4S — Pending action-intent retry (warmup handoff)
+
+	func storePendingActionIntentIfNeeded(
+		packet: TriggerPacket,
+		context: ContextModel,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot,
+		generation: UInt64,
+		fingerprint: String,
+		title: String,
+		classification: FastVisibilityTitleClassification
+	) {
+		let now = Date()
+		// Warmup can take ~8–12s on cold start; keep a short but sufficient TTL
+		// so a strong context doesn't evaporate before the planner is ready.
+		let ttl: TimeInterval = 25.0
+		let expiresAt = now.addingTimeInterval(ttl)
+
+		if let existing = pendingActionIntentRequest {
+			// Keep the newest pending request by fingerprint.
+			if existing.fingerprint == fingerprint {
+				// Refresh TTL on the same strong context.
+				pendingActionIntentRequest = ActionIntentPendingRequest(
+					packet: packet,
+					context: context,
+					snapshot: snapshot,
+					situational: situational,
+					generation: generation,
+					fingerprint: fingerprint,
+					title: title,
+					classification: classification,
+					storedAt: existing.storedAt,
+					expiresAt: expiresAt
+				)
+				return
+			}
+		}
+
+		pendingActionIntentRequest = ActionIntentPendingRequest(
+			packet: packet,
+			context: context,
+			snapshot: snapshot,
+			situational: situational,
+			generation: generation,
+			fingerprint: fingerprint,
+			title: title,
+			classification: classification,
+			storedAt: now,
+			expiresAt: expiresAt
+		)
+		print("[ActionIntentPending] stored reason=fast_visibility_needs_action_intent classification=\(classification.rawValue) fp=\(fingerprint) title=\"\(title.prefix(80))\" ttl_s=\(Int(ttl))")
+	}
+
+	func expirePendingActionIntentIfNeeded(now: Date) {
+		guard let pending = pendingActionIntentRequest else { return }
+		if now >= pending.expiresAt {
+			print("[ActionIntentPending] expired reason=ttl_elapsed fp=\(pending.fingerprint)")
+			pendingActionIntentRequest = nil
+		}
+	}
+
+	func popPendingActionIntentIfReady(now: Date, reason: String) -> ActionIntentPendingRequest? {
+		guard LocalAISettings.shared.twoStageTaskInferenceEnabled else { return nil }
+		guard twoStageWarmupComplete else { return nil }
+		expirePendingActionIntentIfNeeded(now: now)
+		guard let pending = pendingActionIntentRequest else { return nil }
+
+		// Do NOT expire simply because the context pipeline generation advanced.
+		// During warmup, benign SourceEvents can bump `contextPipelineGeneration`
+		// repeatedly before models are ready. Preserve the pending request across
+		// those changes; expire only by TTL or a clear context family change.
+		let currentBundle = contextBuilder.model.activeAppBundleIdentifier?.lowercased() ?? ""
+		let pendingBundle = pending.context.activeAppBundleIdentifier?.lowercased() ?? ""
+		if !currentBundle.isEmpty, !pendingBundle.isEmpty, currentBundle != pendingBundle {
+			print("[ActionIntentPending] expired reason=app_bundle_changed fp=\(pending.fingerprint)")
+			pendingActionIntentRequest = nil
+			return nil
+		}
+		if pending.generation != contextPipelineGeneration {
+			print("[ActionIntentPending] preserved reason=same_strong_context_family fp=\(pending.fingerprint)")
+		}
+
+		print("[ActionIntentPending] retrying reason=\(reason) fp=\(pending.fingerprint)")
+		pendingActionIntentRequest = nil
+		return pending
+	}
+
+	// Debug/self-test accessors used by deterministic self-tests.
+	// These do not affect production behavior unless the env-gated self-tests are run.
+	var debugHasPendingActionIntentRequest: Bool { pendingActionIntentRequest != nil }
+	var debugPendingActionIntentFingerprint: String? { pendingActionIntentRequest?.fingerprint }
+
+	func debugSetTwoStageWarmupComplete(_ value: Bool) { twoStageWarmupComplete = value }
+	func debugSetContextPipelineGeneration(_ value: UInt64) { contextPipelineGeneration = value }
+	func debugSetActiveAppForSelfTest(bundleIdentifier: String, appName: String, windowTitle: String) {
+		contextBuilder.handle(.sourceChanged(.activeAppChanged(bundleIdentifier: bundleIdentifier, name: appName)))
+		contextBuilder.handle(.sourceChanged(.windowTitleChanged(bundleIdentifier: bundleIdentifier, appName: appName, title: windowTitle)))
 	}
 
 	private func processSourceEvent(_ event: SourceEvent) {
@@ -1329,8 +1524,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		from packet: TriggerPacket,
 		context: ContextModel,
 		generation: UInt64,
-		decision: ReasoningDecision
+		decision: ReasoningDecision,
+		pendingActionIntentRetry: ActionIntentPendingRequest? = nil
 	) async {
+		// Phase 4S — Expire pending action-intent retry request if TTL elapsed.
+		expirePendingActionIntentIfNeeded(now: Date())
+
 		if LocalAISettings.shared.twoStageTaskInferenceEnabled && !twoStageWarmupComplete {
 			print("[GeneratedProposal] attempt_started_before_warmup reason=allowing_lightweight_shell")
 			// We no longer return early; we let the engine attempt a lightweight model-free shell.
@@ -1345,10 +1544,18 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		}
 
 		let canonical = CanonicalContextState.shared.current()
-		let proposalSnapshot = buildCanonicalSnapshotForProposalActivation(
-			context: context,
-			fused: canonical
-		)
+		let proposalSnapshot: CanonicalGeneratedExecutionContextSnapshot = {
+			if let pendingActionIntentRetry {
+				// Phase 4S — Pending action-intent retries must reuse the strong snapshot
+				// that was deemed action-worthy, rather than rebuilding from potentially
+				// transient current context (e.g. profile/account titles, missing OCR).
+				return pendingActionIntentRetry.snapshot
+			}
+			return buildCanonicalSnapshotForProposalActivation(
+				context: context,
+				fused: canonical
+			)
+		}()
 		// Feed latest snapshot to hook sandbox (debug only — no production side-effects).
 		appState.updateLatestCanonicalSnapshot(proposalSnapshot)
 
@@ -1357,13 +1564,78 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			fusedPacket: canonical != nil
 		)
 
-		let prepared = GeneratedProposalActivationBoundary.prepare(snapshot: proposalSnapshot)
+		let prepared: GeneratedProposalActivationBoundary.Prepared = {
+			if let pendingActionIntentRetry {
+				return GeneratedProposalActivationBoundary.Prepared(
+					snapshot: pendingActionIntentRetry.snapshot,
+					situational: pendingActionIntentRetry.situational
+				)
+			}
+			return GeneratedProposalActivationBoundary.prepare(snapshot: proposalSnapshot)
+		}()
+
+		// Phase 4S — If warmup is not ready, a strong title can be eligible for
+		// fast visibility (entity detection), but we must enqueue a retry so a real
+		// action intent is generated once the planner/router are ready.
+		if LocalAISettings.shared.twoStageTaskInferenceEnabled, !twoStageWarmupComplete {
+			let title = prepared.situational.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+			let d = FastVisibilityQualityGate.evaluate(
+				title: title,
+				appName: prepared.situational.activeAppName,
+				bundleIdentifier: prepared.snapshot.bundleIdentifier
+			)
+			if d.eligible {
+				let fp = TaskInferenceEngine.fingerprint(
+					snapshot: prepared.snapshot,
+					situational: prepared.situational,
+					recentTitles: [title]
+				)
+				storePendingActionIntentIfNeeded(
+					packet: packet,
+					context: context,
+					snapshot: prepared.snapshot,
+					situational: prepared.situational,
+					generation: generation,
+					fingerprint: fp,
+					title: title,
+					classification: d.classification
+				)
+			}
+		}
 
 		let activationHistory = GeneratedExecutionProposalActivationHistory.fromAppState(
 			lastDismissedProposalActionId: appState.lastDismissedProposalActionId,
 			lastDismissedProposalAt: appState.lastDismissedProposalAt
 		)
 		let proposalHistory = ProposalHistoryMetadata.fromActivationHistory(activationHistory)
+
+		// Phase 4S — Deterministic bridge: if we are running a pending action-intent retry
+		// that was stored from a fast-visibility `action_worthy` classification, ensure the
+		// router cannot terminate the pipeline early with quiet / selection requests.
+		let forcePlannerPendingRetry: Bool = {
+			guard let pendingActionIntentRetry else { return false }
+			guard pendingActionIntentRetry.classification == .actionWorthy else {
+				print("[RouterOverride] applied=no reason=pending_action_intent_not_action_worthy")
+				return false
+			}
+			let bundleNow = prepared.snapshot.bundleIdentifier?.lowercased() ?? ""
+			let bundlePending = pendingActionIntentRetry.context.activeAppBundleIdentifier?.lowercased() ?? ""
+			guard !bundleNow.isEmpty, !bundlePending.isEmpty, bundleNow == bundlePending else {
+				print("[RouterOverride] applied=no reason=pending_action_intent_bundle_mismatch")
+				return false
+			}
+			// Re-check eligibility using the stored strong title to avoid applying this to browser chrome.
+			let d = FastVisibilityQualityGate.evaluate(
+				title: pendingActionIntentRetry.title,
+				appName: prepared.situational.activeAppName,
+				bundleIdentifier: prepared.snapshot.bundleIdentifier
+			)
+			guard d.eligible, d.classification == .actionWorthy else {
+				print("[RouterOverride] applied=no reason=pending_action_intent_not_action_worthy")
+				return false
+			}
+			return true
+		}()
 
 		let llmResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
 			snapshot: prepared.snapshot,
@@ -1372,7 +1644,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			budget: .conservative,
 			history: proposalHistory,
 			situational: prepared.situational,
-			isWarmupReady: twoStageWarmupComplete
+			isWarmupReady: twoStageWarmupComplete,
+			forcePlannerFromPendingActionIntentRetry: forcePlannerPendingRetry
 		)
 		// T18.3.6B: Explicit pipeline trace — log engine result and library record count before activator.
 		print("[ProposalPipeline] engine_result status=\(llmResult.status.rawValue) library_records=\(llmResult.libraryRecords.count) should_chime=\(llmResult.shouldChimeIn) reason=\(llmResult.reason)")
@@ -1871,6 +2144,55 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		}
 	}
 
+	// MARK: - Phase 4S: stronger-context replacement signal
+
+	/// Emit `[GeneratedProposalState] replacing reason=stronger_context_arrived`
+	/// when a weak/generic proposal is being replaced by an action-worthy one.
+	/// Quiet otherwise — the regular `[AvailableActions]` log already covers
+	/// normal-quality replacements.
+	private func emitProposalReplacementLogIfStrongerContextArrived(
+		previous: ActionProposal?,
+		next: ActionProposal?,
+		appName: String
+	) {
+		guard let prev = previous, let nxt = next else { return }
+		// Strip leading "Try: " / "?" wrappers used by the floating shell so the
+		// gate sees the underlying proposal title.
+		let prevTitle = Self.unwrapProposalTitle(prev.title)
+		let nextTitle = Self.unwrapProposalTitle(nxt.title)
+		guard prevTitle != nextTitle else { return }
+		let prevWeak = FastVisibilityQualityGate.isWeakOrGeneric(title: prevTitle, appName: appName)
+		let nextStrong = FastVisibilityQualityGate.isActionWorthy(title: nextTitle, appName: appName)
+		guard prevWeak && nextStrong else { return }
+		print("[GeneratedProposalState] replacing reason=stronger_context_arrived previous=\"\(prevTitle.prefix(60))\" next=\"\(nextTitle.prefix(60))\"")
+	}
+
+	private static func unwrapProposalTitle(_ raw: String) -> String {
+		var t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+		if t.hasPrefix("Try: ") { t = String(t.dropFirst("Try: ".count)) }
+		if t.hasSuffix("?") { t = String(t.dropLast()) }
+		return t.trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+
+	/// True when two strings share at least one substantive token (length ≥ 3,
+	/// alphanumeric, not a stopword). Used by the execution-time stale-goal
+	/// repair to skip repair when the cached goal already references the
+	/// current page entity.
+	private static func shareSignificantTokens(_ a: String, _ b: String) -> Bool {
+		let stopwords: Set<String> = [
+			"the", "and", "for", "with", "from", "your", "this", "that",
+			"have", "are", "amazon", "page", "home", "low", "fast", "free",
+			"shipping", "prices", "items", "millions", "deals",
+		]
+		func tokens(_ s: String) -> Set<String> {
+			let lower = s.lowercased()
+			let parts = lower.components(separatedBy: CharacterSet.alphanumerics.inverted)
+				.filter { $0.count >= 3 && !stopwords.contains($0) }
+			return Set(parts)
+		}
+		return !tokens(a).intersection(tokens(b)).isEmpty
+	}
+
 	private func publishDynamicOnlyReasonedActions(
 		toolActions: [any ActionProtocol],
 		finalProposal: ActionProposal?,
@@ -1887,6 +2209,15 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		appState.applyGeneratedProposalActivation(generatedProposalActivation, debugStatus: debugStatus)
 		appState.availableActions = []
 		appState.registeredToolActions = toolActions
+		// Phase 4S — replace stale weak proposal when stronger context arrives.
+		// Detected by comparing the previous proposal's title to the new one
+		// through the FastVisibilityQualityGate. Emits a dedicated state log so
+		// dogfood can see WHY a weak shell was swapped out.
+		emitProposalReplacementLogIfStrongerContextArrived(
+			previous: appState.currentProposal,
+			next: finalProposal,
+			appName: context.activeAppBundleIdentifier ?? ""
+		)
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
 		appState.refreshProposalContext(for: finalProposal)
@@ -1923,6 +2254,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 		appState.applyGeneratedProposalActivation(generatedProposalActivation)
 		appState.availableActions = ordered
+		// Phase 4S — replacement signal (same rule as the dynamic-only path).
+		emitProposalReplacementLogIfStrongerContextArrived(
+			previous: appState.currentProposal,
+			next: finalProposal,
+			appName: context.activeAppBundleIdentifier ?? ""
+		)
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
 		appState.refreshProposalContext(for: finalProposal)
@@ -2669,9 +3006,45 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[AgenticRuntimeRouting] route=agentic_runtime reason=\(routeReason) id=\(candidateId.prefix(12)) goal=\(cachedPlan?.goal.prefix(60) ?? "unknown")")
 				self.appState.generatedExecutionPhaseLabel = "Preparing agentic execution…"
 
+				// Phase 4S — Execution-time stale-goal validation.
+				// If the cached plan's goal is weak/generic AND the current
+				// snapshot title is action-worthy AND the two don't share
+				// content tokens, repair the plan in-place using the current
+				// strong title. We never run a stale "Amazon.ca Low Prices..."
+				// goal against an active Anker product page.
+				var effectivePlan = cachedPlan
+				if let plan = cachedPlan {
+					let currentTitle = snapshot.windowTitle
+					let currentDecision = FastVisibilityQualityGate.evaluate(title: currentTitle, appName: snapshot.activeApp)
+					let cachedDecision = FastVisibilityQualityGate.evaluate(title: plan.goal, appName: snapshot.activeApp)
+					if cachedDecision.eligible == false,
+					   currentDecision.eligible == true,
+					   !Self.shareSignificantTokens(plan.goal, currentTitle) {
+						print("[ExecutionContextValidation] stale_goal=yes current_stronger=yes action=repair_or_block cached_class=\(cachedDecision.classification.rawValue) current_class=\(currentDecision.classification.rawValue)")
+						print("[ExecutionContextValidation] repaired_goal=\"\(currentTitle.prefix(80))\"")
+						effectivePlan = AgenticTaskPlan(
+							id: plan.id,
+							goal: currentTitle,
+							workflow: plan.workflow,
+							sourceProposalId: plan.sourceProposalId,
+							allowedActionFamilies: plan.allowedActionFamilies,
+							requiredObservations: plan.requiredObservations,
+							successCriteria: plan.successCriteria,
+							stopConditions: plan.stopConditions,
+							maxSteps: plan.maxSteps,
+							maxLLMCalls: plan.maxLLMCalls,
+							maxOCRCalls: plan.maxOCRCalls,
+							maxRuntimeSeconds: plan.maxRuntimeSeconds,
+							requiresPermission: plan.requiresPermission,
+							safetyLevel: plan.safetyLevel,
+							createdAt: plan.createdAt
+						)
+					}
+				}
+
 				let agenticRuntime = AgenticRuntime()
 				let agenticResult = await agenticRuntime.execute(
-					plan: cachedPlan,
+					plan: effectivePlan,
 					action: action,
 					snapshot: snapshot,
 					referenceTime: now
@@ -3680,6 +4053,36 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		if env["CONTEXTUAL_RUN_PARTIAL_PLANNER_RECOVERY_SELFTEST"] == "1" {
 			let ok = PartialPlannerRecoverySelfTest.run()
 			print("[PartialPlannerRecoverySelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 4S — Run with `CONTEXTUAL_RUN_FAST_VISIBILITY_QUALITY_SELFTEST=1`
+		// to validate the fast-visibility quality gate, weak/strong replacement
+		// signal, and execution-time stale-goal detection.
+		if env["CONTEXTUAL_RUN_FAST_VISIBILITY_QUALITY_SELFTEST"] == "1" {
+			let ok = FastVisibilityQualitySelfTest.run()
+			print("[FastVisibilityQualitySelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 4T — Run with `CONTEXTUAL_RUN_TOLERANT_PARTIAL_RECOVERY_SELFTEST=1`
+		// to validate tolerant partial planner-JSON recovery (caps sanitization,
+		// incomplete-object recovery) and recent_changes weak-title scrubbing.
+		if env["CONTEXTUAL_RUN_TOLERANT_PARTIAL_RECOVERY_SELFTEST"] == "1" {
+			let ok = TolerantPartialRecoverySelfTest.run()
+			print("[TolerantPartialRecoverySelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 4U — Run with `CONTEXTUAL_RUN_AGENTIC_RUNTIME_QUALITY_SELFTEST=1`
+		// to validate compare→extract pivot, anchored price resolver, and the
+		// product-title cleanup synthesizer.
+		if env["CONTEXTUAL_RUN_AGENTIC_RUNTIME_QUALITY_SELFTEST"] == "1" {
+			let ok = AgenticRuntimeQualitySelfTest.run()
+			print("[AgenticRuntimeQualitySelfTest] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}

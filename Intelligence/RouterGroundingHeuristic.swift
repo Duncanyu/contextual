@@ -77,9 +77,18 @@ enum RouterGroundingHeuristic {
 		hasVisualDescriptor: Bool,
 		hasAXText: Bool
 	) -> RouterGroundingDecision {
-		// 1. Only consider upgrades when the model said "need more context"
 		let normalizedDecision = modelDecision.lowercased().trimmingCharacters(in: .whitespaces)
-		guard normalizedDecision == "need_more_context" || normalizedDecision == "insufficient_context" else {
+		let normalizedRequests = requestedContexts.map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
+			.filter { !$0.isEmpty && $0 != "none" }
+
+		// 1. Only consider upgrades when the model said "need more context"
+		// OR when it incorrectly quieted because it wanted selected_text but found none.
+		var isEligibleForUpgrade = normalizedDecision == "need_more_context" || normalizedDecision == "insufficient_context"
+		if normalizedDecision == "quiet" && (normalizedRequests.contains("selected_text") || normalizedRequests.contains("selection")) {
+			isEligibleForUpgrade = true
+		}
+
+		guard isEligibleForUpgrade else {
 			return RouterGroundingDecision(
 				shouldUpgrade: false,
 				reason: "model_decision_not_need_more_context",
@@ -90,9 +99,23 @@ enum RouterGroundingHeuristic {
 			)
 		}
 
-		// 2. Requested contexts must be redundant (or empty)
-		let normalizedRequests = requestedContexts.map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
-			.filter { !$0.isEmpty && $0 != "none" }
+		// 2. Requested contexts must be redundant (or empty).
+		//
+		// IMPORTANT: For strong grounded browsing contexts, `selected_text` is an
+		// optional enhancement, not a hard requirement. The router often requests
+		// selection even when OCR/title already provide sufficient grounding.
+		var hasOutstandingOptionalSelection = false
+		var hasOutstandingVisualDescriptorOverride = false
+
+		let ocrChars = ocrExcerpt?.count ?? 0
+		let titleLower = windowTitle.lowercased()
+		let ocrLower = (ocrExcerpt ?? "").lowercased()
+		let combined = titleLower + " " + ocrLower
+
+		let hasProductSignal = productSignals.contains(where: { combined.contains($0) })
+		let hasStrongOCR = ocrChars >= minOCRCharsForUpgrade
+		let isActionWorthy = FastVisibilityQualityGate.isActionWorthy(title: windowTitle, appName: appName)
+
 		for req in normalizedRequests {
 			let satisfied = isRequestSatisfied(
 				request: req,
@@ -102,25 +125,32 @@ enum RouterGroundingHeuristic {
 				selectedText: selectedText
 			)
 			if !satisfied {
+				// FIX 2: Strong OCR/AX/title context satisfies visual descriptor/snapshot and selection requests.
+				// Condition: OCR exists (meaningful chars), AX or Product signal exists, and title is ActionWorthy.
+				let strongGrounding = (ocrChars >= 100) && (hasAXText || hasProductSignal) && isActionWorthy
+				if strongGrounding {
+					if req == "selected_text" || req == "selection" {
+						hasOutstandingOptionalSelection = true
+						continue
+					}
+					if req == "visual_descriptor" || req == "visual_snapshot" {
+						hasOutstandingVisualDescriptorOverride = true
+						continue
+					}
+				}
+
 				return RouterGroundingDecision(
 					shouldUpgrade: false,
 					reason: "outstanding_request:\(req)",
 					entityCount: 0,
 					specCount: 0,
-					ocrChars: ocrExcerpt?.count ?? 0,
+					ocrChars: ocrChars,
 					hasProductSignal: false
 				)
 			}
 		}
 
 		// 3. Strong OCR or strong page signal
-		let ocrChars = ocrExcerpt?.count ?? 0
-		let titleLower = windowTitle.lowercased()
-		let ocrLower = (ocrExcerpt ?? "").lowercased()
-		let combined = titleLower + " " + ocrLower
-
-		let hasProductSignal = productSignals.contains(where: { combined.contains($0) })
-		let hasStrongOCR = ocrChars >= minOCRCharsForUpgrade
 
 		guard hasStrongOCR || hasProductSignal else {
 			return RouterGroundingDecision(
@@ -140,15 +170,20 @@ enum RouterGroundingHeuristic {
 		let productPhraseHits = productSignals.filter { combined.contains($0) }.count
 
 		let entityCount = priceMatches + ratingMatches + specMatches + productPhraseHits
-		guard entityCount >= minEntityCountForUpgrade else {
-			return RouterGroundingDecision(
-				shouldUpgrade: false,
-				reason: "insufficient_entity_count:\(entityCount)",
-				entityCount: entityCount,
-				specCount: specMatches,
-				ocrChars: ocrChars,
-				hasProductSignal: hasProductSignal
-			)
+		let proposalRecoveryModeActive = isActionWorthy && hasStrongOCR
+		if proposalRecoveryModeActive {
+			print("[ProposalRecoveryMode] active=yes")
+		} else {
+			guard entityCount >= minEntityCountForUpgrade else {
+				return RouterGroundingDecision(
+					shouldUpgrade: false,
+					reason: "insufficient_entity_count:\(entityCount)",
+					entityCount: entityCount,
+					specCount: specMatches,
+					ocrChars: ocrChars,
+					hasProductSignal: hasProductSignal
+				)
+			}
 		}
 
 		// 5. Workflow must be content-oriented
@@ -168,9 +203,19 @@ enum RouterGroundingHeuristic {
 		}
 
 		_ = appName // accepted for future signal extension
+		let finalReason: String = {
+			if hasOutstandingVisualDescriptorOverride {
+				return "strong_ocr_ax_title_satisfies_visual_descriptor"
+			}
+			if hasOutstandingOptionalSelection {
+				return "sufficient_grounded_context_ignore_selection"
+			}
+			return "sufficient_grounded_context"
+		}()
+
 		return RouterGroundingDecision(
 			shouldUpgrade: true,
-			reason: "sufficient_grounded_context",
+			reason: finalReason,
 			entityCount: entityCount,
 			specCount: specMatches,
 			ocrChars: ocrChars,
@@ -204,6 +249,9 @@ enum RouterGroundingHeuristic {
 			return hasVisualDescriptor
 		case "ax_window_text", "browser_text":
 			return hasAXText
+		case "window_title":
+			// Always present in the situational snapshot; never worth escalating for.
+			return true
 		case "selected_text":
 			return (selectedText?.isEmpty == false)
 		default:

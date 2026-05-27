@@ -1377,7 +1377,7 @@ actor AgenticRuntime {
 		return facts.prefix(12).joined(separator: "\n")
 	}
 
-		nonisolated private func buildPremiumAnswer(session: AgenticSessionState) -> String {
+		nonisolated func buildPremiumAnswer(session: AgenticSessionState) -> String {
 		let ev = session.evidenceState
 		
 		let isCompareGoal = session.goal.lowercased().contains("compare") || session.goal.lowercased().contains(" vs ") || session.goal.lowercased().contains(" versus ")
@@ -1530,25 +1530,104 @@ actor AgenticRuntime {
 		
 		lines.append("Found:")
 		
-		// Clean and validate product name
+		// Clean and validate product name preferring clean product title from window_title/OCR/AX over semantic chrome entities.
 		var productTitle = "Unknown Product"
-		if let pt = session.structuredFacts.first(where: { $0.category == "product" })?.title {
-			productTitle = pt
-		} else if let titleEntity = session.semanticEntities.first(where: { $0.type == .productTitle })?.text {
-			productTitle = titleEntity
-		} else if let ptObs = session.evidenceObservations.first(where: { $0.kind == .productTitle })?.text {
-			productTitle = ptObs
-		} else if !session.groundedTargets.isEmpty {
-			productTitle = session.groundedTargets[0].title
-		} else if let windowTitle = session.observations.last?.windowTitle {
-			productTitle = windowTitle
+		var sourceLabel = "default"
+
+		struct TitleCandidate {
+			let text: String
+			let source: String
+			let isClean: Bool
 		}
-		
-			// Strip common browser chrome if it leaked or looks truncated
-			if EvidenceQualityGate.detectTruncation(productTitle) || EvidenceQualityGate.detectChromeLeak(productTitle) || (productTitle.split(separator: " ").count == 1 && productTitle.count <= 3) {
-				productTitle = "Unknown Product"
+
+		var candidates: [TitleCandidate] = []
+
+		let cleanTitle: @Sendable (String) -> String = { text in
+			var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+			let noiseSuffixes = [
+				" - Google Search", " - Google Chrome", " - Firefox", " - Safari",
+				": Amazon.ca: Electronics", " : Amazon.ca", " : Amazon.com", " : Amazon.ca: Electronics",
+				"Amazon.com:", "Amazon.ca:", " | Amazon", " - Amazon"
+			]
+			for suffix in noiseSuffixes {
+				if let range = t.range(of: suffix, options: [.caseInsensitive, .backwards]) {
+					t = String(t[..<range.lowerBound])
+				}
 			}
-			lines.append("- Product: \(productTitle)")
+			return t.trimmingCharacters(in: .whitespacesAndNewlines)
+		}
+
+		// Candidate 1: Window Title
+		if let windowTitle = session.observations.last?.windowTitle, !windowTitle.isEmpty {
+			let cleaned = cleanTitle(windowTitle)
+			let isValid = !EvidenceQualityGate.detectTruncation(cleaned) && !EvidenceQualityGate.detectChromeLeak(cleaned) && !(cleaned.split(separator: " ").count == 1 && cleaned.count <= 3)
+			candidates.append(TitleCandidate(text: cleaned, source: "window_title", isClean: isValid))
+		}
+
+		// Candidate 2: Grounded Targets (OCR/AX)
+		for target in session.groundedTargets {
+			let t = target.title.trimmingCharacters(in: .whitespacesAndNewlines)
+			let isValid = !EvidenceQualityGate.detectTruncation(t) && !EvidenceQualityGate.detectChromeLeak(t) && !(t.split(separator: " ").count == 1 && t.count <= 3)
+			candidates.append(TitleCandidate(text: t, source: "grounded_target", isClean: isValid))
+		}
+
+		// Candidate 3: Evidence Observations
+		for obs in evidenceObservations.filter({ $0.kind == .productTitle }) {
+			let t = obs.text.trimmingCharacters(in: .whitespacesAndNewlines)
+			let isValid = !EvidenceQualityGate.detectTruncation(t) && !EvidenceQualityGate.detectChromeLeak(t) && !(t.split(separator: " ").count == 1 && t.count <= 3)
+			candidates.append(TitleCandidate(text: t, source: "evidence_observation", isClean: isValid))
+		}
+
+		// Candidate 4: Structured Facts
+		for fact in session.structuredFacts.filter({ $0.category == "product" }) {
+			let pt = fact.title.trimmingCharacters(in: .whitespacesAndNewlines)
+			let isValid = !EvidenceQualityGate.detectTruncation(pt) && !EvidenceQualityGate.detectChromeLeak(pt) && !(pt.split(separator: " ").count == 1 && pt.count <= 3)
+			candidates.append(TitleCandidate(text: pt, source: "structured_fact", isClean: isValid))
+		}
+
+		// Candidate 5: Semantic Entities
+		for entity in semanticEntities.filter({ $0.type == .productTitle }) {
+			let t = entity.text.trimmingCharacters(in: .whitespacesAndNewlines)
+			let isValid = !EvidenceQualityGate.detectTruncation(t) && !EvidenceQualityGate.detectChromeLeak(t) && !(t.split(separator: " ").count == 1 && t.count <= 3)
+			candidates.append(TitleCandidate(text: t, source: "semantic_entity", isClean: isValid))
+		}
+
+		// Select the best candidate prioritizing clean window_title/OCR/AX (grounded_target) over semantic entities.
+		let preferredSources = ["window_title", "grounded_target", "evidence_observation"]
+		if let bestCleanGrounded = candidates.first(where: { $0.isClean && preferredSources.contains($0.source) }) {
+			productTitle = bestCleanGrounded.text
+			sourceLabel = bestCleanGrounded.source
+		} else if let anyClean = candidates.first(where: { $0.isClean }) {
+			productTitle = anyClean.text
+			sourceLabel = anyClean.source
+		} else if let anyCandidate = candidates.first(where: { !$0.text.isEmpty && !EvidenceQualityGate.detectChromeLeak($0.text) }) {
+			productTitle = anyCandidate.text
+			sourceLabel = "\(anyCandidate.source)_fallback"
+		}
+
+		// Ensure we suppress proposal-title echoes like "Processing Inspect..." or anything with chrome leakage
+		if EvidenceQualityGate.detectChromeLeak(productTitle) || productTitle.lowercased().contains("processing") {
+			productTitle = "Unknown Product"
+			sourceLabel = "suppressed_echo"
+		}
+
+		let titleSynthesis = ProductTitleSynthesizer.synthesize(raw: productTitle)
+		var synthesized = false
+		if let cleaned = titleSynthesis.cleanedTitle, !cleaned.isEmpty {
+			if cleaned != productTitle {
+				productTitle = cleaned
+				synthesized = true
+			}
+		} else {
+			// If the chosen title is unsalvageable (truncation/chrome), keep it out of
+			// the rendered answer rather than emitting a broken fragment.
+			productTitle = "Unknown Product"
+			sourceLabel = "rejected_truncation"
+		}
+
+		print("[AnswerSynthesis] product_title_source=\(sourceLabel) synthesized=\(synthesized ? "yes" : "no")")
+		print("[AnswerSynthesis] product_title=\"\(productTitle)\"")
+		lines.append("- Product: \(productTitle)")
 		
 		let specs = session.semanticEntities.filter { $0.type == .specification || $0.type == .feature }
 		if !specs.isEmpty {
@@ -1568,12 +1647,8 @@ actor AgenticRuntime {
 				}
 			}
 		
-		if let priceEntity = session.semanticEntities.first(where: { $0.type == .price })?.text {
-			lines.append("- Price: \(priceEntity)")
-		} else if let priceFact = session.structuredFacts.first(where: { $0.category == "product" })?.attributes["price"] {
-			lines.append("- Price: \(priceFact)")
-		} else if let priceObs = session.evidenceObservations.first(where: { $0.kind == .price })?.text {
-			lines.append("- Price: \(priceObs)")
+		if let resolvedPrice = resolveAnchoredPrice(session: session) {
+			lines.append("- Price: \(resolvedPrice)")
 		}
 		
 		let ratings = session.semanticEntities.filter { $0.type == .rating }
@@ -1626,6 +1701,92 @@ actor AgenticRuntime {
 		let hasPrice = session.semanticEntities.contains { $0.type == .price }
 		let hasSpecs = session.semanticEntities.contains { $0.type == .specification || $0.type == .feature }
 		return hasPrice && hasSpecs
+	}
+
+	// MARK: - Phase 4U: Anchored price selection
+
+	nonisolated private func resolveAnchoredPrice(session: AgenticSessionState) -> String? {
+		var candidates: [AnchoredPriceCandidate] = []
+
+		let priceEntities = session.semanticEntities.filter { $0.type == .price }
+		var occurrence: [String: Int] = [:]
+		for e in priceEntities {
+			let key = (e.normalizedValue ?? e.text).lowercased()
+			occurrence[key, default: 0] += 1
+		}
+
+		let graph = session.screenStateGraph
+		for e in priceEntities {
+			let node = graph?.node(id: e.sourceNodeId)
+			let anchor = anchorContext(for: node, graph: graph)
+			let key = (e.normalizedValue ?? e.text).lowercased()
+			candidates.append(
+				AnchoredPriceCandidate(
+					rawText: e.text,
+					anchorContext: anchor,
+					confidence: e.confidence,
+					occurrenceCount: occurrence[key] ?? 1,
+					source: node?.source.rawValue ?? "semantic_entity"
+				)
+			)
+		}
+
+		for obs in session.evidenceObservations where obs.kind == .price {
+			candidates.append(
+				AnchoredPriceCandidate(
+					rawText: obs.text,
+					anchorContext: obs.reason,
+					confidence: obs.confidence,
+					occurrenceCount: 1,
+					source: obs.source.rawValue
+				)
+			)
+		}
+
+		if let factPrice = session.structuredFacts.first(where: { $0.category == "product" })?.attributes["price"], !factPrice.isEmpty {
+			candidates.append(
+				AnchoredPriceCandidate(
+					rawText: factPrice,
+					anchorContext: "price",
+					confidence: 0.60,
+					occurrenceCount: 1,
+					source: "structured_fact"
+				)
+			)
+		}
+
+		// De-dupe by rawText+source to avoid overweighting the same exact mention.
+		var seen: Set<String> = []
+		var unique: [AnchoredPriceCandidate] = []
+		for c in candidates {
+			let key = "\(c.rawText.lowercased())|\(c.source)"
+			if seen.contains(key) { continue }
+			seen.insert(key)
+			unique.append(c)
+		}
+
+		let decision = AnchoredPriceResolver.resolve(candidates: unique)
+		return decision.selected?.rawText
+	}
+
+	nonisolated private func anchorContext(for node: ScreenStateNode?, graph: ScreenStateGraph?) -> String {
+		guard let node else { return "" }
+		var parts: [String] = []
+		parts.append(node.title)
+		if let t = node.text { parts.append(t) }
+		if !node.semanticTags.isEmpty { parts.append(node.semanticTags.joined(separator: " ")) }
+		if let parentId = node.parentId, let parent = graph?.node(id: parentId) {
+			parts.append(parent.title)
+			if let pt = parent.text { parts.append(pt) }
+		}
+		for childId in node.childIds.prefix(3) {
+			if let child = graph?.node(id: childId) {
+				parts.append(child.title)
+				if let ct = child.text { parts.append(ct) }
+			}
+		}
+		let joined = parts.joined(separator: " ")
+		return String(joined.prefix(160))
 	}
 
 	private func buildFallbackAnswer(session: AgenticSessionState) -> String {
@@ -2162,6 +2323,13 @@ extension AgenticRuntime {
 		if !qualityPassed {
 			let reason = !hasValidComparison ? "invalid_comparison_candidates" : (quality.overallScore < EvidenceQualityGate.overallScoreThreshold ? "low_evidence_quality" : "no_evidence_improvement")
 			print("[LoopTermination] requested=evidence_satisfied allowed=no reason=\(reason)")
+			// Phase 4U — emit the pivot signal when the loop is stuck on
+			// invalid_comparison_candidates so dogfood + downstream can see
+			// that the runtime would benefit from a goal repair to extract.
+			if isCompareGoal, !hasValidComparison, session.stepIndex >= 1 {
+				print("[AgenticPivot] compare_to_extract reason=no_live_comparison_candidate step=\(session.stepIndex)")
+				print("[AgenticPivot] repaired_goal=\"\(ComparePivotGate.repairGoal(originalGoal: plan.goal).prefix(100))\"")
+			}
 		} else {
 			print("[LoopTermination] requested=evidence_satisfied allowed=yes reason=quality_gate_passed")
 		}

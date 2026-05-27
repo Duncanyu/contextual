@@ -34,6 +34,7 @@ struct TwoStageRouterPromptBuilder {
             "Task: Decide if the provided context is sufficient to classify the user's intent.",
             "If app/title is clear, or ocr/visual/ax/sel is present -> enough_context.",
             "If enough_context, propose a natural, context-specific `proposed_title` and `proposed_goal`.",
+            "Do NOT copy the window title verbatim as proposed_title/proposed_goal; write an assistant action on the visible context.",
             "If need_more_context or insufficient_context, set BOTH proposed_title and proposed_goal to \"\".",
             "If decision is need_more_context, request at least one available context source from: ocr, ax, selection, window_title, visual_snapshot.",
         ]

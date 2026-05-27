@@ -47,6 +47,8 @@ actor DynamicGeneratedProposalEngine {
 	private let sparseVisualPeekGate: SparseVisualPeekGate
 	private let timeoutNanoseconds: UInt64
 	private var autoVisualGatheredAtByFingerprint: [String: Date] = [:]
+	// Cache for rehydrating successful visual context results (T18.3)
+	private var visualResultCache: [String: BoundedVisualContextResult] = [:]
 	/// Model-requested context escalation tracker — separate from auto-visual-gather.
 	/// Keyed by context fingerprint; value is the timestamp of the last escalation attempt.
 	/// Prevents repeated escalation on the same page/context even if auto-gather recently ran.
@@ -141,7 +143,8 @@ actor DynamicGeneratedProposalEngine {
 		history: ProposalHistoryMetadata? = nil,
 		situational: SituationalContextSnapshot? = nil,
 		referenceTime: Date = Date(),
-		isWarmupReady: Bool = true
+		isWarmupReady: Bool = true,
+		forcePlannerFromPendingActionIntentRetry: Bool = false
 	) async -> DynamicGeneratedProposalResult {
 		// Emit active architecture mode on every attempt so traces are always unambiguous.
 		let fallback = ProposalLoggingFlags.templateFallbackEnabled ? "yes" : "no"
@@ -180,17 +183,39 @@ actor DynamicGeneratedProposalEngine {
 			referenceTime: referenceTime
 		) {
 			let fingerprint = Self.autoVisualGatherFingerprint(snapshot: effectiveSnapshot, situational: effectiveSituational)
-			if shouldAttemptAutoVisualGatherForFingerprint(fingerprint, referenceTime: referenceTime) {
+			let isActionWorthy = FastVisibilityQualityGate.isActionWorthy(title: effectiveSituational.windowTitle, appName: effectiveSituational.activeAppName)
+			let hasPending = forcePlannerFromPendingActionIntentRetry
+			let hasValidCache = visualResultCache[fingerprint] != nil
+			let anchorMatch = anchored.usedAnchor
+
+			let isActionWorthyInitialOrPending = isActionWorthy || hasPending
+
+			if shouldAttemptAutoVisualGatherForFingerprint(
+				fingerprint,
+				isActionWorthyInitialOrPending: isActionWorthyInitialOrPending,
+				isActionWorthyClassification: isActionWorthy,
+				hasPending: hasPending,
+				hasValidCache: hasValidCache,
+				anchorMatch: anchorMatch,
+				referenceTime: referenceTime
+			) {
 				recordAutoVisualGatherAttempt(fingerprint, at: referenceTime)
 				let workflow = effectiveSituational.inferredWorkflow.rawValue
 				print(
 					"[VisualContextGathering] requested reason=metadata_only_perception_recommended workflow=\(workflow) fp=\(fingerprint)"
 				)
 
-				let gateEval = await sparseVisualPeekGate.evaluate(
+				var gateEval = await sparseVisualPeekGate.evaluate(
 					snapshot: effectiveSnapshot,
 					referenceTime: referenceTime
 				)
+				
+				let bypassGate = isActionWorthyInitialOrPending && !hasValidCache
+				if bypassGate && gateEval.shouldDeny && gateEval.denyReason == .cooldownWindowActive {
+					gateEval = SparseVisualPeekGateEvaluation(shouldDeny: false, denyReason: nil)
+					print("[VisualContextGathering] cooldown_gate_overridden=yes reason=action_worthy_initial_or_pending_no_cache")
+				}
+
 				if gateEval.shouldDeny {
 					print(
 						"[VisualContextGathering] denied reason=\(gateEval.denyReason?.rawValue ?? "gate") fp=\(fingerprint)"
@@ -265,6 +290,9 @@ actor DynamicGeneratedProposalEngine {
 						)
 						let visualOK = visualResult.status == .completed || visualResult.status == .partial
 						if visualOK {
+							visualResultCache[fingerprint] = visualResult
+							print("[ActionIntentPending] visual_context_attached=yes source=completed_visual_gathering fp=\(fingerprint)")
+
 							await sparseVisualPeekGate.recordPeekCompleted(at: referenceTime)
 								let classification = VisualContextWorkflowClassifier.classify(
 									appCategory: effectiveSituational.appCategory,
@@ -311,6 +339,30 @@ actor DynamicGeneratedProposalEngine {
 				}
 			} else {
 				print("[VisualContextGathering] skipped reason=already_attempted fp=\(fingerprint)")
+				if let cachedResult = visualResultCache[fingerprint] {
+					let classification = VisualContextWorkflowClassifier.classify(
+						appCategory: effectiveSituational.appCategory,
+						windowTitle: effectiveSituational.windowTitle,
+						visualTags: cachedResult.visualTags,
+						ocrExcerpt: cachedResult.ocrExcerpt,
+						priorWorkflow: effectiveSituational.inferredWorkflow,
+						priorConfidence: effectiveSituational.workflowConfidence
+					)
+					let enriched = effectiveSnapshot.merging(
+						visualResult: cachedResult,
+						priorWorkflow: classification.workflow,
+						priorWorkflowConfidence: classification.confidence,
+						referenceTime: referenceTime
+					)
+					effectiveSnapshot = enriched
+					effectiveSituational = SituationalContextSynthesizer.synthesize(
+						from: enriched,
+						referenceTime: referenceTime
+					)
+					print("[ActionIntentPending] visual_context_rehydrated=yes source=visual_cache fp=\(fingerprint)")
+				} else {
+					print("[ActionIntentPending] visual_context_rehydrated=no reason=not_found_or_mismatch fp=\(fingerprint)")
+				}
 			}
 		}
 
@@ -329,7 +381,8 @@ actor DynamicGeneratedProposalEngine {
 			recentTitles: recentTitles,
 			history: history,
 			referenceTime: referenceTime,
-			isWarmupReady: isWarmupReady
+			isWarmupReady: isWarmupReady,
+			forcePlannerFromPendingActionIntentRetry: forcePlannerFromPendingActionIntentRetry
 		)
 
 		// MARK: Context escalation (PART A) — model requested more context
@@ -367,7 +420,8 @@ actor DynamicGeneratedProposalEngine {
 						history: history,
 						referenceTime: referenceTime,
 						isEnrichedPass: true,
-						isWarmupReady: isWarmupReady
+						isWarmupReady: isWarmupReady,
+						forcePlannerFromPendingActionIntentRetry: forcePlannerFromPendingActionIntentRetry
 					)
 				} else {
 					let elapsed = Int(Date().timeIntervalSince(escalationStart) * 1000)
@@ -817,8 +871,28 @@ actor DynamicGeneratedProposalEngine {
 
 	private func shouldAttemptAutoVisualGatherForFingerprint(
 		_ fingerprint: String,
+		isActionWorthyInitialOrPending: Bool = false,
+		isActionWorthyClassification: Bool = false,
+		hasPending: Bool = false,
+		hasValidCache: Bool = false,
+		anchorMatch: Bool = false,
 		referenceTime: Date
 	) -> Bool {
+		if isActionWorthyInitialOrPending {
+			let classificationStr = isActionWorthyClassification ? "action_worthy" : "unknown"
+			let pendingStr = hasPending ? "yes" : "no"
+			let cacheStr = hasValidCache ? "yes" : "no"
+			let anchorStr = anchorMatch ? "yes" : "no"
+			print("[VisualContextGathering] cooldown_bypass_check classification=\(classificationStr) has_pending=\(pendingStr) cache_exists=\(cacheStr) anchor_match=\(anchorStr)")
+
+			if !hasValidCache {
+				print("[VisualContextGathering] cooldown_bypass=yes reason=action_worthy_initial_or_pending_no_cache fp=\(fingerprint)")
+				return true
+			} else {
+				print("[VisualContextGathering] cooldown_bypass=no reason=cache_exists_or_anchor_mismatch fp=\(fingerprint)")
+			}
+		}
+
 		if let last = autoVisualGatheredAtByFingerprint[fingerprint],
 		   referenceTime.timeIntervalSince(last) < Self.autoVisualGatherCooldownSeconds {
 			return false
@@ -826,6 +900,9 @@ actor DynamicGeneratedProposalEngine {
 		// Opportunistic prune (no timers/polling).
 		let cutoff = referenceTime.addingTimeInterval(-Self.autoVisualGatherCooldownSeconds * 2)
 		autoVisualGatheredAtByFingerprint = autoVisualGatheredAtByFingerprint.filter { $0.value > cutoff }
+		visualResultCache = visualResultCache.filter { fingerprint, _ in
+			autoVisualGatheredAtByFingerprint[fingerprint] != nil
+		}
 		return true
 	}
 

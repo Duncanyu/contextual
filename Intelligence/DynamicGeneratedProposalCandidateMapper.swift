@@ -77,7 +77,7 @@ enum DynamicGeneratedProposalCandidateMapper {
 
 			var finalProposal = proposal
 			if alignment.status == .repaired {
-				print("[ProposalValidation] repaired reason=redundant_search_to_extract_context original=\"\(proposal.expectedOutcome)\" repaired=\"\(alignment.alignedGoal)\"")
+				print("[ProposalValidation] repaired reason=\(alignment.reason) original=\"\(proposal.expectedOutcome)\" repaired=\"\(alignment.alignedGoal)\"")
 				// Phase 4Q — surface the capability-repair as a dedicated log family so
 				// dogfood can see when a navigation/search candidate was internally
 				// redirected to an in-envelope gather goal (visible title is preserved
@@ -113,9 +113,29 @@ enum DynamicGeneratedProposalCandidateMapper {
 						createdAt: originalPlan.createdAt
 					)
 				}
+
+				var repairedTitle = proposal.title
+				let candidateTitle = alignment.alignedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+				if !candidateTitle.isEmpty && candidateTitle != proposal.title {
+					let repairedValidation = ProposalCapabilityValidator.validate(
+						title: candidateTitle,
+						goal: alignment.alignedGoal,
+						isolated: isolated,
+						stage: "activation_repaired_title"
+					)
+					if repairedValidation.accepted {
+						repairedTitle = candidateTitle
+						print("[CapabilityRepair] title_repaired=yes")
+						print("[CapabilityRepair] original_title=\"\(proposal.title)\"")
+						print("[CapabilityRepair] repaired_title=\"\(candidateTitle)\"")
+					} else {
+						print("[CapabilityRepair] title_repaired=no reason=\(repairedValidation.reason)")
+					}
+				}
+
 				finalProposal = ValidatedDynamicGeneratedProposal(
 					id: proposal.id,
-					title: proposal.title,
+					title: repairedTitle,
 					description: proposal.description,
 					workflowType: proposal.workflowType,
 					intentType: proposal.intentType,

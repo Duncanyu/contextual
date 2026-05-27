@@ -57,6 +57,25 @@ enum ProposalCapabilityValidator {
 
 		let lower = trimmed.lowercased()
 
+		// Phase 4S — Helpfulness gate: the title must indicate an assistant action intent,
+		// not just echo an entity/window title.
+		let actionIntent = hasActionIntent(lower)
+		print("[ProposalHelpfulness] action_intent_detected=\(actionIntent ? "yes" : "no") stage=\(stage)")
+
+		// Phase 4S — Reject raw-title proposals (title equals the context entity/window title)
+		// when no action intent is present. Prevents the "fast visibility" path from
+		// surfacing copied window titles as executable actions.
+		if !actionIntent, isEffectivelyContextTitle(lower, isolated: isolated) {
+			print("[ProposalValidation] rejected stage=\(stage) reason=non_action_title title_equals_context_entity=yes title=\"\(title)\"")
+			return ValidationResult(accepted: false, reason: "non_action_title", diagnosticTag: "diag:non_action_title")
+		}
+
+		// Titles that are not action-like should not surface, even if grounded.
+		if !actionIntent {
+			print("[ProposalValidation] rejected stage=\(stage) reason=non_action_title action_intent_detected=no title=\"\(title)\"")
+			return ValidationResult(accepted: false, reason: "non_action_title", diagnosticTag: "diag:non_action_title")
+		}
+
 		// 1. Literal scans for generic template strings.
 		let cannedPhrases = [
 			"review visible",
@@ -181,5 +200,46 @@ enum ProposalCapabilityValidator {
 			.filter { $0.count >= 3 }
 			.filter { !stopwords.contains($0) }
 		return Set(words)
+	}
+
+	// MARK: - Phase 4S helpers (intent + raw-title suppression)
+
+	private static func hasActionIntent(_ lowerTitle: String) -> Bool {
+		// Validation only (not generation): ensure the title implies a concrete assistant action.
+		// This intentionally uses a small allowlist of verb families.
+		let verbs = [
+			"inspect", "extract", "summarize", "compare", "identify",
+			"gather", "explain", "review", "analyze", "understand",
+			// Synonyms that map to the same intent families:
+			"find", "list", "check", "trace", "diagnose", "organize", "outline",
+			// Unsafe/unsupported verbs to allow safety check triggers:
+			"purchase", "buy", "delete", "checkout", "install", "login", "order"
+		]
+		for v in verbs {
+			if lowerTitle.hasPrefix(v + " ") { return true }
+			if lowerTitle.contains(" " + v + " ") { return true }
+		}
+		return false
+	}
+
+	private static func isEffectivelyContextTitle(_ lowerTitle: String, isolated: IsolatedProposalContext) -> Bool {
+		let ctxTitle = normalizeComparableTitle(isolated.windowTitle)
+		let t = normalizeComparableTitle(lowerTitle)
+		guard !t.isEmpty, !ctxTitle.isEmpty else { return false }
+		if t == ctxTitle { return true }
+		// Allow small suffix/prefix differences (" - amazon", " | firefox"), but still treat
+		// as a raw-title echo when nearly identical.
+		if ctxTitle.contains(t) && t.count >= max(12, ctxTitle.count / 2) { return true }
+		if t.contains(ctxTitle) && ctxTitle.count >= max(12, t.count / 2) { return true }
+		return false
+	}
+
+	private static func normalizeComparableTitle(_ input: String) -> String {
+		let lower = input.lowercased()
+		let stripped = lower.replacingOccurrences(of: #"[\|\-–—•·]+"#, with: " ", options: .regularExpression)
+		let collapsed = stripped.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		// Drop generic trailing store/app segments after a separator-like token.
+		return collapsed
 	}
 }

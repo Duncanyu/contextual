@@ -103,6 +103,7 @@ struct TwoStageCompactPlannerPromptBuilder {
             // the safe inspect/extract/summarize actions are at the top of the
             // array, so the salvage path always sees them first.
             "Return the safest executable visible-page actions first (inspect/extract/summarize before any other category).",
+            "Do NOT copy the window title verbatim as the action title; the title must describe what the assistant will do on the visible context.",
             "Each action: title (≤10 words, user-centric, active operation grounded in current context), caps (from: \(needCatsAllowed)), confidence (0-1), novelty (0-1 how page-specific), requires (data needed).",
             "should_surface_softly=true when context is actionable: product/shopping/search/code/clipboard/OCR.",
         ])

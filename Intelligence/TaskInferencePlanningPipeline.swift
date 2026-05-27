@@ -26,6 +26,17 @@ enum TaskInferencePlanningPipeline {
 		guard inference.shouldChime else { return nil }
 		guard inference.confidence >= 0.42 else { return nil }
 
+		// Phase 4S — Separate entity detection (eligibility) from action generation.
+		// Do not enter hook composition if the inferred goal is just an entity/title
+		// with no action intent. This prevents "raw window title" plans.
+		let goalLower = inference.possibleUserGoal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+		let hasIntent = hasActionIntent(goalLower)
+		print("[ProposalHelpfulness] action_intent_detected=\(hasIntent ? "yes" : "no") stage=planning_pipeline")
+		guard hasIntent else {
+			print("[HookCompositionPipeline] skipped reason=needs_action_intent")
+			return nil
+		}
+
 		let cats = normalizeCats(inference.neededCapabilityCategories)
 
 		// Entry banner — proves the hook-composition layer was reached.
@@ -324,6 +335,20 @@ enum TaskInferencePlanningPipeline {
 			.filter { seen.insert($0).inserted }
 			.prefix(8)
 			.map { $0 }
+	}
+
+	private static func hasActionIntent(_ lower: String) -> Bool {
+		// Keep in sync with ProposalCapabilityValidator's intent allowlist.
+		let verbs = [
+			"inspect", "extract", "summarize", "compare", "identify",
+			"gather", "explain", "review", "analyze", "understand",
+			"find", "list", "check", "trace", "diagnose", "organize", "outline"
+		]
+		for v in verbs {
+			if lower.hasPrefix(v + " ") { return true }
+			if lower.contains(" " + v + " ") { return true }
+		}
+		return false
 	}
 
 	private static func inferIntent(from primitives: [ExecutionPrimitive]) -> IntentType {

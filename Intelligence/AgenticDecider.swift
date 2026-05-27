@@ -96,6 +96,33 @@ enum AgenticLoopDecisionSource: String, Sendable {
 /// Model cannot invent new actions or override policy.
 struct AgenticDecider: Sendable {
 
+	static let deciderSchema: [String: Any] = [
+		"type": "object",
+		"properties": [
+			"next_action": [
+				"type": "string",
+				"enum": AgenticNextAction.allCases.map(\.rawValue)
+			],
+			"reason": [
+				"type": "string",
+				"maxLength": 300
+			] as [String: Any],
+			"expected_change": [
+				"type": "string",
+				"maxLength": 200
+			] as [String: Any],
+			"confidence": [
+				"type": "number"
+			]
+		],
+		"required": [
+			"next_action",
+			"reason",
+			"expected_change",
+			"confidence"
+		]
+	]
+
 	func decide(
 		goal: String,
 		workflow: String = "",
@@ -142,23 +169,131 @@ struct AgenticDecider: Sendable {
 			facts: facts
 		)
 
-		// If heuristic is confident enough or LLM budget is exhausted, use it directly
-		if heuristicDecision.confidence >= 0.85 || llmCallsUsed >= llmCallsBudget {
-			print("[AgenticDecide] source=heuristic next_action=\(heuristicDecision.nextAction.rawValue) reason=\(heuristicDecision.reason.prefix(80)) confidence=\(String(format: "%.2f", heuristicDecision.confidence))")
-			return heuristicDecision
+		// Heuristic acts as fallback when LLM budget is exhausted
+		if llmCallsUsed >= llmCallsBudget {
+			print("[AgenticDecide] source=heuristic next_action=\(heuristicDecision.nextAction.rawValue) reason=llm_budget_exhausted confidence=\(String(format: "%.2f", heuristicDecision.confidence))")
+			
+			// StopGate check on heuristic output
+			var finalDecision = heuristicDecision
+			if finalDecision.nextAction == .present_answer || finalDecision.nextAction == .stop_success {
+				// Phase 4U — bypass StopGate when budget is exhausted with no
+				// gathering action remaining in the legal menu. Forcing
+				// observe_once / scroll / find when none of them are legal
+				// (or when the loop has no steps left) just stalls the loop
+				// without improving evidence. A partial present is the right
+				// outcome — the answer renderer surfaces the missing evidence
+				// honestly.
+				let stepsRemaining = maxSteps - stepIndex
+				let gatheringActions: Set<AgenticNextAction> = [
+					.observe_once, .scroll_small, .find_on_page, .extract_facts,
+				]
+				let hasGatheringAction = !legalActions.intersection(gatheringActions).isEmpty
+				let perceptionBudgetExhausted = ocrCallsUsed >= ocrCallsBudget
+				let budgetExhausted = stepsRemaining <= 1 || perceptionBudgetExhausted
+				// If we cannot perceive again (OCR budget exhausted), control actions
+				// cannot improve evidence because we cannot observe the result.
+				let canActuallyGather = hasGatheringAction && !perceptionBudgetExhausted
+				if budgetExhausted || !canActuallyGather {
+					print("[StopGate] bypassed reason=budget_exhausted_or_no_gathering steps_remaining=\(stepsRemaining) gathering_available=\(hasGatheringAction)")
+					return finalDecision
+				}
+
+				var blockReason: String? = nil
+				if isStopGateBlocked(
+					goal: goal,
+					observations: observations,
+					evidenceObservations: evidenceObservations,
+					entities: entities,
+					facts: facts,
+					evidenceState: evidenceState,
+					reason: &blockReason
+				) {
+					let forcedAction: AgenticNextAction
+					if legalActions.contains(.observe_once) {
+						forcedAction = .observe_once
+					} else if legalActions.contains(.scroll_small) {
+						forcedAction = .scroll_small
+					} else if legalActions.contains(.find_on_page) {
+						forcedAction = .find_on_page
+					} else if legalActions.contains(.extract_facts) {
+						forcedAction = .extract_facts
+					} else {
+						forcedAction = .stop_missing_context
+					}
+
+					print("[StopGate] allowed=no reason=\(blockReason ?? "unknown")")
+					finalDecision = AgenticLoopDecision(
+						nextAction: forcedAction,
+						reason: "Stop blocked by StopGate: \(blockReason ?? "unknown") — forcing further gathering",
+						confidence: 0.90,
+						source: heuristicDecision.source,
+						findQuery: forcedAction == .find_on_page ? AgenticControlPolicy.determineFindQuery(goal: goal) : nil
+					)
+				}
+			}
+			return finalDecision
 		}
 
-		// Try model for borderline cases (single call, tight timeout)
+		print("[AgenticLLMDecide] started")
+		// Try model
 		let modelDecision = await tryModel(
 			goal: goal,
+			workflow: workflow,
 			observations: observations,
 			extractedFacts: extractedFacts,
 			stepIndex: stepIndex,
+			maxSteps: maxSteps,
+			llmCallsUsed: llmCallsUsed,
+			llmCallsBudget: llmCallsBudget,
+			ocrCallsUsed: ocrCallsUsed,
+			ocrCallsBudget: ocrCallsBudget,
 			legalActions: legalActions,
+			evidenceState: evidenceState,
+			evidenceObservations: evidenceObservations,
+			priorActions: priorActions,
+			entities: entities,
+			facts: facts,
 			heuristicFallback: heuristicDecision
 		)
-		print("[AgenticDecide] source=\(modelDecision.source.rawValue) next_action=\(modelDecision.nextAction.rawValue) reason=\(modelDecision.reason.prefix(80))")
-		return modelDecision
+
+		var finalDecision = modelDecision
+		if finalDecision.nextAction == .present_answer || finalDecision.nextAction == .stop_success {
+			var blockReason: String? = nil
+			if isStopGateBlocked(
+				goal: goal,
+				observations: observations,
+				evidenceObservations: evidenceObservations,
+				entities: entities,
+				facts: facts,
+				evidenceState: evidenceState,
+				reason: &blockReason
+			) {
+				let forcedAction: AgenticNextAction
+				if legalActions.contains(.observe_once) {
+					forcedAction = .observe_once
+				} else if legalActions.contains(.scroll_small) {
+					forcedAction = .scroll_small
+				} else if legalActions.contains(.find_on_page) {
+					forcedAction = .find_on_page
+				} else if legalActions.contains(.extract_facts) {
+					forcedAction = .extract_facts
+				} else {
+					forcedAction = .stop_missing_context
+				}
+				
+				print("[StopGate] allowed=no reason=\(blockReason ?? "unknown")")
+				finalDecision = AgenticLoopDecision(
+					nextAction: forcedAction,
+					reason: "Stop blocked by StopGate: \(blockReason ?? "unknown") — forcing further gathering",
+					confidence: 0.90,
+					source: finalDecision.source,
+					findQuery: forcedAction == .find_on_page ? AgenticControlPolicy.determineFindQuery(goal: goal) : nil
+				)
+			}
+		}
+
+		print("[AgenticDecide] source=\(finalDecision.source.rawValue) next_action=\(finalDecision.nextAction.rawValue) reason=\(finalDecision.reason.prefix(80))")
+		return finalDecision
 	}
 
 	// MARK: - Heuristic
@@ -671,37 +806,77 @@ struct AgenticDecider: Sendable {
 
 	private func tryModel(
 		goal: String,
+		workflow: String,
 		observations: [AgenticObservation],
 		extractedFacts: [String],
 		stepIndex: Int,
+		maxSteps: Int,
+		llmCallsUsed: Int,
+		llmCallsBudget: Int,
+		ocrCallsUsed: Int,
+		ocrCallsBudget: Int,
 		legalActions: Set<AgenticNextAction>,
+		evidenceState: AgenticEvidenceState?,
+		evidenceObservations: [AgenticEvidenceObservation],
+		priorActions: [String],
+		entities: [GroundedSemanticEntity],
+		facts: [StructuredFact],
 		heuristicFallback: AgenticLoopDecision
 	) async -> AgenticLoopDecision {
-		let obsText = observations.prefix(2).map { o -> String in
-			// Only include real page content (selectedText / ocrExcerpt) — contextSummary is metadata
-			let pageContent = [o.selectedText, o.ocrExcerpt].compactMap { $0 }.first ?? "(no real page text)"
-			return "App: \(o.activeApp) | Window: \(o.windowTitle.prefix(60)) | Quality: \(o.quality.rawValue) | Content: \(pageContent.prefix(120))"
-		}.joined(separator: "\n")
+		let priorActionsStr = priorActions.isEmpty ? "none" : priorActions.joined(separator: " -> ")
+		let obsText = observations.map { o -> String in
+			let ocr = o.ocrExcerpt ?? "(none)"
+			let ax = o.contextSummary ?? "(none)"
+			let sel = o.selectedText ?? "(none)"
+			return "App: \(o.activeApp) | Window: \(o.windowTitle.prefix(60)) | Quality: \(o.quality.rawValue)\n- OCR Excerpt: \(ocr.prefix(300))\n- AX Summary: \(ax.prefix(300))\n- Selected Text: \(sel.prefix(200))"
+		}.joined(separator: "\n---\n")
 
-		let factsText = extractedFacts.prefix(3).joined(separator: "; ")
+		let entitiesStr = entities.isEmpty ? "none" : entities.map { "\($0.text) (type: \($0.type.rawValue), confidence: \($0.confidence))" }.prefix(10).joined(separator: "; ")
+		let factsStr = facts.isEmpty ? "none" : facts.map { "\($0.title) (category: \($0.category))" }.prefix(10).joined(separator: "; ")
+		let evidenceStateStr = evidenceState.map { ev in
+			"Satisfied: \(ev.satisfied.map(\.rawValue).joined(separator: ", ")), Missing: \(ev.missing.map(\.rawValue).joined(separator: ", ")), Confidence: \(ev.confidence)"
+		} ?? "none"
+
 		let legalList = legalActions.map(\.rawValue).sorted().joined(separator: ", ")
-		let latestQuality = observations.last?.quality.rawValue ?? "none"
 
 		let prompt = """
-		You are a safe assistant choosing the next step in a bounded agentic loop.
-		Goal: \(goal.prefix(120))
-		Step: \(stepIndex)
-		Observation quality: \(latestQuality) (metadata_only < weak < usable < rich)
-		Observations:
-		\(obsText)
-		Extracted facts: \(factsText.isEmpty ? "none yet" : factsText.prefix(200))
+		You are a safe, local-first agentic decider choosing the next action in a bounded loop.
+		Goal: \(goal)
+		Workflow: \(workflow)
 
-		Legal actions for this step: \(legalList)
+		[Budgets]
+		- Current Step: \(stepIndex) / \(maxSteps)
+		- LLM Calls Used: \(llmCallsUsed) / \(llmCallsBudget)
+		- OCR Calls Used: \(ocrCallsUsed) / \(ocrCallsBudget)
 
-		Choose ONE action from the legal actions list only.
+		[History]
+		- Previous Actions: \(priorActionsStr)
+		- Extracted Facts: \(extractedFacts.joined(separator: "; "))
+
+		[Current Evidence State]
+		\(evidenceStateStr)
+
+		[Discovered Entities & Facts]
+		- Entities: \(entitiesStr)
+		- Facts: \(factsStr)
+
+		[Observations (Recent First)]
+		\(obsText.prefix(2000))
+
+		[Legal Actions Menu]
+		\(legalList)
+
+		Choose exactly ONE action from the Legal Actions Menu. Do NOT choose click, type, navigate, or any action not in the list.
 		If quality is metadata_only or weak and this is a browser/product goal, prefer find_on_page or scroll_small over extract_facts.
-		Do NOT choose click, type into forms, navigate, switch_tab, submit, or any action not in the list.
-		Respond with JSON only: {"next_action": "...", "reason": "...", "confidence": 0.0}
+		If all required evidence is satisfied and quality is high, choose present_answer or stop_success to terminate.
+		
+		Respond with JSON only, matching this schema:
+		{
+		  "next_action": "...",
+		  "reason": "...",
+		  "expected_change": "...",
+		  "confidence": 0.0
+		}
 		"""
 
 		do {
@@ -709,14 +884,16 @@ struct AgenticDecider: Sendable {
 				try await LocalAIClient.shared.generate(
 					prompt: prompt,
 					model: "phi4-mini",
-					numPredict: 100,
+					numPredict: 150,
 					temperature: 0.1,
 					purpose: "agentic_loop_decide",
-					schema: nil
+					schema: Self.deciderSchema
 				)
 			}
 
-			if let parsed = parseModelDecision(response, legalActions: legalActions) {
+			var rejectedReason: String? = nil
+			if let parsed = parseModelDecision(response, legalActions: legalActions, rejectedReason: &rejectedReason) {
+				print("[AgenticLLMDecide] accepted action=\(parsed.nextAction.rawValue) reason=\(parsed.reason)")
 				return AgenticLoopDecision(
 					nextAction: parsed.nextAction,
 					reason: parsed.reason,
@@ -727,10 +904,12 @@ struct AgenticDecider: Sendable {
 						: nil
 				)
 			} else {
-				print("[AgenticDecide] model_parse_failed response_len=\(response.count) using_fallback=\(heuristicFallback.nextAction.rawValue)")
+				let reason = rejectedReason ?? "parse_failed"
+				print("[AgenticLLMDecide] rejected reason=\(reason)")
+				print("[AgenticLLMDecide] fallback=heuristic reason=\(reason)")
 			}
 		} catch {
-			print("[AgenticDecide] model_failed error=\(error) using_fallback=\(heuristicFallback.nextAction.rawValue)")
+			print("[AgenticLLMDecide] fallback=heuristic reason=model_failed_or_timeout")
 		}
 
 		return AgenticLoopDecision(
@@ -744,21 +923,37 @@ struct AgenticDecider: Sendable {
 
 	// MARK: - JSON Parsing
 
-	private func parseModelDecision(
+	func parseModelDecision(
 		_ json: String,
-		legalActions: Set<AgenticNextAction>
+		legalActions: Set<AgenticNextAction>,
+		rejectedReason: inout String?
 	) -> (nextAction: AgenticNextAction, reason: String, confidence: Double)? {
 		guard let start = json.range(of: "{"),
 			  let end = json.range(of: "}", options: .backwards)
-		else { return nil }
+		else {
+			rejectedReason = "parse_failed"
+			return nil
+		}
 
-		let jsonStr = String(json[start.lowerBound...end.upperBound])
+		let jsonStr = String(json[start.lowerBound..<end.upperBound])
 		guard let data = jsonStr.data(using: .utf8),
-			  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-			  let actionStr = obj["next_action"] as? String,
-			  let action = AgenticNextAction(rawValue: actionStr),
-			  legalActions.contains(action)  // must be in legal set
-		else { return nil }
+			  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+		else {
+			rejectedReason = "parse_failed"
+			return nil
+		}
+
+		guard let actionStr = obj["next_action"] as? String else {
+			rejectedReason = "parse_failed"
+			return nil
+		}
+
+		guard let action = AgenticNextAction(rawValue: actionStr),
+			  legalActions.contains(action)
+		else {
+			rejectedReason = "illegal_action"
+			return nil
+		}
 
 		let reason = (obj["reason"] as? String) ?? "model decision"
 		let confidence = min(1.0, max(0.0, (obj["confidence"] as? Double) ?? 0.75))
@@ -871,6 +1066,103 @@ struct AgenticDecider: Sendable {
 			return tok
 		}
 		return nil
+	}
+
+	func isStopGateBlocked(
+		goal: String,
+		observations: [AgenticObservation],
+		evidenceObservations: [AgenticEvidenceObservation],
+		entities: [GroundedSemanticEntity],
+		facts: [StructuredFact],
+		evidenceState: AgenticEvidenceState?,
+		reason: inout String?
+	) -> Bool {
+		// 1. Check if final answer would contain "Unknown Product"
+		var productTitle = "Unknown Product"
+		if let pt = facts.first(where: { $0.category == "product" })?.title {
+			productTitle = pt
+		} else if let titleEntity = entities.first(where: { $0.type == .productTitle })?.text {
+			productTitle = titleEntity
+		} else if let ptObs = evidenceObservations.first(where: { $0.kind == .productTitle })?.text {
+			productTitle = ptObs
+		} else if let windowTitle = observations.last?.windowTitle {
+			productTitle = windowTitle
+		}
+
+		// Apply title cleaning just like answer synthesis to test correct final value
+		let noiseSuffixes = [
+			" - Google Search", " - Google Chrome", " - Firefox", " - Safari",
+			": Amazon.ca: Electronics", " : Amazon.ca", " : Amazon.com", " : Amazon.ca: Electronics",
+			"Amazon.com:", "Amazon.ca:", " | Amazon", " - Amazon"
+		]
+		var cleaned = productTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+		for suffix in noiseSuffixes {
+			if let range = cleaned.range(of: suffix, options: [.caseInsensitive, .backwards]) {
+				cleaned = String(cleaned[..<range.lowerBound])
+			}
+		}
+		cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+
+		if EvidenceQualityGate.detectTruncation(cleaned) || EvidenceQualityGate.detectChromeLeak(cleaned) || (cleaned.split(separator: " ").count == 1 && cleaned.count <= 3) {
+			cleaned = "Unknown Product"
+		}
+
+		if cleaned == "Unknown Product" || cleaned.isEmpty {
+			reason = "unknown_product"
+			return true
+		}
+
+		// 2. Check evidence quality groundedness
+		let evState = evidenceState ?? AgenticEvidenceState(goal: goal, requirements: [], satisfied: [], missing: [], missingOptional: [], confidence: 0, shouldGatherMore: false, recommendedAction: .present)
+		let quality = EvidenceQualityGate.evaluate(
+			goal: goal,
+			state: evState,
+			observations: evidenceObservations,
+			entities: entities,
+			facts: facts
+		)
+
+		if quality.groundedness < 0.60 {
+			reason = "low_groundedness"
+			return true
+		}
+
+		// 3. Check chrome leak
+		var chromeLeak = false
+		for text in (observations.compactMap { $0.selectedText } + observations.compactMap { $0.ocrExcerpt } + evidenceObservations.map { $0.text } + entities.map { $0.text } + facts.map { $0.title }) {
+			if EvidenceQualityGate.detectChromeLeak(text) {
+				chromeLeak = true
+				break
+			}
+		}
+		if chromeLeak {
+			reason = "chrome_leak_detected"
+			return true
+		}
+
+		// 4. Required evidence is weak/short/noisy tokens (cleanliness)
+		if quality.cleanliness < 0.85 {
+			reason = "noisy_or_truncated_evidence"
+			return true
+		}
+
+		// 5. Comparison validation for comparison family
+		let isCompareGoal = AgenticEvidenceRequirementsInferrer.classifyFamily(goal: goal.lowercased(), workflow: "") == .compare
+		if isCompareGoal {
+			var reasonsList: [String] = []
+			let comparisonValid = EvidenceQualityGate.validateComparisonCandidates(
+				observations: evidenceObservations,
+				entities: entities,
+				facts: facts,
+				reasons: &reasonsList
+			)
+			if !comparisonValid {
+				reason = "invalid_comparison_candidates"
+				return true
+			}
+		}
+
+		return false
 	}
 }
 

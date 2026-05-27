@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import Vision
+import AppKit
 
 struct OCRResult: Equatable {
 	let text: String
@@ -56,8 +57,40 @@ final class OCRProcessor: @unchecked Sendable {
 			let excerptDisplay = rawExcerpt.isEmpty ? "(empty)" : rawExcerpt
 			print("[OCR] completed chars=\(chars) lines=\(lineCount)")
 			print("[OCR] excerpt=\"\(excerptDisplay)\"")
+
+			// Perform active window coordinate mismatch detection
+			let (activeApp, activeTitle) = ScreenCaptureSource.getActiveAppAndTitle()
+			let mismatched = OCRProcessor.isOcrMismatched(ocrText: text, activeApp: activeApp, activeTitle: activeTitle)
+			print("[VisualTarget] mismatch_detected=\(mismatched ? "yes" : "no")")
+
+			if mismatched {
+				return OCRResult(text: "", lineCount: 0, confidenceAverage: nil, timestamp: Date())
+			}
+
 			return OCRResult(text: text, lineCount: lineCount, confidenceAverage: avg, timestamp: Date())
 		}.value
 	}
-}
 
+	static func isOcrMismatched(ocrText: String, activeApp: String, activeTitle: String) -> Bool {
+		let ocrTokens = tokenize(ocrText)
+		if ocrTokens.isEmpty { return false }
+
+		let appTokens = tokenize(activeApp)
+		let titleTokens = tokenize(activeTitle)
+		
+		let combinedActive = appTokens.union(titleTokens)
+		if combinedActive.isEmpty {
+			return false
+		}
+
+		let intersection = ocrTokens.intersection(combinedActive)
+		return intersection.isEmpty
+	}
+
+	static func tokenize(_ text: String) -> Set<String> {
+		let stopWords: Set<String> = ["and", "the", "for", "with", "this", "that", "you", "are", "com", "www", "http", "https", "new", "all", "out", "app", "window", "active", "file", "edit", "view", "find"]
+		let lower = text.lowercased()
+		let words = lower.components(separatedBy: CharacterSet.alphanumerics.inverted)
+		return Set(words.filter { $0.count >= 3 && !stopWords.contains($0) })
+	}
+}

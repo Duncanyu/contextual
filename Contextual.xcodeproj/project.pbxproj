@@ -193,6 +193,10 @@
 		5E01E9356E3E4FAA9540D271 /* SituationalContextSnapshot+Copying.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6409C55ADB3492DB4B68F32 /* SituationalContextSnapshot+Copying.swift */; };
 		11F17F5481CA40D1B576AADC /* StrongContextAnchorSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29B61C9907CD47F39ADE614C /* StrongContextAnchorSelfTest.swift */; };
 		DDCEB3D4627F4A56A0A2CA53 /* EmailReviewEvidenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A216F1AEE9E74ADEBB7CD367 /* EmailReviewEvidenceSelfTest.swift */; };
+		DD7A1D4F1A2B3C4D5E6F7081 /* ProposalActionIntentSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F708192A3B4C5D /* ProposalActionIntentSelfTest.swift */; };
+		DD7A1D4F1A2B3C4D5E6F7082 /* ActionIntentRetrySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F708192A3B4C5E /* ActionIntentRetrySelfTest.swift */; };
+		E3F6A1B2C3D4E5F60718293A /* StrongContextRouterOverrideSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F6A1B2C3D4E5F60718293B /* StrongContextRouterOverrideSelfTest.swift */; };
+		8C7D6E5F4A3B2C1D0E9F8A7B /* ActionIntentPlannerBridgeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C7D6E5F4A3B2C1D0E9F8A7C /* ActionIntentPlannerBridgeSelfTest.swift */; };
 		AA0001E8000000000000010F /* GeneratedExecutionContextBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */; };
 		AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */; };
 		AA0001EA0000000000000111 /* SparseVisualPeekPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */; };
@@ -301,6 +305,9 @@
 			AA0002360000000000000305 /* AgenticGoalAlignmentValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000305 /* AgenticGoalAlignmentValidator.swift */; };
 			AA0002360000000000000306 /* GoalEvidenceAlignmentSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000306 /* GoalEvidenceAlignmentSelfTest.swift */; };
 			AA0002360000000000000307 /* EvidenceStateCorrectnessSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000307 /* EvidenceStateCorrectnessSelfTest.swift */; };
+			AA0002360000000000000308 /* VisualTargetingCorrectnessSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000308 /* VisualTargetingCorrectnessSelfTest.swift */; };
+			AA0002360000000000000309 /* VisualContextRehydrationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000309 /* VisualContextRehydrationSelfTest.swift */; };
+			AA000236000000000000030E /* AgenticLLMDeciderSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000421000000000000030E /* AgenticLLMDeciderSelfTest.swift */; };
 			AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */; };
 			AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */; };
 			AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000242 /* TwoStageLaneManager.swift */; };
@@ -316,6 +323,13 @@
 			D15B902C84E47BAF311F70CE /* PlannerCapabilityEnvelopeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCE40193A55F02D58B91DA1 /* PlannerCapabilityEnvelopeSelfTest.swift */; };
 			E20F4D9C8615A0BE19A4FE63 /* RouterGroundingHeuristic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A88B6C3F50E7CD4B0925BCC /* RouterGroundingHeuristic.swift */; };
 				F396827EAB12409D6FCD56AA /* PartialPlannerRecoverySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B70CE6F1D3E08AB5CF7AD90 /* PartialPlannerRecoverySelfTest.swift */; };
+			0741AC92E5B3D708B6A40DCB /* FastVisibilityQualityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E5074CB9A1F65E1240C77E /* FastVisibilityQualityGate.swift */; };
+			1B85FE03D2079ACE3F168A5B /* FastVisibilityQualitySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42D86FB30C715E62791A07BC /* FastVisibilityQualitySelfTest.swift */; };
+			2C97A4D1E380F602BD58A07C /* TolerantPartialRecoverySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E3F861A09B247CDC5907F11 /* TolerantPartialRecoverySelfTest.swift */; };
+			3E0218D7A8F46C915B73AC9F /* ComparePivotGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F9DC2A405E7B41C8B30D162 /* ComparePivotGate.swift */; };
+			4ABD910F6EE03A781CFB07D8 /* AnchoredPriceResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C04E812A156B8F092D7C034 /* AnchoredPriceResolver.swift */; };
+			5BF1EA42C73D8156A09B3416 /* ProductTitleSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D15F823B12E69D7A6E40258 /* ProductTitleSynthesizer.swift */; };
+			6C03B45A8A93E8074D2B519A /* AgenticRuntimeQualitySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E26049C82197E25BC051379 /* AgenticRuntimeQualitySelfTest.swift */; };
 				D0E5B1F3A7C94B2E8F1A3C4D /* RuntimeGroundingPreservationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D3E2F1A0B9C8D7E6F5A4B3 /* RuntimeGroundingPreservationSelfTest.swift */; };
 				B26DE4576FD39C781DDF4128 /* AssistantChromeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45814F2B1B4BA787BF7E899C /* AssistantChromeFilter.swift */; };
 			97DE96FDDE79A118A1F38CB7 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 727FD3C4514261CA05AC6899 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift */; };
@@ -530,6 +544,10 @@
 		A6409C55ADB3492DB4B68F32 /* SituationalContextSnapshot+Copying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SituationalContextSnapshot+Copying.swift"; sourceTree = "<group>"; };
 		29B61C9907CD47F39ADE614C /* StrongContextAnchorSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrongContextAnchorSelfTest.swift; sourceTree = "<group>"; };
 		A216F1AEE9E74ADEBB7CD367 /* EmailReviewEvidenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailReviewEvidenceSelfTest.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F708192A3B4C5D /* ProposalActionIntentSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalActionIntentSelfTest.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F708192A3B4C5E /* ActionIntentRetrySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionIntentRetrySelfTest.swift; sourceTree = "<group>"; };
+		E3F6A1B2C3D4E5F60718293B /* StrongContextRouterOverrideSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrongContextRouterOverrideSelfTest.swift; sourceTree = "<group>"; };
+		8C7D6E5F4A3B2C1D0E9F8A7C /* ActionIntentPlannerBridgeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionIntentPlannerBridgeSelfTest.swift; sourceTree = "<group>"; };
 		AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionContextBridge.swift; sourceTree = "<group>"; };
 		AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgedGeneratedExecutionContextProvider.swift; sourceTree = "<group>"; };
 		AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparseVisualPeekPolicy.swift; sourceTree = "<group>"; };
@@ -611,6 +629,9 @@
 		AA0004210000000000000305 /* AgenticGoalAlignmentValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticGoalAlignmentValidator.swift; sourceTree = "<group>"; };
 		AA0004210000000000000306 /* GoalEvidenceAlignmentSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalEvidenceAlignmentSelfTest.swift; sourceTree = "<group>"; };
 		AA0004210000000000000307 /* EvidenceStateCorrectnessSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceStateCorrectnessSelfTest.swift; sourceTree = "<group>"; };
+		AA0004210000000000000308 /* VisualTargetingCorrectnessSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualTargetingCorrectnessSelfTest.swift; sourceTree = "<group>"; };
+		AA0004210000000000000309 /* VisualContextRehydrationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContextRehydrationSelfTest.swift; sourceTree = "<group>"; };
+		AA000421000000000000030E /* AgenticLLMDeciderSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticLLMDeciderSelfTest.swift; sourceTree = "<group>"; };
 			AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageCompactPlannerPromptBuilder.swift; sourceTree = "<group>"; };
 			AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageRouterPromptBuilder.swift; sourceTree = "<group>"; };
 			AA0004110000000000000242 /* TwoStageLaneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoStageLaneManager.swift; sourceTree = "<group>"; };
@@ -625,6 +646,13 @@
 			7BCE40193A55F02D58B91DA1 /* PlannerCapabilityEnvelopeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCapabilityEnvelopeSelfTest.swift; sourceTree = "<group>"; };
 			1A88B6C3F50E7CD4B0925BCC /* RouterGroundingHeuristic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterGroundingHeuristic.swift; sourceTree = "<group>"; };
 				2B70CE6F1D3E08AB5CF7AD90 /* PartialPlannerRecoverySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartialPlannerRecoverySelfTest.swift; sourceTree = "<group>"; };
+			39E5074CB9A1F65E1240C77E /* FastVisibilityQualityGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastVisibilityQualityGate.swift; sourceTree = "<group>"; };
+			42D86FB30C715E62791A07BC /* FastVisibilityQualitySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastVisibilityQualitySelfTest.swift; sourceTree = "<group>"; };
+			5E3F861A09B247CDC5907F11 /* TolerantPartialRecoverySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TolerantPartialRecoverySelfTest.swift; sourceTree = "<group>"; };
+			6F9DC2A405E7B41C8B30D162 /* ComparePivotGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComparePivotGate.swift; sourceTree = "<group>"; };
+			7C04E812A156B8F092D7C034 /* AnchoredPriceResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnchoredPriceResolver.swift; sourceTree = "<group>"; };
+			8D15F823B12E69D7A6E40258 /* ProductTitleSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductTitleSynthesizer.swift; sourceTree = "<group>"; };
+			9E26049C82197E25BC051379 /* AgenticRuntimeQualitySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticRuntimeQualitySelfTest.swift; sourceTree = "<group>"; };
 				C4D3E2F1A0B9C8D7E6F5A4B3 /* RuntimeGroundingPreservationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeGroundingPreservationSelfTest.swift; sourceTree = "<group>"; };
 				45814F2B1B4BA787BF7E899C /* AssistantChromeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantChromeFilter.swift; sourceTree = "<group>"; };
 			727FD3C4514261CA05AC6899 /* CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CanonicalGeneratedExecutionContextSnapshot+TargetAnchor.swift"; sourceTree = "<group>"; };
@@ -861,6 +889,10 @@
 				A6409C55ADB3492DB4B68F32 /* SituationalContextSnapshot+Copying.swift */,
 				29B61C9907CD47F39ADE614C /* StrongContextAnchorSelfTest.swift */,
 				A216F1AEE9E74ADEBB7CD367 /* EmailReviewEvidenceSelfTest.swift */,
+				A2B3C4D5E6F708192A3B4C5D /* ProposalActionIntentSelfTest.swift */,
+				A2B3C4D5E6F708192A3B4C5E /* ActionIntentRetrySelfTest.swift */,
+				E3F6A1B2C3D4E5F60718293B /* StrongContextRouterOverrideSelfTest.swift */,
+				8C7D6E5F4A3B2C1D0E9F8A7C /* ActionIntentPlannerBridgeSelfTest.swift */,
 				AA0003E1000000000000010F /* GeneratedExecutionContextBridge.swift */,
 				AA0003E20000000000000110 /* BridgedGeneratedExecutionContextProvider.swift */,
 				AA0003E30000000000000111 /* SparseVisualPeekPolicy.swift */,
@@ -957,6 +989,9 @@
 				AA0004210000000000000305 /* AgenticGoalAlignmentValidator.swift */,
 				AA0004210000000000000306 /* GoalEvidenceAlignmentSelfTest.swift */,
 				AA0004210000000000000307 /* EvidenceStateCorrectnessSelfTest.swift */,
+				AA0004210000000000000308 /* VisualTargetingCorrectnessSelfTest.swift */,
+				AA0004210000000000000309 /* VisualContextRehydrationSelfTest.swift */,
+				AA000421000000000000030E /* AgenticLLMDeciderSelfTest.swift */,
 					AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */,
 					AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */,
 					AA0004110000000000000242 /* TwoStageLaneManager.swift */,
@@ -1019,6 +1054,13 @@
 				E03DAB128F90C0177AB1E5C7 /* ProposalContextIsolationSelfTest.swift */,
 				5DA9F03A7E1C0D3FAB4E1245 /* PlannerCapabilityRepairGate.swift */,
 				7BCE40193A55F02D58B91DA1 /* PlannerCapabilityEnvelopeSelfTest.swift */,
+				39E5074CB9A1F65E1240C77E /* FastVisibilityQualityGate.swift */,
+				42D86FB30C715E62791A07BC /* FastVisibilityQualitySelfTest.swift */,
+				5E3F861A09B247CDC5907F11 /* TolerantPartialRecoverySelfTest.swift */,
+				6F9DC2A405E7B41C8B30D162 /* ComparePivotGate.swift */,
+				7C04E812A156B8F092D7C034 /* AnchoredPriceResolver.swift */,
+				8D15F823B12E69D7A6E40258 /* ProductTitleSynthesizer.swift */,
+				9E26049C82197E25BC051379 /* AgenticRuntimeQualitySelfTest.swift */,
 					1A88B6C3F50E7CD4B0925BCC /* RouterGroundingHeuristic.swift */,
 					2B70CE6F1D3E08AB5CF7AD90 /* PartialPlannerRecoverySelfTest.swift */,
 					C4D3E2F1A0B9C8D7E6F5A4B3 /* RuntimeGroundingPreservationSelfTest.swift */,
@@ -1287,6 +1329,10 @@
 				5E01E9356E3E4FAA9540D271 /* SituationalContextSnapshot+Copying.swift in Sources */,
 				11F17F5481CA40D1B576AADC /* StrongContextAnchorSelfTest.swift in Sources */,
 				DDCEB3D4627F4A56A0A2CA53 /* EmailReviewEvidenceSelfTest.swift in Sources */,
+				DD7A1D4F1A2B3C4D5E6F7081 /* ProposalActionIntentSelfTest.swift in Sources */,
+				DD7A1D4F1A2B3C4D5E6F7082 /* ActionIntentRetrySelfTest.swift in Sources */,
+				E3F6A1B2C3D4E5F60718293A /* StrongContextRouterOverrideSelfTest.swift in Sources */,
+				8C7D6E5F4A3B2C1D0E9F8A7B /* ActionIntentPlannerBridgeSelfTest.swift in Sources */,
 				AA0001E8000000000000010F /* GeneratedExecutionContextBridge.swift in Sources */,
 				AA0001E90000000000000110 /* BridgedGeneratedExecutionContextProvider.swift in Sources */,
 				AA0001EA0000000000000111 /* SparseVisualPeekPolicy.swift in Sources */,
@@ -1383,6 +1429,9 @@
 				AA0002360000000000000305 /* AgenticGoalAlignmentValidator.swift in Sources */,
 				AA0002360000000000000306 /* GoalEvidenceAlignmentSelfTest.swift in Sources */,
 				AA0002360000000000000307 /* EvidenceStateCorrectnessSelfTest.swift in Sources */,
+				AA0002360000000000000308 /* VisualTargetingCorrectnessSelfTest.swift in Sources */,
+				AA0002360000000000000309 /* VisualContextRehydrationSelfTest.swift in Sources */,
+				AA000236000000000000030E /* AgenticLLMDeciderSelfTest.swift in Sources */,
 					AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */,
 					AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */,
 					AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */,
@@ -1443,6 +1492,13 @@
 				B82C7F3A41509DCB7E80AA62 /* ProposalContextIsolationSelfTest.swift in Sources */,
 				C04E1AB7392B5D6B7E0D6F90 /* PlannerCapabilityRepairGate.swift in Sources */,
 				D15B902C84E47BAF311F70CE /* PlannerCapabilityEnvelopeSelfTest.swift in Sources */,
+				0741AC92E5B3D708B6A40DCB /* FastVisibilityQualityGate.swift in Sources */,
+				1B85FE03D2079ACE3F168A5B /* FastVisibilityQualitySelfTest.swift in Sources */,
+				2C97A4D1E380F602BD58A07C /* TolerantPartialRecoverySelfTest.swift in Sources */,
+				3E0218D7A8F46C915B73AC9F /* ComparePivotGate.swift in Sources */,
+				4ABD910F6EE03A781CFB07D8 /* AnchoredPriceResolver.swift in Sources */,
+				5BF1EA42C73D8156A09B3416 /* ProductTitleSynthesizer.swift in Sources */,
+				6C03B45A8A93E8074D2B519A /* AgenticRuntimeQualitySelfTest.swift in Sources */,
 					E20F4D9C8615A0BE19A4FE63 /* RouterGroundingHeuristic.swift in Sources */,
 					F396827EAB12409D6FCD56AA /* PartialPlannerRecoverySelfTest.swift in Sources */,
 					D0E5B1F3A7C94B2E8F1A3C4D /* RuntimeGroundingPreservationSelfTest.swift in Sources */,

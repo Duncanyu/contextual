@@ -689,9 +689,6 @@ enum GeneratedExecutionProposalActivator {
 		// workflowConfidence floor is relaxed (0.35) when earlier surfacing is active —
 		// the agentic runtime can operate on browser context without strong workflow inference.
 		let wfConfFloor: Double = AgenticPivot.useEarlierProposalSurfacing ? 0.35 : 0.45
-		let allowsFloating = topScore >= floatingStrongScoreThreshold
-			&& input.snapshot.workflowConfidence >= wfConfFloor
-			&& !input.snapshot.packetIsStale
 
 		// Bypass panel score threshold for executable hook-composer contracts.
 		// Uses a 0.50 floor (lower than the per-candidate 0.70) because the timing check
@@ -704,23 +701,33 @@ enum GeneratedExecutionProposalActivator {
 			&& $0.action.confidence >= 0.50
 		}
 
-		let allowsPanel = topScore >= panelGeneratedScoreThreshold
+		let isActionWorthy = FastVisibilityQualityGate.isActionWorthy(title: input.snapshot.windowTitle, appName: input.snapshot.activeApp)
+		let hasStrongOCR = (input.snapshot.recentOCRExcerpt?.count ?? 0) >= 100
+		let proposalRecoveryModeActive = isActionWorthy && hasStrongOCR
+
+		let activePanelThreshold = proposalRecoveryModeActive ? panelGeneratedScoreThreshold * 0.5 : panelGeneratedScoreThreshold
+		let activeFloatingThreshold = proposalRecoveryModeActive ? floatingStrongScoreThreshold * 0.5 : floatingStrongScoreThreshold
+
+		// Wait for the panel timer
+		let allowsPanel = topScore >= activePanelThreshold
 			|| input.isManualInvocation
 			|| hasExecutableHookContract
 
 		// [FloatingSuggestionDebug] Part 4b — Float gate: shows score vs threshold and blocking condition.
 		// If passes=NO and gap_to_threshold is small, the 0.78 floor is the blocker.
-		let floatGapStr = String(format: "%.3f", floatingStrongScoreThreshold - topScore)
+		let floatGapStr = String(format: "%.3f", activeFloatingThreshold - topScore)
 		let floatBlockReason: String = {
-			if topScore < floatingStrongScoreThreshold { return "score_below_\(floatingStrongScoreThreshold)" }
+			if topScore < activeFloatingThreshold { return "score_below_\(activeFloatingThreshold)" }
 			if input.snapshot.workflowConfidence < wfConfFloor { return "wf_conf_\(String(format: "%.2f", input.snapshot.workflowConfidence))_below_\(wfConfFloor)" }
 			if input.snapshot.packetIsStale { return "packet_stale" }
 			return "none"
 		}()
-		print("[FloatingSuggestionDebug] float_gate top_score=\(String(format: "%.3f", topScore)) threshold=\(floatingStrongScoreThreshold) gap=\(floatGapStr) passes=\(allowsFloating) block_reason=\(floatBlockReason)")
+		let allowsFloating = topScore >= activeFloatingThreshold && floatBlockReason == "none"
+
+		print("[FloatingSuggestionDebug] float_gate top_score=\(String(format: "%.3f", topScore)) threshold=\(activeFloatingThreshold) gap=\(floatGapStr) passes=\(allowsFloating) block_reason=\(floatBlockReason) recovery_mode=\(proposalRecoveryModeActive)")
 
 		// T18.3.6C: Explicit timing decision log so suppression reason is always visible.
-		print("[GeneratedProposalActivation] timing_score topScore=\(String(format: "%.3f", topScore)) panel_threshold=\(panelGeneratedScoreThreshold) float_threshold=\(floatingStrongScoreThreshold) allows_panel=\(allowsPanel) allows_float=\(allowsFloating) is_manual=\(input.isManualInvocation) wf_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence)) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) stale=\(input.snapshot.packetIsStale)")
+		print("[GeneratedProposalActivation] timing_score topScore=\(String(format: "%.3f", topScore)) panel_threshold=\(activePanelThreshold) float_threshold=\(activeFloatingThreshold) allows_panel=\(allowsPanel) allows_float=\(allowsFloating) is_manual=\(input.isManualInvocation) wf_conf=\(String(format: "%.2f", input.snapshot.workflowConfidence)) freshness=\(String(format: "%.2f", input.snapshot.freshnessScore)) stale=\(input.snapshot.packetIsStale)")
 
 		let outcome: GeneratedProposalTimingOutcome
 		if allowsFloating {

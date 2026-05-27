@@ -256,7 +256,8 @@ actor TaskInferenceEngine {
 		history: ProposalHistoryMetadata?,
 		referenceTime: Date = Date(),
 		isEnrichedPass: Bool = false,
-		isWarmupReady: Bool = true
+		isWarmupReady: Bool = true,
+		forcePlannerFromPendingActionIntentRetry: Bool = false
 	) async -> TaskInferenceResult? {
 		let fingerprint = Self.fingerprint(
 			snapshot: snapshot,
@@ -300,7 +301,8 @@ actor TaskInferenceEngine {
 					referenceTime: referenceTime,
 					fingerprint: fingerprint,
 					isEnrichedPass: isEnrichedPass,
-					isWarmupReady: isWarmupReady
+					isWarmupReady: isWarmupReady,
+					forcePlannerFromPendingActionIntentRetry: forcePlannerFromPendingActionIntentRetry
 				)
 			}
 			activePlannerTask = task
@@ -725,7 +727,8 @@ actor TaskInferenceEngine {
 		referenceTime: Date,
 		fingerprint: String,
 		isEnrichedPass: Bool,
-		isWarmupReady: Bool
+		isWarmupReady: Bool,
+		forcePlannerFromPendingActionIntentRetry: Bool
 	) async -> TaskInferenceResult? {
 		if Task.isCancelled { return nil }
 		let triggerStart = Date()
@@ -761,7 +764,20 @@ actor TaskInferenceEngine {
 		// Stage 0: Build and print lightweight context packet
 		let typingState = situational.metadata["typingState"] ?? "no"
 		let pointerState = situational.metadata["pointerState"] ?? "no"
-		let recentChanges = recentTitles.joined(separator: "|")
+		// Phase 4T — drop weak/generic previous titles from the recent_changes
+		// channel so account-identity / storefront chrome (e.g. "Duncanyu (Duncan Yu)")
+		// stops polluting the planner's context once a strong title has arrived.
+		var sanitizedRecentTitles: [String] = []
+		for t in recentTitles {
+			let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
+			guard !trimmed.isEmpty else { continue }
+			if FastVisibilityQualityGate.isWeakOrGeneric(title: trimmed, appName: situational.activeAppName) {
+				print("[RecentChangesSanitizer] removed_weak_title=\"\(trimmed.prefix(80))\"")
+				continue
+			}
+			sanitizedRecentTitles.append(trimmed)
+		}
+		let recentChanges = sanitizedRecentTitles.joined(separator: "|")
 		let availableSources = snapshot.availableContextTypes.map(\.rawValue).joined(separator: ",")
 		
 		let visualExcerpt = snapshot.visualContextAvailability.visualSummaryExcerpt ?? ""
@@ -800,20 +816,12 @@ actor TaskInferenceEngine {
 			let title = situational.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
 			if Self.isSpecificTitle(title, appName: situational.activeAppName) {
 				let latency = Int(Date().timeIntervalSince(triggerStart) * 1000)
-				print("[FastVisibility] eligible=yes source=window_title latency_ms=\(latency)")
+				// Phase 4Q/4S: Fast visibility can use a strong title to detect an
+				// opportunity, but MUST NOT turn the raw title/entity into an
+				// executable action goal/title.
+				print("[FastVisibility] entity_detected=yes action_generated=no reason=needs_action_intent source=window_title latency_ms=\(latency)")
 				print("[ProposalLatency] first_visible_ms=\(latency)")
-				return TaskInferenceResult(
-					shouldChime: true,
-					possibleUserGoal: title,
-					confidence: 0.85,
-					neededCapabilityCategories: ["extract"],
-					whyNow: "warmup_lightweight_shell",
-					missingContext: [],
-					expirySeconds: 20,
-					createdAt: referenceTime,
-					need: [],
-					needReason: nil
-				)
+				return nil
 			} else {
 				print("[FastVisibility] eligible=no reason=generic_title")
 				return nil
@@ -892,6 +900,8 @@ actor TaskInferenceEngine {
 
 		var finalDecision = modelDecision
 		var finalRequestedContexts = requestedContexts
+		var pendingActionIntentOverrideApplied = false
+		var routerGroundingOverrideApplied = false
 
 		// Router grounding sufficiency upgrade.
 		let hasVisualText = snapshot.visualContextAvailability.visualSummaryExcerpt != nil && !snapshot.visualContextAvailability.visualSummaryExcerpt!.isEmpty
@@ -907,10 +917,43 @@ actor TaskInferenceEngine {
 			hasVisualDescriptor: hasVisualText,
 			hasAXText: hasAX
 		)
+		RouterGroundingHeuristic.log(decision: groundingDecision)
 		if groundingDecision.shouldUpgrade {
 			finalDecision = "enough_context"
 			finalRequestedContexts = []
+			let reqList = requestedContexts.joined(separator: ",")
+			let appliedReason = (groundingDecision.reason == "strong_ocr_ax_title_satisfies_visual_descriptor") ? groundingDecision.reason : "strong_context_no_selection_needed"
+			print("[RouterOverride] applied=yes reason=\(appliedReason)")
+			print("[RouterOverride] original_decision=\(modelDecision) requested=[\(reqList)]")
+			print("[RouterOverride] final_decision=enough_context")
 			print("[TwoStageRouter] decision=enough_context reason=router_grounding_upgrade")
+
+			if groundingDecision.reason == "strong_ocr_ax_title_satisfies_visual_descriptor" {
+				routerGroundingOverrideApplied = true
+			}
+		}
+
+		// Phase 4S — Deterministic bridge for pending action-intent retries:
+		// If fast visibility already classified this context as action-worthy, do not
+		// allow the router to terminate the pipeline early with `quiet` /
+		// `need_more_context` / `insufficient_context`. Proceed to planner instead.
+		if forcePlannerFromPendingActionIntentRetry && finalDecision != "enough_context" {
+			let d = FastVisibilityQualityGate.evaluate(
+				title: situational.windowTitle,
+				appName: situational.activeAppName,
+				bundleIdentifier: snapshot.bundleIdentifier
+			)
+			if d.eligible && d.classification == .actionWorthy {
+				let reqList = finalRequestedContexts.joined(separator: ",")
+				print("[RouterOverride] applied=yes reason=pending_action_intent_action_worthy_retry")
+				print("[RouterOverride] original_decision=\(finalDecision) requested=[\(reqList)]")
+				print("[RouterOverride] final_decision=enough_context")
+				finalDecision = "enough_context"
+				finalRequestedContexts = []
+				pendingActionIntentOverrideApplied = true
+			} else {
+				print("[RouterOverride] applied=no reason=pending_action_intent_not_action_worthy")
+			}
 		}
 
 		if finalDecision == "need_more_context" && !finalRequestedContexts.isEmpty {
@@ -978,7 +1021,15 @@ actor TaskInferenceEngine {
 		// Planner execution.
 		let canInvokePlanner = hasOCR || (snapshot.selectedText != nil) || (situational.workflowConfidence >= 0.72)
 		if !canInvokePlanner {
-			return synthesizeFallbackProposal(snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "weak_context")
+			// Phase 4S — Pending action-intent retries from fast visibility must
+			// reach the planner even when the snapshot is title-only.
+			if forcePlannerFromPendingActionIntentRetry && pendingActionIntentOverrideApplied {
+				print("[RouterOverride] downstream_quiet_cleared=yes reason=pending_action_intent_action_worthy_retry")
+			} else if routerGroundingOverrideApplied {
+				print("[RouterOverride] downstream_quiet_cleared=yes reason=strong_ocr_ax_title_satisfies_visual_descriptor")
+			} else {
+				return synthesizeFallbackProposal(snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "weak_context")
+			}
 		}
 
 		// Debounce before planner.
@@ -1005,6 +1056,7 @@ actor TaskInferenceEngine {
 
 		guard await twoStageLane.acquire(purpose: "planner") else { return nil }
 		var plannerRaw: String = ""
+		let partialTracker = SharedPartialString()
 		do {
 			(plannerRaw, _) = try await withInferenceTimeout(timeoutSeconds: Self.plannerTimeoutSeconds) {
 				return try await self.llm.generateStreamingJSON(
@@ -1013,12 +1065,111 @@ actor TaskInferenceEngine {
 					numPredict: 140,
 					temperature: 0.05,
 					purpose: "task_inference_planner",
-					schema: Self.plannerSchema
+					schema: Self.plannerSchema,
+					onProgress: { [partialTracker] in partialTracker.update($0) }
 				)
 			}
 		} catch {
 			let elapsedMs = Int(Date().timeIntervalSince(plannerStart) * 1000)
 			await twoStageLane.release(purpose: "planner", elapsedMs: elapsedMs)
+
+			let timeoutPartialRaw = partialTracker.current
+			if !timeoutPartialRaw.isEmpty {
+				print("[PlannerPartialSalvage] attempted=yes reason=timeout_partial chars=\(timeoutPartialRaw.count)")
+				if let salvaged = Self.salvagePartialPlannerOutput(timeoutPartialRaw) {
+					let isolated = ProposalContextIsolationGate.isolate(snapshot: snapshot)
+					var acceptedCandidates: [PlannerCandidate] = []
+					
+					print("[PlannerPartialSalvage] recovered=\(salvaged.candidates.count)")
+					
+					for c in salvaged.candidates {
+						let titleTrimmed = c.title.trimmingCharacters(in: .whitespacesAndNewlines)
+						guard !titleTrimmed.isEmpty else {
+							print("[PlannerPartialSalvage] rejected=\(c.title) reason=empty_title")
+							continue
+						}
+						
+						let normalizedCaps = c.caps.flatMap { cap in
+							cap.lowercased()
+								.components(separatedBy: CharacterSet(charactersIn: "/, "))
+								.map { $0.trimmingCharacters(in: .punctuationCharacters) }
+								.filter { !$0.isEmpty }
+						}
+						guard !normalizedCaps.isEmpty else {
+							print("[PlannerPartialSalvage] rejected=\(c.title) reason=empty_caps")
+							continue
+						}
+						guard normalizedCaps.allSatisfy({ Self.isValidCapOrPrimitive($0) }) else {
+							let invalidCaps = normalizedCaps.filter { !Self.isValidCapOrPrimitive($0) }
+							print("[PlannerPartialSalvage] rejected=\(c.title) reason=invalid_caps_[\(invalidCaps.joined(separator: ","))]")
+							continue
+						}
+						
+						let clampedConfidence = max(0, min(1, c.confidence))
+						
+						let activeRequires = Self.normalizeRequires(for: c.title, requires: c.requires, snapshot: snapshot)
+
+						var missingSources: [String] = []
+						for req in activeRequires {
+							if !Self.contextSourceExists(req, snapshot: snapshot) {
+								missingSources.append(req)
+							}
+						}
+						guard missingSources.isEmpty else {
+							print("[PlannerPartialSalvage] rejected=\(c.title) reason=missing_required_sources_[\(missingSources.joined(separator: ","))]")
+							continue
+						}
+						
+						let valRes = ProposalCapabilityValidator.validate(
+							title: c.title,
+							goal: c.whyUseful ?? "",
+							isolated: isolated,
+							stage: "early"
+						)
+						guard valRes.accepted else {
+							print("[PlannerPartialSalvage] rejected=\(c.title) reason=validation_failed_\(valRes.reason)")
+							continue
+						}
+						
+						guard self.validateDiversity(title: c.title, history: history) else {
+							print("[PlannerPartialSalvage] rejected=\(c.title) reason=diversity_check_failed")
+							continue
+						}
+						
+						print("[PlannerPartialSalvage] accepted=\(c.title)")
+						acceptedCandidates.append(PlannerCandidate(
+							title: c.title,
+							caps: normalizedCaps,
+							confidence: clampedConfidence,
+							novelty: c.novelty,
+							requires: activeRequires,
+							whyUseful: c.whyUseful
+						))
+					}
+					
+					print("[PlannerPartialSalvage] accepted=\(acceptedCandidates.count)")
+					
+					if !acceptedCandidates.isEmpty {
+						if let selected = PlannerCandidateSelector.select(from: acceptedCandidates, snapshot: snapshot, situational: situational) {
+							let result = TaskInferenceResult(
+								shouldChime: salvaged.shouldSurface,
+								possibleUserGoal: selected.title,
+								confidence: selected.confidence,
+								neededCapabilityCategories: selected.caps,
+								whyNow: selected.whyUseful ?? "planner_salvage",
+								missingContext: [],
+								expirySeconds: 20,
+								createdAt: referenceTime,
+								need: [],
+								needReason: nil
+							)
+							self.lastSuccessfulResult = result
+							return result
+						}
+					}
+				}
+			}
+
 			return handlePlannerFailureRecovery(wasRecovered: false, snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "planner_failed")
 		}
 
@@ -1034,18 +1185,33 @@ actor TaskInferenceEngine {
 		}
 
 		let isolated = ProposalContextIsolationGate.isolate(snapshot: snapshot)
-		guard let selected = PlannerCandidateSelector.select(from: parsed.candidates, snapshot: snapshot, situational: situational) else {
-			return handlePlannerFailureRecovery(wasRecovered: false, snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "planner_no_candidates")
+		
+		var candidatesToTry = parsed.candidates
+		var finalSelected: PlannerCandidate? = nil
+		var rejectionReason = "planner_no_candidates"
+		
+		while !candidatesToTry.isEmpty {
+			guard let selected = PlannerCandidateSelector.select(from: candidatesToTry, snapshot: snapshot, situational: situational) else {
+				break
+			}
+			
+			let isValid = validateProposal(
+				title: selected.title,
+				goal: selected.whyUseful ?? "",
+				isolated: isolated
+			)
+			if isValid {
+				finalSelected = selected
+				break
+			} else {
+				print("[ProposalRecoveryMode] candidate rejected stage=early title=\"\(selected.title)\", attempting retry/repair with next candidate")
+				candidatesToTry.removeAll { $0.title == selected.title }
+				rejectionReason = "selected_candidate_rejected"
+			}
 		}
 
-		let isValid = validateProposal(
-			title: selected.title,
-			goal: selected.whyUseful ?? "",
-			isolated: isolated
-		)
-		guard isValid else {
-			print("[ProposalValidation] rejected stage=early reason=selected_candidate_invalid title=\"\(selected.title)\"")
-			return handlePlannerFailureRecovery(wasRecovered: false, snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "selected_candidate_rejected")
+		guard let selected = finalSelected else {
+			return handlePlannerFailureRecovery(wasRecovered: false, snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: rejectionReason)
 		}
 
 		let result = TaskInferenceResult(
@@ -1103,27 +1269,13 @@ actor TaskInferenceEngine {
 	}
 
 	internal static func isSpecificTitle(_ title: String, appName: String) -> Bool {
-		let lower = title.lowercased()
-		guard !lower.isEmpty else { return false }
-		let genericTitles = [
-			"mozilla firefox", "firefox", "google chrome", "chrome", "safari", "finder",
-			"system settings", "system preferences", "new tab", "about:blank", "blank page",
-			"untitled", "home", "search", "desktop"
-		]
-		if genericTitles.contains(lower) || lower == appName.lowercased() {
-			return false
-		}
-		let assistantChrome = ["processing", "controlled interactions", "execute", "chime in", "antigravity", "contextual"]
-		for ac in assistantChrome {
-			if lower.contains(ac) {
-				return false
-			}
-		}
-		let tokens = title.split(separator: " ").map(String.init).filter { $0.count > 1 }
-		if tokens.count < 3 {
-			return false
-		}
-		return true
+		// Phase 4S — Delegate to the FastVisibilityQualityGate so account-identity,
+		// generic-storefront marketing copy, and homepage titles never trigger the
+		// model-free shell. The gate also emits a typed [FastVisibility] log line
+		// so dogfood can attribute rejections precisely.
+		let decision = FastVisibilityQualityGate.evaluate(title: title, appName: appName)
+		FastVisibilityQualityGate.log(decision: decision, title: title)
+		return decision.eligible
 	}
 
 	private func handlePlannerFailureRecovery(
@@ -1471,18 +1623,31 @@ actor TaskInferenceEngine {
 					return String(raw[tailStart..<endIndex])
 				}()
 
-				let caps = extractStringArrayOrCSV(in: tail, key: "caps")
+				let rawCaps = extractStringArrayOrCSV(in: tail, key: "caps")
 					?? extractStringArrayOrCSV(in: tail, key: "suggested_hooks")
 					?? extractStringArrayOrCSV(in: tail, key: "h")
 					?? []
+				// Phase 4T — tolerant cap sanitization. Models sometimes spill
+				// browser-recent-pages chrome into the caps field as
+				// `"compare, recent_pages=[...]"`. Drop fragments that look
+				// like assignment / array fragments and keep only known
+				// capability tokens. This salvages an otherwise-valid
+				// candidate from a polluted partial JSON.
+				let sanitizedCaps = sanitizePartialCaps(rawCaps)
 				let confidence = extractNumber(in: tail, key: "confidence") ?? extractNumber(in: tail, key: "p") ?? 0.5
 				let novelty = extractNumber(in: tail, key: "novelty") ?? 0.5
 				let requires = extractStringArrayOrCSV(in: tail, key: "requires") ?? ["title"]
 				let why = extractStringValue(in: tail, key: "why_useful") ?? extractStringValue(in: tail, key: "why")
 
+				print("[PartialPlannerRecovery] recovered_incomplete_candidate=yes title=\"\(title.prefix(80))\"")
+				if rawCaps != sanitizedCaps {
+					let removed = Array(Set(rawCaps).subtracting(Set(sanitizedCaps)))
+					print("[PartialPlannerRecovery] sanitized_caps=\"\(sanitizedCaps.joined(separator: ","))\" removed=\"\(removed.joined(separator: ","))\"")
+				}
+
 				candidates.append(PlannerCandidate(
 					title: title,
-					caps: caps.map { $0.lowercased() },
+					caps: sanitizedCaps.map { $0.lowercased() },
 					confidence: max(0, min(1, confidence)),
 					novelty: max(0, min(1, novelty)),
 					requires: requires,
@@ -1491,14 +1656,53 @@ actor TaskInferenceEngine {
 			}
 		}
 
-		guard !candidates.isEmpty else { return nil }
+		let normalizedCandidates = candidates.map { Self.normalizeCandidate($0) }
+		guard !normalizedCandidates.isEmpty else { return nil }
 
 		if !raw.contains("should_surface_softly") {
-			shouldSurface = candidates.max(by: { $0.confidence < $1.confidence }).map { $0.confidence > 0.6 } ?? false
+			shouldSurface = normalizedCandidates.max(by: { $0.confidence < $1.confidence }).map { $0.confidence > 0.6 } ?? false
 		}
 
-		print("[TwoStagePlannerRecovery] status=partial_success actionsRecovered=\(candidates.count) reason=timeout_partial_json")
-		return (candidates: candidates, shouldSurface: shouldSurface)
+		print("[TwoStagePlannerRecovery] status=partial_success actionsRecovered=\(normalizedCandidates.count) reason=timeout_partial_json")
+		return (candidates: normalizedCandidates, shouldSurface: shouldSurface)
+	}
+
+	// MARK: - Phase 4T: tolerant cap sanitization
+
+	/// Vocabulary of capability tokens the planner is allowed to emit. Anything
+	/// outside this set in the salvaged caps array is treated as model-injected
+	/// pollution (e.g. `recent_pages=[...]`) and dropped.
+	private static let knownCapabilityTokens: Set<String> = [
+		"context", "extract", "reason", "output", "compare", "organize",
+		"debug", "study", "summarize", "summarise", "gather", "inspect",
+		"identify", "describe", "title",
+	]
+
+	/// Sanitize the caps array recovered from a partial planner JSON object.
+	///
+	///   - Drops entries that contain assignment / array fragments (`=`, `[`, `]`).
+	///   - Keeps only tokens in `knownCapabilityTokens`.
+	///   - Preserves order, removes duplicates.
+	///
+	/// Returns an empty array when nothing survives — the caller still emits the
+	/// candidate (caps is informational; safety/validation runs on the title).
+	private static func sanitizePartialCaps(_ raw: [String]) -> [String] {
+		var seen: Set<String> = []
+		var kept: [String] = []
+		for item in raw {
+			let trimmed = item.trimmingCharacters(in: .whitespacesAndNewlines)
+			guard !trimmed.isEmpty else { continue }
+			// Drop chrome-pollution fragments outright.
+			if trimmed.contains("=") || trimmed.contains("[") || trimmed.contains("]") || trimmed.contains("{") || trimmed.contains("}") {
+				continue
+			}
+			let lower = trimmed.lowercased()
+			guard knownCapabilityTokens.contains(lower) else { continue }
+			if seen.insert(lower).inserted {
+				kept.append(lower)
+			}
+		}
+		return kept
 	}
 
 	// MARK: - Phase 4R: trailing-candidate field probes
@@ -1554,6 +1758,23 @@ actor TaskInferenceEngine {
 
 	/// Parse the new multi-candidate `actions` array format.
 	/// Falls back to old flat format via parseCompactPlanner for backward compat.
+	static func normalizeRequires(for title: String, requires: [String], snapshot: CanonicalGeneratedExecutionContextSnapshot) -> [String] {
+		var activeRequires = requires
+		if activeRequires.contains("visual_descriptor") {
+			let hasOCR = Self.contextSourceExists("ocr", snapshot: snapshot)
+			let hasScreenCapture = Self.contextSourceExists("screen_capture", snapshot: snapshot) || Self.contextSourceExists("fused_visual", snapshot: snapshot) || snapshot.visualContextAvailability.hasUsableVisual
+			
+			if hasOCR && hasScreenCapture {
+				activeRequires = activeRequires.filter { $0 != "visual_descriptor" }
+				if !activeRequires.contains("screen_capture") {
+					activeRequires.append("screen_capture")
+				}
+				print("[PlannerRequireNormalization] replaced visual_descriptor with screen_capture reason=ocr_visual_available (recovery_mode)")
+			}
+		}
+		return activeRequires
+	}
+	
 	static func parsePlannerCandidates(_ raw: String) -> (candidates: [PlannerCandidate], shouldSurface: Bool)? {
 		let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard let data = trimmed.data(using: .utf8),
@@ -1572,7 +1793,7 @@ actor TaskInferenceEngine {
 				else if let sv = legacy["a"] as? Int { surf = sv != 0 }
 				else { surf = !title.isEmpty }
 				let cand = PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: 0.5, requires: ["title"], whyUseful: nil)
-				return (candidates: [cand], shouldSurface: surf)
+				return (candidates: [Self.normalizeCandidate(cand)], shouldSurface: surf)
 			}
 			
 			// Try partial salvaging fallback
@@ -1595,7 +1816,8 @@ actor TaskInferenceEngine {
 					.filter { !$0.isEmpty }
 				let conf = legacy["confidence"] as? Double ?? 0.8
 				let surf = legacy["should_surface_softly"] as? Bool ?? !title.isEmpty
-				return (candidates: [PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: 0.5, requires: ["title"], whyUseful: nil)], shouldSurface: surf)
+				let cand = PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: 0.5, requires: ["title"], whyUseful: nil)
+				return (candidates: [Self.normalizeCandidate(cand)], shouldSurface: surf)
 			}
 			if let salvaged = salvagePartialPlannerOutput(raw) {
 				return salvaged
@@ -1613,7 +1835,8 @@ actor TaskInferenceEngine {
 			let novelty = action["novelty"] as? Double ?? 0.5
 			let requires = action["requires"] as? [String] ?? ["title"]
 			let why = action["why_useful"] as? String
-			return PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: novelty, requires: requires, whyUseful: why)
+			let cand = PlannerCandidate(title: title, caps: caps, confidence: conf, novelty: novelty, requires: requires, whyUseful: why)
+			return Self.normalizeCandidate(cand)
 		}
 		guard !candidates.isEmpty else { return nil }
 
@@ -2089,6 +2312,100 @@ actor TaskInferenceEngine {
 		surfacedTitlesHistory.insert(title, at: 0)
 		if surfacedTitlesHistory.count > 10 {
 			surfacedTitlesHistory = Array(surfacedTitlesHistory.prefix(10))
+		}
+	}
+
+	static func normalizeCandidate(_ c: PlannerCandidate) -> PlannerCandidate {
+		let contextSourceLabels: Set<String> = ["ocr", "screen_capture", "window_title", "visual_descriptor", "fused_visual"]
+		let cleanCaps = c.caps.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+		let hasInvalid = !cleanCaps.allSatisfy({ Self.isValidCapOrPrimitive($0) })
+		let onlyContextSources = !cleanCaps.isEmpty && cleanCaps.allSatisfy({ contextSourceLabels.contains($0) })
+		
+		guard hasInvalid && onlyContextSources else {
+			return c
+		}
+		
+		print("[PlannerCapNormalization] attempted=yes original_caps=\(cleanCaps.joined(separator: ","))")
+		
+		let verbToPrimitive = [
+			"extract": "extract",
+			"summarize": "summarize",
+			"summarise": "summarize",
+			"compare": "compare",
+			"explain": "explain",
+			"inspect": "inspect",
+			"organize": "organize",
+			"organise": "organize"
+		]
+		
+		let titleLower = c.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+		let words = titleLower.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+		if let firstWord = words.first, let primitive = verbToPrimitive[firstWord] {
+			let newCaps = [primitive]
+			var newRequires = c.requires
+			var movedSources: [String] = []
+			for src in cleanCaps {
+				if !newRequires.contains(src) {
+					newRequires.append(src)
+					movedSources.append(src)
+				}
+			}
+			print("[PlannerCapNormalization] normalized_caps=[\(newCaps.joined(separator: ","))] inferred_from=title_verb")
+			if !movedSources.isEmpty {
+				print("[PlannerCapNormalization] moved_context_sources_to_requires=[\(movedSources.joined(separator: ","))]")
+			}
+			return PlannerCandidate(
+				title: c.title,
+				caps: newCaps,
+				confidence: c.confidence,
+				novelty: c.novelty,
+				requires: newRequires,
+				whyUseful: c.whyUseful
+			)
+		} else {
+			print("[PlannerCapNormalization] rejected reason=no_supported_action_verb")
+			// Return original so downstream validator rejects it with exact invalid reason
+			return c
+		}
+	}
+
+	static func isValidCapOrPrimitive(_ cap: String) -> Bool {
+		let lower = cap.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+		if knownCapabilityTokens.contains(lower) {
+			return true
+		}
+		if ExecutionPrimitive(rawValue: lower) != nil {
+			return true
+		}
+		let noUnderscore = lower.replacingOccurrences(of: "_", with: "")
+		for p in ExecutionPrimitive.allCases {
+			let raw = p.rawValue
+			if raw == lower || raw.replacingOccurrences(of: "_", with: "") == noUnderscore {
+				return true
+			}
+		}
+		return false
+	}
+
+	static func contextSourceExists(_ req: String, snapshot: CanonicalGeneratedExecutionContextSnapshot) -> Bool {
+		let r = req.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+		switch r {
+		case "title":
+			return !snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		case "ocr":
+			return snapshot.recentOCRExcerpt != nil && !snapshot.recentOCRExcerpt!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		case "selected_text":
+			return snapshot.selectedText != nil && !snapshot.selectedText!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		case "clipboard":
+			return snapshot.clipboardText != nil && !snapshot.clipboardText!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		case "ax_window_text":
+			return snapshot.contextSummary?.contains("ax=") == true
+		case "visual_descriptor":
+			return snapshot.visualContextAvailability.visualSummaryExcerpt != nil && !snapshot.visualContextAvailability.visualSummaryExcerpt!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		case "screen_capture", "fused_visual":
+			return snapshot.visualContextAvailability.hasUsableVisual
+		default:
+			return false
 		}
 	}
 
