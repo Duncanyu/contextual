@@ -441,6 +441,32 @@ struct AgenticProposalSanityFilter: Sendable {
 
 	// MARK: - Filter Pipeline
 
+	private func isProposalSafe(_ title: String) -> Bool {
+		let lower = title.lowercased()
+		let unsafePrefixes = [
+			"purchase ", "buy now ", "buy ", "checkout ", "add to cart ", "add to wishlist ",
+			"order ", "submit ", "login ", "log in ", "delete ", "close app ", "install "
+		]
+		for prefix in unsafePrefixes {
+			if lower.hasPrefix(prefix) { return false }
+		}
+		let unsafeSubstrings = ["wishlist", "wish list"]
+		for substr in unsafeSubstrings {
+			if lower.contains(substr) { return false }
+		}
+		if lower.hasPrefix("download ") && !(lower.contains("info") || lower.contains("summary") || lower.contains("details") || lower.contains("pdf") || lower.contains("text") || lower.contains("file")) {
+			return false
+		}
+		let disallowedActions = [
+			"click ", "click on ", "type ", "press ", "navigate to ", "go to ",
+			"fill form ", "enter password ", "log into ", "sign in ", "close window "
+		]
+		for action in disallowedActions {
+			if lower.contains(action) { return false }
+		}
+		return true
+	}
+
 	/// Filters proposals, rejecting those below the grounding threshold.
 	/// Logs `[ProposalSanity]` per candidate and `[ProposalRejection]` for rejections.
 	func filter(
@@ -448,23 +474,36 @@ struct AgenticProposalSanityFilter: Sendable {
 		grounding: AgenticSemanticGrounding,
 		snapshot: CanonicalGeneratedExecutionContextSnapshot
 	) -> [ValidatedDynamicGeneratedProposal] {
-		proposals.filter { proposal in
+		var filtered: [ValidatedDynamicGeneratedProposal] = []
+		for proposal in proposals {
 			let score      = groundedProposalScore(proposal: proposal, grounding: grounding, snapshot: snapshot)
 			let semantic   = semanticOverlapScore(proposal: proposal, grounding: grounding)
 			let workflow   = workflowConsistencyScore(proposal: proposal, grounding: grounding, snapshot: snapshot)
 			let hRisk      = hallucinationRiskScore(proposal: proposal, grounding: grounding)
-			let accepted   = score >= Self.rejectionThreshold
+			
+			var accepted   = score >= Self.rejectionThreshold
+			var isSoft = false
+			
+			if !accepted && isProposalSafe(proposal.title) {
+				// Soft Proposal Mode: Downgrade from hard reject to soft warning
+				accepted = true
+				isSoft = true
+			}
+			
 			let fmt        = { (v: Double) in String(format: "%.2f", v) }
-			let reason     = accepted ? "score_above_threshold" :
+			let reason     = accepted ? (isSoft ? "soft_warning_low_grounding" : "score_above_threshold") :
 			                 "score_\(fmt(score))_below_threshold_\(fmt(Self.rejectionThreshold))"
 
 			print("[ProposalSanity] candidate=\(proposal.title.prefix(60)) semantic_overlap=\(fmt(semantic)) workflow_match=\(fmt(workflow)) hallucination_risk=\(fmt(hRisk)) grounded_score=\(fmt(score)) accepted=\(accepted) reason=\(reason)")
 
-			if !accepted {
+			if accepted {
+				var p = proposal
+				p.isSoftProposal = isSoft
+				filtered.append(p)
+			} else {
 				print("[ProposalRejection] reason=grounded_score_below_threshold candidate=\(proposal.title.prefix(60)) score=\(fmt(score))")
 			}
-
-			return accepted
 		}
+		return filtered
 	}
 }

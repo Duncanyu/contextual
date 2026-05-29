@@ -116,7 +116,7 @@ enum AgenticPerceptionRefreshSelfTest {
 
 		// MARK: 5 — Delta detection helper logs correctly
 		// textChanged when hashes differ; ocrGrew when newOCRChars > previousOCRChars + 20
-		let (tc5, og5, _) = AgenticPerceptionRefreshCoordinator.detectDelta(
+		let (tc5, og5, _, _) = AgenticPerceptionRefreshCoordinator.detectDelta(
 			previousHash: "aaaa",
 			newHash: "bbbb",
 			previousOCRChars: 100,
@@ -126,7 +126,7 @@ enum AgenticPerceptionRefreshSelfTest {
 		check("delta_text_changed_detected", tc5)
 		check("delta_ocr_grew_detected", og5)
 
-		let (tc5b, og5b, reason5b) = AgenticPerceptionRefreshCoordinator.detectDelta(
+		let (tc5b, og5b, _, reason5b) = AgenticPerceptionRefreshCoordinator.detectDelta(
 			previousHash: "same",
 			newHash: "same",
 			previousOCRChars: 200,
@@ -216,7 +216,7 @@ enum AgenticPerceptionRefreshSelfTest {
 
 		// MARK: 9 — Action verification succeeds on changed OCR
 		// Simulate a delta where OCR chars grew significantly.
-		let (tc9, og9, reason9) = AgenticPerceptionRefreshCoordinator.detectDelta(
+		let (tc9, og9, _, reason9) = AgenticPerceptionRefreshCoordinator.detectDelta(
 			previousHash: "abc123",
 			newHash: "xyz789",
 			previousOCRChars: 0,      // before control: no OCR

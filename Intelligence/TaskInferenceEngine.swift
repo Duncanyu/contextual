@@ -49,6 +49,84 @@ extension TaskInferenceLLMGenerating {
 
 extension LocalAIClient: TaskInferenceLLMGenerating {}
 
+struct GoalGeneratorSuggestion: Codable, Sendable, Equatable {
+    let title: String
+    let confidence: Double
+    let reason: String
+}
+
+/// Prompt builder for the Goal Generator stage (qwen2.5:0.5b).
+/// Generates 1–3 natural, highly context-specific goal suggestions based on screen state.
+struct GoalGeneratorPromptBuilder {
+    static func build(
+        snapshot: CanonicalGeneratedExecutionContextSnapshot,
+        situational: SituationalContextSnapshot,
+        recentTitles: [String],
+        referenceTime: Date
+    ) -> String {
+        let app = compact(situational.activeAppName, 24)
+        let title = compactTitle(situational.windowTitle, max: 70)
+        let wf = situational.inferredWorkflow.rawValue
+
+        let hasOCR = !(snapshot.recentOCRExcerpt ?? "").isEmpty
+        let ocrExcerpt = snapshot.recentOCRExcerpt ?? ""
+        let hasAX = snapshot.contextSummary?.contains("ax=") == true
+        let axExcerpt = snapshot.contextSummary ?? ""
+        let hasSel = !(snapshot.selectedText ?? "").isEmpty
+        let selectedText = snapshot.selectedText ?? ""
+        let hasClip = !(snapshot.clipboardText ?? "").isEmpty
+        let clipboardText = snapshot.clipboardText ?? ""
+
+        var lines: [String] = [
+            "Task: Generate 1-3 highly specific, natural language goal suggestions based on the user's screen context.",
+            "Suggestions must describe useful, creative assistant tasks grounded in the currently visible content.",
+            "DO NOT use generic verbs like 'Extract', 'Summarize', 'Review', or 'Compare' as forced prefixes. Phrase suggestions as a human user would actually state their goal.",
+            "Examples of natural suggestions:",
+            "- \"Check whether this charger’s ports support simultaneous fast charging\"",
+            "- \"Figure out if the 140W claim applies to one port or all ports\"",
+            "- \"Find the actual price and delivery constraints\"",
+            "- \"Summarize the Reddit thread’s best grilled cheese tips\"",
+            "",
+            "DO NOT suggest unsafe or destructive actions (buying, purchasing, deleting, checkout).",
+            "DO NOT propose internal capability terms (permissions, capability, active permissions, etc.) unless the active window is actually Settings/Permissions.",
+            "",
+            "Active Context:",
+            "- Active App: \(app)",
+            "- Window Title: \(title)",
+            "- Inferred Workflow: \(wf)"
+        ]
+
+        if hasSel {
+            lines.append("- Selected Text: \(compact(selectedText, 150))")
+        }
+        if hasOCR {
+            lines.append("- OCR excerpt: \(compact(ocrExcerpt, 250))")
+        }
+        if hasAX {
+            lines.append("- AX excerpt: \(compact(axExcerpt, 180))")
+        }
+        if hasClip {
+            lines.append("- Clipboard: \(compact(clipboardText, 120))")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func compact(_ s: String, _ limit: Int) -> String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.count <= limit ? t : String(t.prefix(limit))
+    }
+
+    private static func compactTitle(_ s: String, max limit: Int) -> String {
+        let lower = s.lowercased()
+        let stripped = lower.replacingOccurrences(of: #"[\|\-–—•·]+"#, with: " ", options: .regularExpression)
+        let collapsed = stripped.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return compact(collapsed, limit)
+    }
+}
+
+
 /// Fast, timeout-bounded task inference using a small local model (task inference tier).
 ///
 /// On every attempt emits [TaskInferencePerf] with full metadata.
@@ -66,6 +144,46 @@ actor TaskInferenceEngine {
 		let result: TaskInferenceResult
 		let cachedAt: Date
 	}
+
+	static let goalGeneratorSchema: [String: Any] = [
+		"type": "object",
+		"properties": [
+			"suggestions": [
+				"type": "array",
+				"items": [
+					"type": "object",
+					"properties": [
+						"title": ["type": "string", "maxLength": 120] as [String: Any],
+						"confidence": ["type": "number"] as [String: Any],
+						"reason": ["type": "string", "maxLength": 150] as [String: Any]
+					] as [String: Any],
+					"required": ["title", "confidence", "reason"]
+				] as [String: Any],
+				"minItems": 1,
+				"maxItems": 3
+			] as [String: Any]
+		] as [String: Any],
+		"required": ["suggestions"]
+	]
+
+	static func parseGoalSuggestions(_ raw: String) -> [GoalGeneratorSuggestion] {
+		guard let balanced = extractFirstBalancedJSONObject(from: raw),
+		      let data = balanced.data(using: .utf8),
+		      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+		      let suggestionsArr = obj["suggestions"] as? [[String: Any]] else {
+			return []
+		}
+		var list: [GoalGeneratorSuggestion] = []
+		for dict in suggestionsArr {
+			if let title = dict["title"] as? String,
+			   let confidence = dict["confidence"] as? Double ?? (dict["confidence"] as? String).flatMap(Double.init),
+			   let reason = dict["reason"] as? String {
+				list.append(GoalGeneratorSuggestion(title: title, confidence: confidence, reason: reason))
+			}
+		}
+		return list
+	}
+
 
 	static let routerSchema: [String: Any] = [
 		"type": "object",
@@ -838,23 +956,12 @@ actor TaskInferenceEngine {
 		}
 		print("[LocalAIReady] ready=yes")
 
-		print("[TwoStageRouter] started")
+		print("[GoalGenerator] started model=qwen2.5:0.5b")
 
-		// Blank desktop suppression
-		let appLower = situational.activeAppName.lowercased()
-		let titleLower = situational.windowTitle.lowercased()
-		if appLower == "finder" && (titleLower.isEmpty || titleLower == "desktop" || titleLower == "finder") {
-			print("[TwoStageRouter] decision=insufficient_context reason=blank_desktop_suppression")
-			return nil
-		}
-
-		// Router phase using a cheap model.
-		let routerModel = TaskInferenceEngine.routerModelName
-		let routerPrompt = TwoStageRouterPromptBuilder.build(
+		let goalPrompt = GoalGeneratorPromptBuilder.build(
 			snapshot: snapshot,
 			situational: situational,
 			recentTitles: recentTitles,
-			history: history,
 			referenceTime: referenceTime
 		)
 
@@ -865,366 +972,82 @@ actor TaskInferenceEngine {
 			return nil
 		}
 
-		var routerRaw: String = ""
+		var rawOutput: String = ""
 		do {
-			(routerRaw, _) = try await withInferenceTimeout(timeoutSeconds: Self.routerTimeoutSeconds) {
+			(rawOutput, _) = try await withInferenceTimeout(timeoutSeconds: Self.routerTimeoutSeconds) {
 				return try await self.llm.generateStreamingJSON(
-					prompt: routerPrompt,
-					model: routerModel,
-					numPredict: Self.routerNumPredict,
+					prompt: goalPrompt,
+					model: TaskInferenceEngine.routerModelName,
+					numPredict: 180,
 					temperature: 0.10,
-					purpose: "task_inference_router",
-					schema: Self.routerSchema
+					purpose: "goal_generator",
+					schema: Self.goalGeneratorSchema
 				)
 			}
 		} catch {
 			let elapsedMs = Int(Date().timeIntervalSince(routerStart) * 1000)
-			print("[TwoStageRouter] failed error=\(error) elapsed_ms=\(elapsedMs)")
+			print("[GoalGenerator] failed error=\(error) elapsed_ms=\(elapsedMs)")
 			await twoStageLane.release(purpose: "router", elapsedMs: elapsedMs)
 			return nil
 		}
 
 		let elapsedRouter = Int(Date().timeIntervalSince(routerStart) * 1000)
 		await twoStageLane.release(purpose: "router", elapsedMs: elapsedRouter)
-		print("[ProposalLatency] router_ms=\(elapsedRouter)")
+		print("[ProposalLatency] goal_generator_ms=\(elapsedRouter)")
 
 		if Task.isCancelled { return nil }
 
-		guard let routerObj = Self.parseRouterOutput(routerRaw) else {
-			return nil
-		}
-
-		let modelDecision = (routerObj["decision"] as? String)?.lowercased() ?? "enough_context"
-		var requestedContexts = (routerObj["request"] as? [String]) ?? []
-		requestedContexts = requestedContexts.map { $0.lowercased().trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && $0 != "none" }
-
-		var finalDecision = modelDecision
-		var finalRequestedContexts = requestedContexts
-		var pendingActionIntentOverrideApplied = false
-		var routerGroundingOverrideApplied = false
-
-		// Router grounding sufficiency upgrade.
-		let hasVisualText = snapshot.visualContextAvailability.visualSummaryExcerpt != nil && !snapshot.visualContextAvailability.visualSummaryExcerpt!.isEmpty
-		let hasAX = snapshot.contextSummary?.contains("ax=") == true
-		let groundingDecision = RouterGroundingHeuristic.evaluate(
-			modelDecision: modelDecision,
-			requestedContexts: requestedContexts,
-			windowTitle: situational.windowTitle,
-			appName: situational.activeAppName,
-			workflow: situational.inferredWorkflow.rawValue,
-			ocrExcerpt: snapshot.recentOCRExcerpt,
-			selectedText: snapshot.selectedText,
-			hasVisualDescriptor: hasVisualText,
-			hasAXText: hasAX
-		)
-		RouterGroundingHeuristic.log(decision: groundingDecision)
-		if groundingDecision.shouldUpgrade {
-			finalDecision = "enough_context"
-			finalRequestedContexts = []
-			let reqList = requestedContexts.joined(separator: ",")
-			let appliedReason = (groundingDecision.reason == "strong_ocr_ax_title_satisfies_visual_descriptor") ? groundingDecision.reason : "strong_context_no_selection_needed"
-			print("[RouterOverride] applied=yes reason=\(appliedReason)")
-			print("[RouterOverride] original_decision=\(modelDecision) requested=[\(reqList)]")
-			print("[RouterOverride] final_decision=enough_context")
-			print("[TwoStageRouter] decision=enough_context reason=router_grounding_upgrade")
-
-			if groundingDecision.reason == "strong_ocr_ax_title_satisfies_visual_descriptor" {
-				routerGroundingOverrideApplied = true
-			}
-		}
-
-		// Phase 4S — Deterministic bridge for pending action-intent retries:
-		// If fast visibility already classified this context as action-worthy, do not
-		// allow the router to terminate the pipeline early with `quiet` /
-		// `need_more_context` / `insufficient_context`. Proceed to planner instead.
-		if forcePlannerFromPendingActionIntentRetry && finalDecision != "enough_context" {
-			let d = FastVisibilityQualityGate.evaluate(
-				title: situational.windowTitle,
-				appName: situational.activeAppName,
-				bundleIdentifier: snapshot.bundleIdentifier
-			)
-			if d.eligible && d.classification == .actionWorthy {
-				let reqList = finalRequestedContexts.joined(separator: ",")
-				print("[RouterOverride] applied=yes reason=pending_action_intent_action_worthy_retry")
-				print("[RouterOverride] original_decision=\(finalDecision) requested=[\(reqList)]")
-				print("[RouterOverride] final_decision=enough_context")
-				finalDecision = "enough_context"
-				finalRequestedContexts = []
-				pendingActionIntentOverrideApplied = true
-			} else {
-				print("[RouterOverride] applied=no reason=pending_action_intent_not_action_worthy")
-			}
-		}
-
-		if finalDecision == "need_more_context" && !finalRequestedContexts.isEmpty {
-			var needMapped: [String] = []
-			for req in finalRequestedContexts {
-				let r = req.lowercased().trimmingCharacters(in: .whitespaces)
-				if r == "ocr" || r == "visible_ocr" { needMapped.append("visible_ocr") }
-				else if r == "visual_descriptor" || r == "visual_snapshot" { needMapped.append("visual_descriptor") }
-				else if r == "ax_window_text" || r == "browser_text" || r == "ax" { needMapped.append("ax_window_text") }
-				else if r == "selected_text" || r == "selection" { needMapped.append("selected_text") }
-				else if r == "window_title" { needMapped.append("window_title") }
-				else { needMapped.append(req) }
-			}
-			return TaskInferenceResult(
-				shouldChime: false,
-				possibleUserGoal: "",
-				confidence: 0.8,
-				neededCapabilityCategories: [],
-				whyNow: "",
-				missingContext: [],
-				expirySeconds: 20,
-				createdAt: referenceTime,
-				need: needMapped,
-				needReason: "escalation"
-			)
-		}
-
-		guard finalDecision == "enough_context" else { return nil }
-
-		// Phase 4R: Fast model-generated surfacing path.
-		let proposedTitle = routerObj["proposed_title"] as? String ?? ""
-		let proposedGoal = routerObj["proposed_goal"] as? String ?? ""
-
-		if !proposedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-			let isolated = ProposalContextIsolationGate.isolate(snapshot: snapshot)
-			let isValid = validateProposal(
-				title: proposedTitle,
-				goal: proposedGoal,
-				isolated: isolated
-			)
-
-			if isValid && validateDiversity(title: proposedTitle, history: history) {
-				let latency = Int(Date().timeIntervalSince(triggerStart) * 1000)
-				print("[FastVisibility] eligible=yes source=router_proposed_title latency_ms=\(latency)")
-				print("[ProposalLatency] first_visible_ms=\(latency)")
-				recordSurfacedTitle(proposedTitle)
-				let result = TaskInferenceResult(
-					shouldChime: true,
-					possibleUserGoal: proposedTitle,
-					confidence: 0.85,
-					neededCapabilityCategories: ["extract"],
-					whyNow: "fast_proposal_shell",
-					missingContext: [],
-					expirySeconds: 20,
-					createdAt: referenceTime,
-					need: [],
-					needReason: nil
-				)
-				self.lastSuccessfulResult = result
-				print("[PlannerRefinement] pending=yes")
-				return result
-			}
-		}
-
-		// Planner execution.
-		let canInvokePlanner = hasOCR || (snapshot.selectedText != nil) || (situational.workflowConfidence >= 0.72)
-		if !canInvokePlanner {
-			// Phase 4S — Pending action-intent retries from fast visibility must
-			// reach the planner even when the snapshot is title-only.
-			if forcePlannerFromPendingActionIntentRetry && pendingActionIntentOverrideApplied {
-				print("[RouterOverride] downstream_quiet_cleared=yes reason=pending_action_intent_action_worthy_retry")
-			} else if routerGroundingOverrideApplied {
-				print("[RouterOverride] downstream_quiet_cleared=yes reason=strong_ocr_ax_title_satisfies_visual_descriptor")
-			} else {
-				return synthesizeFallbackProposal(snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "weak_context")
-			}
-		}
-
-		// Debounce before planner.
-		let debounceNanoseconds: UInt64 = AgenticPivot.useEarlierProposalSurfacing ? 350_000_000 : 1_000_000_000
-		print("[TwoStagePlannerDebounce] scheduled fp=\(fingerprint)")
-		do {
-			try await Task.sleep(nanoseconds: debounceNanoseconds)
-		} catch {
-			return nil
-		}
-
-		activePlannerPhaseStarted = true
-		let plannerStart = Date()
-		let comparisonHint = await BrowsingComparisonTracker.shared.comparisonSummary(at: referenceTime)
-		let plannerPrompt = TwoStageCompactPlannerPromptBuilder.build(
-			snapshot: snapshot,
-			situational: situational,
-			recentTitles: recentTitles,
-			history: history,
-			referenceTime: referenceTime,
-			comparisonHint: comparisonHint,
-			strict: false
-		)
-
-		guard await twoStageLane.acquire(purpose: "planner") else { return nil }
-		var plannerRaw: String = ""
-		let partialTracker = SharedPartialString()
-		do {
-			(plannerRaw, _) = try await withInferenceTimeout(timeoutSeconds: Self.plannerTimeoutSeconds) {
-				return try await self.llm.generateStreamingJSON(
-					prompt: plannerPrompt,
-					model: TaskInferenceEngine.plannerModelName,
-					numPredict: 140,
-					temperature: 0.05,
-					purpose: "task_inference_planner",
-					schema: Self.plannerSchema,
-					onProgress: { [partialTracker] in partialTracker.update($0) }
-				)
-			}
-		} catch {
-			let elapsedMs = Int(Date().timeIntervalSince(plannerStart) * 1000)
-			await twoStageLane.release(purpose: "planner", elapsedMs: elapsedMs)
-
-			let timeoutPartialRaw = partialTracker.current
-			if !timeoutPartialRaw.isEmpty {
-				print("[PlannerPartialSalvage] attempted=yes reason=timeout_partial chars=\(timeoutPartialRaw.count)")
-				if let salvaged = Self.salvagePartialPlannerOutput(timeoutPartialRaw) {
-					let isolated = ProposalContextIsolationGate.isolate(snapshot: snapshot)
-					var acceptedCandidates: [PlannerCandidate] = []
-					
-					print("[PlannerPartialSalvage] recovered=\(salvaged.candidates.count)")
-					
-					for c in salvaged.candidates {
-						let titleTrimmed = c.title.trimmingCharacters(in: .whitespacesAndNewlines)
-						guard !titleTrimmed.isEmpty else {
-							print("[PlannerPartialSalvage] rejected=\(c.title) reason=empty_title")
-							continue
-						}
-						
-						let normalizedCaps = c.caps.flatMap { cap in
-							cap.lowercased()
-								.components(separatedBy: CharacterSet(charactersIn: "/, "))
-								.map { $0.trimmingCharacters(in: .punctuationCharacters) }
-								.filter { !$0.isEmpty }
-						}
-						guard !normalizedCaps.isEmpty else {
-							print("[PlannerPartialSalvage] rejected=\(c.title) reason=empty_caps")
-							continue
-						}
-						guard normalizedCaps.allSatisfy({ Self.isValidCapOrPrimitive($0) }) else {
-							let invalidCaps = normalizedCaps.filter { !Self.isValidCapOrPrimitive($0) }
-							print("[PlannerPartialSalvage] rejected=\(c.title) reason=invalid_caps_[\(invalidCaps.joined(separator: ","))]")
-							continue
-						}
-						
-						let clampedConfidence = max(0, min(1, c.confidence))
-						
-						let activeRequires = Self.normalizeRequires(for: c.title, requires: c.requires, snapshot: snapshot)
-
-						var missingSources: [String] = []
-						for req in activeRequires {
-							if !Self.contextSourceExists(req, snapshot: snapshot) {
-								missingSources.append(req)
-							}
-						}
-						guard missingSources.isEmpty else {
-							print("[PlannerPartialSalvage] rejected=\(c.title) reason=missing_required_sources_[\(missingSources.joined(separator: ","))]")
-							continue
-						}
-						
-						let valRes = ProposalCapabilityValidator.validate(
-							title: c.title,
-							goal: c.whyUseful ?? "",
-							isolated: isolated,
-							stage: "early"
-						)
-						guard valRes.accepted else {
-							print("[PlannerPartialSalvage] rejected=\(c.title) reason=validation_failed_\(valRes.reason)")
-							continue
-						}
-						
-						guard self.validateDiversity(title: c.title, history: history) else {
-							print("[PlannerPartialSalvage] rejected=\(c.title) reason=diversity_check_failed")
-							continue
-						}
-						
-						print("[PlannerPartialSalvage] accepted=\(c.title)")
-						acceptedCandidates.append(PlannerCandidate(
-							title: c.title,
-							caps: normalizedCaps,
-							confidence: clampedConfidence,
-							novelty: c.novelty,
-							requires: activeRequires,
-							whyUseful: c.whyUseful
-						))
-					}
-					
-					print("[PlannerPartialSalvage] accepted=\(acceptedCandidates.count)")
-					
-					if !acceptedCandidates.isEmpty {
-						if let selected = PlannerCandidateSelector.select(from: acceptedCandidates, snapshot: snapshot, situational: situational) {
-							let result = TaskInferenceResult(
-								shouldChime: salvaged.shouldSurface,
-								possibleUserGoal: selected.title,
-								confidence: selected.confidence,
-								neededCapabilityCategories: selected.caps,
-								whyNow: selected.whyUseful ?? "planner_salvage",
-								missingContext: [],
-								expirySeconds: 20,
-								createdAt: referenceTime,
-								need: [],
-								needReason: nil
-							)
-							self.lastSuccessfulResult = result
-							return result
-						}
-					}
-				}
-			}
-
-			return handlePlannerFailureRecovery(wasRecovered: false, snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "planner_failed")
-		}
-
-		let elapsedPlanner = Int(Date().timeIntervalSince(plannerStart) * 1000)
-		await twoStageLane.release(purpose: "planner", elapsedMs: elapsedPlanner)
-		print("[ProposalLatency] planner_ms=\(elapsedPlanner)")
-		let totalLatency = Int(Date().timeIntervalSince(triggerStart) * 1000)
-		print("[ProposalLatency] first_visible_ms=\(totalLatency)")
-		print("[ProposalLatency] trigger_to_first_visible_ms=\(totalLatency)")
-
-		guard let parsed = Self.parsePlannerCandidates(plannerRaw) else {
-			return handlePlannerFailureRecovery(wasRecovered: false, snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: "planner_failed")
-		}
+		let suggestions = Self.parseGoalSuggestions(rawOutput)
+		let titlesStr = suggestions.map { "\"\($0.title)\"" }.joined(separator: ", ")
+		print("[GoalGenerator] candidates=[\(titlesStr)]")
 
 		let isolated = ProposalContextIsolationGate.isolate(snapshot: snapshot)
-		
-		var candidatesToTry = parsed.candidates
-		var finalSelected: PlannerCandidate? = nil
-		var rejectionReason = "planner_no_candidates"
-		
-		while !candidatesToTry.isEmpty {
-			guard let selected = PlannerCandidateSelector.select(from: candidatesToTry, snapshot: snapshot, situational: situational) else {
-				break
-			}
-			
-			let isValid = validateProposal(
-				title: selected.title,
-				goal: selected.whyUseful ?? "",
-				isolated: isolated
+		var acceptedSuggestions: [GoalGeneratorSuggestion] = []
+
+		for s in suggestions {
+			let valRes = ProposalCapabilityValidator.validate(
+				title: s.title,
+				goal: s.reason,
+				isolated: isolated,
+				stage: "early"
 			)
-			if isValid {
-				finalSelected = selected
-				break
+			if valRes.accepted && self.validateDiversity(title: s.title, history: history) {
+				acceptedSuggestions.append(s)
 			} else {
-				print("[ProposalRecoveryMode] candidate rejected stage=early title=\"\(selected.title)\", attempting retry/repair with next candidate")
-				candidatesToTry.removeAll { $0.title == selected.title }
-				rejectionReason = "selected_candidate_rejected"
+				print("[GoalGenerator] rejected candidate=\"\(s.title)\" reason=\(valRes.reason)")
 			}
 		}
 
-		guard let selected = finalSelected else {
-			return handlePlannerFailureRecovery(wasRecovered: false, snapshot: snapshot, situational: situational, referenceTime: referenceTime, reason: rejectionReason)
+		guard !acceptedSuggestions.isEmpty else {
+			print("[GoalGenerator] skipped reason=no_accepted_candidates")
+			return nil
 		}
+
+		// Sort by confidence descending, pick the best
+		let best = acceptedSuggestions.sorted(by: { $0.confidence > $1.confidence }).first!
+		
+		let valResForBest = ProposalCapabilityValidator.validate(
+			title: best.title,
+			goal: best.reason,
+			isolated: isolated,
+			stage: "activation"
+		)
+
+		print("[GoalGenerator] accepted_for_display title=\"\(best.title)\"")
 
 		let result = TaskInferenceResult(
-			shouldChime: parsed.shouldSurface,
-			possibleUserGoal: selected.title,
-			confidence: selected.confidence,
-			neededCapabilityCategories: selected.caps,
-			whyNow: selected.whyUseful ?? "planner",
+			shouldChime: true,
+			possibleUserGoal: best.title,
+			confidence: best.confidence,
+			neededCapabilityCategories: ["context"], // No proposal-stage caps/schema coupling
+			whyNow: best.reason,
 			missingContext: [],
 			expirySeconds: 20,
 			createdAt: referenceTime,
 			need: [],
-			needReason: nil
+			needReason: nil,
+			isSoftProposal: valResForBest.isSoftProposal,
+			softReasons: valResForBest.softReasons
 		)
 		self.lastSuccessfulResult = result
 		return result
@@ -1519,6 +1342,28 @@ actor TaskInferenceEngine {
 		let novelty: Double
 		let requires: [String]      // ["title", "ocr", ...]
 		let whyUseful: String?
+		var isSoftProposal: Bool = false
+		var softReasons: [String] = []
+
+		init(
+			title: String,
+			caps: [String],
+			confidence: Double,
+			novelty: Double,
+			requires: [String],
+			whyUseful: String?,
+			isSoftProposal: Bool = false,
+			softReasons: [String] = []
+		) {
+			self.title = title
+			self.caps = caps
+			self.confidence = confidence
+			self.novelty = novelty
+			self.requires = requires
+			self.whyUseful = whyUseful
+			self.isSoftProposal = isSoftProposal
+			self.softReasons = softReasons
+		}
 	}
 
 	// Fallback salvaging parser for incomplete/timeout JSON
@@ -2317,16 +2162,12 @@ actor TaskInferenceEngine {
 
 	static func normalizeCandidate(_ c: PlannerCandidate) -> PlannerCandidate {
 		let contextSourceLabels: Set<String> = ["ocr", "screen_capture", "window_title", "visual_descriptor", "fused_visual"]
-		let cleanCaps = c.caps.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-		let hasInvalid = !cleanCaps.allSatisfy({ Self.isValidCapOrPrimitive($0) })
-		let onlyContextSources = !cleanCaps.isEmpty && cleanCaps.allSatisfy({ contextSourceLabels.contains($0) })
-		
-		guard hasInvalid && onlyContextSources else {
-			return c
-		}
-		
-		print("[PlannerCapNormalization] attempted=yes original_caps=\(cleanCaps.joined(separator: ","))")
-		
+		let primitiveTokens: Set<String> = ["extract", "inspect", "summarize", "summarise", "compare", "explain", "organize", "organise", "search"]
+		let unsafeOperationalPhrases: [String] = [
+			"close tab", "close the tab", "buy", "purchase", "checkout", "pay",
+			"delete", "remove", "send", "install", "login", "sign in", "wishlist",
+			"add to cart", "cart"
+		]
 		let verbToPrimitive = [
 			"extract": "extract",
 			"summarize": "summarize",
@@ -2335,16 +2176,100 @@ actor TaskInferenceEngine {
 			"explain": "explain",
 			"inspect": "inspect",
 			"organize": "organize",
-			"organise": "organize"
+			"organise": "organize",
+			"search": "inspect"
 		]
-		
+
+		let rawCaps = c.caps.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+
 		let titleLower = c.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 		let words = titleLower.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+
+		if rawCaps.isEmpty {
+			if let firstWord = words.first, let primitive = verbToPrimitive[firstWord] {
+				let newCaps = [primitive]
+				print("[SoftProposalMode] salvaged=yes reason=title_action_no_unsafe_caps")
+				print("[PlannerCapNormalization] normalized_caps=[\(newCaps.joined(separator: ","))] inferred_from=title_verb")
+				return PlannerCandidate(
+					title: c.title,
+					caps: newCaps,
+					confidence: c.confidence,
+					novelty: c.novelty,
+					requires: c.requires,
+					whyUseful: c.whyUseful,
+					isSoftProposal: true,
+					softReasons: ["salvaged_empty_caps"]
+				)
+			}
+			return c
+		}
+
+		let rawLowerJoined = rawCaps.joined(separator: " | ").lowercased()
+		if unsafeOperationalPhrases.contains(where: { rawLowerJoined.contains($0) }) {
+			// Unsafe/operational unknowns still reject downstream.
+			return c
+		}
+
+		// Parse parenthesized/prose caps by extracting known primitives anywhere in the caps string.
+		var contextCaps: [String] = []
+		var primitives: [String] = []
+		var descriptive: [String] = []
+		for cap in rawCaps {
+			let lower = cap.lowercased()
+			// Preserve underscores so tokens like `screen_capture` survive.
+			let cleaned = lower.map { ch -> Character in
+				if ch.isLetter || ch.isNumber || ch == "_" { return ch }
+				return " "
+			}
+			let tokens = String(cleaned).split(separator: " ").map(String.init).filter { !$0.isEmpty }
+			for t in tokens {
+				if contextSourceLabels.contains(t) {
+					contextCaps.append(t)
+					continue
+				}
+				if primitiveTokens.contains(t) {
+					let prim = (t == "organise") ? "organize" : (t == "summarise" ? "summarize" : (t == "search" ? "inspect" : t))
+					primitives.append(prim)
+					continue
+				}
+				descriptive.append(t)
+			}
+		}
+		contextCaps = Array(Set(contextCaps))
+		primitives = Array(Set(primitives))
+		descriptive = Array(Set(descriptive))
+
+		// If caps contain a valid primitive (even mixed with descriptive/category labels),
+		// keep primitives and move any context-source labels into requires.
+		if !primitives.isEmpty {
+			var newRequires = c.requires
+			for src in contextCaps where !newRequires.contains(src) {
+				newRequires.append(src)
+			}
+			if !descriptive.isEmpty {
+				print("[PlannerCapNormalization] parsed_prose_caps original_caps=\(rawCaps.joined(separator: ",")) normalized_caps=\(primitives.joined(separator: ",")) ignored_descriptive=\(descriptive.prefix(12).joined(separator: ","))")
+			}
+			if !contextCaps.isEmpty {
+				print("[PlannerCapNormalization] moved_context_caps_to_requires original_caps=\(rawCaps.joined(separator: ",")) normalized_caps=\(primitives.joined(separator: ",")) requires=\(contextCaps.joined(separator: ","))")
+			}
+			return PlannerCandidate(
+				title: c.title,
+				caps: primitives,
+				confidence: c.confidence,
+				novelty: c.novelty,
+				requires: newRequires,
+				whyUseful: c.whyUseful
+			)
+		}
+
+		// If caps has no valid primitive but title begins with supported verb, infer from title as before.
+		print("[PlannerCapNormalization] inferred_from_title reason=no_valid_caps title=\"\(c.title.prefix(80))\"")
+		
 		if let firstWord = words.first, let primitive = verbToPrimitive[firstWord] {
 			let newCaps = [primitive]
 			var newRequires = c.requires
 			var movedSources: [String] = []
-			for src in cleanCaps {
+			for src in contextCaps {
 				if !newRequires.contains(src) {
 					newRequires.append(src)
 					movedSources.append(src)
@@ -2360,9 +2285,14 @@ actor TaskInferenceEngine {
 				confidence: c.confidence,
 				novelty: c.novelty,
 				requires: newRequires,
-				whyUseful: c.whyUseful
+				whyUseful: c.whyUseful,
+				isSoftProposal: true,
+				softReasons: ["salvaged_empty_caps"]
 			)
 		} else {
+			if !descriptive.isEmpty {
+				print("[PlannerCapNormalization] parsed_prose_caps original_caps=\(rawCaps.joined(separator: ",")) normalized_caps=none ignored_descriptive=\(descriptive.prefix(12).joined(separator: ","))")
+			}
 			print("[PlannerCapNormalization] rejected reason=no_supported_action_verb")
 			// Return original so downstream validator rejects it with exact invalid reason
 			return c

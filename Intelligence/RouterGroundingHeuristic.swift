@@ -170,7 +170,15 @@ enum RouterGroundingHeuristic {
 		let productPhraseHits = productSignals.filter { combined.contains($0) }.count
 
 		let entityCount = priceMatches + ratingMatches + specMatches + productPhraseHits
-		let proposalRecoveryModeActive = isActionWorthy && hasStrongOCR
+		var proposalRecoveryModeActive = isActionWorthy && hasStrongOCR
+		if proposalRecoveryModeActive {
+			let isStrong = isStrongActionablePageContext(title: windowTitle, appName: appName, ocrExcerpt: ocrExcerpt)
+			if !isStrong {
+				proposalRecoveryModeActive = false
+				print("[ProposalRecoveryMode] active=no reason=weak_or_mixed_browser_context")
+			}
+		}
+
 		if proposalRecoveryModeActive {
 			print("[ProposalRecoveryMode] active=yes")
 		} else {
@@ -266,5 +274,42 @@ enum RouterGroundingHeuristic {
 		}
 		let range = NSRange(text.startIndex..<text.endIndex, in: text)
 		return regex.numberOfMatches(in: text, options: [], range: range)
+	}
+
+	static func isStrongActionablePageContext(title: String, appName: String, ocrExcerpt: String?) -> Bool {
+		let lowerTitle = title.lowercased()
+		let ocrLower = (ocrExcerpt ?? "").lowercased()
+		let combined = lowerTitle + " " + ocrLower
+
+		// 1. Explicitly check Do Not Activate rules
+		
+		// - user profile pages
+		if lowerTitle.contains("user profile") || lowerTitle.contains("profile page") || lowerTitle.contains("/u/") || lowerTitle.contains("reddit.com/user/") {
+			return false
+		}
+		// - generic Reddit home / verification pages
+		if lowerTitle.contains("reddit.com/verify") || lowerTitle.contains("verification") || lowerTitle.contains("reddit: the front page") || lowerTitle == "reddit" || lowerTitle.contains("reddit.com/r/all") || lowerTitle.contains("log in to reddit") {
+			return false
+		}
+		// - title-only Reddit pages (e.g. page title contains "reddit" but OCR is < 80 characters)
+		if lowerTitle.contains("reddit") {
+			let isPostOrThread = lowerTitle.contains("post") || lowerTitle.contains("thread") || lowerTitle.contains("comments")
+			if ocrLower.count < 80 && !isPostOrThread {
+				return false
+			}
+		}
+		// - mixed tab-strip OCR (e.g. contains both reddit and amazon/anker specs)
+		let hasReddit = combined.contains("reddit")
+		let hasAnkerOrAmazon = combined.contains("anker") || combined.contains("amazon")
+		if hasReddit && hasAnkerOrAmazon {
+			return false
+		}
+
+		// 2. Identify positive actionable page types
+		let hasProductIndicator = combined.contains("amazon") || combined.contains("anker") || combined.contains("charger") || combined.contains("hub") || combined.contains("price:") || combined.contains("customer reviews") || combined.contains("stars") || combined.contains("specs") || combined.contains("specification")
+		let hasArticleIndicator = combined.contains("wiki") || combined.contains("article") || combined.contains("document") || combined.contains("pdf") || combined.contains("blog") || combined.contains("news") || combined.contains("post") || combined.contains("thread")
+		let hasCodeIndicator = lowerTitle.contains(".swift") || lowerTitle.contains(".py") || lowerTitle.contains(".js") || lowerTitle.contains(".json") || lowerTitle.contains(".md") || combined.contains("github") || combined.contains("xcode") || combined.contains("code") || combined.contains("debug") || combined.contains("repository")
+		
+		return hasProductIndicator || hasArticleIndicator || hasCodeIndicator
 	}
 }

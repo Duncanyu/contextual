@@ -304,6 +304,8 @@ struct AgenticControlPolicy: Sendable {
 		case .timestamp:           return "today"
 		case .pageSummary, .documentKeyPoint:
 			return determineFindQuery(goal: goal)
+		case .pageUrl, .keyPostContent, .pageIdentity:
+			return determineFindQuery(goal: goal)
 		case .codeSnippet:         return "function"
 		case .errorMessage:        return "error"
 		case .unknown:

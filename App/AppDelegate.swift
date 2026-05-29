@@ -96,6 +96,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_HOOK_IO_CONTRACT_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_IO_VALIDATOR_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_CHAIN_REPAIR_SELFTEST"] == "1" {
 			HookCapabilityRegistry.hookAuditEnabled = true
 		}
+		// Phase B / B.1 self-tests.
+		if env["CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST"] == "1" {
+			Task { _ = await WorkflowInferenceSelfTest.run() }
+		}
+		if env["CONTEXTUAL_RUN_CONTEXT_EVENT_PRODUCER_SELFTEST"] == "1" {
+			Task { _ = await ContextEventProducerSelfTest.run() }
+		}
 		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
 		// Emit startup execution-mode audit (silent; no hook-audit noise during dogfood).
@@ -250,6 +257,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		if env["CONTEXTUAL_RUN_AGENTIC_LLM_SELFTEST"] == "1" {
 			Task {
 				_ = await AgenticLLMDeciderSelfTest.run()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return
+		}
+
+		if env["CONTEXTUAL_RUN_DIRECT_AGENT_SELFTEST"] == "1" {
+			Task {
+				DirectAgentClickSelfTest.runAll()
+				DirectAgentDeciderSelfTest.runAll()
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 			return
@@ -1315,6 +1331,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			reusableActions: [],
 			budget: .conservative,
 			history: proposalHistory,
+			isActionExecuting: appState.isActionExecuting,
 			isWarmupReady: twoStageWarmupComplete
 		)
 		// T18.3.6B: Explicit pipeline trace — log engine result and library record count before activator.
@@ -1644,6 +1661,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			budget: .conservative,
 			history: proposalHistory,
 			situational: prepared.situational,
+			isActionExecuting: appState.isActionExecuting,
 			isWarmupReady: twoStageWarmupComplete,
 			forcePlannerFromPendingActionIntentRetry: forcePlannerPendingRetry
 		)
@@ -2976,42 +2994,84 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				return
 			}
 
+			// --- Phase V0: Direct Agent Runtime Boundary Override ---
+			// Unavoidable boundary check before any legacy lookups.
+			let actionIdFull = GeneratedExecutionProposalActivator.generatedProposalActionId(for: candidateId)
+			let useDirectSetting = AgenticPivot.useDirectAgentRuntime
+			print("[DirectAgentRuntime] boundary_check action_id=\(actionIdFull) source=\(action.generationSource.rawValue) use_direct=\(useDirectSetting)")
+
+			let isAgenticForce = candidateId.hasPrefix("agentic:") || action.generationSource == .hookComposer
+			if isAgenticForce || useDirectSetting {
+				print("[DirectAgentRuntime] boundary_override=yes visible_goal=\"\(action.title)\" cached_goal_skipped=yes")
+				print("[DirectAgentRuntime] enabled=yes source=generated_proposal")
+				print("[DirectAgentRuntime] accepted_goal=\"\(action.title)\"")
+				print("[DirectAgentLoop] starting goal=\"\(action.title)\"")
+				self.appState.generatedExecutionPhaseLabel = "Preparing agentic execution…"
+
+				let directPlan = AgenticTaskPlan(
+					id: UUID().uuidString,
+					goal: action.title, // Verbatim visible title exactly equals the runtime goal
+					workflow: action.workflowType.rawValue,
+					sourceProposalId: candidateId,
+					allowedActionFamilies: [.observe, .read_screen, .find_on_page, .scroll, .click, .type, .present, .stop],
+					requiredObservations: [],
+					successCriteria: [action.title],
+					stopConditions: [.success_criteria_met],
+					maxSteps: 8,
+					maxLLMCalls: 5,
+					maxOCRCalls: 8,
+					maxRuntimeSeconds: 60,
+					requiresPermission: false,
+					safetyLevel: .preview_only,
+					createdAt: Date()
+				)
+
+				let agenticRuntime = AgenticRuntime()
+				if let anchor = action.targetAnchor {
+					print("[TargetAnchorTrace] stage=generated_execution_handoff anchor_nil=no")
+					print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+					print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+				} else {
+					print("[TargetAnchorTrace] stage=generated_execution_handoff anchor_nil=yes")
+				}
+				let agenticResult = await agenticRuntime.execute(
+					plan: directPlan,
+					action: action,
+					snapshot: snapshot,
+					targetAnchor: action.targetAnchor,
+					referenceTime: now,
+					forceDirectRuntime: true
+				)
+
+				let execResult = agenticResult.toExecutionResult(
+					actionId: action.id,
+					confidence: action.confidence,
+					startedAt: now
+				)
+				let presentation = GeneratedExecutionResultPresenter.makePresentation(from: execResult, action: action)
+				self.appState.latestGeneratedExecutionPresentation = presentation
+				self.appState.latestActionId = actionId
+				self.appState.latestActionTimestamp = Date()
+				self.appState.latestActionResult = nil
+				print("[AgenticRuntimeRouting] complete id=\(candidateId.prefix(12)) direct=yes status=\(agenticResult.status.rawValue) phase=\(agenticResult.runtimePhase) goal=\"\(action.title)\"")
+				return
+			}
+
 			let visualRequired = action.executionPlan.requiresVision || action.executionPlan.requiresOCR
 			print(
 				"[GeneratedProposalExecution] selected id=\(candidateId.prefix(12)) template=\(resolvedTemplateId ?? "unknown") visual_required=\(visualRequired ? "yes" : "no")"
 			)
 
-			// MARK: Agentic routing invariant
-			// Primary signal: AgenticTaskPlan cached at proposal-build time.
-			// Belt-and-suspenders: candidateId.hasPrefix("agentic:") is an unconditional routing gate —
-			// any proposal constructed by composeIntentFirst() carries this prefix and MUST never
-			// enter GeneratedExecutionRuntime (which rejects empty primitives as invalid_plan).
+			// MARK: Agentic routing invariant (Legacy fallback or if direct mode disabled)
 			let cachedPlan = self.appState.cachedAgenticPlan(candidateId: candidateId)
 			let isAgenticByIdPrefix = candidateId.hasPrefix("agentic:")
 			let isAgenticRoute = cachedPlan != nil || isAgenticByIdPrefix
 
-			let invariantReason: String
-			if cachedPlan != nil { invariantReason = "plan_present" }
-			else if isAgenticByIdPrefix { invariantReason = "agentic_id_prefix_no_plan" }
-			else { invariantReason = "none" }
-			print("[AgenticRuntimeInvariant] status=\(isAgenticRoute ? "pass" : "pass_legacy") reason=\(invariantReason) id=\(candidateId.prefix(40))")
-
 			if isAgenticRoute {
-				let routeReason: String
-				if cachedPlan != nil {
-					routeReason = "agentic_task_plan_present"
-				} else {
-					routeReason = "agentic_id_prefix"
-				}
-				print("[AgenticRuntimeRouting] route=agentic_runtime reason=\(routeReason) id=\(candidateId.prefix(12)) goal=\(cachedPlan?.goal.prefix(60) ?? "unknown")")
+				print("[AgenticRuntimeRouting] route=agentic_runtime reason=legacy_fallback id=\(candidateId.prefix(12)) goal=\(cachedPlan?.goal.prefix(60) ?? "unknown")")
 				self.appState.generatedExecutionPhaseLabel = "Preparing agentic execution…"
 
 				// Phase 4S — Execution-time stale-goal validation.
-				// If the cached plan's goal is weak/generic AND the current
-				// snapshot title is action-worthy AND the two don't share
-				// content tokens, repair the plan in-place using the current
-				// strong title. We never run a stale "Amazon.ca Low Prices..."
-				// goal against an active Anker product page.
 				var effectivePlan = cachedPlan
 				if let plan = cachedPlan {
 					let currentTitle = snapshot.windowTitle
@@ -4150,6 +4210,14 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				await EvidenceStateCorrectnessSelfTest.run()
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
+			return true
+		}
+
+		// Run with `CONTEXTUAL_RUN_ARCHITECTURAL_REGRESSION_SELFTEST=1` to validate architectural regressions.
+		if env["CONTEXTUAL_RUN_ARCHITECTURAL_REGRESSION_SELFTEST"] == "1" {
+			let ok = ArchitecturalRegressionSelfTest.run()
+			print("[ArchitecturalRegressionSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			return true
 		}
 

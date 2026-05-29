@@ -247,4 +247,35 @@ struct ValidatedDynamicGeneratedProposal: Equatable, Sendable, Identifiable {
 	let confidence: Double
 	let usefulnessHint: String
 	let agenticPlan: AgenticTaskPlan?
+	var isSoftProposal: Bool = false
+
+	init(
+		id: String,
+		title: String,
+		description: String,
+		workflowType: WorkflowType,
+		intentType: IntentType,
+		expectedOutcome: String,
+		requiredContextTypes: [ContextRequirementType],
+		suggestedPrimitives: [ExecutionPrimitive],
+		interruptionCost: Double,
+		confidence: Double,
+		usefulnessHint: String,
+		agenticPlan: AgenticTaskPlan?,
+		isSoftProposal: Bool = false
+	) {
+		self.id = id
+		self.title = title
+		self.description = description
+		self.workflowType = workflowType
+		self.intentType = intentType
+		self.expectedOutcome = expectedOutcome
+		self.requiredContextTypes = requiredContextTypes
+		self.suggestedPrimitives = suggestedPrimitives
+		self.interruptionCost = interruptionCost
+		self.confidence = confidence
+		self.usefulnessHint = usefulnessHint
+		self.agenticPlan = agenticPlan
+		self.isSoftProposal = isSoftProposal
+	}
 }

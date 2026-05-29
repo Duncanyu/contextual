@@ -99,6 +99,20 @@ enum GeneratedChromeFilter {
 			return (true, "assistant_runtime_chrome")
 		}
 
+		// Exact dynamic goal/proposal title echo check (bypasses grounding preservation).
+		if let goalLower = runtimeGoal?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+		   !goalLower.isEmpty,
+		   lower == goalLower {
+			print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=runtime_goal_echo_exact")
+			return (true, "runtime_goal_echo_exact")
+		}
+		if let titleLower = proposalTitle?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+		   !titleLower.isEmpty,
+		   lower == titleLower {
+			print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=runtime_goal_echo_exact")
+			return (true, "runtime_goal_echo_exact")
+		}
+
 		// Dynamic: "Processing <goal>" / "Processing <title>".
 		if lower.hasPrefix("processing ") {
 			let rest = String(lower.dropFirst("processing ".count))
@@ -136,6 +150,18 @@ enum GeneratedChromeFilter {
 		// Exact or near-exact match of the current goal / proposal title.
 		if let goalLower = runtimeGoal?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
 		   !goalLower.isEmpty {
+			// Phase 4U — Suppress imperative action-phrase echoes even when the noun
+			// phrase has diverged from the goal due to planner repair (e.g. the OCR
+			// captured "Extract Product Details from …" while the aligned goal is
+			// "Extract useful product evidence …").
+			if looksLikeAssistantActionEcho(lower) && shareLeadingActionVerb(lower, goalLower) {
+				if let support = groundingSupport, let sources = groundedSources(for: trimmed, support: support) {
+					print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
+					return (false, nil)
+				}
+				print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_action_echo ungrounded=yes")
+				return (true, "proposal_action_echo")
+			}
 			if lower == goalLower || (lower.contains(goalLower) && lower.count - goalLower.count <= 12) {
 				if let support = groundingSupport, let sources = groundedSources(for: trimmed, support: support) {
 					print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
@@ -148,8 +174,8 @@ enum GeneratedChromeFilter {
 					print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
 					return (false, nil)
 				}
-				print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_title_echo ungrounded=yes")
-				return (true, "proposal_title_echo")
+				print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_action_echo ungrounded=yes")
+				return (true, "proposal_action_echo")
 			}
 			if lower.hasPrefix("search for ") {
 				let rest = String(lower.dropFirst("search for ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -158,13 +184,21 @@ enum GeneratedChromeFilter {
 						print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
 						return (false, nil)
 					}
-					print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_title_echo ungrounded=yes")
-					return (true, "proposal_title_echo")
+					print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_action_echo ungrounded=yes")
+					return (true, "proposal_action_echo")
 				}
 			}
 		}
 		if let titleLower = proposalTitle?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
 		   !titleLower.isEmpty {
+			if looksLikeAssistantActionEcho(lower) && shareLeadingActionVerb(lower, titleLower) {
+				if let support = groundingSupport, let sources = groundedSources(for: trimmed, support: support) {
+					print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
+					return (false, nil)
+				}
+				print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_action_echo ungrounded=yes")
+				return (true, "proposal_action_echo")
+			}
 			if lower == titleLower || (lower.contains(titleLower) && lower.count - titleLower.count <= 12) {
 				if let support = groundingSupport, let sources = groundedSources(for: trimmed, support: support) {
 					print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
@@ -177,8 +211,8 @@ enum GeneratedChromeFilter {
 					print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
 					return (false, nil)
 				}
-				print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_title_echo ungrounded=yes")
-				return (true, "proposal_title_echo")
+				print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_action_echo ungrounded=yes")
+				return (true, "proposal_action_echo")
 			}
 			if lower.hasPrefix("search for ") {
 				let rest = String(lower.dropFirst("search for ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -187,8 +221,8 @@ enum GeneratedChromeFilter {
 						print("[GeneratedChromeFilter] preserved_grounded_text=yes text=\"\(trimmed.prefix(80))\" sources=\(sources.joined(separator: ","))")
 						return (false, nil)
 					}
-					print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_title_echo ungrounded=yes")
-					return (true, "proposal_title_echo")
+					print("[GeneratedChromeFilter] suppressed=\"\(line)\" reason=proposal_action_echo ungrounded=yes")
+					return (true, "proposal_action_echo")
 				}
 			}
 		}
@@ -277,6 +311,25 @@ enum GeneratedChromeFilter {
 			.components(separatedBy: CharacterSet.alphanumerics.inverted)
 			.filter { !$0.isEmpty }
 		return tokens.first
+	}
+
+	/// Heuristic: true when the line reads like an assistant-generated action
+	/// label (imperative verb + generic object phrase).
+	///
+	/// This does NOT use website-specific vocabulary.
+	private static func looksLikeAssistantActionEcho(_ lower: String) -> Bool {
+		guard let first = leadingToken(lower) else { return false }
+		guard goalActionVerbs.contains(first) else { return false }
+		let tokens = lower.split(separator: " ").map(String.init)
+		guard tokens.count >= 3 else { return false }
+		let genericObjects: Set<String> = [
+			"product", "details", "context", "page", "screen", "visible",
+			"information", "content", "workflow", "results",
+		]
+		let hasGenericObject = tokens.dropFirst().contains { genericObjects.contains($0) }
+		// Require at least one generic object token (prevents suppressing real page
+		// text that happens to start with e.g. "extract" but isn't an action label).
+		return hasGenericObject
 	}
 
 	// MARK: - Grounding helpers

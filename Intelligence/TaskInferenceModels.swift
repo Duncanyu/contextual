@@ -43,6 +43,37 @@ struct TaskInferenceResult: Sendable, Equatable {
 	/// Allowed values: "visible_ocr", "ax_window_text", "browser_text", "selected_text", "clipboard_if_relevant"
 	let need: [String]
 	let needReason: String?
+
+	var isSoftProposal: Bool = false
+	var softReasons: [String] = []
+
+	init(
+		shouldChime: Bool,
+		possibleUserGoal: String,
+		confidence: Double,
+		neededCapabilityCategories: [String],
+		whyNow: String,
+		missingContext: [String],
+		expirySeconds: TimeInterval,
+		createdAt: Date,
+		need: [String],
+		needReason: String?,
+		isSoftProposal: Bool = false,
+		softReasons: [String] = []
+	) {
+		self.shouldChime = shouldChime
+		self.possibleUserGoal = possibleUserGoal
+		self.confidence = confidence
+		self.neededCapabilityCategories = neededCapabilityCategories
+		self.whyNow = whyNow
+		self.missingContext = missingContext
+		self.expirySeconds = expirySeconds
+		self.createdAt = createdAt
+		self.need = need
+		self.needReason = needReason
+		self.isSoftProposal = isSoftProposal
+		self.softReasons = softReasons
+	}
 }
 
 // MARK: - Tolerant decode (all optional; resolve to safe defaults)

@@ -271,6 +271,8 @@ enum AgenticStopCondition: String, Codable, Sendable, CaseIterable {
     case partial_evidence_budget_exhausted
     /// No remaining legal action could make progress on missing evidence.
     case no_more_safe_actions
+    /// All required click/control interactions failed due to visual grounding being unavailable or timed out.
+    case grounding_unavailable
 }
 
 // MARK: - Eligibility

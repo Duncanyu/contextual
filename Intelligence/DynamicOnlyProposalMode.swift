@@ -341,11 +341,25 @@ enum AgenticPivot {
     static let useEarlierProposalSurfacing = true
     
     /// Whether proposals should remain visible longer (e.g., briefly surviving tab switches).
+    /// Whether proposals should remain visible longer (e.g., briefly surviving tab switches).
     static let usePersistentProposals = true
+    
+    /// Whether the direct agent runtime path should be used to bypass brittle evidence schema logic.
+    static var useDirectAgentRuntime: Bool {
+        if ProcessInfo.processInfo.environment["USE_DIRECT_AGENT_RUNTIME"] == "0" {
+            return false
+        }
+        // Check UserDefaults explicitly for a disabled signal
+        let val = UserDefaults.standard.value(forKey: "USE_DIRECT_AGENT_RUNTIME")
+        if let boolVal = val as? Bool, boolVal == false { return false }
+        if let stringVal = val as? String, stringVal == "0" { return false }
+        
+        return true // Enabled by default for Phase V0 pivot.
+    }
     
     // MARK: - Helpers
     
     static func logPivotState() {
-        print("[AgenticPivot] state: clipboard_influence=\(isClipboardInfluenceEnabled) selected_text_influence=\(isSelectedTextInfluenceEnabled) intent_first=\(useIntentFirstPlanning) unified_runtime=\(useUnifiedAgenticRuntime) early_surfacing=\(useEarlierProposalSurfacing) persistence=\(usePersistentProposals)")
+        print("[AgenticPivot] state: clipboard_influence=\(isClipboardInfluenceEnabled) selected_text_influence=\(isSelectedTextInfluenceEnabled) intent_first=\(useIntentFirstPlanning) unified_runtime=\(useUnifiedAgenticRuntime) early_surfacing=\(useEarlierProposalSurfacing) persistence=\(usePersistentProposals) direct_agent_runtime=\(useDirectAgentRuntime)")
     }
 }

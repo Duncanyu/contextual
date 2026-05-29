@@ -16,6 +16,7 @@ enum AgenticEvidenceExtractionBridgeSelfTest {
 		let title = "Anker Laptop Charger, 140W MAX USB C Charger, 4-Port, GaN : Amazon.ca: Electronics - Firefox"
 		let ocr = "Anker Laptop Charger 140W MAX USB C Charger 4-Port GaN Compatible with MacBook iPhone Samsung Pixel"
 		let assistantChrome = "Processing Compare Anker Laptop Charger"
+		let actionEcho = "Extract Product Details from Amazon Page"
 
 		let observations = AgenticEvidenceExtractionBridge.extract(
 			goal: goal,
@@ -32,6 +33,25 @@ enum AgenticEvidenceExtractionBridgeSelfTest {
 		let productObs = observations.filter { $0.kind == .productTitle }
 		check("window_title_product_title_present", !productObs.isEmpty)
 		check("product_title_not_assistant_chrome", !(productObs.first?.text.lowercased().contains("processing") ?? false))
+
+		// Phase 4U/4R: imperative action-echo lines should be suppressed when they
+		// overlap the runtime goal family (extract) so they cannot become product_title.
+		do {
+			let extractGoal = "Extract useful product evidence for Anker Laptop Charger"
+			let obs2 = AgenticEvidenceExtractionBridge.extract(
+				goal: extractGoal,
+				workflow: workflow,
+				windowTitle: title,
+				ocrText: ocr + "\n" + actionEcho,
+				axText: nil,
+				graph: nil,
+				semanticEntities: [],
+				structuredFacts: [],
+				comparisonTitles: []
+			)
+			let titles2 = obs2.filter { $0.kind == .productTitle }.map { $0.text.lowercased() }
+			check("action_echo_not_product_title", !titles2.contains(where: { $0.contains("extract product details") }))
+		}
 
 		let specs = observations.filter { $0.kind == .specs }.map { $0.text.lowercased() }
 		check("specs_contains_140w", specs.contains(where: { $0.contains("140w") }))
@@ -52,8 +72,8 @@ enum AgenticEvidenceExtractionBridgeSelfTest {
 		check("evidence_satisfies_product_title", state.satisfied.contains(.productTitle))
 		check("evidence_satisfies_specs", state.satisfied.contains(.specs))
 
-		// Comparison candidates from history should satisfy comparison_candidate (>=2 distinct).
-		check("evidence_satisfies_comparison_candidate", state.satisfied.contains(.comparisonCandidate))
+		// Phase 4U+: Browsing-history-only candidates must NOT satisfy comparison_candidate.
+		check("history_only_does_not_satisfy_comparison_candidate", !state.satisfied.contains(.comparisonCandidate))
 
 		// Ensure default query selection avoids generic "product" when evidence exists.
 		let decider = AgenticDecider()

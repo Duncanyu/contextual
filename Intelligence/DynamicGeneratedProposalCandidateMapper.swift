@@ -70,13 +70,13 @@ enum DynamicGeneratedProposalCandidateMapper {
 				axExcerpt: nil
 			)
 
-			if alignment.status == .rejected {
+			if !AgenticPivot.useDirectAgentRuntime && alignment.status == .rejected {
 				print("[ProposalValidation] rejected reason=goal_alignment_failed title=\"\(proposal.title)\" goal=\"\(proposal.expectedOutcome)\"")
 				return nil
 			}
 
 			var finalProposal = proposal
-			if alignment.status == .repaired {
+			if !AgenticPivot.useDirectAgentRuntime && alignment.status == .repaired {
 				print("[ProposalValidation] repaired reason=\(alignment.reason) original=\"\(proposal.expectedOutcome)\" repaired=\"\(alignment.alignedGoal)\"")
 				// Phase 4Q — surface the capability-repair as a dedicated log family so
 				// dogfood can see when a navigation/search candidate was internally
@@ -155,7 +155,9 @@ enum DynamicGeneratedProposalCandidateMapper {
 				budget: budget,
 				requiresVisual: result.requiresVisualContext,
 				referenceTime: referenceTime,
-				executionMode: contractModeMap[proposal.id] ?? .one_shot
+				executionMode: contractModeMap[proposal.id] ?? .one_shot,
+				isSoftProposal: proposal.isSoftProposal || validation.isSoftProposal,
+				softReasons: validation.softReasons
 			)
 		}
 
@@ -196,7 +198,9 @@ enum DynamicGeneratedProposalCandidateMapper {
 		budget: ExecutionBudget,
 		requiresVisual: Bool,
 		referenceTime: Date,
-		executionMode: HookExecutionMode = .one_shot
+		executionMode: HookExecutionMode = .one_shot,
+		isSoftProposal: Bool = false,
+		softReasons: [String] = []
 	) -> GeneratedExecutionProposalCandidate? {
 		let primitives = proposal.suggestedPrimitives
 
@@ -259,6 +263,13 @@ enum DynamicGeneratedProposalCandidateMapper {
 				sourceCandidateId: proposal.id
 			)
 		}()
+		if let anchor = targetAnchor {
+			print("[TargetAnchorTrace] stage=proposal_acceptance anchor_nil=no")
+			print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+			print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+		} else {
+			print("[TargetAnchorTrace] stage=proposal_acceptance anchor_nil=yes")
+		}
 
 		let execution = GeneratedExecutionAction(
 			title: proposal.title,
@@ -296,12 +307,29 @@ enum DynamicGeneratedProposalCandidateMapper {
 			explainabilitySummary: explainability,
 			expectedOutputSummary: proposal.expectedOutcome,
 			requiredContextTypes: proposal.requiredContextTypes,
+			targetAnchor: targetAnchor,
 			executionAction: execution,
 			generatedActionId: nil,
 			primitiveSignature: primSig,
 			isExecutableGeneratedProposal: true,
-			executionMode: executionMode
+			executionMode: executionMode,
+			isSoftProposal: proposal.isSoftProposal || isSoftProposal,
+			softReasons: softReasons
 		)
+
+		if let anchor = targetAnchor {
+			print("[TargetAnchorTrace] stage=candidate_created anchor_nil=no")
+			print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+			print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+		} else {
+			print("[TargetAnchorTrace] stage=candidate_created anchor_nil=yes")
+			if let bundle = snapshot.bundleIdentifier,
+			   !bundle.isEmpty,
+			   bundle != Bundle.main.bundleIdentifier,
+			   !snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+				print("[TargetAnchorTrace] error=anchor_lost_at_candidate_creation")
+			}
+		}
 		// Carry the AgenticTaskPlan so the execution router can direct to AgenticRuntime.
 		candidate.agenticPlan = proposal.agenticPlan
 		return candidate

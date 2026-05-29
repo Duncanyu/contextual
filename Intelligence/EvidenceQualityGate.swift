@@ -80,6 +80,14 @@ enum EvidenceQualityGate {
 		// Calculate overall score
 		var overall = (completenessScore * 0.3) + (sourceReliabilityScore * 0.2) + (cleanlinessScore * 0.2) + (specificityScore * 0.15) + (groundednessScore * 0.15)
 
+		// Phase 4U: hard block when groundedness is low AND the only price signal is rough.
+		// Prevents premature completion on rough/noisy prices while grounding is weak.
+		if groundednessScore < 0.70 && reasons.contains("rough_price_only") {
+			overall = min(overall, 0.69)
+			reasons.append("rough_price_or_low_grounding")
+			print(String(format: "[EvidenceGate] blocked reason=rough_price_or_low_grounding groundedness=%.2f", groundednessScore))
+		}
+
 		// Hard gates: if comparison is invalid for comparison goal, or reliability is zero, cap the score
 		if isCompareGoal && !comparisonValid {
 			overall = min(overall, 0.40)

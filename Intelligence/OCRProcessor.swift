@@ -45,8 +45,10 @@ final class OCRProcessor: @unchecked Sendable {
 				confCount += 1
 			}
 
-			let text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-			let lineCount = lines.count
+			let (activeApp, activeTitle) = ScreenCaptureSource.getActiveAppAndTitle()
+			let sanitizedLines = OCRProcessor.sanitizeOcrLines(lines, activeTitle: activeTitle)
+			let text = sanitizedLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+			let lineCount = sanitizedLines.count
 			let avg = confCount > 0 ? (confSum / Float(confCount)) : nil
 
 			let chars = text.utf8.count
@@ -59,7 +61,6 @@ final class OCRProcessor: @unchecked Sendable {
 			print("[OCR] excerpt=\"\(excerptDisplay)\"")
 
 			// Perform active window coordinate mismatch detection
-			let (activeApp, activeTitle) = ScreenCaptureSource.getActiveAppAndTitle()
 			let mismatched = OCRProcessor.isOcrMismatched(ocrText: text, activeApp: activeApp, activeTitle: activeTitle)
 			print("[VisualTarget] mismatch_detected=\(mismatched ? "yes" : "no")")
 
@@ -69,6 +70,64 @@ final class OCRProcessor: @unchecked Sendable {
 
 			return OCRResult(text: text, lineCount: lineCount, confidenceAverage: avg, timestamp: Date())
 		}.value
+	}
+
+	static func sanitizeOcrLines(_ lines: [String], activeTitle: String? = nil) -> [String] {
+		var sanitized: [String] = []
+		var removed: [String] = []
+		
+		for line in lines {
+			if let activeTitle = activeTitle {
+				let lLower = line.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+				let tLower = activeTitle.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+				let overlap: Bool
+				if lLower.isEmpty || tLower.isEmpty {
+					overlap = false
+				} else if lLower.contains(tLower) || tLower.contains(lLower) {
+					overlap = true
+				} else {
+					let lineTokens = OCRProcessor.tokenize(line)
+					let titleTokens = OCRProcessor.tokenize(activeTitle)
+					overlap = lineTokens.intersection(titleTokens).count >= 2
+				}
+				
+				if overlap {
+					print("[OCRSanitizer] preserved_active_title_line=yes")
+					sanitized.append(line)
+					continue
+				}
+			}
+
+			let lower = line.lowercased()
+			
+			// 1. Line containing multiple tab titles / tab chrome or mixed tab domains
+			let hasReddit = lower.contains("reddit")
+			let hasAnker = lower.contains("anker")
+			let hasAmazon = lower.contains("amazon")
+			let hasGithub = lower.contains("github")
+			
+			var domainCount = 0
+			if hasReddit { domainCount += 1 }
+			if hasAnker { domainCount += 1 }
+			if hasAmazon { domainCount += 1 }
+			if hasGithub { domainCount += 1 }
+			
+			let containsMultipleTabs = domainCount >= 2
+			
+			// Tab close markers, browser chrome or suffix tabs
+			let containsTabChrome = lower.contains("new tab") || lower.contains("close tab") || lower.contains("✕") || (line.hasSuffix(" x") || line.hasSuffix(" X")) || lower.contains(" - google chrome") || lower.contains(" - firefox") || lower.contains(" - safari")
+			
+			if containsMultipleTabs || containsTabChrome {
+				removed.append(line)
+			} else {
+				sanitized.append(line)
+			}
+		}
+		
+		let removedStr = removed.isEmpty ? "none" : removed.map { "\"\($0)\"" }.joined(separator: ", ")
+		print("[OCRSanitizer] removed_tab_strip_lines=\(removedStr)")
+		
+		return sanitized
 	}
 
 	static func isOcrMismatched(ocrText: String, activeApp: String, activeTitle: String) -> Bool {

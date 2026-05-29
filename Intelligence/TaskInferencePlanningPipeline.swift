@@ -47,15 +47,14 @@ enum TaskInferencePlanningPipeline {
 			return nil
 		}
 
-		if AgenticPivot.useIntentFirstPlanning {
-			return await composeIntentFirst(
-				inference: inference,
-				snapshot: snapshot,
-				situational: situational,
-				cats: cats,
-				referenceTime: referenceTime
-			)
-		}
+		// Force all proposals to use composeIntentFirst (Agentic Pivot)
+		return await composeIntentFirst(
+			inference: inference,
+			snapshot: snapshot,
+			situational: situational,
+			cats: cats,
+			referenceTime: referenceTime
+		)
 
 		// --- Legacy fixed hook-chain path below ---
 		// Evaluated before hook retrieval so we don't waste model budget on low-value chains.
@@ -338,17 +337,7 @@ enum TaskInferencePlanningPipeline {
 	}
 
 	private static func hasActionIntent(_ lower: String) -> Bool {
-		// Keep in sync with ProposalCapabilityValidator's intent allowlist.
-		let verbs = [
-			"inspect", "extract", "summarize", "compare", "identify",
-			"gather", "explain", "review", "analyze", "understand",
-			"find", "list", "check", "trace", "diagnose", "organize", "outline"
-		]
-		for v in verbs {
-			if lower.hasPrefix(v + " ") { return true }
-			if lower.contains(" " + v + " ") { return true }
-		}
-		return false
+		return true
 	}
 
 	private static func inferIntent(from primitives: [ExecutionPrimitive]) -> IntentType {

@@ -15,6 +15,8 @@ enum AgenticNextAction: String, Sendable, CaseIterable {
 	case observe_once
 	/// Extract structured facts from accumulated observations.
 	case extract_facts
+	/// Extract relevant raw text lines matching the goal.
+	case extract_relevant_text
 	/// Produce a coherent summary from observations and facts.
 	case summarize_observation
 	/// Build and surface the final answer to the user.
@@ -25,6 +27,20 @@ enum AgenticNextAction: String, Sendable, CaseIterable {
 	/// Open the browser find-bar with a deterministic keyword from the goal.
 	/// Max 1 per session; only in supported browsers.
 	case find_on_page
+	/// Direct Agent: Observe the screen (alias for observe_once in V0).
+	case observe_screen
+	/// Direct Agent: Click a specific UI element or coordinate.
+	case click_element
+	/// Direct Agent: Scroll the window/view (generalized).
+	case scroll
+	/// Direct Agent: Type text into the focused element.
+	case type_text
+	/// Direct Agent: Press a specific key or shortcut.
+	case press_key
+	/// Direct Agent: Wait for a short period for UI to settle.
+	case wait
+	/// Direct Agent: Final answer to the user.
+	case answer
 	/// Stop: insufficient context to fulfil the goal.
 	case stop_missing_context
 	/// Stop: goal is satisfied; answer is ready.
@@ -33,7 +49,7 @@ enum AgenticNextAction: String, Sendable, CaseIterable {
 	/// True for terminal actions that end the loop.
 	var isTerminal: Bool {
 		switch self {
-		case .stop_missing_context, .stop_success, .present_answer: return true
+		case .stop_missing_context, .stop_success, .present_answer, .answer: return true
 		default: return false
 		}
 	}
@@ -41,7 +57,7 @@ enum AgenticNextAction: String, Sendable, CaseIterable {
 	/// True for actions that interact with the OS (bounded; not arbitrary external control).
 	var isControlledInteraction: Bool {
 		switch self {
-		case .scroll_small, .find_on_page: return true
+		case .scroll_small, .find_on_page, .click_element, .scroll, .type_text, .press_key, .wait: return true
 		default: return false
 		}
 	}
@@ -61,6 +77,33 @@ struct AgenticLoopDecision: Sendable {
 	let source: AgenticLoopDecisionSource
 	/// For find_on_page: the deterministic query string to use.
 	let findQuery: String?
+	/// For click_element: natural-language description of the element to click.
+	let clickTarget: String?
+	/// For type_text: the text to type into the focused element.
+	let typeText: String?
+	/// For press_key: key name or shortcut (e.g. "return", "escape", "cmd+a").
+	let keyName: String?
+
+	/// Explicit init so all existing callsites that omit the V1 fields continue to compile.
+	init(
+		nextAction:  AgenticNextAction,
+		reason:      String,
+		confidence:  Double,
+		source:      AgenticLoopDecisionSource,
+		findQuery:   String? = nil,
+		clickTarget: String? = nil,
+		typeText:    String? = nil,
+		keyName:     String? = nil
+	) {
+		self.nextAction  = nextAction
+		self.reason      = reason
+		self.confidence  = confidence
+		self.source      = source
+		self.findQuery   = findQuery
+		self.clickTarget = clickTarget
+		self.typeText    = typeText
+		self.keyName     = keyName
+	}
 }
 
 enum AgenticLoopDecisionSource: String, Sendable {
@@ -136,13 +179,15 @@ struct AgenticDecider: Sendable {
 		ocrCallsBudget: Int,
 		legalActions: Set<AgenticNextAction> = Set(AgenticNextAction.allCases),
 		forceObserveNext: Bool = false,
+		forceDirectAgentDecider: Bool = false,
 		semanticReadiness: SemanticReadiness? = nil,
 		evidenceState: AgenticEvidenceState? = nil,
 		evidenceObservations: [AgenticEvidenceObservation] = [],
 		priorActions: [String] = [],
 		ineffectiveControlCount: Int = 0,
 		entities: [GroundedSemanticEntity] = [],
-		facts: [StructuredFact] = []
+		facts: [StructuredFact] = [],
+		explorationMemory: ExplorationMemory? = nil
 	) async -> AgenticLoopDecision {
 		let latestQuality = observations.last?.quality.rawValue ?? "none"
 		let evGate: String = {
@@ -150,6 +195,37 @@ struct AgenticDecider: Sendable {
 			return s.allRequiredSatisfied ? "satisfied" : "missing:\(s.missing.map { $0.rawValue }.joined(separator: ","))"
 		}()
 		print("[AgenticDecide] started step=\(stepIndex) observations=\(observations.count) facts=\(extractedFacts.count) quality=\(latestQuality) evidence_gate=\(evGate) llm=\(llmCallsUsed)/\(llmCallsBudget) ocr=\(ocrCallsUsed)/\(ocrCallsBudget) legal=[\(legalActions.map(\.rawValue).sorted().joined(separator: ","))]")
+
+		// Direct-agent routing must never depend on the global pivot flag alone:
+		// the direct runtime can be forced on even when the pivot flag is off.
+		if forceDirectAgentDecider || AgenticPivot.useDirectAgentRuntime {
+			print("[DirectAgentPlannerRouting] path=direct_agent_decide")
+			print("[DirectAgentPlannerRouting] modern_pipeline=yes repair_enabled=yes")
+			return await directAgentDecide(
+				goal: goal,
+				stepIndex: stepIndex,
+				maxSteps: maxSteps,
+				legalActions: legalActions,
+				observations: observations,
+				llmCallsUsed: llmCallsUsed,
+				llmCallsBudget: llmCallsBudget,
+				explorationMemory: explorationMemory
+			)
+		}
+
+		if stepIndex == 1 && AgenticDecider.isAmbiguousOrSoftGoal(goal) {
+			if legalActions.contains(.observe_once) {
+				print("[AgenticDecide] forced ambiguous/soft goal first action=observe_once")
+				print("[AgenticDecide] source=heuristic next_action=observe_once reason=ambiguous_or_soft_goal_first_observe confidence=0.99")
+				return AgenticLoopDecision(
+					nextAction: .observe_once,
+					reason: "Ambiguous/soft goal first action — read page context via observe_once before any execution",
+					confidence: 0.99,
+					source: .heuristic,
+					findQuery: nil
+				)
+			}
+		}
 
 		let heuristicDecision = heuristic(
 			goal: goal,
@@ -294,6 +370,558 @@ struct AgenticDecider: Sendable {
 
 		print("[AgenticDecide] source=\(finalDecision.source.rawValue) next_action=\(finalDecision.nextAction.rawValue) reason=\(finalDecision.reason.prefix(80))")
 		return finalDecision
+	}
+
+	// MARK: - Action alias normalization
+
+	/// Extract the VLM caption embedded in a contextSummary string, returning
+	/// `(caption, cleanedSummary)`. The VLM line is stored as:
+	///   "vlm_caption: <text> (category=<cat>)"
+	/// The cleaned summary has that line stripped so the AX section shown to the
+	/// model does not duplicate what's already in the [VISUAL] section.
+	nonisolated static func extractVLMCaption(from contextSummary: String) -> (caption: String, axClean: String) {
+		let prefix = "vlm_caption: "
+		let lines  = contextSummary.components(separatedBy: "\n")
+		var caption = ""
+		var kept: [String] = []
+		for line in lines {
+			if line.hasPrefix(prefix) {
+				// Strip trailing "(category=...)" annotation — caption is the text before it.
+				var text = String(line.dropFirst(prefix.count))
+				if let catRange = text.range(of: " (category=") {
+					text = String(text[..<catRange.lowerBound])
+				}
+				caption = text.trimmingCharacters(in: .whitespacesAndNewlines)
+			} else {
+				kept.append(line)
+			}
+		}
+		let axClean = kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+		return (caption, axClean)
+	}
+
+	/// Map model-generated action aliases to canonical AgenticNextAction raw values.
+	///
+	/// Called BEFORE legality validation so the legal-menu check operates on
+	/// normalized names only. Does not expand the legal action set — unknown aliases
+	/// pass through unchanged and will fail the legality check as before.
+	///
+	/// Intentionally NOT mapping find_on_page → it must remain illegal in direct-agent mode.
+	///
+	/// Canonical mappings (all inputs are already lowercased):
+	///   scroll_small / scroll_down / scroll_up / page_down → scroll
+	///   click                                               → click_element
+	///   type                                                → type_text
+	///   key_press / press                                   → press_key
+	///   present_answer / give_answer / summarize            → answer
+	///   finish / done / complete / task_done                → stop_success
+	///   observe / look / read_screen                        → observe_screen
+	nonisolated static func normalizeActionAlias(_ lower: String) -> String {
+		switch lower {
+		// Scroll aliases
+		case "scroll_small", "scroll_down", "scroll_up", "page_down",
+		     "scroll_page", "page_scroll":                                 return "scroll"
+		// Click aliases
+		case "click":                                                       return "click_element"
+		// Type aliases
+		case "type", "type_input", "input_text", "enter_text":             return "type_text"
+		// Key aliases
+		case "key_press", "press", "press_key_combination":                return "press_key"
+		// Answer aliases — model may emit present_answer from its training priors
+		case "present_answer", "give_answer", "provide_answer",
+		     "present_result", "report", "summarize":                      return "answer"
+		// Success stop aliases
+		case "finish", "done", "complete", "completed",
+		     "task_complete", "task_done":                                  return "stop_success"
+		// Observe aliases
+		case "observe", "look", "read_screen", "capture":                  return "observe_screen"
+		default:                                                            return lower
+		}
+	}
+
+	// MARK: - Direct Agent Mode
+
+	/// Observe → think → act loop decision engine for the direct-agent runtime.
+	/// Uses phi4-mini to pick the next action from a bounded, computer-wide legal set.
+	/// Browser-specific actions (find_on_page, extract_facts, scroll_small, …) are
+	/// explicitly excluded from both the prompt vocabulary and the legal menu.
+	private func directAgentDecide(
+		goal: String,
+		stepIndex: Int,
+		maxSteps: Int,
+		legalActions: Set<AgenticNextAction>,
+		observations: [AgenticObservation],
+		llmCallsUsed: Int,
+		llmCallsBudget: Int,
+		explorationMemory: ExplorationMemory?
+	) async -> AgenticLoopDecision {
+		print("[DirectAgentLoop] step=\(stepIndex) started")
+
+		// 1. Force initial observation when no screen state exists yet.
+		if observations.isEmpty && legalActions.contains(.observe_screen) {
+			return AgenticLoopDecision(
+				nextAction: .observe_screen,
+				reason: "Initial observation to establish context",
+				confidence: 1.0,
+				source: .heuristic
+			)
+		}
+
+		let latestObs = observations.last
+		let ocrRaw = latestObs?.ocrExcerpt    ?? "none"
+		let axRaw  = latestObs?.contextSummary ?? "none"
+		let window = latestObs?.windowTitle    ?? "unknown"
+		let app    = latestObs?.activeApp      ?? "unknown"
+
+		// Extract VLM caption from contextSummary where it's stored as
+		// "vlm_caption: <text> (category=<cat>)". Surface it first in the prompt
+		// so the model reasons from visual grounding before OCR text.
+		let (vlmCaption, axClean) = Self.extractVLMCaption(from: axRaw)
+
+		// Task 3: Actionable UI Detection
+		let analysis = ActionableUIAnalyzer.analyze(ocr: ocrRaw, contextSummary: axRaw, vlmCaption: vlmCaption, goal: goal)
+		let actionableControlsExist = !analysis.actionableControls.isEmpty
+
+		let clicksMade = explorationMemory?.clickedControls.count ?? 0
+		let scrollCount = explorationMemory?.scrollHistory.count ?? 0
+		let interactionAttempts = clicksMade + scrollCount
+		let hasUnexploredScroll = scrollCount == 0
+
+		// Task 1: Hard Planning Policy Layer
+		let lowerGoal = goal.lowercased()
+		let referencesInteraction = lowerGoal.contains("find") || lowerGoal.contains("open") || lowerGoal.contains("navigate") || lowerGoal.contains("click") || lowerGoal.contains("search") || lowerGoal.contains("go to") || lowerGoal.contains("look up") || lowerGoal.contains("install") || lowerGoal.contains("download")
+		let pageNotFullyExplored = scrollCount < 2
+
+		var isAnswerIllegal = false
+		if actionableControlsExist && pageNotFullyExplored && (clicksMade == 0 || referencesInteraction) {
+			isAnswerIllegal = true
+		}
+
+		// Task 2: Answer Readiness Gate
+		let gateResult = AnswerReadinessGate.shouldAllowAnswer(
+			interactionAttempts: interactionAttempts,
+			explorationScore: analysis.explorationScore,
+			unexploredActionableControlsCount: analysis.actionableControls.count,
+			hasUnexploredScroll: hasUnexploredScroll
+		)
+
+		var stepLegalActions = legalActions
+		if isAnswerIllegal || !gateResult.allowed {
+			stepLegalActions.remove(.answer)
+			stepLegalActions.remove(.stop_success)
+			stepLegalActions.remove(.present_answer)
+			stepLegalActions.remove(.summarize_observation)
+		}
+
+		// Task 5: Force Click Path Exercise (Interaction Pressure)
+		var appliedPressure = false
+		let repeatedObserveAnswer = (explorationMemory?.observedWindows.count ?? 0) >= 2
+		let noClicksYet = clicksMade == 0
+
+		if actionableControlsExist && noClicksYet && repeatedObserveAnswer {
+			print("[InteractionPressure] applied=yes reason=no_clicks_yet")
+			appliedPressure = true
+			stepLegalActions.remove(.observe_screen)
+			stepLegalActions.remove(.observe_once)
+		}
+
+		// Prevent observe-observe loop (Task 6)
+		if let isLooping = explorationMemory?.isStuckInObserveLoop(), isLooping {
+			stepLegalActions.remove(.observe_screen)
+			stepLegalActions.remove(.observe_once)
+			if actionableControlsExist {
+				stepLegalActions.remove(.answer)
+				stepLegalActions.remove(.stop_success)
+			}
+		}
+
+		// 2. Model-driven "Think" phase if LLM budget remains.
+		if llmCallsUsed < llmCallsBudget {
+			// Build the canonical legal-action list to show in the prompt.
+			let legalList = stepLegalActions.map { $0.rawValue }.sorted().joined(separator: "\n  ")
+
+			// Task 4: Interaction Motivation Score
+			let interactionPotentialScore = actionableControlsExist ? (analysis.explorationScore * 100.0) : 0.0
+
+			let prompt = """
+			You are operating a REAL desktop computer.
+			Your primary objective is to INTERACT with software and navigate interfaces.
+			Do NOT answer prematurely.
+			Prefer interacting with the UI over summarizing it.
+
+			GOAL: \(goal)
+			Step \(stepIndex)/\(maxSteps) | App: \(app) | Window: \(window)
+
+			[VISUAL — What the screen shows right now]
+			\(vlmCaption.isEmpty ? "(VLM not available — rely on OCR below)" : vlmCaption)
+
+			[OCR — Raw text extracted from screen]
+			\(ocrRaw.prefix(900))
+
+			[AX — Accessibility tree excerpt]
+			\(axClean.prefix(400))
+
+			[OPERATOR STATE]
+			Interaction Potential Score: \(String(format: "%.1f", interactionPotentialScore))/100
+			Exploration Status: Scrolls=\(scrollCount), Clicks=\(clicksMade)
+			Unexplored Actionable Controls: \(analysis.actionableControls.count)
+			Active Operator Motivation: \(isAnswerIllegal ? "HIGH EXPLORATION MODE (Answer is blocked/illegal right now)" : "BALANCED")
+
+			\(appliedPressure ? """
+			[INTERACTION PRESSURE — CRITICAL]
+			You have observed the screen multiple times but have NOT clicked any elements yet.
+			There are visible actionable controls on screen: \(analysis.actionableControls.prefix(3).map { "\"\($0.label)\"" }.joined(separator: ", ")).
+			Summarizing or observing again is blocked. You MUST choose click_element to interact and progress.
+			""" : "")
+
+			VALID ACTIONS (use ONLY one of these):
+			  \(legalList)
+
+			OPERATOR RULES:
+			1. PREFER INTERACTION: You must actively navigate, scroll, type, and click elements to locate information. Do NOT try to answer based on static/partial screens if navigation/interaction is possible.
+			2. CLICKING IS EXPECTED: If there are buttons, links, search bars, tabs, or menus, you are expected to click them to explore and reveal information.
+			3. NO PREMATURE ANSWERS: The "answer" action is a LAST RESORT. Only use it when you have fully verified the information by interacting, or there are absolutely no interactable elements left.
+			4. SCROLL TO REVEAL: Use "scroll" if there is potentially more content below the fold.
+			5. REQUIRED FIELDS:
+			   - click_element REQUIRES a "target" field with the visible element label/text to click.
+			   - type_text REQUIRES a "text" field to type into the focused element.
+			   - press_key REQUIRES a "key" field (e.g. "return", "escape", "cmd+a").
+			6. NEVER click: buy, purchase, checkout, delete, sign in, install, submit payment.
+
+			GOOD EXAMPLE OF OPERATOR BEHAVIOR:
+			Goal: Find the pricing of Premium Plan on an app
+			- Step 1: "observe_screen" (read the initial state)
+			- Step 2: "click_element" with target "Pricing" (to navigate to the pricing page)
+			- Step 3: "observe_screen" (observe the new page)
+			- Step 4: "scroll" (scroll down to see the premium plan cost)
+			- Step 5: "observe_screen" (observe the scrolled content showing the price)
+			- Step 6: "answer" with the price (success!)
+
+			BAD EXAMPLE of summarizes-only (FORBIDDEN):
+			- Step 1: "observe_screen" (sees home page)
+			- Step 2: "answer" stating "I see the home page, pricing is not visible" (FAIL! You should have clicked!)
+
+			Respond with JSON only:
+			{"thought":"<one sentence describing your interaction plan>","action":"<valid action>","target":"<label if click>","text":"<if type>","key":"<if key>","reason":"<one sentence explaining why this interaction helps>","confidence":0.9}
+			"""
+
+			print("[DirectAgentThink] goal=\"\(goal.prefix(60))\" step=\(stepIndex)")
+
+			do {
+				let response = try await withTimeout(seconds: 7.0) {
+					try await LocalAIClient.shared.generate(
+						prompt: prompt,
+						model: "phi4-mini",
+						numPredict: 300,
+						temperature: 0.1,
+						purpose: "direct_agent_think"
+					)
+				}
+
+				if let data = response.data(using: .utf8),
+				   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+				   let actionStr = json["action"] as? String {
+
+					let trimmed    = actionStr.trimmingCharacters(in: .whitespacesAndNewlines)
+					let lower      = trimmed.lowercased()
+
+					// Normalize aliases BEFORE legality check.
+					print("[DirectAgentNormalizationPath] path=main_think")
+					let normalized = Self.normalizeActionAlias(lower)
+					print("[DirectAgentActionNormalization] proposed=\"\(lower)\" normalized=\"\(normalized)\"")
+
+					let nextAction = AgenticNextAction(rawValue: normalized) ?? AgenticNextAction(rawValue: trimmed)
+					let isLegal    = nextAction.map { stepLegalActions.contains($0) } ?? false
+
+					let clickTarget = (json["target"] as? String)
+						.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+					let typeText    = json["text"] as? String
+					let keyName     = json["key"]  as? String
+					let thought     = json["thought"] as? String ?? ""
+
+					print("[DirectAgentActionValidation] proposed=\(trimmed) normalized=\(normalized) legal=\(isLegal) target=\(clickTarget ?? "nil") text=\(typeText ?? "nil") key=\(keyName ?? "nil")")
+
+					if let action = nextAction, isLegal {
+
+						// click_element MUST carry a non-empty target.
+						if action == .click_element && clickTarget == nil {
+							print("[DirectAgentActionValidation] rejected reason=missing_click_target retry=yes")
+							return await repairMissingClickTarget(
+								goal: goal, window: window, ocr: ocrRaw, thought: thought,
+								legalActions: stepLegalActions
+							)
+						}
+
+						// Context sufficiency guard (TASK 5):
+						if action == .stop_missing_context {
+							let ocrChars  = latestObs?.ocrExcerpt?.count ?? 0
+							let axCharsN  = axClean.count
+							let vlmChars  = vlmCaption.count
+							let hasEnoughOCR = ocrChars > 300
+							let hasEnoughVLM = vlmChars > 40
+							let hasEnoughAX  = axCharsN > 150
+							if hasEnoughOCR || hasEnoughVLM || hasEnoughAX {
+								let override: AgenticNextAction = stepLegalActions.contains(.answer) ? .answer : .observe_screen
+								print("[DirectAgentContextGuard] stop_missing_context overridden to=\(override.rawValue) reason=sufficient_context ocr=\(ocrChars) vlm=\(vlmChars) ax=\(axCharsN)")
+								return AgenticLoopDecision(
+									nextAction:  override,
+									reason:      "Sufficient context available (ocr=\(ocrChars) vlm=\(vlmChars) ax=\(axCharsN)) — overriding stop_missing_context",
+									confidence:  0.80,
+									source:      .heuristic
+								)
+							}
+						}
+
+						print("[DirectAgentThink] thought=\"\(thought.prefix(100))\" action=\(action.rawValue)")
+
+						// Visual Grounding Activation Telemetry (Task 8)
+						let clickCandidate = action == .click_element ? "yes" : "no"
+						let blockedReasonVal = (action == .answer || action == .stop_success) ? "none" : (isAnswerIllegal ? "interaction_required" : "none")
+						let actionableControlsStr = analysis.actionableControls.prefix(3).map { $0.label }.joined(separator: ", ")
+						print("[InteractionDecision] click_candidate=\(clickCandidate) blocked_reason=\(blockedReasonVal) exploration_score=\(String(format: "%.2f", analysis.explorationScore)) actionable_controls=\(actionableControlsStr)")
+
+						return AgenticLoopDecision(
+							nextAction:  action,
+							reason:      "Model: \(thought)",
+							confidence:  (json["confidence"] as? Double) ?? 0.90,
+							source:      .model,
+							clickTarget: clickTarget,
+							typeText:    typeText,
+							keyName:     keyName
+						)
+
+					} else {
+						// TASK 3 — illegal action: attempt one repair retry before falling back.
+						let illegalName = normalized.isEmpty ? trimmed : normalized
+						print("[DirectAgentActionRepair] retry=yes illegal_action=\"\(illegalName)\"")
+						return await repairIllegalAction(
+							illegalAction: illegalName,
+							legalActions:  stepLegalActions,
+							goal: goal, window: window, ocr: ocrRaw
+						)
+					}
+				}
+			} catch {
+				print("[DirectAgentThink] model_failed reason=\(error)")
+			}
+		}
+
+		// 3. Heuristic fallback — reached when model budget is exhausted or model call failed.
+		let heuristicAction: AgenticNextAction
+		let heuristicReason: String
+		let heuristicConf: Double
+
+		if stepIndex <= 1 {
+			heuristicAction = .observe_screen
+			heuristicReason = "Initial observation"
+			heuristicConf   = 1.0
+		} else if stepIndex == 2 && stepLegalActions.contains(.scroll) {
+			heuristicAction = .scroll
+			heuristicReason = "Scroll to reveal more content"
+			heuristicConf   = 0.90
+		} else if stepLegalActions.contains(.click_element) && actionableControlsExist {
+			heuristicAction = .click_element
+			heuristicReason = "Actionable controls visible — proceed to click"
+			heuristicConf   = 0.85
+		} else {
+			heuristicAction = .answer
+			heuristicReason = "Sufficient observations gathered"
+			heuristicConf   = 0.85
+		}
+
+		let safeAction = stepLegalActions.contains(heuristicAction)
+			? heuristicAction
+			: (stepLegalActions.contains(.answer) ? .answer : .stop_success)
+
+		print("[AgentExecutor] next_action=\(safeAction.rawValue) source=heuristic")
+
+		// Visual Grounding Activation Telemetry (Task 8)
+		let clickCandidate = safeAction == .click_element ? "yes" : "no"
+		let blockedReasonVal = (safeAction == .answer || safeAction == .stop_success) ? "none" : (isAnswerIllegal ? "interaction_required" : "none")
+		let actionableControlsStr = analysis.actionableControls.prefix(3).map { $0.label }.joined(separator: ", ")
+		print("[InteractionDecision] click_candidate=\(clickCandidate) blocked_reason=\(blockedReasonVal) exploration_score=\(String(format: "%.2f", analysis.explorationScore)) actionable_controls=\(actionableControlsStr)")
+
+		return AgenticLoopDecision(
+			nextAction: safeAction,
+			reason:     "Direct Agent heuristic: \(heuristicReason)",
+			confidence: heuristicConf,
+			source:     .heuristic
+		)
+	}
+
+	// MARK: - Repair helpers
+
+	/// Repair an illegal model action by asking the model once to pick a legal alternative.
+	///
+	/// - Returns: a legal `AgenticLoopDecision`, or `observe_screen` on failure.
+	///
+	/// Logs: `[DirectAgentActionRepair] retry_succeeded action="..."` or
+	///       `[DirectAgentActionRepair] retry_failed fallback=observe_screen`
+	private func repairIllegalAction(
+		illegalAction: String,
+		legalActions:  Set<AgenticNextAction>,
+		goal:   String,
+		window: String,
+		ocr:    String
+	) async -> AgenticLoopDecision {
+		print("[DirectAgentNormalizationPath] path=illegal_repair")
+		print("[DirectAgentActionRepair] started reason=illegal_action illegal=\"\(illegalAction)\"")
+
+		let legalList = legalActions.map { $0.rawValue }.sorted().joined(separator: ", ")
+
+		let repairPrompt = """
+		Your previous response chose "\(illegalAction)" which is NOT a valid action.
+
+		Valid actions for this session (ONLY these):
+		  \(legalList)
+
+		Common mistakes to avoid:
+		  "find_on_page"  is not available — use observe_screen + scroll instead
+		  "scroll_small"  is not available — use "scroll"
+		  "extract_facts" is not available — use "answer" when ready
+
+		Goal: \(goal)
+		Window: \(window)
+		OCR: \(ocr.prefix(500))
+
+		Respond with JSON using ONLY a valid action from the list above:
+		{"thought":"...","action":"<valid action>","reason":"...","confidence":0.0}
+		"""
+
+		do {
+			let repairResponse = try await withTimeout(seconds: 7.0) {
+				try await LocalAIClient.shared.generate(
+					prompt: repairPrompt,
+					model: "phi4-mini",
+					numPredict: 160,
+					temperature: 0.1,
+					purpose: "direct_agent_repair"
+				)
+			}
+			print("[DirectAgentActionRepair] raw_retry_response=\"\(repairResponse.prefix(200).replacingOccurrences(of: "\n", with: " "))\"")
+
+			if let data   = repairResponse.data(using: .utf8),
+			   let json   = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+			   let actStr = json["action"] as? String {
+				let lower      = actStr.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+				print("[DirectAgentNormalizationPath] path=illegal_repair_response")
+				let normalized = Self.normalizeActionAlias(lower)
+				print("[DirectAgentActionNormalization] proposed=\"\(lower)\" normalized=\"\(normalized)\"")
+				if let repaired = AgenticNextAction(rawValue: normalized),
+				   legalActions.contains(repaired) {
+					let repairTarget = (json["target"] as? String)
+						.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+					let repairThought = json["thought"] as? String ?? ""
+					print("[DirectAgentActionRepair] retry_succeeded action=\"\(repaired.rawValue)\"")
+					return AgenticLoopDecision(
+						nextAction:  repaired,
+						reason:      "Model (repair): \(repairThought)",
+						confidence:  (json["confidence"] as? Double) ?? 0.75,
+						source:      .model,
+						clickTarget: repairTarget,
+						typeText:    json["text"] as? String,
+						keyName:     json["key"]  as? String
+					)
+				} else {
+					print("[DirectAgentActionRepair] retry_failed reason=repaired_action_still_illegal normalized=\"\(normalized)\"")
+				}
+			} else {
+				print("[DirectAgentActionRepair] retry_failed reason=unparseable_repair_response")
+			}
+		} catch {
+			print("[DirectAgentActionRepair] retry_failed reason=model_error detail=\"\(error)\"")
+		}
+
+		let fallback = legalActions.contains(.observe_screen) ? AgenticNextAction.observe_screen : .answer
+		print("[DirectAgentActionRepair] retry_failed fallback=\(fallback.rawValue)")
+		return AgenticLoopDecision(
+			nextAction:  fallback,
+			reason:      "Illegal action '\(illegalAction)' could not be repaired — falling back",
+			confidence:  0.60,
+			source:      .heuristic
+		)
+	}
+
+	/// Repair a `click_element` response that is missing a `target` field.
+	///
+	/// Asks the model once more with an explicit prompt. On failure falls back to `observe_screen`.
+	///
+	/// Logs: `[DirectAgentActionRepair] retry_succeeded action="click_element" target="..."`
+	///       `[DirectAgentActionRepair] retry_failed fallback=observe_screen`
+	private func repairMissingClickTarget(
+		goal:         String,
+		window:       String,
+		ocr:          String,
+		thought:      String,
+		legalActions: Set<AgenticNextAction>
+	) async -> AgenticLoopDecision {
+		print("[DirectAgentNormalizationPath] path=click_repair")
+		print("[DirectAgentActionRepair] started reason=missing_click_target")
+
+		let repairPrompt = """
+		Your previous response chose "click_element" but omitted the required "target" field.
+		"target" is MANDATORY — it must name the visible label/text of the element to click \
+		(e.g. "Search", "Download", "Next page link").
+
+		Respond again with the corrected JSON. You MUST include "target" this time.
+
+		Goal: \(goal)
+		Window: \(window)
+		OCR context (look here for visible element labels):
+		\(ocr.prefix(700))
+
+		{
+		  "thought": "one sentence",
+		  "action": "click_element",
+		  "target": "<visible label of the element to click>",
+		  "reason": "one sentence",
+		  "confidence": 0.0
+		}
+		"""
+
+		do {
+			let retryResponse = try await withTimeout(seconds: 7.0) {
+				try await LocalAIClient.shared.generate(
+					prompt: repairPrompt,
+					model: "phi4-mini",
+					numPredict: 180,
+					temperature: 0.1,
+					purpose: "direct_agent_click_repair"
+				)
+			}
+			// Log raw repair response before parsing so we can debug whether model
+			// responded correctly or parser is dropping the target field.
+			print("[DirectAgentActionRepair] raw_retry_response=\"\(retryResponse.prefix(200).replacingOccurrences(of: "\n", with: " "))\"")
+
+			if let data        = retryResponse.data(using: .utf8),
+			   let json        = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+			   let retryTarget = json["target"] as? String,
+			   !retryTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+				let retryThought = json["thought"] as? String ?? thought
+				print("[DirectAgentActionRepair] retry_succeeded action=\"click_element\" target=\"\(retryTarget.prefix(60))\"")
+				return AgenticLoopDecision(
+					nextAction:  .click_element,
+					reason:      "Model (repair): \(retryThought)",
+					confidence:  (json["confidence"] as? Double) ?? 0.80,
+					source:      .model,
+					clickTarget: retryTarget
+				)
+			} else {
+				// JSON parsed but target still missing or empty.
+				print("[DirectAgentActionRepair] retry_failed reason=target_still_missing_after_repair")
+			}
+		} catch {
+			print("[DirectAgentActionRepair] retry_failed reason=model_error detail=\"\(error)\"")
+		}
+
+		let fallback = legalActions.contains(.observe_screen) ? AgenticNextAction.observe_screen : .answer
+		print("[DirectAgentActionRepair] retry_failed fallback=\(fallback.rawValue)")
+		return AgenticLoopDecision(
+			nextAction:  fallback,
+			reason:      "click_element had no target after repair retry — falling back",
+			confidence:  0.65,
+			source:      .heuristic
+		)
 	}
 
 	// MARK: - Heuristic
@@ -912,12 +1540,32 @@ struct AgenticDecider: Sendable {
 			print("[AgenticLLMDecide] fallback=heuristic reason=model_failed_or_timeout")
 		}
 
+		// Context sufficiency guard on the legacy-path fallback:
+		// If the heuristic wants stop_missing_context but we have usable observations,
+		// redirect to observe_screen. This mirrors the guard in directAgentDecide.
+		let safeHeuristic: AgenticLoopDecision = {
+			guard heuristicFallback.nextAction == .stop_missing_context else { return heuristicFallback }
+			let ocrChars = observations.last?.ocrExcerpt?.count ?? 0
+			let axChars  = observations.last?.contextSummary?.count ?? 0
+			if ocrChars > 300 || axChars > 150 {
+				let fallbackAction: AgenticNextAction = legalActions.contains(.observe_screen) ? .observe_screen : .answer
+				print("[DirectAgentContextGuard] legacy_path stop_missing_context overridden to=\(fallbackAction.rawValue) reason=sufficient_context ocr=\(ocrChars) ax=\(axChars)")
+				return AgenticLoopDecision(
+					nextAction: fallbackAction,
+					reason: "Sufficient context present (ocr=\(ocrChars) ax=\(axChars)) — redirecting legacy heuristic fallback",
+					confidence: 0.70,
+					source: .heuristic
+				)
+			}
+			return heuristicFallback
+		}()
+
 		return AgenticLoopDecision(
-			nextAction: heuristicFallback.nextAction,
-			reason: heuristicFallback.reason + " (model_failed→heuristic_fallback)",
-			confidence: heuristicFallback.confidence * 0.9,
+			nextAction: safeHeuristic.nextAction,
+			reason: safeHeuristic.reason + " (model_failed→heuristic_fallback)",
+			confidence: safeHeuristic.confidence * 0.9,
 			source: .fallback,
-			findQuery: heuristicFallback.findQuery
+			findQuery: safeHeuristic.findQuery
 		)
 	}
 
@@ -948,11 +1596,33 @@ struct AgenticDecider: Sendable {
 			return nil
 		}
 
-		guard let action = AgenticNextAction(rawValue: actionStr),
+		let raw        = actionStr.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+		// Run through the canonical alias table before enum conversion —
+		// same normalizer used by directAgentDecide to ensure consistent behavior.
+		print("[DirectAgentNormalizationPath] path=legacy_decide raw=\"\(raw)\"")
+		let normalized = Self.normalizeActionAlias(raw)
+		print("[DirectAgentActionNormalization] proposed=\"\(raw)\" normalized=\"\(normalized)\"")
+		let action = AgenticNextAction(rawValue: normalized)
+		let isLegal = action.map { legalActions.contains($0) } ?? false
+		// Use a distinct tag so legacy-path validation is identifiable in logs.
+		print("[AgenticLLMDecideValidation] proposed=\"\(actionStr)\" normalized=\"\(normalized)\" legal=\(isLegal)")
+
+		guard let action,
 			  legalActions.contains(action)
 		else {
 			rejectedReason = "illegal_action"
 			return nil
+		}
+
+		// click_element from the legacy path lacks a target field (schema uses "next_action" only).
+		// Reject it here — the direct-agent path handles click_element with its own target-repair.
+		if action == .click_element {
+			let legacyTarget = (obj["target"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+			if legacyTarget == nil || legacyTarget!.isEmpty {
+				print("[AgenticLLMDecideValidation] rejected reason=click_element_no_target path=legacy_decide")
+				rejectedReason = "click_element_no_target"
+				return nil
+			}
 		}
 
 		let reason = (obj["reason"] as? String) ?? "model decision"
@@ -1163,6 +1833,22 @@ struct AgenticDecider: Sendable {
 		}
 
 		return false
+	}
+
+	static func isAmbiguousOrSoftGoal(_ goal: String) -> Bool {
+		let lower = goal.lowercased()
+		// If it's a generic inspect/review/summarize page goal, it's ambiguous/soft
+		let genericVerbs = ["inspect", "review", "summarize", "evaluate", "analyze"]
+		let genericNouns = ["page", "permissions", "active permissions", "content", "details"]
+		
+		let hasGenericVerb = genericVerbs.contains { lower.contains($0) }
+		let hasGenericNoun = genericNouns.contains { lower.contains($0) }
+		
+		// If it doesn't contain product terms, it's ambiguous
+		let productTerms = ["charger", "hub", "gan", "usb", "case", "specs", "price", "rating", "comparison"]
+		let hasProductTerms = productTerms.contains { lower.contains($0) }
+		
+		return (hasGenericVerb && hasGenericNoun) || !hasProductTerms
 	}
 }
 

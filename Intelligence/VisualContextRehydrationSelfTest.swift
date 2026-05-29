@@ -215,6 +215,68 @@ struct VisualContextRehydrationSelfTest {
 		check("c2_normalized_caps_compare", norm2.caps == ["compare"])
 		check("c2_requires_includes_ocr", norm2.requires.contains("ocr"))
 		check("c2_requires_includes_screen_capture", norm2.requires.contains("screen_capture"))
+
+		// 2b. Mixed valid primitive + context source: caps ocr,extract => keep extract, move ocr into requires.
+		let c2b = TaskInferenceEngine.PlannerCandidate(
+			title: "Extract Product Details",
+			caps: ["ocr", "extract"],
+			confidence: 0.9,
+			novelty: 0.5,
+			requires: ["title"],
+			whyUseful: "Extract"
+		)
+		let norm2b = TaskInferenceEngine.normalizeCandidate(c2b)
+		check("c2b_mixed_caps_keeps_extract", norm2b.caps == ["extract"])
+		check("c2b_mixed_caps_moves_ocr_to_requires", norm2b.requires.contains("ocr"))
+
+		// 2c. Mixed context source + compare primitive: screen_capture,compare => keep compare, move screen_capture into requires.
+		let c2c = TaskInferenceEngine.PlannerCandidate(
+			title: "Compare options",
+			caps: ["screen_capture", "compare"],
+			confidence: 0.9,
+			novelty: 0.5,
+			requires: [],
+			whyUseful: "Compare"
+		)
+		let norm2c = TaskInferenceEngine.normalizeCandidate(c2c)
+		check("c2c_mixed_caps_keeps_compare", norm2c.caps == ["compare"])
+		check("c2c_mixed_caps_moves_screen_capture", norm2c.requires.contains("screen_capture"))
+
+		// 2d. Mixed context + unsafe/unknown operational cap should NOT be normalized; it should stay invalid.
+		let c2d = TaskInferenceEngine.PlannerCandidate(
+			title: "Extract Product Details",
+			caps: ["ocr", "close tab"],
+			confidence: 0.9,
+			novelty: 0.5,
+			requires: [],
+			whyUseful: "Unsafe"
+		)
+		let norm2d = TaskInferenceEngine.normalizeCandidate(c2d)
+		check("c2d_mixed_caps_unsafe_kept_for_rejection", norm2d.caps.contains("close tab"))
+
+		// 2e. Parenthesized/prose caps should still extract primitive.
+		let c2e = TaskInferenceEngine.PlannerCandidate(
+			title: "Extract Product Details",
+			caps: ["(EXTRACT) Extract product details from Amazon listing."],
+			confidence: 0.9,
+			novelty: 0.5,
+			requires: [],
+			whyUseful: "Extract"
+		)
+		let norm2e = TaskInferenceEngine.normalizeCandidate(c2e)
+		check("c2e_prose_caps_extracts_extract", norm2e.caps == ["extract"])
+
+		// 2f. Category-only caps should infer from title verb.
+		let c2f = TaskInferenceEngine.PlannerCandidate(
+			title: "Extract Product Details",
+			caps: ["(PRODUCT/DATA)"],
+			confidence: 0.9,
+			novelty: 0.5,
+			requires: [],
+			whyUseful: "Extract"
+		)
+		let norm2f = TaskInferenceEngine.normalizeCandidate(c2f)
+		check("c2f_category_only_infers_from_title", norm2f.caps == ["extract"])
 		
 		// 3. title Product Details, caps ocr => rejected, no title verb
 		let c3 = TaskInferenceEngine.PlannerCandidate(

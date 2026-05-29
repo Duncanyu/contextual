@@ -36,6 +36,7 @@ enum GeneratedExecutionProposalCandidateBuilder {
 					explainabilitySummary: "reusable_template|\(record.primitiveSignature)",
 					expectedOutputSummary: "Reuse prior successful generated output pattern.",
 					requiredContextTypes: record.requiredContextTypes,
+					targetAnchor: nil,
 					executionAction: execution,
 					generatedActionId: nil,
 					primitiveSignature: record.primitiveSignature,
@@ -78,6 +79,25 @@ enum GeneratedExecutionProposalCandidateBuilder {
 		let intent = WorkflowExecutionMapper.intentType(from: action.intentType)
 		let expected = expectedOutputSummary(for: action.intentType, primitives: primitives)
 
+		let targetAnchor = buildTargetAnchorIfPossible(
+			snapshot: snapshot,
+			referenceTime: referenceTime,
+			sourceCandidateId: action.id.uuidString
+		)
+		if let anchor = targetAnchor {
+			print("[TargetAnchorTrace] stage=candidate_created anchor_nil=no")
+			print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+			print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+		} else {
+			print("[TargetAnchorTrace] stage=candidate_created anchor_nil=yes")
+			if let bundle = snapshot.bundleIdentifier,
+			   !bundle.isEmpty,
+			   bundle != Bundle.main.bundleIdentifier,
+			   !snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+				print("[TargetAnchorTrace] error=anchor_lost_at_candidate_creation")
+			}
+		}
+
 		let execution = GeneratedExecutionAction(
 			title: action.title,
 			description: action.description,
@@ -89,6 +109,7 @@ enum GeneratedExecutionProposalCandidateBuilder {
 			executionPlan: plan,
 			explainabilitySummary: action.explainabilitySummary,
 			generationSource: .generatedAction,
+			targetAnchor: targetAnchor,
 			createdAt: referenceTime,
 			expirationDate: min(action.expiresAt, referenceTime.addingTimeInterval(180)),
 			isReusable: false,
@@ -107,10 +128,35 @@ enum GeneratedExecutionProposalCandidateBuilder {
 			explainabilitySummary: action.explainabilitySummary,
 			expectedOutputSummary: expected,
 			requiredContextTypes: requiredTypes,
+			targetAnchor: targetAnchor,
 			executionAction: execution,
 			generatedActionId: action.id,
 			primitiveSignature: action.primitives.map(\.rawValue).sorted().joined(separator: ","),
 			isExecutableGeneratedProposal: true
+		)
+	}
+
+	private static func buildTargetAnchorIfPossible(
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		referenceTime: Date,
+		sourceCandidateId: String
+	) -> TargetWindowAnchor? {
+		guard let bundle = snapshot.bundleIdentifier, !bundle.isEmpty else { return nil }
+		if bundle == Bundle.main.bundleIdentifier { return nil }
+		let title = snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !title.isEmpty else { return nil }
+		let fp = TargetWindowAnchor.fingerprint(
+			bundleIdentifier: bundle,
+			windowTitle: snapshot.windowTitle,
+			workflow: .unknown
+		)
+		return TargetWindowAnchor(
+			bundleIdentifier: bundle,
+			appName: snapshot.activeApp,
+			windowTitle: snapshot.windowTitle,
+			contextFingerprint: fp,
+			createdAt: referenceTime,
+			sourceCandidateId: sourceCandidateId
 		)
 	}
 

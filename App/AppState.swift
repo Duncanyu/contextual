@@ -253,7 +253,26 @@ final class AppState: ObservableObject {
 	/// Keeps the sandbox fed with current context without any production side-effects.
 	func updateLatestCanonicalSnapshot(_ snapshot: CanonicalGeneratedExecutionContextSnapshot) {
 		self.latestCanonicalSnapshot = snapshot
+		// Phase B.1: feed the snapshot into the workflow intelligence producer.
+		// Non-blocking, debounced, kill-switch gated. Does NOT touch proposals.
+		let producer = workflowEventProducer
+		Task { [producer] in
+			await producer.ingest(snapshot: snapshot)
+		}
 	}
+
+	// MARK: - Phase B.1: Workflow Intelligence wiring
+
+	/// Lazy-initialized coordinator + event producer. Created once on first
+	/// snapshot. Does NOT interact with existing proposal generation. Disabled
+	/// cleanly when `CONTEXTUAL_WORKFLOW_INTELLIGENCE_ENABLED=0`.
+	lazy var workflowIntelligenceCoordinator: WorkflowIntelligenceCoordinator = {
+		WorkflowIntelligenceCoordinator()
+	}()
+
+	lazy var workflowEventProducer: ContextEventProducer = {
+		ContextEventProducer(coordinator: workflowIntelligenceCoordinator)
+	}()
 
 	/// Kick off the quarantined hook sandbox on the fixed debug test chain.
 	/// Safe to call repeatedly; drops concurrent calls.
@@ -598,6 +617,20 @@ final class AppState: ObservableObject {
 		for candidate in candidates {
 			guard let action = candidate.executionAction else { continue }
 			generatedExecutionActionByCandidateId[candidate.id] = action
+			if let anchor = action.targetAnchor {
+				print("[TargetAnchorTrace] stage=visible_action_created anchor_nil=no")
+				print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+				print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+			} else {
+				print("[TargetAnchorTrace] stage=visible_action_created anchor_nil=yes")
+				if let snap = latestCanonicalSnapshot,
+				   let bundle = snap.bundleIdentifier,
+				   !bundle.isEmpty,
+				   bundle != Bundle.main.bundleIdentifier,
+				   !snap.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+					print("[TargetAnchorTrace] error=anchor_lost_at_candidate_creation")
+				}
+			}
 			// Cache AgenticTaskPlan when present — routes execution to AgenticRuntime.
 			if var plan = candidate.agenticPlan {
 				let alignment = AgenticGoalAlignmentValidator.validate(
@@ -610,11 +643,11 @@ final class AppState: ObservableObject {
 					ocrExcerpt: latestCanonicalSnapshot?.recentOCRExcerpt,
 					axExcerpt: nil
 				)
-				if alignment.status == AgenticGoalAlignmentDecision.Status.rejected {
+				if !AgenticPivot.useDirectAgentRuntime && alignment.status == AgenticGoalAlignmentDecision.Status.rejected {
 					print("[AgenticPlanCache] rejected reason=goal_alignment_failed")
 					continue
 				}
-				if alignment.status == AgenticGoalAlignmentDecision.Status.repaired {
+				if !AgenticPivot.useDirectAgentRuntime && alignment.status == AgenticGoalAlignmentDecision.Status.repaired {
 					plan = AgenticTaskPlan(
 						id: plan.id,
 						goal: alignment.alignedGoal, // Repaired goal
@@ -637,6 +670,13 @@ final class AppState: ObservableObject {
 				} else {
 					agenticPlanByCandidateId[candidate.id] = plan
 					print("[AgenticPlanCache] stored id=\(candidate.id.prefix(40)) goal=\(plan.goal.prefix(60))")
+				}
+				if let anchor = candidate.targetAnchor {
+					print("[TargetAnchorTrace] stage=plan_cache_store anchor_nil=no")
+					print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+					print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+				} else {
+					print("[TargetAnchorTrace] stage=plan_cache_store anchor_nil=yes")
 				}
 			}
 		}

@@ -142,6 +142,7 @@ actor DynamicGeneratedProposalEngine {
 		budget: ExecutionBudget = .conservative,
 		history: ProposalHistoryMetadata? = nil,
 		situational: SituationalContextSnapshot? = nil,
+		isActionExecuting: Bool = false,
 		referenceTime: Date = Date(),
 		isWarmupReady: Bool = true,
 		forcePlannerFromPendingActionIntentRetry: Bool = false
@@ -180,6 +181,7 @@ actor DynamicGeneratedProposalEngine {
 		if shouldAttemptAutoVisualGather(
 			snapshot: effectiveSnapshot,
 			situational: effectiveSituational,
+			isActionExecuting: isActionExecuting,
 			referenceTime: referenceTime
 		) {
 			let fingerprint = Self.autoVisualGatherFingerprint(snapshot: effectiveSnapshot, situational: effectiveSituational)
@@ -850,8 +852,28 @@ actor DynamicGeneratedProposalEngine {
 	private func shouldAttemptAutoVisualGather(
 		snapshot: CanonicalGeneratedExecutionContextSnapshot,
 		situational: SituationalContextSnapshot,
+		isActionExecuting: Bool,
 		referenceTime: Date
 	) -> Bool {
+		if isActionExecuting {
+			print("[VisualContextGathering] deferred reason=execution_running")
+			return false
+		}
+
+		// Throttle: require a stable idle window before triggering automatic visual capture.
+		let typing = TypingActivitySource.shared.currentContext()
+		let pointer = PointerActivitySource.shared.currentContext()
+		let stableIdleSeconds: TimeInterval = 0.75
+		let minIdle = min(typing.idleDuration, pointer.idleDuration)
+		if minIdle < stableIdleSeconds {
+			if typing.isTypingActive || pointer.isPointerActive {
+				print("[VisualContextGathering] deferred reason=user_active")
+			} else {
+				print("[VisualContextGathering] deferred reason=stability_wait")
+			}
+			return false
+		}
+
 		let perception = situational.perceptionRecommendation
 		let perceptionAllows = perception == .useful
 			|| perception == .recommended

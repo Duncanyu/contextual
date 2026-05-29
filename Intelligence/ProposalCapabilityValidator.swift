@@ -8,6 +8,16 @@ enum ProposalCapabilityValidator {
 		let accepted: Bool
 		let reason: String
 		let diagnosticTag: String?
+		var isSoftProposal: Bool = false
+		var softReasons: [String] = []
+
+		init(accepted: Bool, reason: String, diagnosticTag: String?, isSoftProposal: Bool = false, softReasons: [String] = []) {
+			self.accepted = accepted
+			self.reason = reason
+			self.diagnosticTag = diagnosticTag
+			self.isSoftProposal = isSoftProposal
+			self.softReasons = softReasons
+		}
 	}
 
 	/// Checks if a proposed title, goal, or candidate actions are safe, grounded, and within capability bounds.
@@ -57,42 +67,28 @@ enum ProposalCapabilityValidator {
 
 		let lower = trimmed.lowercased()
 
-		// Phase 4S — Helpfulness gate: the title must indicate an assistant action intent,
-		// not just echo an entity/window title.
-		let actionIntent = hasActionIntent(lower)
-		print("[ProposalHelpfulness] action_intent_detected=\(actionIntent ? "yes" : "no") stage=\(stage)")
+		// PromptLeakFilter: Reject titles containing internal/tooling terms when page context does not support them
+		let leakTerms = [
+			"active permissions", "permissions", "capability", "router", "prompt", "planner",
+			"system", "context pipeline", "agents", "appdelegate", "xcode"
+		]
+		for term in leakTerms {
+			if lower.contains(term) {
+				let contextLower = isolated.groundingText.lowercased()
+				if !contextLower.contains(term) {
+					print("[PromptLeakFilter] rejected title=\"\(title)\" reason=internal_term_not_grounded")
+					return ValidationResult(accepted: false, reason: "internal_term_not_grounded", diagnosticTag: "diag:internal_term_not_grounded")
+				}
+			}
+		}
 
-		// Phase 4S — Reject raw-title proposals (title equals the context entity/window title)
-		// when no action intent is present. Prevents the "fast visibility" path from
-		// surfacing copied window titles as executable actions.
-		if !actionIntent, isEffectivelyContextTitle(lower, isolated: isolated) {
+		// Reject raw-title / duplicates of context window title (raw chrome/duplicates)
+		if isEffectivelyContextTitle(lower, isolated: isolated) {
 			print("[ProposalValidation] rejected stage=\(stage) reason=non_action_title title_equals_context_entity=yes title=\"\(title)\"")
 			return ValidationResult(accepted: false, reason: "non_action_title", diagnosticTag: "diag:non_action_title")
 		}
 
-		// Titles that are not action-like should not surface, even if grounded.
-		if !actionIntent {
-			print("[ProposalValidation] rejected stage=\(stage) reason=non_action_title action_intent_detected=no title=\"\(title)\"")
-			return ValidationResult(accepted: false, reason: "non_action_title", diagnosticTag: "diag:non_action_title")
-		}
-
-		// 1. Literal scans for generic template strings.
-		let cannedPhrases = [
-			"review visible",
-			"analyze visible",
-			"review product",
-			"analyze code",
-			"inspect content",
-			"compare visible"
-		]
-		for phrase in cannedPhrases {
-			if lower.contains(phrase) {
-				print("[ProposalValidation] rejected stage=\(stage) reason=generic_semantic_template title=\"\(title)\" matched=\"\(phrase)\"")
-				return ValidationResult(accepted: false, reason: "generic_semantic_template", diagnosticTag: "diag:generic_semantic_template")
-			}
-		}
-
-		// 2. Safety verb prefix scans.
+		// 2. Safety verb prefix scans (unsafe/destructive check).
 		let unsafePrefixes = [
 			"purchase ", "buy now ", "buy ", "checkout ", "add to cart ", "add to wishlist ",
 			"order ", "submit ", "login ", "log in ", "delete ", "close app ", "install "
@@ -104,9 +100,7 @@ enum ProposalCapabilityValidator {
 			}
 		}
 
-		// 2b. Phase 4Q — substring scans for unsafe verbs/nouns that appear
-		// anywhere in the title (not just as a prefix). Catches LLM outputs like
-		// "Add Anker Prime to Wishlist" or "Save Charger to Wishlist".
+		// 2b. Phase 4Q — substring scans for unsafe verbs/nouns
 		let unsafeSubstrings = [
 			"wishlist", "wish list",
 		]
@@ -138,28 +132,7 @@ enum ProposalCapabilityValidator {
 			}
 		}
 
-		// 3b. Phase 4R — Context family mismatch guard.
-		// Prevent profile/settings/account proposals from surfacing when the active grounded
-		// context does not support that family (e.g. transient profile-name titles in a browser
-		// session replacing a strong product/article context).
-		let familyNeedles = ["profile", "settings", "account", "edit profile"]
-		if familyNeedles.contains(where: { lower.contains($0) }) {
-			let ctxLower = isolated.groundingText.lowercased()
-			let ctxHasFamily = familyNeedles.contains(where: { ctxLower.contains($0) })
-			if !ctxHasFamily {
-				print("[ProposalValidation] rejected stage=\(stage) reason=context_family_mismatch title=\"\(title)\"")
-				return ValidationResult(accepted: false, reason: "context_family_mismatch", diagnosticTag: "diag:context_family_mismatch")
-			}
-		}
-
-		// 4. Phase 4P — Stale-context-entity rejection (dev-artifact branch only).
-		// Reject titles whose dev/file artifact tokens (.md, .swift, AppDelegate,
-		// implementation_plan, etc.) are not present in the isolated active
-		// context. Catches "Review AGENTS.md File" when the user is in Firefox.
-		//
-		// Pure zero-overlap (no dev artifact, but no overlap either) intentionally
-		// falls through to the legacy `low_grounding` rule below so existing tests
-		// and dogfood reasoning stay aligned on a single reason for unrelated text.
+		// 4. Phase 4P — Stale-context-entity rejection (stale context check).
 		if let staleReason = ProposalContextIsolationGate.staleContextEntityReason(
 			title: title,
 			isolated: isolated
@@ -172,13 +145,23 @@ enum ProposalCapabilityValidator {
 			return ValidationResult(accepted: false, reason: "stale_context_entity", diagnosticTag: "diag:stale_context_entity")
 		}
 
+		let bodyText = ((isolated.ocrExcerpt ?? "") + " " + (isolated.selectedText ?? "") + " " + (isolated.axExcerpt ?? "")).trimmingCharacters(in: .whitespacesAndNewlines)
+		if !bodyText.isEmpty {
+			let bodyWords = substantiveWords(from: bodyText)
+			let titleAndGoalWords = substantiveWords(from: lower + " " + goal.lowercased())
+			if !titleAndGoalWords.isEmpty && titleAndGoalWords.isDisjoint(with: bodyWords) {
+				print("[ProposalValidation] soft_warning stage=\(stage) reason=low_grounding title=\"\(title)\" ocr_body_overlap=none")
+				return ValidationResult(accepted: true, reason: "low_grounding", diagnosticTag: "diag:low_grounding", isSoftProposal: true, softReasons: ["low_grounding"])
+			}
+		}
+
 		// 5. Grounding verification — preserved as defense-in-depth.
 		let contextWords = substantiveWords(from: isolated.groundingText)
 		if contextWords.count >= 2 {
 			let titleWords = substantiveWords(from: lower)
 			if !titleWords.isEmpty && titleWords.isDisjoint(with: contextWords) {
-				print("[ProposalValidation] rejected stage=\(stage) reason=low_grounding title=\"\(title)\" context_overlap=none")
-				return ValidationResult(accepted: false, reason: "low_grounding", diagnosticTag: "diag:low_grounding")
+				print("[ProposalValidation] soft_warning stage=\(stage) reason=low_grounding title=\"\(title)\" context_overlap=none")
+				return ValidationResult(accepted: true, reason: "low_grounding", diagnosticTag: "diag:low_grounding", isSoftProposal: true, softReasons: ["low_grounding"])
 			}
 		}
 
@@ -205,21 +188,7 @@ enum ProposalCapabilityValidator {
 	// MARK: - Phase 4S helpers (intent + raw-title suppression)
 
 	private static func hasActionIntent(_ lowerTitle: String) -> Bool {
-		// Validation only (not generation): ensure the title implies a concrete assistant action.
-		// This intentionally uses a small allowlist of verb families.
-		let verbs = [
-			"inspect", "extract", "summarize", "compare", "identify",
-			"gather", "explain", "review", "analyze", "understand",
-			// Synonyms that map to the same intent families:
-			"find", "list", "check", "trace", "diagnose", "organize", "outline",
-			// Unsafe/unsupported verbs to allow safety check triggers:
-			"purchase", "buy", "delete", "checkout", "install", "login", "order"
-		]
-		for v in verbs {
-			if lowerTitle.hasPrefix(v + " ") { return true }
-			if lowerTitle.contains(" " + v + " ") { return true }
-		}
-		return false
+		return true
 	}
 
 	private static func isEffectivelyContextTitle(_ lowerTitle: String, isolated: IsolatedProposalContext) -> Bool {

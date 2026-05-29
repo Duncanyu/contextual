@@ -404,19 +404,27 @@ enum AgenticEvidenceExtractionBridge {
 					out.append(contentsOf: extractSpecsAndSignals(fromText: specs, source: .structuredFact))
 				}
 				if let price = f.attributes["price"] {
-					let norm = normalizeText(price)
-					if !norm.isEmpty {
-						out.append(
-							AgenticEvidenceObservation(
-								id: stableId(prefix: "fact_price", value: norm),
-								kind: .price,
-								text: price,
-								normalized: norm,
-								confidence: 0.70,
-								source: .structuredFact,
-								reason: "structured_price"
+					// Phase 4U: price evidence must be plausible and normalized; avoid
+					// letting placeholders like "$9999" satisfy evidence.
+					if let normalized = PriceNormalizer.normalize(rawText: price),
+					   normalized.accepted,
+					   let numeric = extractNumericPrice(normalized.normalized),
+					   numeric > 0,
+					   numeric <= 5000 {
+						let norm = normalizeText(normalized.normalized)
+						if !norm.isEmpty {
+							out.append(
+								AgenticEvidenceObservation(
+									id: stableId(prefix: "fact_price", value: norm),
+									kind: .price,
+									text: normalized.normalized,
+									normalized: norm,
+									confidence: max(0.55, normalized.confidence),
+									source: .structuredFact,
+									reason: "structured_price_normalized"
+								)
 							)
-						)
+						}
 					}
 				}
 			}
@@ -515,13 +523,13 @@ enum AgenticEvidenceExtractionBridge {
 			if norm.isEmpty { continue }
 			if let price = extractFirstPrice(text) {
 				out.append(AgenticEvidenceObservation(
-					id: stableId(prefix: "graph_price", value: price),
+					id: stableId(prefix: "graph_price", value: price.normalized),
 					kind: .price,
-					text: price,
-					normalized: price,
-					confidence: 0.55,
+					text: price.normalized,
+					normalized: price.normalized,
+					confidence: max(0.40, price.confidence),
 					source: .screenGraph,
-					reason: "graph_price_pattern"
+					reason: "graph_price_pattern:\(price.reason)"
 				))
 			}
 			// Spec-like tokens (wattage, ports, GaN, etc.)
@@ -607,13 +615,13 @@ enum AgenticEvidenceExtractionBridge {
 		if let price = extractFirstPrice(text) {
 			out.append(
 				AgenticEvidenceObservation(
-					id: stableId(prefix: "price", value: price),
+					id: stableId(prefix: "price", value: price.normalized),
 					kind: .price,
-					text: price,
-					normalized: price,
-					confidence: 0.55,
+					text: price.normalized,
+					normalized: price.normalized,
+					confidence: price.confidence,
 					source: source,
-					reason: "price_pattern"
+					reason: "price_pattern:\(price.reason)"
 				)
 			)
 		}
@@ -757,12 +765,29 @@ enum AgenticEvidenceExtractionBridge {
 		return String(text[r])
 	}
 
-	private static func extractFirstPrice(_ text: String) -> String? {
+	private static func extractNumericPrice(_ normalized: String) -> Double? {
+		let stripped = normalized.unicodeScalars
+			.filter { CharacterSet(charactersIn: "0123456789.").contains($0) }
+			.map(String.init)
+			.joined()
+		return Double(stripped)
+	}
+
+	private static func extractFirstPrice(_ text: String) -> (normalized: String, confidence: Double, reason: String)? {
 		let t = text
 		// $76 or $76.99
-		if let p = matchFirst(pattern: #"\$\s*\d{1,4}(?:\.\d{2})?"#, in: t) {
-			return p.replacingOccurrences(of: " ", with: "")
+		guard let raw = matchFirst(pattern: #"\$\s*\d{1,5}(?:\.\d{2})?"#, in: t) else {
+			return nil
 		}
-		return nil
+		let compact = raw.replacingOccurrences(of: " ", with: "")
+		guard let norm = PriceNormalizer.normalize(rawText: compact) else {
+			return nil
+		}
+		// Reject ambiguous/rough large numbers and normalization failures.
+		guard norm.accepted else { return nil }
+		// Clamp to a sane upper bound to avoid OCR misreads like "$9999" satisfying evidence.
+		let numeric = extractNumericPrice(norm.normalized) ?? 0
+		guard numeric > 0, numeric <= 5000 else { return nil }
+		return (normalized: norm.normalized, confidence: norm.confidence, reason: norm.reason)
 	}
 }

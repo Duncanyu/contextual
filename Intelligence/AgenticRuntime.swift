@@ -136,6 +136,96 @@ struct AgenticSessionState: Sendable {
 	var evidenceState: AgenticEvidenceState?
 	/// Phase 4P: normalized evidence observations bridged from raw perception.
 	var evidenceObservations: [AgenticEvidenceObservation]
+	
+	/// Exploration memory tracking click, scroll, and observe actions.
+	var explorationMemory: ExplorationMemory
+
+	/// Tracks click coordinates ("x,y") that produced no_visible_change, mapped to failure count.
+	var failedClickCoordinates: [String: Int]
+	/// Coordinates banned from clicking for the rest of this run (two or more failures at same spot).
+	var bannedClickCoordinates: Set<String>
+
+	public init(
+		planId: String,
+		goal: String,
+		workflow: String,
+		stepIndex: Int,
+		maxSteps: Int,
+		llmCallsUsed: Int,
+		ocrCallsUsed: Int,
+		scrollsUsed: Int,
+		findsUsed: Int,
+		maxScrolls: Int,
+		maxFinds: Int,
+		startedAt: Date,
+		observations: [AgenticObservation],
+		extractedFacts: [String],
+		finalAnswer: String? = nil,
+		stopReason: AgenticStopCondition? = nil,
+		actionsExecuted: [String] = [],
+		forceObserveNext: Bool = false,
+		lastActionWasControl: Bool = false,
+		blockedActions: [String] = [],
+		controlDecisionLog: [String] = [],
+		ineffectiveControlCount: Int = 0,
+		failedControlActions: [String] = [],
+		worldStateTransitions: [String] = [],
+		discoveredEntities: [String] = [],
+		lastObservationSnapshotID: UUID? = nil,
+		lastObservationTextHash: String? = nil,
+		screenStateGraph: ScreenStateGraph? = nil,
+		groundedTargets: [GroundedTarget] = [],
+		primaryGroundedTarget: GroundedTarget? = nil,
+		semanticEntities: [GroundedSemanticEntity] = [],
+		structuredFacts: [StructuredFact] = [],
+		semanticReadiness: SemanticReadiness? = nil,
+		evidenceRequirements: [AgenticEvidenceRequirement] = [],
+		evidenceState: AgenticEvidenceState? = nil,
+		evidenceObservations: [AgenticEvidenceObservation] = [],
+		explorationMemory: ExplorationMemory = ExplorationMemory(),
+		failedClickCoordinates: [String: Int] = [:],
+		bannedClickCoordinates: Set<String> = []
+	) {
+		self.planId = planId
+		self.goal = goal
+		self.workflow = workflow
+		self.stepIndex = stepIndex
+		self.maxSteps = maxSteps
+		self.llmCallsUsed = llmCallsUsed
+		self.ocrCallsUsed = ocrCallsUsed
+		self.scrollsUsed = scrollsUsed
+		self.findsUsed = findsUsed
+		self.maxScrolls = maxScrolls
+		self.maxFinds = maxFinds
+		self.startedAt = startedAt
+		self.observations = observations
+		self.extractedFacts = extractedFacts
+		self.finalAnswer = finalAnswer
+		self.stopReason = stopReason
+		self.actionsExecuted = actionsExecuted
+		self.forceObserveNext = forceObserveNext
+		self.lastActionWasControl = lastActionWasControl
+		self.blockedActions = blockedActions
+		self.controlDecisionLog = controlDecisionLog
+		self.ineffectiveControlCount = ineffectiveControlCount
+		self.failedControlActions = failedControlActions
+		self.worldStateTransitions = worldStateTransitions
+		self.discoveredEntities = discoveredEntities
+		self.lastObservationSnapshotID = lastObservationSnapshotID
+		self.lastObservationTextHash = lastObservationTextHash
+		self.screenStateGraph = screenStateGraph
+		self.groundedTargets = groundedTargets
+		self.primaryGroundedTarget = primaryGroundedTarget
+		self.semanticEntities = semanticEntities
+		self.structuredFacts = structuredFacts
+		self.semanticReadiness = semanticReadiness
+		self.evidenceRequirements = evidenceRequirements
+		self.evidenceState = evidenceState
+		self.evidenceObservations = evidenceObservations
+		self.explorationMemory = explorationMemory
+		self.failedClickCoordinates = failedClickCoordinates
+		self.bannedClickCoordinates = bannedClickCoordinates
+	}
 
 	/// After this many consecutive ineffective controls, stop the loop.
 	static let maxIneffectiveControls = 2
@@ -232,18 +322,38 @@ actor AgenticRuntime {
 	// MARK: - Public API
 
 	/// Execute the agentic loop (Phase 4D when snapshot present; Phase 4B shell otherwise).
+	/// Pass `forceDirectRuntime: true` from the AppDelegate boundary override to guarantee
+	/// routing to `runDirectAgentLoop()` regardless of the global `AgenticPivot` flag.
 	func execute(
 		plan: AgenticTaskPlan?,
 		action: GeneratedExecutionAction?,
 		snapshot: CanonicalGeneratedExecutionContextSnapshot? = nil,
 		targetAnchor: TargetWindowAnchor? = nil,
 		referenceTime: Date = Date(),
-		dryRun: Bool = false
+		dryRun: Bool = false,
+		forceDirectRuntime: Bool = false
 	) async -> AgenticRuntimeResult {
 		let startedAt = referenceTime
 		let actionId = action?.id
 
-		print("[AgenticRuntime] execute_start action_id=\(actionId?.uuidString.prefix(8) ?? "nil") plan_id=\(plan?.id.prefix(8) ?? "nil") has_snapshot=\(snapshot != nil ? "yes" : "no") dry_run=\(dryRun)")
+		if forceDirectRuntime || AgenticPivot.useDirectAgentRuntime {
+			if let anchor = targetAnchor {
+				print("[TargetAnchorTrace] stage=agentic_runtime_execute anchor_nil=no")
+				print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+				print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+			} else {
+				print("[TargetAnchorTrace] stage=agentic_runtime_execute anchor_nil=yes")
+				print("[DirectAgentRuntime] warning=no_target_anchor_runtime_capture_will_be_display_level")
+			}
+		}
+
+		let useDirectPath = forceDirectRuntime || AgenticPivot.useDirectAgentRuntime
+		let directReason  = forceDirectRuntime ? "plan_force_direct" : "pivot_flag"
+		if useDirectPath {
+			print("[DirectAgentRuntime] execute_route=direct reason=\(directReason)")
+		}
+
+		print("[AgenticRuntime] execute_start action_id=\(actionId?.uuidString.prefix(8) ?? "nil") plan_id=\(plan?.id.prefix(8) ?? "nil") has_snapshot=\(snapshot != nil ? "yes" : "no") dry_run=\(dryRun) force_direct=\(forceDirectRuntime)")
 
 		guard let plan else {
 			print("[AgenticRuntime] rejected reason=missing_plan")
@@ -317,6 +427,16 @@ actor AgenticRuntime {
 		}
 
 		if let snapshot {
+			if useDirectPath {
+				return await runDirectAgentLoop(
+					plan: plan,
+					snapshot: snapshot,
+					targetAnchor: targetAnchor,
+					actionId: actionId,
+					startedAt: startedAt,
+					dryRun: dryRun
+				)
+			}
 			return await runLoop(
 				plan: plan,
 				snapshot: snapshot,
@@ -376,22 +496,35 @@ actor AgenticRuntime {
 			semanticReadiness: nil,
 			evidenceRequirements: [],
 			evidenceState: nil,
-			evidenceObservations: []
+			evidenceObservations: [],
+			explorationMemory: ExplorationMemory()
 		)
 
-		// Phase 4O: derive the evidence requirements for this goal up-front.
-		session.evidenceRequirements = AgenticEvidenceRequirementsInferrer.infer(
-			goal: plan.goal,
-			workflow: plan.workflow,
-			windowTitle: snapshot.windowTitle,
-			evidenceObservations: session.evidenceObservations,
-			semanticEntities: session.semanticEntities,
-			contextCategory: snapshot.bundleIdentifier
-		)
-		do {
-			let required = session.evidenceRequirements.filter { $0.required }.map { $0.kind.rawValue }.joined(separator: ",")
-			let optional = session.evidenceRequirements.filter { !$0.required }.map { $0.kind.rawValue }.joined(separator: ",")
-			print("[EvidenceRequirements] goal=\"\(plan.goal.prefix(80))\" required=\(required) optional=\(optional)")
+		if AgenticPivot.useDirectAgentRuntime {
+			print("[DirectAgentLoop] starting goal=\"\(plan.goal)\"")
+			session.evidenceRequirements = []
+			print("[AgentPlanner] goal=\"\(plan.goal)\"")
+			print("[AgentPlanner] desired_output=\"Freeform analysis answering: \(plan.goal)\"")
+		} else {
+			// Phase 4O: derive the evidence requirements for this goal up-front.
+			session.evidenceRequirements = AgenticEvidenceRequirementsInferrer.infer(
+				goal: plan.goal,
+				workflow: plan.workflow,
+				windowTitle: snapshot.windowTitle,
+				evidenceObservations: session.evidenceObservations,
+				semanticEntities: session.semanticEntities,
+				contextCategory: snapshot.bundleIdentifier
+			)
+			let requiredList = session.evidenceRequirements.filter { $0.required }.map { $0.kind.rawValue }
+			let optionalList = session.evidenceRequirements.filter { !$0.required }.map { $0.kind.rawValue }
+			print("[AgentPlanner] goal=\"\(plan.goal)\"")
+			print("[AgentPlanner] output_contract=dynamic")
+			print("[AgentPlanner] evidence_plan=required=[\(requiredList.joined(separator: ", "))], optional=[\(optionalList.joined(separator: ", "))]")
+			do {
+				let required = requiredList.joined(separator: ",")
+				let optional = optionalList.joined(separator: ",")
+				print("[EvidenceRequirements] goal=\"\(plan.goal.prefix(80))\" required=\(required) optional=\(optional)")
+			}
 		}
 
 		// Phase 4E: debug visible mode and perception coordinator
@@ -462,15 +595,17 @@ actor AgenticRuntime {
 		print("[AgenticLoop] priming_ocr_used=\(primingOCRConsumed ? "yes" : "no") loop_ocr_used=\(session.ocrCallsUsed)/\(plan.maxOCRCalls)")
 
 		// Phase 4G: build initial screen graph + grounded targets (after priming, before step 1)
-		updateScreenGrounding(
-			session: &session,
-			snapshot: currentSnapshot,
-			targetAnchor: targetAnchor,
-			goal: plan.goal,
-			workflow: plan.workflow,
-			stepLabel: "init",
-			reason: "execution_start"
-		)
+		if !AgenticPivot.useDirectAgentRuntime {
+			updateScreenGrounding(
+				session: &session,
+				snapshot: currentSnapshot,
+				targetAnchor: targetAnchor,
+				goal: plan.goal,
+				workflow: plan.workflow,
+				stepLabel: "init",
+				reason: "execution_start"
+			)
+		}
 
 		let initComparisonRequired = session.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
 		let initComparisonTitles = initComparisonRequired
@@ -495,6 +630,10 @@ actor AgenticRuntime {
 				print("[AgenticLoop] budget_exceeded reason=time step=\(step) elapsed=\(formatElapsed(elapsed))")
 				if session.finalAnswer == nil { session.finalAnswer = buildFallbackAnswer(session: session) }
 				break
+			}
+
+			if AgenticPivot.useDirectAgentRuntime {
+				print("[DirectAgentLoop] step=\(step)/\(plan.maxSteps) elapsed=\(formatElapsed(elapsed))")
 			}
 
 			print("[AgenticLoop] step=\(step)/\(plan.maxSteps) llm=\(session.llmCallsUsed)/\(plan.maxLLMCalls) ocr=\(session.ocrCallsUsed)/\(plan.maxOCRCalls) scrolls=\(session.scrollsUsed)/\(session.maxScrolls) finds=\(session.findsUsed)/\(session.maxFinds) elapsed=\(formatElapsed(elapsed)) snapshot_fresh=\(currentSnapshot.freshnessScore >= 0.85 ? "yes" : "no")")
@@ -537,6 +676,7 @@ actor AgenticRuntime {
 				entities: session.semanticEntities,
 				facts: session.structuredFacts
 			)
+			print("[AgentExecutor] next_action=\(decision.nextAction.rawValue)")
 			print("[AgenticDecide] menu=[\(legalActions.map(\.rawValue).sorted().joined(separator: ","))] next_action=\(decision.nextAction.rawValue) reason=\(decision.reason.prefix(60)) policy_verified=yes")
 
 			if decision.source == .model { session.llmCallsUsed += 1 }
@@ -571,15 +711,25 @@ actor AgenticRuntime {
 				} else {
 					expectedChange = "target_content_visible"
 				}
-			case .scroll_small:
+			case .scroll_small, .scroll:
 				expectedChange = "lower_page_content_visible"
-			case .observe_once:
+			case .observe_once, .observe_screen:
 				expectedChange = "updated_page_context"
 			case .extract_facts:
 				expectedChange = "structured_facts_extracted"
+			case .extract_relevant_text:
+				expectedChange = "relevant_text_extracted"
 			case .summarize_observation:
 				expectedChange = "summary_synthesized"
-			case .present_answer:
+			case .click_element:
+				expectedChange = "ui_element_clicked"
+			case .type_text:
+				expectedChange = "text_typed"
+			case .press_key:
+				expectedChange = "key_pressed"
+			case .wait:
+				expectedChange = "ui_settled"
+			case .present_answer, .answer:
 				expectedChange = "final_answer_presented"
 			case .stop_success:
 				expectedChange = "loop_terminated_success"
@@ -653,15 +803,17 @@ actor AgenticRuntime {
 				currentSnapshot = refreshResult.freshSnapshot
 
 				// Phase 4G: rebuild graph after fresh post-control perception refresh
-				updateScreenGrounding(
-					session: &session,
-					snapshot: currentSnapshot,
-					targetAnchor: targetAnchor,
-					goal: plan.goal,
-					workflow: plan.workflow,
-					stepLabel: "\(step)",
-					reason: "post_control_refresh"
-				)
+				if !AgenticPivot.useDirectAgentRuntime {
+					updateScreenGrounding(
+						session: &session,
+						snapshot: currentSnapshot,
+						targetAnchor: targetAnchor,
+						goal: plan.goal,
+						workflow: plan.workflow,
+						stepLabel: "\(step)",
+						reason: "post_control_refresh"
+					)
+				}
 
 				// Phase 4O: re-assess evidence requirements against the new entities
 				let postComparisonRequired = session.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
@@ -786,7 +938,9 @@ actor AgenticRuntime {
 		}
 
 		if session.stopReason == nil {
-			if let ev = session.evidenceState, !ev.allRequiredSatisfied {
+			if AgenticPivot.useDirectAgentRuntime {
+				session.stopReason = .success_criteria_met
+			} else if let ev = session.evidenceState, !ev.allRequiredSatisfied {
 				session.stopReason = .partial_evidence_budget_exhausted
 			} else if session.evidenceState?.allRequiredSatisfied == true && AgenticRuntime.evaluateQualityPassed(session: session, plan: plan) {
 				session.stopReason = .evidence_satisfied
@@ -814,7 +968,7 @@ actor AgenticRuntime {
 				let hasFacts = !session.structuredFacts.isEmpty || !session.semanticEntities.isEmpty || !session.extractedFacts.isEmpty
 				let anyControlsFailed = !session.failedControlActions.isEmpty
 				let anyControlsUsed = controlActionsUsed.isEmpty == false
-				let allRequired = session.evidenceState?.allRequiredSatisfied == true
+				let allRequired = AgenticPivot.useDirectAgentRuntime || (session.evidenceState?.allRequiredSatisfied == true)
 				let qualityPassed = AgenticRuntime.evaluateQualityPassed(session: session, plan: plan)
 				if allRequired && qualityPassed { return .controlled_success }
 				if hasFacts {
@@ -858,9 +1012,24 @@ actor AgenticRuntime {
 		targetAnchor: TargetWindowAnchor?,
 		currentFrontmostBundle: String?
 	) -> Set<AgenticNextAction> {
+		if AgenticPivot.useDirectAgentRuntime {
+			return [
+				.observe_screen,
+				.click_element,
+				.scroll,
+				.type_text,
+				.press_key,
+				.find_on_page, // alias for open_find
+				.wait,
+				.answer,
+				.stop_missing_context,
+				.stop_success
+			]
+		}
+
 		// Always-available actions
 		var menu: Set<AgenticNextAction> = [
-			.observe_once, .extract_facts, .summarize_observation,
+			.observe_once, .extract_facts, .extract_relevant_text, .summarize_observation,
 			.present_answer, .stop_missing_context, .stop_success
 		]
 
@@ -1060,8 +1229,11 @@ actor AgenticRuntime {
 
 		switch action {
 
-		case .observe_once:
-			print("[AgenticAct] action=observe_once step=\(step) post_control=\(s.lastActionWasControl)")
+		case .observe_once, .observe_screen:
+			if action == .observe_screen {
+				print("[DirectAgentObserve] started step=\(step)")
+			}
+			print("[AgenticAct] action=\(action.rawValue) step=\(step) post_control=\(s.lastActionWasControl)")
 			if s.lastActionWasControl {
 				print("[AgenticLoop] stale_snapshot_reuse_blocked=yes reason=fresh_capture_not_available_post_control snapshot_unchanged=yes")
 			}
@@ -1078,38 +1250,110 @@ actor AgenticRuntime {
 			s.observations.append(obs)
 			s.lastActionWasControl = false  // reset after the forced post-control observe
 
-			// Phase 4G: build/update graph and targets after observe_once
-			updateScreenGrounding(
-				session: &s,
-				snapshot: snapshot,
-				targetAnchor: targetAnchor,
-				goal: plan.goal,
-				workflow: plan.workflow,
-				stepLabel: "\(step)",
-				reason: "observe_once"
-			)
+			// Phase 4G: rebuild graph after observe_once
+			if !AgenticPivot.useDirectAgentRuntime {
+				updateScreenGrounding(
+					session: &s,
+					snapshot: snapshot,
+					targetAnchor: targetAnchor,
+					goal: plan.goal,
+					workflow: plan.workflow,
+					stepLabel: "\(step)",
+					reason: "observe_once"
+				)
+			}
 
 			// Phase 4O: re-assess evidence requirements against the freshly-built graph.
-			let comparisonRequired = s.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
-			let comparisonTitles = comparisonRequired
-				? await BrowsingComparisonTracker.shared.distinctRecentTitles(at: Date())
-				: []
-			Self.assessEvidence(
-				session: &s,
-				goal: plan.goal,
-				workflow: plan.workflow,
-				snapshot: snapshot,
-				comparisonTitles: comparisonTitles,
-				source: "post_observe",
-				step: step
-			)
+			if !AgenticPivot.useDirectAgentRuntime {
+				let comparisonRequired = s.evidenceRequirements.contains(where: { $0.kind == .comparisonCandidate && $0.required })
+				let comparisonTitles = comparisonRequired
+					? await BrowsingComparisonTracker.shared.distinctRecentTitles(at: Date())
+					: []
+				Self.assessEvidence(
+					session: &s,
+					goal: plan.goal,
+					workflow: plan.workflow,
+					snapshot: snapshot,
+					comparisonTitles: comparisonTitles,
+					source: "post_observe",
+					step: step
+				)
+			}
 
 			let r = "observed app=\(obs.activeApp) window=\(obs.windowTitle.prefix(40)) quality=\(obs.quality.rawValue) chars=\(obs.contentLength) has_usable=\(obs.hasUsableContent)"
 			print("[AgenticAct] result=\(r)")
+			if action == .observe_screen {
+				print("[DirectAgentAct] action=observe_screen status=success")
+			}
 			return (r, s)
+
+		case .click_element:
+			print("[DirectAgentAct] action=click_element step=\(step)")
+			// MVP: Stub click element. Future: ground target and click.
+			let r = "click_element executed (stub)"
+			s.forceObserveNext = true
+			s.lastActionWasControl = true
+			return (r, s)
+
+		case .scroll:
+			print("[DirectAgentAct] action=scroll step=\(step)")
+			let scrollResult = await executeScrollSmall(debugVisible: debugVisible, dryRun: dryRun)
+			s.scrollsUsed += 1
+			s.forceObserveNext = true
+			s.lastActionWasControl = true
+			let r = "scroll \(scrollResult)"
+			return (r, s)
+
+		case .type_text:
+			print("[DirectAgentAct] action=type_text step=\(step)")
+			// MVP: Stub type text.
+			let r = "type_text executed (stub)"
+			s.forceObserveNext = true
+			s.lastActionWasControl = true
+			return (r, s)
+
+		case .press_key:
+			print("[DirectAgentAct] action=press_key step=\(step)")
+			// MVP: Stub press key.
+			let r = "press_key executed (stub)"
+			s.forceObserveNext = true
+			s.lastActionWasControl = true
+			return (r, s)
+
+		case .wait:
+			print("[DirectAgentAct] action=wait step=\(step)")
+			try? await Task.sleep(nanoseconds: 500 * 1_000_000)
+			let r = "wait 500ms completed"
+			s.forceObserveNext = true
+			return (r, s)
+
+		case .answer:
+			print("[DirectAgentAct] action=answer step=\(step)")
+			let answer = buildAnswer(session: s, observations: s.observations, facts: s.extractedFacts, goal: plan.goal)
+			s.finalAnswer = answer
+			let r = "answer_chars=\(answer.count)"
+			return (r, s)
+
+		case .extract_relevant_text:
+			print("[AgenticAct] action=extract_relevant_text step=\(step) from=\(s.observations.count) observation(s)")
+			if let ocr = s.observations.last?.ocrExcerpt, !ocr.isEmpty {
+				let lines = ocr.components(separatedBy: "\n")
+					.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+					.filter { !$0.isEmpty }
+					.prefix(8)
+				s.extractedFacts.append(contentsOf: lines)
+			}
+			return ("extracted relevant text lines from active context", s)
 
 		case .extract_facts:
 			print("[AgenticAct] action=extract_facts step=\(step) from=\(s.observations.count) observation(s)")
+			if AgenticPivot.useDirectAgentRuntime {
+				let facts = extractFacts(from: s.observations, goal: plan.goal)
+				s.extractedFacts.append(contentsOf: facts)
+				let r = "extracted direct_facts=\(facts.count) total=\(s.extractedFacts.count)"
+				print("[AgenticAct] result=\(r)")
+				return (r, s)
+			}
 			let semantic = GroundedSemanticExtractor()
 			let builder = StructuredFactBuilder()
 
@@ -1232,6 +1476,19 @@ actor AgenticRuntime {
 
 	// MARK: - Control Executors
 
+	/// Extract a "x,y" coordinate key from a click result string of the form
+	/// "click_failed_no_delta x=82 y=131" or "click_performed x=82 y=131 ...".
+	private func extractClickCoordinate(from result: String) -> String? {
+		var xVal: String?
+		var yVal: String?
+		for token in result.components(separatedBy: " ") {
+			if token.hasPrefix("x=") { xVal = String(token.dropFirst(2)) }
+			if token.hasPrefix("y=") { yVal = String(token.dropFirst(2)) }
+		}
+		if let x = xVal, let y = yVal { return "\(x),\(y)" }
+		return nil
+	}
+
 	/// Scroll the currently focused window down by a small bounded amount.
 	///
 	/// Phase 4D implementation: posts a CGEvent scroll wheel event.
@@ -1333,6 +1590,332 @@ actor AgenticRuntime {
 		return "find_bar_opened query=\(safeQuery)"
 	}
 
+	/// Ground a natural-language click target against live AX elements and execute a mouse click.
+	///
+	/// Pipeline:
+	///   1. Safety check — block if target implies a financial, destructive, or auth action
+	///   2. Enumerate AX clickable elements from the frontmost window (bounded: 150 els, 0.15s)
+	///   3. Score each element vs the target description (exact substring → word F1 ≥ 0.30)
+	///   4. Post CGEvent mouseDown + mouseUp at matched element center (Quartz screen coords)
+	///
+	/// Logs: `[DirectAgentClick]`
+	private func executeClickElement(
+		target:      String?,
+		goal:        String,
+		targetAnchor: TargetWindowAnchor? = nil,
+		bannedCoordinates: Set<String> = [],
+		debugVisible: Bool = false,
+		dryRun:      Bool
+	) async -> String {
+		// Determine grounding instruction: use target if present, else verbatim goal
+		let instruction = (target?.trimmingCharacters(in: .whitespaces).isEmpty == false) ? target! : goal
+
+		guard !instruction.trimmingCharacters(in: .whitespaces).isEmpty else {
+			print("[DirectAgentClick] hard_blocked reason=missing_target — instruction is empty")
+			return "click_skipped reason=missing_target"
+		}
+
+		guard DirectAgentGrounder.isSafeTarget(instruction) else {
+			return "click_blocked reason=unsafe_target"
+		}
+
+		// 1. Capture pre-click screenshot & resolve target bounds
+		let (rect, _, _, _) = ScreenCaptureSource.findActiveWindowAndScreen(
+			targetAnchor: targetAnchor,
+			assistantBundleIdentifier: Bundle.main.bundleIdentifier
+		)
+
+		var preClickHash: UInt64? = nil
+		var groundedCenter: CGPoint? = nil
+		var proposedRegionStr: String = "unknown"
+		var tryVisualGrounder = false
+
+		// IF clickTarget == nil OR AX grounding confidence is low, THEN invoke VisualGrounder
+		if target == nil || target!.trimmingCharacters(in: .whitespaces).isEmpty {
+			print("[DirectAgentClick] target=nil — forcing visual grounding with instruction=\"\(instruction)\"")
+			tryVisualGrounder = true
+		} else {
+			let elements = DirectAgentGrounder.enumerateClickableElements()
+			if let axGrounded = DirectAgentGrounder.ground(target: target!, elements: elements) {
+				let qualityOk = DirectAgentGrounder.isQualityAXTarget(axGrounded.element)
+				if axGrounded.confidence >= 0.85 && qualityOk {
+					groundedCenter = axGrounded.element.center
+					print("[DirectAgentClick] high_confidence_ax_match x=\(Int(groundedCenter!.x)) y=\(Int(groundedCenter!.y)) role=\(axGrounded.element.role) label=\"\(axGrounded.element.label.prefix(40))\" confidence=\(String(format: "%.2f", axGrounded.confidence))")
+				} else if !qualityOk {
+					// P2: Garbage label at any confidence — try VLM instead
+					tryVisualGrounder = true
+				} else {
+					print("[DirectAgentClick] low_confidence_ax_match confidence=\(String(format: "%.2f", axGrounded.confidence)) — attempting visual grounding fallback")
+					tryVisualGrounder = true
+				}
+			} else {
+				print("[DirectAgentClick] no_ax_match — attempting visual grounding fallback")
+				tryVisualGrounder = true
+			}
+		}
+
+		var vlmTimedOut = false
+
+		if let preFrame = ScreenCaptureSource.captureSingleFrame(targetAnchor: targetAnchor) {
+			preClickHash = PerceptualHasher.hash(preFrame.image)
+
+			if tryVisualGrounder {
+				let (vlmOutcome, _) = await VisualGrounder.ground(
+					image: preFrame.image,
+					instruction: instruction,
+					targetRect: rect
+				)
+				switch vlmOutcome {
+				case .grounded(let region):
+					groundedCenter = region.center
+					proposedRegionStr = "\(Int(region.x1)),\(Int(region.y1)),\(Int(region.x2)),\(Int(region.y2))"
+				case .timedOut:
+					// P6: hard timeout — do NOT fall back to AX; return immediately
+					vlmTimedOut = true
+				case .unavailable:
+					// Model offline / unparseable — fall through to AX quality+goal check below
+					break
+				}
+			}
+		}
+
+		// P6: VLM timeout → immediate failure, never AX fallback
+		if vlmTimedOut {
+			print("[VisualGrounding] failed reason=timeout — no_ax_fallback per safety policy")
+			print("[DirectAgentLoop] action=click_element result=click_failed_grounding_timeout")
+			return "click_failed_grounding_timeout"
+		}
+
+		// 2. Auxiliary Fallback: AX tree grounding in case VLM is offline or fails
+		let center: CGPoint
+		if let resolvedCenter = groundedCenter {
+			center = resolvedCenter
+		} else {
+			// P6: VLM timed out or was unavailable. Only accept an AX fallback when the
+			// matched element passes the quality gate (P2) AND is semantically aligned
+			// with the goal (P3). Silently failing AX matches return grounding_unavailable.
+			print("[VisualGrounding] warning=vlm_grounding_failed — attempting auxiliary AX fallback")
+			let elements = DirectAgentGrounder.enumerateClickableElements()
+			if let grounded = DirectAgentGrounder.ground(target: instruction, elements: elements) {
+				// P2: Reject garbage labels (single chars, chrome noise, top-chrome region)
+				guard DirectAgentGrounder.isQualityAXTarget(grounded.element) else {
+					// isQualityAXTarget already logged the rejection
+					print("[DirectAgentClick] matched=no reason=ax_fallback_rejected_garbage target=\"\(instruction.prefix(60))\"")
+					print("[DirectAgentLoop] action=click_element result=click_failed_grounding_unavailable")
+					return "click_failed_grounding_unavailable reason=garbage_ax_fallback"
+				}
+				// P3: Reject AX fallback when the label has no goal overlap
+				guard DirectAgentGrounder.isGoalAligned(grounded.element, goal: goal) else {
+					print("[DirectAgentClickSafety] rejected_ax_target reason=no_goal_overlap label=\"\(grounded.element.label.prefix(40))\"")
+					print("[DirectAgentClick] matched=no reason=ax_fallback_no_goal_overlap target=\"\(instruction.prefix(60))\"")
+					print("[DirectAgentLoop] action=click_element result=click_failed_grounding_unavailable")
+					return "click_failed_grounding_unavailable reason=no_goal_overlap"
+				}
+				center = grounded.element.center
+				print("[DirectAgentClick] auxiliary_ax_fallback x=\(Int(center.x)) y=\(Int(center.y)) label=\"\(grounded.element.label.prefix(40))\"")
+			} else {
+				print("[DirectAgentClick] matched=no reason=no_grounded_element target=\"\(instruction.prefix(60))\"")
+				print("[DirectAgentLoop] action=click_element result=click_failed_no_match")
+				return "click_no_match reason=no_grounded_element"
+			}
+		}
+
+		// P4: Block if this coordinate was banned due to repeated no_visible_change failures
+		let coordKey = "\(Int(center.x)),\(Int(center.y))"
+		if bannedCoordinates.contains(coordKey) {
+			print("[DirectAgentActionGuard] blocked repeated_click coordinate=\(coordKey)")
+			print("[DirectAgentLoop] action=click_element result=click_blocked_banned_coordinate")
+			return "click_blocked reason=banned_coordinate coordinate=\(coordKey)"
+		}
+
+		let settleNs: UInt64 = debugVisible ? 500_000_000 : 80_000_000
+
+		if dryRun {
+			print("[DirectAgentClick] dry_run=yes would_click x=\(Int(center.x)) y=\(Int(center.y))")
+			return "click_dry_run x=\(Int(center.x)) y=\(Int(center.y))"
+		}
+
+		// Warp cursor to element center then post discrete mouse events
+		CGWarpMouseCursorPosition(center)
+
+		let source = CGEventSource(stateID: .hidSystemState)
+		guard let mouseDown = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown,
+		                              mouseCursorPosition: center, mouseButton: .left),
+		      let mouseUp   = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp,
+		                              mouseCursorPosition: center, mouseButton: .left)
+		else {
+			print("[DirectAgentClick] failed reason=event_creation_failed target=\"\(instruction.prefix(40))\"")
+			return "click_failed reason=event_creation"
+		}
+
+		mouseDown.post(tap: .cghidEventTap)
+		try? await Task.sleep(nanoseconds: settleNs)
+		mouseUp.post(tap: .cghidEventTap)
+
+		// Wait briefly for UI to settle post-click
+		try? await Task.sleep(nanoseconds: 300_000_000)
+
+		// 3. Post-click Screenshot & Verification
+		var visualVerification = "no_visible_change"
+		if let postFrame = ScreenCaptureSource.captureSingleFrame(targetAnchor: targetAnchor) {
+			let postClickHash = PerceptualHasher.hash(postFrame.image)
+			if let pre = preClickHash, let post = postClickHash {
+				let distance = PerceptualHasher.hammingDistance(pre, post)
+				if distance > 8 {
+					visualVerification = "success"
+				}
+				print("[VisualGroundingVerification] pre=\(String(format: "%016llx", pre)) post=\(String(format: "%016llx", post)) distance=\(distance) verification=\(visualVerification)")
+			}
+		}
+
+		print("[VisualGrounding] verification=\(visualVerification)")
+		// P1: no_visible_change is a failure — never record as success
+		if visualVerification == "no_visible_change" {
+			print("[DirectAgentClick] failed reason=no_visible_change")
+			print("[DirectAgentLoop] action=click_element result=click_failed_no_delta")
+			return "click_failed_no_delta x=\(Int(center.x)) y=\(Int(center.y))"
+		}
+		print("[DirectAgentLoop] action=click_element result=success")
+
+		return "click_performed x=\(Int(center.x)) y=\(Int(center.y)) visual_change=\(visualVerification)"
+	}
+
+	/// Type text character by character using Unicode CGEvent key events.
+	///
+	/// Mirrors the typing sub-step of `executeFindOnPage` without the Cmd+F preamble.
+	/// Text is capped at 200 characters; each scalar is sent via `keyboardSetUnicodeString`.
+	///
+	/// Logs: `[DirectAgentType]`
+	private func executeTypeText(
+		text:        String?,
+		debugVisible: Bool = false,
+		dryRun:      Bool
+	) async -> String {
+		guard let text, !text.isEmpty else {
+			print("[DirectAgentType] skipped reason=missing_text")
+			return "type_skipped reason=missing_text"
+		}
+
+		guard AXIsProcessTrusted() else {
+			print("[DirectAgentType] skipped reason=ax_not_trusted")
+			return "type_skipped reason=ax_not_trusted"
+		}
+
+		let charDelayNs: UInt64 = debugVisible ? 100_000_000 : 30_000_000
+		let safeText = String(text.prefix(200))
+
+		if dryRun {
+			print("[DirectAgentType] dry_run=yes would_type chars=\(safeText.count) preview=\"\(safeText.prefix(40))\"")
+			return "type_dry_run chars=\(safeText.count)"
+		}
+
+		let source = CGEventSource(stateID: .hidSystemState)
+		var typedCount = 0
+
+		for char in safeText {
+			guard let scalar = char.unicodeScalars.first, scalar.value <= 0xFFFF else { continue }
+			var uniChar = UniChar(scalar.value)
+			guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+			      let keyUp   = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+			else { continue }
+			keyDown.keyboardSetUnicodeString(stringLength: 1, unicodeString: &uniChar)
+			keyUp.keyboardSetUnicodeString(stringLength: 1,   unicodeString: &uniChar)
+			keyDown.post(tap: .cghidEventTap)
+			keyUp.post(tap: .cghidEventTap)
+			typedCount += 1
+			try? await Task.sleep(nanoseconds: charDelayNs)
+		}
+
+		print("[DirectAgentType] performed chars=\(typedCount) preview=\"\(safeText.prefix(40))\"")
+		return "type_performed chars=\(typedCount)"
+	}
+
+	/// Press a named key by mapping the key name to a macOS virtual key code.
+	///
+	/// Supported names (case-insensitive):
+	///   return / enter, escape / esc, tab, space, delete / backspace,
+	///   left / right / up / down (arrow keys),
+	///   cmd+a (select all), cmd+c (copy), cmd+v (paste),
+	///   cmd+x (cut), cmd+z (undo), cmd+shift+z / redo
+	///
+	/// Unknown key names are logged and skipped rather than failing.
+	///
+	/// Logs: `[DirectAgentKey]`
+	private func executePressKey(
+		key:         String?,
+		debugVisible: Bool = false,
+		dryRun:      Bool
+	) async -> String {
+		guard let key, !key.trimmingCharacters(in: .whitespaces).isEmpty else {
+			print("[DirectAgentKey] skipped reason=missing_key")
+			return "key_skipped reason=missing_key"
+		}
+
+		guard AXIsProcessTrusted() else {
+			print("[DirectAgentKey] skipped reason=ax_not_trusted")
+			return "key_skipped reason=ax_not_trusted"
+		}
+
+		struct KeyChord { let virtualKey: CGKeyCode; let flags: CGEventFlags }
+
+		let k = key.lowercased().trimmingCharacters(in: .whitespaces)
+		let chord: KeyChord?
+		switch k {
+		// Basic keys
+		case "return", "enter":                     chord = KeyChord(virtualKey: 0x24, flags: [])
+		case "escape", "esc":                       chord = KeyChord(virtualKey: 0x35, flags: [])
+		case "tab":                                  chord = KeyChord(virtualKey: 0x30, flags: [])
+		case "space":                                chord = KeyChord(virtualKey: 0x31, flags: [])
+		case "delete", "backspace":                  chord = KeyChord(virtualKey: 0x33, flags: [])
+		// Arrow keys
+		case "left", "left_arrow", "arrowleft":     chord = KeyChord(virtualKey: 0x7B, flags: [])
+		case "right", "right_arrow", "arrowright":  chord = KeyChord(virtualKey: 0x7C, flags: [])
+		case "down", "down_arrow", "arrowdown":     chord = KeyChord(virtualKey: 0x7D, flags: [])
+		case "up", "up_arrow", "arrowup":           chord = KeyChord(virtualKey: 0x7E, flags: [])
+		// Command chords
+		case "cmd+a", "command+a", "select_all":    chord = KeyChord(virtualKey: 0x00, flags: .maskCommand)
+		case "cmd+c", "command+c", "copy":           chord = KeyChord(virtualKey: 0x08, flags: .maskCommand)
+		case "cmd+v", "command+v", "paste":          chord = KeyChord(virtualKey: 0x09, flags: .maskCommand)
+		case "cmd+x", "command+x", "cut":            chord = KeyChord(virtualKey: 0x07, flags: .maskCommand)
+		case "cmd+z", "command+z", "undo":           chord = KeyChord(virtualKey: 0x06, flags: .maskCommand)
+		case "cmd+shift+z", "redo":                  chord = KeyChord(virtualKey: 0x06, flags: [.maskCommand, .maskShift])
+		default:
+			print("[DirectAgentKey] skipped reason=unknown_key key=\"\(key)\"")
+			return "key_skipped reason=unknown_key key=\"\(key)\""
+		}
+
+		guard let c = chord else {
+			return "key_skipped reason=unknown_key key=\"\(key)\""
+		}
+
+		let settleNs: UInt64 = debugVisible ? 300_000_000 : 50_000_000
+
+		if dryRun {
+			print("[DirectAgentKey] dry_run=yes would_press key=\"\(key)\" vk=\(String(format: "0x%02X", c.virtualKey))")
+			return "key_dry_run key=\"\(key)\""
+		}
+
+		let source = CGEventSource(stateID: .hidSystemState)
+		guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: c.virtualKey, keyDown: true),
+		      let keyUp   = CGEvent(keyboardEventSource: source, virtualKey: c.virtualKey, keyDown: false)
+		else {
+			print("[DirectAgentKey] failed reason=event_creation_failed key=\"\(key)\"")
+			return "key_failed reason=event_creation"
+		}
+
+		if !c.flags.isEmpty {
+			keyDown.flags = c.flags
+			keyUp.flags   = c.flags
+		}
+
+		keyDown.post(tap: .cghidEventTap)
+		try? await Task.sleep(nanoseconds: settleNs)
+		keyUp.post(tap: .cghidEventTap)
+
+		print("[DirectAgentKey] performed key=\"\(key)\" vk=\(String(format: "0x%02X", c.virtualKey))")
+		return "key_performed key=\"\(key)\""
+	}
+
 	// MARK: - Content Extractors
 
 	private func extractFacts(from observations: [AgenticObservation], goal: String) -> [String] {
@@ -1359,6 +1942,10 @@ actor AgenticRuntime {
 	}
 
 	private func buildAnswer(session: AgenticSessionState, observations: [AgenticObservation], facts: [String], goal: String) -> String {
+		if AgenticPivot.useDirectAgentRuntime {
+			return buildPremiumAnswer(session: session)
+		}
+
 		let hasProductEvidence = !session.evidenceObservations.filter {
 			$0.kind == .productTitle || $0.kind == .price || $0.kind == .specs || $0.kind == .rating || $0.kind == .reviewCount
 		}.isEmpty
@@ -1378,6 +1965,54 @@ actor AgenticRuntime {
 	}
 
 		nonisolated func buildPremiumAnswer(session: AgenticSessionState) -> String {
+		if AgenticPivot.useDirectAgentRuntime {
+			print("[DirectAgentAnswer] mode=freeform")
+			var lines: [String] = []
+			lines.append("Goal: \(session.goal)")
+			lines.append("")
+
+			if let lastObs = session.observations.last {
+				lines.append("Active Context: \(lastObs.activeApp) — \(lastObs.windowTitle)")
+			}
+
+			// Surface VLM semantic caption first (visual grounding before OCR text).
+			if let ax = session.observations.last?.contextSummary {
+				let (vlmCaption, _) = AgenticDecider.extractVLMCaption(from: ax)
+				if !vlmCaption.isEmpty {
+					lines.append("")
+					lines.append("Visual Description:")
+					lines.append("  \(vlmCaption)")
+				}
+			}
+
+			// OCR-grounded page content.
+			if let ocr = session.observations.last?.ocrExcerpt, !ocr.isEmpty {
+				let relevantLines = ocr.components(separatedBy: "\n")
+					.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+					.filter { !$0.isEmpty }
+					.prefix(15)
+				if !relevantLines.isEmpty {
+					lines.append("")
+					lines.append("Page Content:")
+					for line in relevantLines {
+						lines.append("  \(line)")
+					}
+				}
+			}
+
+			if !session.extractedFacts.isEmpty {
+				lines.append("")
+				lines.append("Extracted Details:")
+				for fact in session.extractedFacts.prefix(10) {
+					lines.append("  \(fact)")
+				}
+			}
+
+			let result = lines.joined(separator: "\n")
+			print("[DirectAgentAnswer] summary_chars=\(result.count)")
+			return result
+		}
+
 		let ev = session.evidenceState
 		
 		let isCompareGoal = session.goal.lowercased().contains("compare") || session.goal.lowercased().contains(" vs ") || session.goal.lowercased().contains(" versus ")
@@ -1523,25 +2158,6 @@ actor AgenticRuntime {
 			return lines.joined(separator: "\n")
 		}
 		
-		if isCompareGoal && isPartial {
-			lines.append("I found one likely product and several reliable specs, but I do not yet have enough clean evidence to compare it with another charger.")
-			lines.append("")
-		}
-		
-		lines.append("Found:")
-		
-		// Clean and validate product name preferring clean product title from window_title/OCR/AX over semantic chrome entities.
-		var productTitle = "Unknown Product"
-		var sourceLabel = "default"
-
-		struct TitleCandidate {
-			let text: String
-			let source: String
-			let isClean: Bool
-		}
-
-		var candidates: [TitleCandidate] = []
-
 		let cleanTitle: @Sendable (String) -> String = { text in
 			var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
 			let noiseSuffixes = [
@@ -1557,81 +2173,170 @@ actor AgenticRuntime {
 			return t.trimmingCharacters(in: .whitespacesAndNewlines)
 		}
 
-		// Candidate 1: Window Title
-		if let windowTitle = session.observations.last?.windowTitle, !windowTitle.isEmpty {
-			let cleaned = cleanTitle(windowTitle)
-			let isValid = !EvidenceQualityGate.detectTruncation(cleaned) && !EvidenceQualityGate.detectChromeLeak(cleaned) && !(cleaned.split(separator: " ").count == 1 && cleaned.count <= 3)
-			candidates.append(TitleCandidate(text: cleaned, source: "window_title", isClean: isValid))
-		}
-
-		// Candidate 2: Grounded Targets (OCR/AX)
-		for target in session.groundedTargets {
-			let t = target.title.trimmingCharacters(in: .whitespacesAndNewlines)
-			let isValid = !EvidenceQualityGate.detectTruncation(t) && !EvidenceQualityGate.detectChromeLeak(t) && !(t.split(separator: " ").count == 1 && t.count <= 3)
-			candidates.append(TitleCandidate(text: t, source: "grounded_target", isClean: isValid))
-		}
-
-		// Candidate 3: Evidence Observations
-		for obs in evidenceObservations.filter({ $0.kind == .productTitle }) {
-			let t = obs.text.trimmingCharacters(in: .whitespacesAndNewlines)
-			let isValid = !EvidenceQualityGate.detectTruncation(t) && !EvidenceQualityGate.detectChromeLeak(t) && !(t.split(separator: " ").count == 1 && t.count <= 3)
-			candidates.append(TitleCandidate(text: t, source: "evidence_observation", isClean: isValid))
-		}
-
-		// Candidate 4: Structured Facts
-		for fact in session.structuredFacts.filter({ $0.category == "product" }) {
-			let pt = fact.title.trimmingCharacters(in: .whitespacesAndNewlines)
-			let isValid = !EvidenceQualityGate.detectTruncation(pt) && !EvidenceQualityGate.detectChromeLeak(pt) && !(pt.split(separator: " ").count == 1 && pt.count <= 3)
-			candidates.append(TitleCandidate(text: pt, source: "structured_fact", isClean: isValid))
-		}
-
-		// Candidate 5: Semantic Entities
-		for entity in semanticEntities.filter({ $0.type == .productTitle }) {
-			let t = entity.text.trimmingCharacters(in: .whitespacesAndNewlines)
-			let isValid = !EvidenceQualityGate.detectTruncation(t) && !EvidenceQualityGate.detectChromeLeak(t) && !(t.split(separator: " ").count == 1 && t.count <= 3)
-			candidates.append(TitleCandidate(text: t, source: "semantic_entity", isClean: isValid))
-		}
-
-		// Select the best candidate prioritizing clean window_title/OCR/AX (grounded_target) over semantic entities.
-		let preferredSources = ["window_title", "grounded_target", "evidence_observation"]
-		if let bestCleanGrounded = candidates.first(where: { $0.isClean && preferredSources.contains($0.source) }) {
-			productTitle = bestCleanGrounded.text
-			sourceLabel = bestCleanGrounded.source
-		} else if let anyClean = candidates.first(where: { $0.isClean }) {
-			productTitle = anyClean.text
-			sourceLabel = anyClean.source
-		} else if let anyCandidate = candidates.first(where: { !$0.text.isEmpty && !EvidenceQualityGate.detectChromeLeak($0.text) }) {
-			productTitle = anyCandidate.text
-			sourceLabel = "\(anyCandidate.source)_fallback"
-		}
-
-		// Ensure we suppress proposal-title echoes like "Processing Inspect..." or anything with chrome leakage
-		if EvidenceQualityGate.detectChromeLeak(productTitle) || productTitle.lowercased().contains("processing") {
-			productTitle = "Unknown Product"
-			sourceLabel = "suppressed_echo"
-		}
-
-		let titleSynthesis = ProductTitleSynthesizer.synthesize(raw: productTitle)
-		var synthesized = false
-		if let cleaned = titleSynthesis.cleanedTitle, !cleaned.isEmpty {
-			if cleaned != productTitle {
-				productTitle = cleaned
-				synthesized = true
+		let isProductGoal = session.evidenceRequirements.contains(where: { req in
+			switch req.kind {
+			case .productTitle, .price, .specs, .rating, .reviewCount, .reviewText, .comparisonCandidate:
+				return true
+			default:
+				return false
 			}
-		} else {
-			// If the chosen title is unsalvageable (truncation/chrome), keep it out of
-			// the rendered answer rather than emitting a broken fragment.
-			productTitle = "Unknown Product"
-			sourceLabel = "rejected_truncation"
+		})
+
+		if !isProductGoal {
+			if isPartial {
+				lines.append("I did not yet have enough clean evidence to fully complete this goal.")
+				lines.append("")
+			}
+			lines.append("Found:")
+
+			var overviewAdded = false
+			let pageSummaryText = session.evidenceObservations.first(where: { $0.kind == .pageSummary })?.text
+				?? session.structuredFacts.first(where: { $0.category == "summary" })?.title
+			if let summary = pageSummaryText, !summary.isEmpty {
+				lines.append("- Overview: \(summary)")
+				overviewAdded = true
+			} else if let obs = session.observations.last {
+				lines.append("- Overview: Grounded in \(obs.activeApp) — \(cleanTitle(obs.windowTitle))")
+				overviewAdded = true
+			}
+
+			let keyPoints = session.evidenceObservations.filter { $0.kind == .documentKeyPoint || $0.kind == .keyPostContent }.map { $0.text }
+				+ session.structuredFacts.filter { $0.category == "key_points" || $0.category == "key_post" }.map { $0.title }
+			let uniquePoints = Array(Set(keyPoints)).prefix(6)
+			if !uniquePoints.isEmpty {
+				lines.append("- Key Points:")
+				for pt in uniquePoints {
+					lines.append("  • \(pt)")
+				}
+			}
+
+			let codeSnippets = session.evidenceObservations.filter { $0.kind == .codeSnippet }.map { $0.text }
+			if !codeSnippets.isEmpty {
+				lines.append("- Code Snippets:")
+				for snip in Array(Set(codeSnippets)).prefix(2) {
+					lines.append("  • \(snip)")
+				}
+			}
+
+			let errorMsgs = session.evidenceObservations.filter { $0.kind == .errorMessage }.map { $0.text }
+			if !errorMsgs.isEmpty {
+				lines.append("- Errors:")
+				for err in Array(Set(errorMsgs)).prefix(2) {
+					lines.append("  • \(err)")
+				}
+			}
+
+			let urls = session.evidenceObservations.filter { $0.kind == .pageUrl }.map { $0.text }
+			if !urls.isEmpty {
+				lines.append("- Source URL: \(urls.first!)")
+			}
+
+			if isPartial && !uniqueMissing.isEmpty {
+				lines.append("")
+				lines.append("Missing:")
+				for kind in uniqueMissing {
+					lines.append("- \(kind) not found")
+				}
+			}
+
+			if !session.failedControlActions.isEmpty {
+				lines.append("")
+				lines.append("Note: Some navigation attempts (scroll/find) did not reveal additional evidence before runtime limits were reached.")
+			}
+
+			return lines.joined(separator: "\n")
 		}
 
-		print("[AnswerSynthesis] product_title_source=\(sourceLabel) synthesized=\(synthesized ? "yes" : "no")")
-		print("[AnswerSynthesis] product_title=\"\(productTitle)\"")
-		lines.append("- Product: \(productTitle)")
-		
-		let specs = session.semanticEntities.filter { $0.type == .specification || $0.type == .feature }
-		if !specs.isEmpty {
-			let specStrings = Array(Set(specs.map { $0.normalizedValue ?? $0.text })).filter { !EvidenceQualityGate.detectMashedWord($0) }.prefix(6)
+		if isCompareGoal && isPartial {
+			lines.append("I found one likely product and several reliable specs, but I do not yet have enough clean evidence to compare it with another charger.")
+			lines.append("")
+		}
+
+		lines.append("Found:")
+
+		if session.evidenceRequirements.contains(where: { $0.kind == .productTitle }) {
+			var productTitle = "Unknown Product"
+			var sourceLabel = "default"
+
+			struct TitleCandidate {
+				let text: String
+				let source: String
+				let isClean: Bool
+				let wasSynthesized: Bool
+			}
+
+			var candidates: [TitleCandidate] = []
+
+			let addCandidate: (String, String) -> Void = { raw, source in
+				let cleaned = cleanTitle(raw)
+				guard !cleaned.isEmpty else { return }
+
+				let synthesis = ProductTitleSynthesizer.synthesize(raw: cleaned)
+				guard let synthesizedText = synthesis.cleanedTitle, !synthesizedText.isEmpty else { return }
+				let isValid = !EvidenceQualityGate.detectTruncation(synthesizedText)
+					&& !EvidenceQualityGate.detectChromeLeak(synthesizedText)
+					&& !(synthesizedText.split(separator: " ").count == 1 && synthesizedText.count <= 3)
+
+				candidates.append(
+					TitleCandidate(
+						text: synthesizedText,
+						source: source,
+						isClean: isValid,
+						wasSynthesized: synthesizedText != cleaned
+					)
+				)
+			}
+
+			if let windowTitle = session.observations.last?.windowTitle, !windowTitle.isEmpty {
+				addCandidate(windowTitle, "window_title")
+			}
+
+			for target in session.groundedTargets {
+				addCandidate(target.title, "grounded_target")
+			}
+
+			for obs in evidenceObservations.filter({ $0.kind == .productTitle }) {
+				addCandidate(obs.text, "evidence_observation")
+			}
+
+			for fact in session.structuredFacts.filter({ $0.category == "product" }) {
+				addCandidate(fact.title, "structured_fact")
+			}
+
+			for entity in semanticEntities.filter({ $0.type == .productTitle }) {
+				addCandidate(entity.text, "semantic_entity")
+			}
+
+			let preferredSources = ["window_title", "grounded_target", "evidence_observation"]
+			var chosenSynthesized = false
+			if let bestCleanGrounded = candidates.first(where: { $0.isClean && preferredSources.contains($0.source) }) {
+				productTitle = bestCleanGrounded.text
+				sourceLabel = bestCleanGrounded.source
+				chosenSynthesized = bestCleanGrounded.wasSynthesized
+			} else if let anyClean = candidates.first(where: { $0.isClean }) {
+				productTitle = anyClean.text
+				sourceLabel = anyClean.source
+				chosenSynthesized = anyClean.wasSynthesized
+			} else if let anyCandidate = candidates.first(where: { !$0.text.isEmpty && !EvidenceQualityGate.detectChromeLeak($0.text) }) {
+				productTitle = anyCandidate.text
+				sourceLabel = "\(anyCandidate.source)_fallback"
+				chosenSynthesized = anyCandidate.wasSynthesized
+			}
+
+			if EvidenceQualityGate.detectChromeLeak(productTitle) || productTitle.lowercased().contains("processing") {
+				productTitle = "Unknown Product"
+				sourceLabel = "suppressed_echo"
+			}
+
+			print("[AnswerSynthesis] product_title_source=\(sourceLabel) synthesized=\(chosenSynthesized ? "yes" : "no")")
+			print("[AnswerSynthesis] product_title=\"\(productTitle)\"")
+			lines.append("- Product: \(productTitle)")
+		}
+
+		if session.evidenceRequirements.contains(where: { $0.kind == .specs }) {
+			let specs = session.semanticEntities.filter { $0.type == .specification || $0.type == .feature }
+			if !specs.isEmpty {
+				let specStrings = Array(Set(specs.map { $0.normalizedValue ?? $0.text })).filter { !EvidenceQualityGate.detectMashedWord($0) }.prefix(6)
 				if !specStrings.isEmpty {
 					lines.append("- Specs: \(specStrings.joined(separator: ", "))")
 				}
@@ -1646,27 +2351,35 @@ actor AgenticRuntime {
 					lines.append("- Specs: \(specStrings.joined(separator: ", "))")
 				}
 			}
-		
-		if let resolvedPrice = resolveAnchoredPrice(session: session) {
-			lines.append("- Price: \(resolvedPrice)")
 		}
-		
-		let ratings = session.semanticEntities.filter { $0.type == .rating }
-		let ratingObs = session.evidenceObservations.first(where: { $0.kind == .rating })?.text
-		if let firstRating = ratings.first?.text {
-			lines.append("- Rating: \(firstRating)")
-		} else if let rob = ratingObs {
-			lines.append("- Rating: \(rob)")
+
+		if session.evidenceRequirements.contains(where: { $0.kind == .price }) {
+			if let resolvedPrice = resolveAnchoredPrice(session: session) {
+				lines.append("- Price: \(resolvedPrice)")
+			}
 		}
-		let reviews = session.semanticEntities.filter { $0.type == .reviewCount }
-		let reviewsObs = session.evidenceObservations.first(where: { $0.kind == .reviewCount })?.text
-		if !reviews.isEmpty {
-			let reviewPreview = reviews.first?.text ?? ""
-			lines.append("- Reviews: \(reviewPreview)")
-		} else if let rob = reviewsObs {
-			lines.append("- Reviews: \(rob)")
+
+		if session.evidenceRequirements.contains(where: { $0.kind == .rating }) {
+			let ratings = session.semanticEntities.filter { $0.type == .rating }
+			let ratingObs = session.evidenceObservations.first(where: { $0.kind == .rating })?.text
+			if let firstRating = ratings.first?.text {
+				lines.append("- Rating: \(firstRating)")
+			} else if let rob = ratingObs {
+				lines.append("- Rating: \(rob)")
+			}
 		}
-		
+
+		if session.evidenceRequirements.contains(where: { $0.kind == .reviewCount }) || session.evidenceRequirements.contains(where: { $0.kind == .reviewText }) {
+			let reviews = session.semanticEntities.filter { $0.type == .reviewCount }
+			let reviewsObs = session.evidenceObservations.first(where: { $0.kind == .reviewCount })?.text
+			if !reviews.isEmpty {
+				let reviewPreview = reviews.first?.text ?? ""
+				lines.append("- Reviews: \(reviewPreview)")
+			} else if let rob = reviewsObs {
+				lines.append("- Reviews: \(rob)")
+			}
+		}
+
 		if isPartial && !uniqueMissing.isEmpty {
 			lines.append("")
 			lines.append("Missing:")
@@ -1685,17 +2398,14 @@ actor AgenticRuntime {
 				}
 			}
 		}
-		
-			// Phase 4R — if control attempts failed after extracting grounded facts,
-			// preserve facts and mention the control ineffectiveness without
-			// overriding the evidence payload.
-			if !session.failedControlActions.isEmpty {
-				lines.append("")
-				lines.append("Note: Some navigation attempts (scroll/find) did not reveal additional evidence before runtime limits were reached.")
-			}
 
-			return lines.joined(separator: "\n")
+		if !session.failedControlActions.isEmpty {
+			lines.append("")
+			lines.append("Note: Some navigation attempts (scroll/find) did not reveal additional evidence before runtime limits were reached.")
 		}
+
+		return lines.joined(separator: "\n")
+	}
 
 	nonisolated private func stateHasSpecsAndPrice(session: AgenticSessionState) -> Bool {
 		let hasPrice = session.semanticEntities.contains { $0.type == .price }
@@ -1790,6 +2500,14 @@ actor AgenticRuntime {
 	}
 
 	private func buildFallbackAnswer(session: AgenticSessionState) -> String {
+		// Phase 4U: ensure title/price cleanup applies even on fallback paths.
+		// If we have any structured evidence signals, prefer the premium renderer
+		// (which uses ProductTitleSynthesizer + AnchoredPriceResolver).
+		let hasAnyEvidenceSignal = session.semanticEntities.contains(where: { $0.type == .productTitle || $0.type == .price || $0.type == .specification || $0.type == .feature })
+			|| session.evidenceObservations.contains(where: { $0.kind == .productTitle || $0.kind == .price || $0.kind == .specs })
+		if hasAnyEvidenceSignal {
+			return buildPremiumAnswer(session: session)
+		}
 		if !session.structuredFacts.isEmpty {
 			return buildPremiumAnswer(session: session)
 		}
@@ -1902,6 +2620,564 @@ actor AgenticRuntime {
 		)
 	}
 
+	// MARK: - Direct Agent Loop (V0)
+
+	// Direct-agent action menu — Agentic Experimental v1.
+	// `click_element` is gated by `AgenticExperimentalMode.clickEnabled`
+	// (env opt-in + smoke test pass). Everything else is always available.
+	// App/document-specific controls (e.g. find_on_page) remain implemented but are not exposed.
+	nonisolated static func directAgentUniversalLegalActions() -> Set<AgenticNextAction> {
+		var menu: Set<AgenticNextAction> = [
+			.observe_screen,
+			.scroll,
+			.type_text,
+			.press_key,
+			.wait,
+			.answer,
+			.stop_missing_context,
+			.stop_success
+		]
+		if AgenticExperimentalMode.clickEnabled {
+			menu.insert(.click_element)
+		}
+		return menu
+	}
+
+	nonisolated static func applyingRepeatedActionGuard(
+		legalActions: Set<AgenticNextAction>,
+		blockedRepeatedAction: AgenticNextAction?
+	) -> Set<AgenticNextAction> {
+		guard let blockedRepeatedAction else { return legalActions }
+		var filtered = legalActions
+		filtered.remove(blockedRepeatedAction)
+		return filtered
+	}
+
+	/// Lean observe → think → act → answer loop.
+	/// No AgentPlanner, no evidence contracts, no screen-state grounding.
+	/// Uses executeDirectAgentAction() — NOT executeAction() — so the
+	/// [AgenticLoop] print that lives inside executeAction's observe branch
+	/// never fires when lastActionWasControl=true.
+	private func runDirectAgentLoop(
+		plan: AgenticTaskPlan,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		targetAnchor: TargetWindowAnchor?,
+		actionId: UUID?,
+		startedAt: Date,
+		dryRun: Bool
+	) async -> AgenticRuntimeResult {
+
+		var session = AgenticSessionState(
+			planId: plan.id,
+			goal: plan.goal,
+			workflow: plan.workflow,
+			stepIndex: 0,
+			maxSteps: plan.maxSteps,
+			llmCallsUsed: 0,
+			ocrCallsUsed: 0,
+			scrollsUsed: 0,
+			findsUsed: 0,
+			maxScrolls: AgenticControlPolicy.maxScrollsDefault,
+			maxFinds: AgenticControlPolicy.maxFindsDefault,
+			startedAt: startedAt,
+			observations: [],
+			extractedFacts: [],
+			finalAnswer: nil,
+			stopReason: nil,
+			actionsExecuted: [],
+			forceObserveNext: false,
+			lastActionWasControl: false,
+			blockedActions: [],
+			controlDecisionLog: [],
+			ineffectiveControlCount: 0,
+			failedControlActions: [],
+			worldStateTransitions: [],
+			discoveredEntities: [],
+			lastObservationSnapshotID: nil,
+			lastObservationTextHash: nil,
+			screenStateGraph: nil,
+			groundedTargets: [],
+			primaryGroundedTarget: nil,
+			semanticEntities: [],
+			structuredFacts: [],
+			semanticReadiness: nil,
+			evidenceRequirements: [],
+			evidenceState: nil,
+			evidenceObservations: [],
+			explorationMemory: ExplorationMemory()
+		)
+
+		// Task 1: Always declare the active mode and the click gate up-front.
+		AgenticExperimentalMode.logBanner()
+		print("[DirectAgentLoop] starting goal=\"\(plan.goal.prefix(80))\"")
+		if let anchor = targetAnchor {
+			print("[TargetAnchorTrace] stage=direct_agent_loop_start anchor_nil=no")
+			print("[TargetAnchorTrace] bundle=\(anchor.bundleIdentifier)")
+			print("[TargetAnchorTrace] title=\"\(anchor.windowTitle.prefix(80))\"")
+		} else {
+			print("[TargetAnchorTrace] stage=direct_agent_loop_start anchor_nil=yes")
+		}
+
+		// Restore target window identity when the assistant panel was frontmost at click time.
+		var currentSnapshot = snapshot
+		if let targetAnchor,
+		   let assistantBundle = Bundle.main.bundleIdentifier,
+		   currentSnapshot.bundleIdentifier == assistantBundle,
+		   targetAnchor.bundleIdentifier != assistantBundle {
+			currentSnapshot = currentSnapshot.applyingTargetAnchor(targetAnchor, workflowOverride: nil)
+			print("[TargetWindowAnchor] restored bundle=\(targetAnchor.bundleIdentifier) title=\"\(targetAnchor.windowTitle.prefix(60))\"")
+		}
+
+		// Coordinator hoisted to loop scope so perception refresh is available after every control action.
+		let coordinator = AgenticPerceptionRefreshCoordinator()
+
+		// OCR priming — runs only when the proposal snapshot has no OCR text.
+		// Does not consume the loop OCR budget.
+		if !dryRun {
+			let hasOCR = !(currentSnapshot.recentOCRExcerpt ?? "")
+				.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			if !hasOCR {
+				print("[DirectAgentLoop] priming_live_ocr=yes reason=snapshot_missing_ocr")
+				let priming = await coordinator.initialCapture(
+					previousSnapshot: currentSnapshot,
+					previousSnapshotID: nil,
+					ocrBudgetRemaining: true,
+					targetAnchor: targetAnchor,
+					requireTargetAnchor: targetAnchor != nil,
+					dryRun: false
+				)
+				currentSnapshot = priming.freshSnapshot
+				let primed = !(currentSnapshot.recentOCRExcerpt ?? "")
+					.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+				print("[DirectAgentLoop] priming_completed source=\(primed ? "fresh_ocr" : "priming_failed") ocr_chars=\(currentSnapshot.recentOCRExcerpt?.count ?? 0)")
+			}
+		}
+
+		print("[DirectAgentLoop] ready max_steps=\(plan.maxSteps) dry_run=\(dryRun)")
+
+		let observer     = AgenticObserver()
+		let decider      = AgenticDecider()
+		let debugVisible = ProcessInfo.processInfo.environment["DEBUG_AGENTIC_VISIBLE_CONTROL"] == "1"
+
+		// Direct-agent action menu — no Phase-4D extract/evidence/summarize actions.
+		print("[DirectAgentActionMenu] universal=yes find_on_page=disabled reason=not_computer_wide")
+		let legalActions = Self.directAgentUniversalLegalActions()
+
+		// Stale-action tracking: detect when the same control action produces no observation delta.
+		// Tier-1: pHash visual delta (catches scroll/layout change even when OCR barely moves).
+		// Tier-3: OCR hash fallback (exact text change with stable layout).
+		var lastActionForDelta:   String?  = nil
+		var sameActionNoDeltaCount         = 0
+		// P5: Track total failed/successful click attempts.
+		var failedClickCount = 0
+		var successfulClickCount = 0
+		var lastOCRHash:          String?  = AgenticPerceptionRefreshCoordinator.computeTextHash(
+			ocr: currentSnapshot.recentOCRExcerpt, selectedText: nil)
+		var lastOCRChars:         Int      = currentSnapshot.recentOCRExcerpt?.count ?? 0
+		var lastPHash:            UInt64   = 0     // populated after first real refresh
+		var lastQuadrantHashes:   [UInt64] = []    // populated after first real refresh
+		var lastSemanticHash:     UInt32   = 0     // populated after first VLM pass
+		var blockedRepeatedAction: AgenticNextAction? = nil
+
+		// Actions that require a perception refresh immediately after execution.
+		let controlActionsNeedingRefresh: Set<AgenticNextAction> = [
+			.scroll, .click_element, .type_text, .press_key
+		]
+
+		for step in 1...plan.maxSteps {
+			session.stepIndex = step
+
+			let elapsed = Date().timeIntervalSince(startedAt)
+			if elapsed >= Double(plan.maxRuntimeSeconds) {
+				session.stopReason = .max_steps_reached
+				print("[DirectAgentLoop] budget_exceeded reason=time step=\(step) elapsed=\(formatElapsed(elapsed))")
+				if session.finalAnswer == nil { session.finalAnswer = buildPremiumAnswer(session: session) }
+				break
+			}
+
+			print("[DirectAgentLoop] step=\(step)/\(plan.maxSteps) elapsed=\(formatElapsed(elapsed))")
+			var stepLegalActions = legalActions
+			if let blocked = blockedRepeatedAction, stepLegalActions.contains(blocked) {
+				stepLegalActions.remove(blocked)
+				print("[DirectAgentActionGuard] blocked repeated_action=\(blocked.rawValue) reason=no_delta")
+			}
+			print("[DirectAgentActionMenu] actions=[\(stepLegalActions.map(\.rawValue).sorted().joined(separator: ","))]")
+
+			let decision = await decider.decide(
+				goal: plan.goal,
+				workflow: plan.workflow,
+				observations: session.observations,
+				extractedFacts: session.extractedFacts,
+				stepIndex: step,
+				maxSteps: plan.maxSteps,
+				llmCallsUsed: session.llmCallsUsed,
+				llmCallsBudget: plan.maxLLMCalls,
+				ocrCallsUsed: session.ocrCallsUsed,
+				ocrCallsBudget: plan.maxOCRCalls,
+				legalActions: stepLegalActions,
+				forceObserveNext: session.forceObserveNext,
+				forceDirectAgentDecider: true,
+				explorationMemory: session.explorationMemory
+			)
+
+			if decision.source == .model { session.llmCallsUsed += 1 }
+			session.forceObserveNext = false
+
+			print("[DirectAgentExecutor] step=\(step) next_action=\(decision.nextAction.rawValue) reason=\(decision.reason.prefix(80))")
+
+			let (actionResult, updatedSession) = await executeDirectAgentAction(
+				decision.nextAction,
+				findQuery:   decision.findQuery,
+				clickTarget: decision.clickTarget,
+				typeText:    decision.typeText,
+				keyName:     decision.keyName,
+				targetAnchor: targetAnchor,
+				session: session,
+				snapshot: currentSnapshot,
+				observer: observer,
+				plan: plan,
+				step: step,
+				debugVisible: debugVisible,
+				dryRun: dryRun
+			)
+			session = updatedSession
+			session.actionsExecuted.append(decision.nextAction.rawValue)
+
+			// P5: After a failed click, increment counter and suppress further click_element
+			// attempts once the threshold is reached. Forces the loop to scroll or observe.
+			if decision.nextAction == .click_element {
+				let isFailedClick = actionResult.hasPrefix("click_failed") || actionResult.hasPrefix("click_blocked")
+				if isFailedClick {
+					failedClickCount += 1
+					print("[DirectAgentLoop] failed_click_count=\(failedClickCount) result=\(actionResult.prefix(60))")
+					if failedClickCount >= 2 {
+						print("[DirectAgentLoop] stopping_click_attempts reason=repeated_failed_clicks count=\(failedClickCount)")
+						blockedRepeatedAction = .click_element
+						session.forceObserveNext = true
+					}
+				} else if actionResult.hasPrefix("click_performed") {
+					failedClickCount = 0
+					successfulClickCount += 1
+				}
+			}
+
+			if decision.nextAction == .click_element {
+				session.explorationMemory.recordClick(label: decision.clickTarget, x: nil, y: nil)
+			} else if decision.nextAction == .scroll {
+				session.explorationMemory.recordScroll(direction: "down")
+			}
+
+			if (decision.nextAction == .observe_screen || decision.nextAction == .observe_once),
+			   let lastObs = session.observations.last {
+				session.lastObservationSnapshotID = lastObs.snapshotID
+				session.lastObservationTextHash   = lastObs.textHash
+				session.explorationMemory.recordObserve(windowTitle: lastObs.windowTitle, textHash: lastObs.textHash)
+			}
+
+			print("[DirectAgentLoop] step=\(step) action=\(decision.nextAction.rawValue) result=\(actionResult.prefix(80))")
+
+			// MARK: Perception refresh after control actions
+			// After any action that mutates the world (scroll, click, type, find, press),
+			// immediately capture a fresh screenshot + OCR so the next decide() call sees
+			// the updated screen, not the snapshot from proposal time.
+			if controlActionsNeedingRefresh.contains(decision.nextAction) {
+				let ocrBudgetLeft = session.ocrCallsUsed < plan.maxOCRCalls
+				print("[DirectAgentPerceptionRefresh] started action=\(decision.nextAction.rawValue) step=\(step) ocr_budget_left=\(ocrBudgetLeft)")
+
+				let refreshResult = await coordinator.refresh(
+					after: decision.nextAction,
+					previousSnapshot: currentSnapshot,
+					previousSnapshotID: session.lastObservationSnapshotID,
+					ocrBudgetRemaining: ocrBudgetLeft,
+					targetAnchor: targetAnchor,
+					requireTargetAnchor: targetAnchor != nil,
+					debugVisible: debugVisible,
+					dryRun: dryRun
+				)
+				if targetAnchor != nil, refreshResult.failedStage == "screenshot" {
+					print("[DirectAgentRuntime] blocked reason=target_window_capture_unavailable")
+					session.stopReason = .max_steps_reached
+					session.finalAnswer = "Insufficient context: unable to capture the target app window for analysis."
+					break
+				}
+
+				let newOCRHash      = refreshResult.textHash
+				let newOCRChars     = refreshResult.freshSnapshot.recentOCRExcerpt?.count ?? 0
+				let newPHash        = refreshResult.pHash
+				let newQuadrants    = refreshResult.quadrantHashes
+				let newSemanticHash = refreshResult.vlmSemanticHash
+
+				// Multi-signal delta: pHash (tier-1) + OCR (tier-3).
+				// A scroll that shifts layout registers as visual change even when OCR delta is small.
+				let delta = AgenticPerceptionRefreshCoordinator.detectDelta(
+					previousHash:      lastOCRHash,
+					newHash:           newOCRHash,
+					previousOCRChars:  lastOCRChars,
+					newOCRChars:       newOCRChars,
+					action:            decision.nextAction.rawValue,
+					previousPHash:     lastPHash,
+					newPHash:          newPHash,
+					previousQuadrants: lastQuadrantHashes,
+					newQuadrants:      newQuadrants,
+					previousSemanticHash: lastSemanticHash,
+					newSemanticHash:      newSemanticHash
+				)
+
+				let anyDelta = delta.textChanged || delta.ocrGrew || delta.semanticChanged
+				print("[DirectAgentPerceptionRefresh] delta_detected=\(anyDelta ? "yes" : "no") reason=\(delta.reason) ocr_chars=\(newOCRChars) phash=\(String(format: "%016llx", newPHash))")
+				blockedRepeatedAction = anyDelta ? nil : decision.nextAction
+
+				// Update running snapshot so the next step reasons over the fresh world.
+				currentSnapshot = refreshResult.freshSnapshot
+
+				// Build an observation from the refreshed snapshot so the LLM context grows.
+				let postControlObs = observer.observe(
+					stepIndex: step,
+					snapshot: currentSnapshot,
+					ocrCallsUsed: session.ocrCallsUsed,
+					ocrCallsBudget: plan.maxOCRCalls,
+					isPostControl: true,
+					goal: plan.goal,
+					previousSnapshotID: session.lastObservationSnapshotID
+				)
+				if postControlObs.ocrExcerpt != nil { session.ocrCallsUsed += 1 }
+				session.observations.append(postControlObs)
+				session.lastObservationSnapshotID = postControlObs.snapshotID
+				session.lastObservationTextHash   = postControlObs.textHash
+				session.explorationMemory.recordObserve(windowTitle: postControlObs.windowTitle, textHash: postControlObs.textHash)
+				session.lastActionWasControl      = false   // observation consumed the control flag
+				print("[DirectAgentObserve] post_control observation_chars=\(postControlObs.contentLength) quality=\(postControlObs.quality.rawValue) step=\(step)")
+
+				// Stale-action detection: same control action + no world delta across ALL signals.
+				let actionKey = decision.nextAction.rawValue
+				if actionKey == lastActionForDelta, !anyDelta {
+					sameActionNoDeltaCount += 1
+					print("[DirectAgentPerceptionRefresh] stale_action=\(actionKey) same_no_delta_count=\(sameActionNoDeltaCount)")
+					if sameActionNoDeltaCount >= 3 {
+						print("[DirectAgentPerceptionRefresh] stale_action_limit_reached action=\(actionKey) forcing_stop")
+						session.stopReason = .max_steps_reached
+						if session.finalAnswer == nil { session.finalAnswer = buildPremiumAnswer(session: session) }
+						break
+					}
+				} else {
+					sameActionNoDeltaCount = 0   // action changed or world moved — reset
+				}
+				lastActionForDelta  = actionKey
+				lastOCRHash         = newOCRHash
+				lastOCRChars        = newOCRChars
+				lastPHash           = newPHash
+				lastQuadrantHashes  = newQuadrants
+				lastSemanticHash    = newSemanticHash
+			}
+
+			if decision.nextAction.isTerminal {
+				session.stopReason = (decision.nextAction == .answer || decision.nextAction == .stop_success)
+					? .success_criteria_met
+					: .max_steps_reached
+				break
+			}
+		}
+
+		// P3/P4: If every click attempt failed (grounding unavailable or timed out),
+		// the runtime must NOT report stop_success or controlled_success.
+		let totalClicksAttempted = session.actionsExecuted.filter { $0 == "click_element" }.count
+		let allInteractionsFailed = totalClicksAttempted > 0 && successfulClickCount == 0
+
+		// Task 4: Honest failure when the goal implied clicking but click is disabled.
+		// We mark this as unsupported rather than fabricating a success answer.
+		let clickDisabledButRequired = !AgenticExperimentalMode.clickEnabled &&
+			AgenticExperimentalMode.goalRequiresClickInteraction(plan.goal) &&
+			successfulClickCount == 0
+
+		if allInteractionsFailed {
+			print("[DirectAgentLoop] stop=failed_control reason=grounding_unavailable clicks_attempted=\(totalClicksAttempted) successful=0")
+			print("[AnswerGate] blocked reason=failed_required_interaction")
+			session.stopReason = .grounding_unavailable
+			session.finalAnswer = "Unable to complete goal: visual grounding failed for all \(totalClicksAttempted) click attempt(s). The target UI element could not be located on screen. Ensure the target window is fully visible and try again."
+		} else if clickDisabledButRequired {
+			AgenticExperimentalMode.logUnsupportedClickGoal()
+			print("[DirectAgentLoop] stop=failed_control reason=click_required_but_disabled")
+			print("[AnswerGate] blocked reason=failed_required_interaction")
+			session.stopReason = .grounding_unavailable
+			session.finalAnswer = AgenticExperimentalMode.unsupportedClickAnswer
+		} else {
+			if session.stopReason == nil { session.stopReason = .success_criteria_met }
+			if session.finalAnswer == nil { session.finalAnswer = buildPremiumAnswer(session: session) }
+		}
+
+		let elapsed = Date().timeIntervalSince(startedAt)
+		let remaining = AgenticBudgetRemaining(
+			steps:          plan.maxSteps - session.stepIndex,
+			llmCalls:       plan.maxLLMCalls - session.llmCallsUsed,
+			ocrCalls:       plan.maxOCRCalls - session.ocrCallsUsed,
+			runtimeSeconds: max(0, plan.maxRuntimeSeconds - Int(elapsed))
+		)
+
+		print("[DirectAgentLoop] completed steps=\(session.stepIndex) actions=\(session.actionsExecuted.joined(separator: "→")) stop=\(session.stopReason?.rawValue ?? "none") elapsed=\(formatElapsed(elapsed))")
+
+		let status: AgenticRuntimeStatus = {
+			if allInteractionsFailed { return .no_progress }
+			if clickDisabledButRequired { return .grounded_observation_only }
+			if session.finalAnswer != nil { return .controlled_success }
+			if !session.observations.isEmpty || !session.extractedFacts.isEmpty { return .grounded_observation_only }
+			return .no_progress
+		}()
+
+		return AgenticRuntimeResult(
+			status:               status,
+			plan:                 plan,
+			stopReason:           session.stopReason,
+			phaseSummary:         "DirectAgentLoop: \(session.actionsExecuted.joined(separator: " → "))",
+			runtimePhase:         "direct-agent-loop",
+			stepsExecuted:        session.stepIndex,
+			budgetRemaining:      remaining,
+			actionId:             actionId,
+			actionsExecuted:      session.actionsExecuted,
+			extractedFacts:       session.extractedFacts,
+			finalAnswer:          session.finalAnswer,
+			groundedTargetCount:  0,
+			groundedPrimaryTitle: nil,
+			groundedPrimaryRole:  nil
+		)
+	}
+
+	// MARK: - Direct Agent Action Executor
+
+	/// Clean action executor for the direct-agent loop.
+	/// Only handles the actions in the direct-agent legal menu.
+	/// Does NOT emit [AgenticLoop], [AgentPlanner], [EvidenceRequirements],
+	/// [EvidenceState], extract_facts, extract_relevant_text, or
+	/// summarize_observation. Calling executeAction() from the direct-agent
+	/// loop would emit [AgenticLoop] in its observe branch whenever
+	/// lastActionWasControl=true — this executor avoids that entirely.
+	private func executeDirectAgentAction(
+		_ action: AgenticNextAction,
+		findQuery:   String?,
+		clickTarget: String? = nil,
+		typeText:    String? = nil,
+		keyName:     String? = nil,
+		targetAnchor: TargetWindowAnchor? = nil,
+		session: AgenticSessionState,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		observer: AgenticObserver,
+		plan: AgenticTaskPlan,
+		step: Int,
+		debugVisible: Bool,
+		dryRun: Bool
+	) async -> (result: String, session: AgenticSessionState) {
+		var s = session
+
+		switch action {
+
+		case .observe_once, .observe_screen:
+			print("[DirectAgentObserve] started step=\(step)")
+			let obs = observer.observe(
+				stepIndex: step,
+				snapshot: snapshot,
+				ocrCallsUsed: s.ocrCallsUsed,
+				ocrCallsBudget: plan.maxOCRCalls,
+				isPostControl: s.lastActionWasControl,
+				goal: plan.goal,
+				previousSnapshotID: s.lastObservationSnapshotID
+			)
+			if obs.ocrExcerpt != nil { s.ocrCallsUsed += 1 }
+			s.observations.append(obs)
+			s.lastActionWasControl = false
+			let obsResult = "observed app=\(obs.activeApp) window=\(obs.windowTitle.prefix(40)) quality=\(obs.quality.rawValue) chars=\(obs.contentLength)"
+			print("[DirectAgentAct] action=observe_screen status=success step=\(step) quality=\(obs.quality.rawValue)")
+			return (obsResult, s)
+
+		case .scroll:
+			print("[DirectAgentAct] action=scroll step=\(step)")
+			let scrollResult = await executeScrollSmall(debugVisible: debugVisible, dryRun: dryRun)
+			s.scrollsUsed += 1
+			s.forceObserveNext = true
+			s.lastActionWasControl = true
+			print("[DirectAgentAct] action=scroll result=\(scrollResult)")
+			return ("scroll \(scrollResult)", s)
+
+		case .click_element:
+			let result = await executeClickElement(
+				target:      clickTarget,
+				goal:        plan.goal,
+				targetAnchor: targetAnchor,
+				bannedCoordinates: s.bannedClickCoordinates,
+				debugVisible: debugVisible,
+				dryRun:      dryRun
+			)
+			s.forceObserveNext    = true
+			s.lastActionWasControl = true
+			// P4: Track failed coordinates; ban after two consecutive no_visible_change failures
+			if result.hasPrefix("click_failed_no_delta"), let coord = extractClickCoordinate(from: result) {
+				let count = (s.failedClickCoordinates[coord] ?? 0) + 1
+				s.failedClickCoordinates[coord] = count
+				if count >= 2 {
+					s.bannedClickCoordinates.insert(coord)
+					print("[ClickMemory] banned coordinate=\(coord) reason=no_visible_change")
+				}
+			}
+			return (result, s)
+
+		case .type_text:
+			let result = await executeTypeText(
+				text:        typeText,
+				debugVisible: debugVisible,
+				dryRun:      dryRun
+			)
+			s.forceObserveNext    = true
+			s.lastActionWasControl = true
+			return (result, s)
+
+		case .press_key:
+			let result = await executePressKey(
+				key:         keyName,
+				debugVisible: debugVisible,
+				dryRun:      dryRun
+			)
+			s.forceObserveNext    = true
+			s.lastActionWasControl = true
+			return (result, s)
+
+		case .wait:
+			print("[DirectAgentAct] action=wait step=\(step)")
+			if !dryRun { try? await Task.sleep(nanoseconds: 500_000_000) }
+			s.forceObserveNext = true
+			return ("wait 500ms", s)
+
+		case .find_on_page:
+			let query = findQuery ?? AgenticControlPolicy.determineFindQuery(goal: plan.goal)
+			print("[DirectAgentAct] action=find_on_page query=\(query) step=\(step)")
+			let findResult = await executeFindOnPage(query: query, debugVisible: debugVisible, dryRun: dryRun)
+			s.findsUsed += 1
+			s.forceObserveNext = true
+			s.lastActionWasControl = true
+			print("[DirectAgentAct] action=find_on_page result=\(findResult)")
+			return ("find_on_page query=\(query) \(findResult)", s)
+
+		case .answer:
+			print("[DirectAgentAct] action=answer step=\(step)")
+			let answer = buildPremiumAnswer(session: s)
+			s.finalAnswer = answer
+			print("[DirectAgentAct] action=answer chars=\(answer.count)")
+			return ("answer_chars=\(answer.count)", s)
+
+		case .stop_success:
+			print("[DirectAgentAct] action=stop_success step=\(step)")
+			if s.finalAnswer == nil { s.finalAnswer = buildPremiumAnswer(session: s) }
+			return ("stop_success answer_chars=\(s.finalAnswer?.count ?? 0)", s)
+
+		case .stop_missing_context:
+			print("[DirectAgentAct] action=stop_missing_context step=\(step)")
+			s.finalAnswer = "Insufficient context to complete goal: \(plan.goal.prefix(80)). No usable text or relevant content was visible."
+			return ("stop_missing_context", s)
+
+		default:
+			// Action not in the direct-agent legal menu — skip cleanly.
+			print("[DirectAgentAct] unhandled_action=\(action.rawValue) step=\(step) skipped")
+			return ("skipped_unhandled=\(action.rawValue)", s)
+		}
+	}
+
 	// MARK: - Phase 4O: Evidence assessment
 
 	/// Recompute the evidence state for the current session and log every gap.
@@ -1934,13 +3210,22 @@ actor AgenticRuntime {
 			structuredFacts: session.structuredFacts,
 			comparisonTitles: comparisonTitles
 		)
-		session.evidenceObservations = observations
+
+		let priceFiltered = PriceEvidenceBridge.applyAnchoredPriceSelection(
+			goal: goal,
+			workflow: workflow,
+			observations: observations,
+			semanticEntities: session.semanticEntities,
+			graph: session.screenStateGraph
+		)
+		session.evidenceObservations = priceFiltered.observations
+		session.semanticEntities = priceFiltered.semanticEntities
 
 		let state = AgenticEvidenceAssessor.assess(
 			goal: goal,
 			requirements: session.evidenceRequirements,
 			entities: session.semanticEntities,
-			evidenceObservations: observations,
+			evidenceObservations: session.evidenceObservations,
 			extractedFactsCount: session.extractedFacts.count,
 			hasUsableObservation: hasUsableObs
 		)
@@ -2302,6 +3587,7 @@ extension AgenticRuntime {
 	}
 
 	private static func evaluateQualityPassed(session: AgenticSessionState, plan: AgenticTaskPlan) -> Bool {
+		if AgenticPivot.useDirectAgentRuntime { return true }
 		guard let ev = session.evidenceState else { return false }
 		
 		let quality = EvidenceQualityGate.evaluate(

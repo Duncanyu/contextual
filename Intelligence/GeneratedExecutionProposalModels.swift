@@ -27,6 +27,8 @@ struct GeneratedExecutionProposalCandidate: Equatable, Sendable, Identifiable {
 	let explainabilitySummary: String
 	let expectedOutputSummary: String
 	let requiredContextTypes: [ContextRequirementType]
+	/// Proposal-time execution anchor for target-window capture.
+	let targetAnchor: TargetWindowAnchor?
 	let executionAction: GeneratedExecutionAction?
 	let generatedActionId: UUID?
 	let primitiveSignature: String?
@@ -38,11 +40,58 @@ struct GeneratedExecutionProposalCandidate: Equatable, Sendable, Identifiable {
 	/// When present, proposal routes to AgenticRuntime instead of GeneratedExecutionRuntime.
 	var agenticPlan: AgenticTaskPlan? = nil
 
+	var isSoftProposal: Bool = false
+	var softReasons: [String] = []
+
 	var isGeneratedFamily: Bool {
 		switch source {
 		case .staticAction: false
 		default: true
 		}
+	}
+
+	init(
+		id: String,
+		title: String,
+		description: String,
+		source: GeneratedExecutionProposalSource,
+		workflowType: WorkflowType,
+		intentType: IntentType,
+		confidence: Double,
+		interruptionCost: Double,
+		explainabilitySummary: String,
+		expectedOutputSummary: String,
+		requiredContextTypes: [ContextRequirementType],
+		targetAnchor: TargetWindowAnchor? = nil,
+		executionAction: GeneratedExecutionAction?,
+		generatedActionId: UUID?,
+		primitiveSignature: String?,
+		isExecutableGeneratedProposal: Bool,
+		executionMode: HookExecutionMode = .one_shot,
+		agenticPlan: AgenticTaskPlan? = nil,
+		isSoftProposal: Bool = false,
+		softReasons: [String] = []
+	) {
+		self.id = id
+		self.title = title
+		self.description = description
+		self.source = source
+		self.workflowType = workflowType
+		self.intentType = intentType
+		self.confidence = confidence
+		self.interruptionCost = interruptionCost
+		self.explainabilitySummary = explainabilitySummary
+		self.expectedOutputSummary = expectedOutputSummary
+		self.requiredContextTypes = requiredContextTypes
+		self.targetAnchor = targetAnchor
+		self.executionAction = executionAction
+		self.generatedActionId = generatedActionId
+		self.primitiveSignature = primitiveSignature
+		self.isExecutableGeneratedProposal = isExecutableGeneratedProposal
+		self.executionMode = executionMode
+		self.agenticPlan = agenticPlan
+		self.isSoftProposal = isSoftProposal
+		self.softReasons = softReasons
 	}
 }
 

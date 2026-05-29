@@ -19,6 +19,9 @@ enum AgenticEvidenceKind: String, Sendable, Hashable, Codable, CaseIterable {
 	case codeSnippet = "code_snippet"
 	case errorMessage = "error_message"
 	case documentKeyPoint = "document_key_point"
+	case pageUrl = "page_url"
+	case keyPostContent = "key_post_content"
+	case pageIdentity = "page_identity"
 	// Phase 4P — Email review evidence (domain-aware; not product-like).
 	case inboxContext = "inbox_context"
 	case messageList = "message_list"
@@ -109,6 +112,7 @@ struct AgenticEvidenceState: Sendable, Equatable, Codable {
 enum AgenticEvidenceRequirementsInferrer {
 
 	/// Overloaded entry that incorporates context information (window title, observations, entities, category).
+	/// Overloaded entry that incorporates context information (window title, observations, entities, category).
 	static func infer(
 		goal: String,
 		workflow: String?,
@@ -117,6 +121,9 @@ enum AgenticEvidenceRequirementsInferrer {
 		semanticEntities: [GroundedSemanticEntity] = [],
 		contextCategory: String? = nil
 	) -> [AgenticEvidenceRequirement] {
+		if AgenticPivot.useDirectAgentRuntime {
+			return []
+		}
 		let g = goal.lowercased()
 		let wf = (workflow ?? "").lowercased()
 
@@ -134,9 +141,38 @@ enum AgenticEvidenceRequirementsInferrer {
 			return false
 		}()
 		
+		let isRedditOrSocialGoal: Bool = {
+			let titleLower = (windowTitle ?? "").lowercased()
+			let needles = ["reddit", "url", "link", "extract link", "post", "verification", "profile"]
+			return needles.contains(where: { g.contains($0) || titleLower.contains($0) })
+		}()
+
+		let goalHasProductTerms: Bool = {
+			let productTerms = ["product", "specs", "specification", "price", "details", "charger", "hub", "gan", "usb", "case", "stars", "rating", "reviews", "buy", "purchase", "deal", "discount", "compare", "comparison"]
+			return productTerms.contains { g.contains($0) }
+		}()
+
+		let isPageProductClassified: Bool = {
+			let catLower = (contextCategory ?? "").lowercased()
+			let wtLower = (windowTitle ?? "").lowercased()
+			return catLower.contains("shopping") || catLower.contains("amazon") || wf == "shopping" || wf == "product" || wtLower.contains("amazon") || wtLower.contains("anker")
+		}()
+
+		let isGoalExtractOrInspectPageDetails: Bool = {
+			let actionVerbs = ["extract", "inspect", "gather", "retrieve", "get", "review", "show", "analyze", "compare"]
+			let detailTerms = ["details", "specs", "page", "content", "information", "info"]
+			let hasAction = actionVerbs.contains { g.contains($0) }
+			let hasDetail = detailTerms.contains { g.contains($0) }
+			return hasAction && hasDetail
+		}()
+
+		let productSchemaAllowed = goalHasProductTerms || (isPageProductClassified && isGoalExtractOrInspectPageDetails)
+
 		// Determine if the current context is product-like.
-		let isProductContext: Bool = {
+		var isProductContext: Bool = {
 			if isEmailContext { return false }
+			if isRedditOrSocialGoal { return false }
+			if !productSchemaAllowed { return false }
 			if let cat = contextCategory?.lowercased(), cat.contains("amazon") || cat.contains("shopping") || cat.contains("product") {
 				return true
 			}
@@ -150,10 +186,18 @@ enum AgenticEvidenceRequirementsInferrer {
 			return false
 		}()
 
+		if isRedditOrSocialGoal {
+			print("[EvidenceRequirements] product_schema_allowed=no reason=non_product_goal")
+			isProductContext = false
+		} else if !productSchemaAllowed && !isEmailContext {
+			print("[EvidenceRequirements] product_schema_allowed=no reason=goal_not_product_specific")
+			isProductContext = false
+		}
+
 		let family = classifyFamily(goal: g, workflow: wf)
 
 		// Overriding rules when context is product-like but family is generic or page summary.
-		let effectiveFamily: Family
+		var effectiveFamily: Family
 		if isEmailContext {
 			effectiveFamily = .emailReview
 		} else if isProductContext && (family == .generic || family == .summarize) {
@@ -164,6 +208,13 @@ enum AgenticEvidenceRequirementsInferrer {
 			}
 		} else {
 			effectiveFamily = family
+		}
+
+		if !productSchemaAllowed && !isEmailContext && !isRedditOrSocialGoal {
+			let productFamilies: Set<Family> = [.compare, .review, .reviewsCheck, .priceCheck, .specsCheck]
+			if productFamilies.contains(effectiveFamily) {
+				effectiveFamily = .summarize
+			}
 		}
 
 		let reqs: [AgenticEvidenceRequirement]
@@ -221,6 +272,12 @@ enum AgenticEvidenceRequirementsInferrer {
 				AgenticEvidenceRequirement(kind: .codeSnippet, required: true, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
 				AgenticEvidenceRequirement(kind: .errorMessage, required: false, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
 			]
+		case .socialExtract:
+			reqs = [
+				AgenticEvidenceRequirement(kind: .pageUrl, required: true, minCount: 1, confidenceThreshold: 0.30, searchHints: ["http", "reddit", "url"]),
+				AgenticEvidenceRequirement(kind: .keyPostContent, required: true, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
+				AgenticEvidenceRequirement(kind: .pageIdentity, required: false, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
+			]
 		case .generic:
 			reqs = [
 				AgenticEvidenceRequirement(kind: .pageSummary, required: true, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
@@ -243,9 +300,45 @@ enum AgenticEvidenceRequirementsInferrer {
 
 	/// Top-level entry. Goal text + workflow string (lowercased family).
 	static func infer(goal: String, workflow: String?) -> [AgenticEvidenceRequirement] {
+		if AgenticPivot.useDirectAgentRuntime {
+			print("[EvidenceRequirements] product_schema_bypass=yes reason=direct_agent_runtime")
+			return []
+		}
 		let g = goal.lowercased()
 		let wf = (workflow ?? "").lowercased()
-		let family = classifyFamily(goal: g, workflow: wf)
+		
+		let isRedditOrSocialGoal = g.contains("reddit") || g.contains("url") || g.contains("link") || g.contains("social")
+		
+		let goalHasProductTerms: Bool = {
+			let productTerms = ["product", "specs", "specification", "price", "details", "charger", "hub", "gan", "usb", "case", "stars", "rating", "reviews", "buy", "purchase", "deal", "discount", "compare", "comparison"]
+			return productTerms.contains { g.contains($0) }
+		}()
+
+		let isPageProductClassified = (wf == "shopping" || wf == "product")
+
+		let isGoalExtractOrInspectPageDetails: Bool = {
+			let actionVerbs = ["extract", "inspect", "gather", "retrieve", "get", "review", "show", "analyze", "compare"]
+			let detailTerms = ["details", "specs", "page", "content", "information", "info"]
+			let hasAction = actionVerbs.contains { g.contains($0) }
+			let hasDetail = detailTerms.contains { g.contains($0) }
+			return hasAction && hasDetail
+		}()
+
+		let productSchemaAllowed = goalHasProductTerms || (isPageProductClassified && isGoalExtractOrInspectPageDetails)
+
+		if isRedditOrSocialGoal {
+			print("[EvidenceRequirements] product_schema_allowed=no reason=non_product_goal")
+		} else if !productSchemaAllowed {
+			print("[EvidenceRequirements] product_schema_allowed=no reason=goal_not_product_specific")
+		}
+		
+		var family = classifyFamily(goal: g, workflow: wf)
+		if !productSchemaAllowed && !isRedditOrSocialGoal {
+			let productFamilies: Set<Family> = [.compare, .review, .reviewsCheck, .priceCheck, .specsCheck]
+			if productFamilies.contains(family) {
+				family = .summarize
+			}
+		}
 
 		switch family {
 		case .compare:
@@ -300,6 +393,12 @@ enum AgenticEvidenceRequirementsInferrer {
 				AgenticEvidenceRequirement(kind: .codeSnippet, required: true, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
 				AgenticEvidenceRequirement(kind: .errorMessage, required: false, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
 			]
+		case .socialExtract:
+			return [
+				AgenticEvidenceRequirement(kind: .pageUrl, required: true, minCount: 1, confidenceThreshold: 0.30, searchHints: ["http", "reddit", "url"]),
+				AgenticEvidenceRequirement(kind: .keyPostContent, required: true, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
+				AgenticEvidenceRequirement(kind: .pageIdentity, required: false, minCount: 1, confidenceThreshold: 0.30, searchHints: []),
+			]
 		case .generic:
 			_ = g
 			return [
@@ -319,11 +418,15 @@ enum AgenticEvidenceRequirementsInferrer {
 		case priceCheck
 		case specsCheck
 		case codeAnalyze
+		case socialExtract = "social_extract"
 		case generic
 	}
 
 	static func classifyFamily(goal: String, workflow: String) -> Family {
 		// Order matters: more specific intents win.
+		if goal.contains("reddit") || goal.contains("url") || goal.contains("link") || goal.contains("social") {
+			return .socialExtract
+		}
 		if goal.contains("compare") || goal.contains("comparison")
 			|| goal.contains(" vs ") || goal.contains(" versus ") {
 			return .compare
@@ -344,7 +447,7 @@ enum AgenticEvidenceRequirementsInferrer {
 		if goal.contains("review") || goal.contains("evaluate this product") {
 			return .review
 		}
-		if goal.contains("spec") || goal.contains("dimension")
+		if goal.contains("specs") || goal.contains("specification") || goal.contains("dimension")
 			|| goal.contains("measurement") || goal.contains("watt") {
 			return .specsCheck
 		}
@@ -666,6 +769,18 @@ enum AgenticEvidenceAssessor {
 				return entities.filter { $0.type == .body && $0.confidence >= threshold && looksLikeCode($0.text) }.count
 			case .errorMessage:
 				return entities.filter { ($0.type == .body || $0.type == .heading) && $0.confidence >= threshold && looksLikeError($0.text) }.count
+			case .pageUrl:
+				let hasUrl = evidenceObservations.contains { $0.text.contains("http") || $0.text.contains("www.") || $0.text.contains("reddit.com") || $0.text.contains(".com") || $0.text.contains(".org") || $0.text.contains(".net") }
+					|| entities.contains { $0.text.contains("http") || $0.text.contains("www.") || $0.text.contains("reddit.com") }
+				return hasUrl ? 1 : 0
+			case .keyPostContent:
+				let hasBody = !entities.filter { $0.type == .body }.isEmpty
+					|| hasUsableObservation
+				return hasBody ? 1 : 0
+			case .pageIdentity:
+				let hasIdentity = !entities.filter { $0.type == .productTitle || $0.type == .heading }.isEmpty
+					|| evidenceObservations.contains { $0.kind == .productTitle }
+				return hasIdentity ? 1 : 0
 			case .inboxContext, .messageList, .emailSubject, .emailSnippet, .emailSender, .unreadCount, .timestamp:
 				return 0
 			case .unknown:
@@ -721,6 +836,8 @@ enum AgenticEvidenceAssessor {
 				return .scrollSmall
 			case .productTitle, .codeSnippet, .errorMessage:
 				return .findOnPage
+			case .pageUrl, .keyPostContent, .pageIdentity:
+				return .observe
 			case .inboxContext, .messageList, .emailSubject, .emailSnippet, .emailSender, .unreadCount, .timestamp:
 				return .observe
 			case .unknown:

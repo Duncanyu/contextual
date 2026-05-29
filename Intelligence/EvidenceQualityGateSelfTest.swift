@@ -265,6 +265,56 @@ enum EvidenceQualityGateSelfTest {
 			check("evidence_satisfied_allowed_on_high_quality", decision.nextAction == .present_answer)
 		}
 
+		// MARK: 9 — Rough price + low groundedness blocks completion (Phase 4U)
+		do {
+			let goal = "Extract product evidence"
+			let requirements = [
+				AgenticEvidenceRequirement(kind: .productTitle, required: true),
+				AgenticEvidenceRequirement(kind: .specs, required: true),
+				AgenticEvidenceRequirement(kind: .price, required: false),
+			]
+
+			// Required satisfied, but only rough price candidate exists and grounding is weak.
+			let state = AgenticEvidenceState(
+				goal: goal,
+				requirements: requirements,
+				satisfied: [.productTitle, .specs, .price],
+				missing: [],
+				missingOptional: [],
+				confidence: 1.0,
+				shouldGatherMore: false,
+				recommendedAction: .present
+			)
+
+			let observations: [AgenticEvidenceObservation] = [
+				makeObservation(kind: .productTitle, text: "Anker Prime USB C Charger Block", source: .windowTitle),
+				makeObservation(kind: .specs, text: "GaN", source: .windowTitle),
+				// Rough price: no decimals.
+				makeObservation(kind: .price, text: "$76", source: .ocr),
+			]
+
+			// Entities include the rough price and a spec; liveObs doesn't include "$76" → groundedness < 0.70.
+			let entities: [GroundedSemanticEntity] = [
+				GroundedSemanticEntity(id: "e_price", type: .price, text: "$76", normalizedValue: "$76.00", confidence: 0.8, sourceNodeId: "n1", role: .price, tags: []),
+				GroundedSemanticEntity(id: "e_spec", type: .specification, text: "GaN", normalizedValue: "GaN", confidence: 0.9, sourceNodeId: "n2", role: .heading, tags: []),
+				// Add one ungrounded semantic item so groundedness < 0.70.
+				GroundedSemanticEntity(id: "e_noise", type: .feature, text: "mystery_token_xyz", normalizedValue: "mystery_token_xyz", confidence: 0.7, sourceNodeId: "n3", role: .bodyText, tags: []),
+			]
+
+			let quality = EvidenceQualityGate.evaluate(
+				goal: goal,
+				state: state,
+				observations: observations,
+				entities: entities,
+				facts: []
+			)
+
+			check("rough_price_low_grounding_caps_overall",
+				  quality.overallScore < EvidenceQualityGate.overallScoreThreshold)
+			check("rough_price_low_grounding_reason_tagged",
+				  quality.reasons.contains("rough_price_or_low_grounding"))
+		}
+
 		let ok = failures.isEmpty
 		print("[EvidenceQualityGateSelfTest] finished. ok=\(ok), failures=\(failures.count)")
 		return ok

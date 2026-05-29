@@ -55,6 +55,16 @@ enum AgenticGoalAlignmentValidator {
 		semanticEntities: [GroundedSemanticEntity] = [],
 		allowedCapabilities: [String] = []
 	) -> AgenticGoalAlignmentDecision {
+		if AgenticPivot.useDirectAgentRuntime {
+			return AgenticGoalAlignmentDecision(
+				status: .accepted,
+				alignedGoal: goal,
+				alignedTitle: title,
+				reason: "direct_agent_runtime_bypass",
+				confidence: 1.0,
+				detectedIssue: ""
+			)
+		}
 		let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
 		let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
 		let lowerTitle = trimmedTitle.lowercased()

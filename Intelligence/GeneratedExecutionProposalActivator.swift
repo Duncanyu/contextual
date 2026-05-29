@@ -77,12 +77,13 @@ enum GeneratedExecutionProposalActivator {
 
 		if input.useLLMGeneratedCandidatesOnly {
 			for exec in input.generatedExecutionCandidates {
-				if let reason = preSuppressReason(candidate: exec, input: input) {
+				var mutExec = exec
+				if let reason = checkSoftProposalAndGetSuppression(candidate: &mutExec, input: input) {
 					preSuppressedGenerated += 1
-					logSuppressed(id: exec.id, reason: reason)
+					logSuppressed(id: mutExec.id, reason: reason)
 					continue
 				}
-				candidates.append(exec)
+				candidates.append(mutExec)
 			}
 		} else {
 			for generated in input.generatedActions where !generated.isStale {
@@ -91,23 +92,25 @@ enum GeneratedExecutionProposalActivator {
 					snapshot: input.snapshot,
 					referenceTime: referenceTime
 				).first {
-					if let reason = preSuppressReason(candidate: built, input: input) {
+					var mutBuilt = built
+					if let reason = checkSoftProposalAndGetSuppression(candidate: &mutBuilt, input: input) {
 						preSuppressedGenerated += 1
-						logSuppressed(id: built.id, reason: reason)
+						logSuppressed(id: mutBuilt.id, reason: reason)
 						continue
 					}
-					candidates.append(built)
+					candidates.append(mutBuilt)
 				}
 			}
 
 			for exec in input.generatedExecutionCandidates {
 				if candidates.contains(where: { $0.id == exec.id }) { continue }
-				if let reason = preSuppressReason(candidate: exec, input: input) {
+				var mutExec = exec
+				if let reason = checkSoftProposalAndGetSuppression(candidate: &mutExec, input: input) {
 					preSuppressedGenerated += 1
-					logSuppressed(id: exec.id, reason: reason)
+					logSuppressed(id: mutExec.id, reason: reason)
 					continue
 				}
-				candidates.append(exec)
+				candidates.append(mutExec)
 			}
 		}
 
@@ -152,16 +155,17 @@ enum GeneratedExecutionProposalActivator {
 
 		var reusablePassed = 0
 		for reusable in promotedReusable {
-			if let reason = preSuppressReason(candidate: reusable, input: input) {
+			var mutReusable = reusable
+			if let reason = checkSoftProposalAndGetSuppression(candidate: &mutReusable, input: input) {
 				preSuppressedGenerated += 1
-				logSuppressed(id: reusable.id, reason: reason)
+				logSuppressed(id: mutReusable.id, reason: reason)
 				continue
 			}
 			reusablePassed += 1
 			if ProposalLoggingFlags.verboseProposalLogsEnabled {
-				print("[GeneratedProposalActivation] reusable_passed_presuppress id=\(String(reusable.id.prefix(40))) title=\(reusable.title)")
+				print("[GeneratedProposalActivation] reusable_passed_presuppress id=\(String(mutReusable.id.prefix(40))) title=\(mutReusable.title)")
 			}
-			candidates.append(reusable)
+			candidates.append(mutReusable)
 		}
 		let topTitles = promotedReusable
 			.prefix(2)
@@ -300,7 +304,10 @@ enum GeneratedExecutionProposalActivator {
 				let isHookContract = Self.isExecutableHookContractOverride(candidate)
 				let allowsPanelGenerated = timing.allowsPanelGenerated && score >= panelGeneratedScoreThreshold
 
-				if isHookContract {
+				if candidate.isSoftProposal {
+					panelEligible = true
+					panelAllowedReason = "passes_safety_low_confidence"
+				} else if isHookContract {
 					// Executable hook contracts bypass score threshold — always show in panel.
 					panelEligible = true
 					panelAllowedReason = "executable_hook_contract"
@@ -322,7 +329,11 @@ enum GeneratedExecutionProposalActivator {
 			if panelEligible && visibleGenerated.count < maxPanelGeneratedVisible {
 				visibleGenerated.append(GeneratedExecutionProposalPanelItem(from: candidate, rankScore: score))
 				if let reason = panelAllowedReason {
-					print("[GeneratedProposalActivation] panel_visibility_allowed reason=\(reason)")
+					if reason == "passes_safety_low_confidence" {
+						print("[GeneratedProposalActivation] soft_visible=yes reason=passes_safety_low_confidence")
+					} else {
+						print("[GeneratedProposalActivation] panel_visibility_allowed reason=\(reason)")
+					}
 				}
 			} else {
 				rankingSuppressedGenerated += 1
@@ -331,9 +342,27 @@ enum GeneratedExecutionProposalActivator {
 			if floatingId == nil,
 			   timing.allowsFloatingGenerated,
 			   score >= floatingStrongScoreThreshold,
-			   candidate.isGeneratedFamily
+			   candidate.isGeneratedFamily,
+			   !candidate.isSoftProposal
 			{
-				floatingId = generatedProposalActionId(for: candidate.id)
+				// Phase 4U: don't float stale candidates when the context/fingerprint
+				// no longer matches the candidate's grounded target anchor.
+				if let anchor = candidate.executionAction?.targetAnchor,
+				   let bundle = input.snapshot.bundleIdentifier {
+					let currentFp = TargetWindowAnchor.fingerprint(
+						bundleIdentifier: bundle,
+						windowTitle: input.snapshot.windowTitle,
+						workflow: candidate.workflowType
+					)
+					if anchor.contextFingerprint != currentFp {
+						print("[GeneratedProposalActivation] dropped reason=stale_context_after_planner")
+						// Keep panel eligibility unchanged; only block floating.
+					} else {
+						floatingId = generatedProposalActionId(for: candidate.id)
+					}
+				} else {
+					floatingId = generatedProposalActionId(for: candidate.id)
+				}
 			} else if floatingId == nil, candidate.isGeneratedFamily, score < floatingStrongScoreThreshold {
 				print("[GeneratedProposalActivation] floating_visibility_blocked reason=score_below_threshold")
 			}
@@ -481,6 +510,35 @@ enum GeneratedExecutionProposalActivator {
 		}
 
 		return nil
+	}
+
+	private static func checkSoftProposalAndGetSuppression(
+		candidate: inout GeneratedExecutionProposalCandidate,
+		input: GeneratedExecutionProposalActivationInput
+	) -> String? {
+		let required = Set(candidate.requiredContextTypes.filter { $0 != .none })
+		if required.contains(.screenCapture) || required.contains(.fusedVisual) {
+			let hasOCR = !(input.snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			let hasVisual = input.snapshot.visualContextAvailability.hasUsableVisual
+			if hasOCR || hasVisual {
+				candidate.isSoftProposal = true
+				if !candidate.softReasons.contains("missing_visual_descriptor") {
+					candidate.softReasons.append("missing_visual_descriptor")
+				}
+			}
+		}
+
+		if candidate.isSoftProposal {
+			// Soft proposals bypass normal pre-suppressions, only blocked by dismissed history
+			if input.history.recentlyDismissedCandidateIds.contains(candidate.id)
+				|| input.history.recentlyDismissedCandidateIds.contains(generatedProposalActionId(for: candidate.id))
+			{
+				return "recently_dismissed"
+			}
+			return nil
+		}
+
+		return preSuppressReason(candidate: candidate, input: input)
 	}
 
 	private static func clipboardOnlyStaleContext(
@@ -703,7 +761,18 @@ enum GeneratedExecutionProposalActivator {
 
 		let isActionWorthy = FastVisibilityQualityGate.isActionWorthy(title: input.snapshot.windowTitle, appName: input.snapshot.activeApp)
 		let hasStrongOCR = (input.snapshot.recentOCRExcerpt?.count ?? 0) >= 100
-		let proposalRecoveryModeActive = isActionWorthy && hasStrongOCR
+		var proposalRecoveryModeActive = isActionWorthy && hasStrongOCR
+		if proposalRecoveryModeActive {
+			let isStrong = RouterGroundingHeuristic.isStrongActionablePageContext(
+				title: input.snapshot.windowTitle,
+				appName: input.snapshot.activeApp,
+				ocrExcerpt: input.snapshot.recentOCRExcerpt
+			)
+			if !isStrong {
+				proposalRecoveryModeActive = false
+				print("[ProposalRecoveryMode] active=no reason=weak_or_mixed_browser_context")
+			}
+		}
 
 		let activePanelThreshold = proposalRecoveryModeActive ? panelGeneratedScoreThreshold * 0.5 : panelGeneratedScoreThreshold
 		let activeFloatingThreshold = proposalRecoveryModeActive ? floatingStrongScoreThreshold * 0.5 : floatingStrongScoreThreshold
