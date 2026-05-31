@@ -33,6 +33,9 @@ public actor WorkflowIntelligenceCoordinator {
     private var cooldowns: [String: Date]
     private var recentAccepts: [String]
     private var recentIgnores: [String]
+    private let evaluation = WorkflowEvaluation()
+    private var lastStabilized: WorkflowState = .empty
+    private var lastContextShiftDetected: Bool = false
 
     public init(
         stream: ContextEventStream = ContextEventStream(),
@@ -56,6 +59,10 @@ public actor WorkflowIntelligenceCoordinator {
     /// Test-only accessor. Production code MUST NOT depend on this; it exists
     /// so the producer self-test can verify the event stream state.
     public func eventStreamSnapshotForTesting() async -> [ContextEvent] {
+        await stream.snapshot()
+    }
+
+    public func getEventStreamSnapshot() async -> [ContextEvent] {
         await stream.snapshot()
     }
 
@@ -97,13 +104,19 @@ public actor WorkflowIntelligenceCoordinator {
             clipboardLength: clipboardLength
         )
 
-        let inferred = await WorkflowInferenceModel.infer(packet: packet, backend: backend)
+        let inferredRaw = await WorkflowInferenceModel.infer(packet: packet, backend: backend, applyProvenanceGuard: false)
 
         // B.1.5: evidence post-mortem. Show which packet sources contained
         // terms aligned with the picked workflow, and which sources contained
         // terms aligned with COMPETING workflows that were not chosen. This
         // is diagnostic-only — these maps are NOT used for classification.
-        Self.diagnoseEvidence(picked: inferred.workflow, packet: packet)
+        Self.diagnoseEvidence(picked: inferredRaw.workflow, packet: packet)
+
+        // Enforce provenance guard after diagnostic evidence is computed
+        let inferred = WorkflowInferenceGuard.apply(result: inferredRaw, packet: packet)
+
+        let currentChanges = await evaluation.getVolatilityChangesCount()
+        let initialVolatilityScore = min(Double(currentChanges) / 10.0, 1.0)
 
         let candidate = WorkflowState(
             workflowType: AmbientWorkflowType(rawString: inferred.workflow),
@@ -117,15 +130,46 @@ public actor WorkflowIntelligenceCoordinator {
             repeatedTerms: buffer.long.repeatedTerms,
             recentTransitions: buffer.medium.transitions,
             suggestedIntentHints: inferred.suggestedIntentHints,
-            sourcePacketHash: Self.hash(packet: packet)
+            sourcePacketHash: Self.hash(packet: packet),
+            provenanceCorrected: inferred.provenanceCorrected,
+            correctionStrength: inferred.correctionStrength,
+            volatilityScore: initialVolatilityScore
         )
 
-        let stabilized = stabilizer.ingest(
+        let stabilizedRaw = stabilizer.ingest(
             candidate: candidate,
             now: now,
             freshShiftSignal: packet.contextShiftDetected
         )
+
+        let finalVolatilityScore = await evaluation.record(
+            stabilized: stabilizedRaw,
+            candidate: candidate,
+            now: now,
+            contextShiftDetected: packet.contextShiftDetected
+        )
+
+        let stabilized = WorkflowState(
+            workflowType: stabilizedRaw.workflowType,
+            confidence: stabilizedRaw.confidence,
+            evidence: stabilizedRaw.evidence,
+            uncertainty: stabilizedRaw.uncertainty,
+            startedAt: stabilizedRaw.startedAt,
+            lastUpdatedAt: stabilizedRaw.lastUpdatedAt,
+            stabilityScore: stabilizedRaw.stabilityScore,
+            dominantApps: stabilizedRaw.dominantApps,
+            repeatedTerms: stabilizedRaw.repeatedTerms,
+            recentTransitions: stabilizedRaw.recentTransitions,
+            suggestedIntentHints: stabilizedRaw.suggestedIntentHints,
+            sourcePacketHash: stabilizedRaw.sourcePacketHash,
+            provenanceCorrected: stabilizedRaw.provenanceCorrected,
+            correctionStrength: stabilizedRaw.correctionStrength,
+            volatilityScore: finalVolatilityScore
+        )
+
         stabilized.log()
+        self.lastStabilized = stabilized
+        self.lastContextShiftDetected = packet.contextShiftDetected
 
         // Task 8: compare with old inference if supplied.
         if let old = oldInferenceLabel {
@@ -152,6 +196,21 @@ public actor WorkflowIntelligenceCoordinator {
         )
 
         return stabilized
+    }
+
+    /// Exposes a confidence report of the latest tick and evaluation status.
+    public func getConfidenceReport() async -> WorkflowConfidenceReport {
+        let trust = lastStabilized.workflowTrustScore
+        return await evaluation.generateReport(
+            stabilized: lastStabilized,
+            contextShiftDetected: lastContextShiftDetected,
+            trustScore: trust
+        )
+    }
+
+    /// Test-only accessor to retrieve the internal evaluation actor.
+    public func getEvaluationForTesting() -> WorkflowEvaluation {
+        return evaluation
     }
 
     // MARK: - Comparison
@@ -191,7 +250,7 @@ public actor WorkflowIntelligenceCoordinator {
     /// did or did not find supporting evidence in the packet, and where
     /// competing labels were also supported but ignored.
     nonisolated static let diagnosticKeywords: [String: [String]] = [
-        "shopping":    ["amazon", "ebay", "walmart", "target", "best", "cart", "checkout", "price", "stock", "shipping"],
+        "shopping":    ["amazon", "anker", "prime", "ebay", "walmart", "target", "best", "cart", "checkout", "price", "stock", "shipping"],
         "comparing":   ["compare", "specs", "spec", "review", "stars", "model", "vs"],
         "researching": ["wiki", "article", "blog", "search", "results", "paper"],
         "studying":    ["calculus", "physics", "biology", "chapter", "lecture", "exam", "assignment", "homework", "notes"],

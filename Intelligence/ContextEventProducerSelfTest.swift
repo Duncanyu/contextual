@@ -143,6 +143,15 @@ enum ContextEventProducerSelfTest {
         // Privacy log sanity — verify the helper logs once.
         ContextEventProducer.assertPrivacyHelperContracts(check: check)
 
+        // Case 7: rapid title changes trigger coalescing logic.
+        // Send a burst of snapshots to trigger inferenceInFlight / tickPending coalescing.
+        for i in 1...10 {
+            let snapRapid = makeSnapshot(app: "Firefox", title: "Rapid Title \(i)", ocr: nil, sel: nil, at: now.addingTimeInterval(25 + Double(i)*0.01))
+            await producer.ingest(snapshot: snapRapid, now: now.addingTimeInterval(25 + Double(i)*0.01))
+        }
+        // Small wait to allow async tick tasks to resolve and log.
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+
         let ok = failures.isEmpty
         print("[ContextEventProducerSelfTest] completed ok=\(ok) failures=\(failures.count)")
         return ok

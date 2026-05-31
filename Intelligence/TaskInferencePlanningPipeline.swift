@@ -23,6 +23,10 @@ enum TaskInferencePlanningPipeline {
 		registry: HookCapabilityRegistry = .shared,
 		referenceTime: Date = Date()
 	) async -> PlanningOutput? {
+		if Day1BehaviorValidationMode.isEnabled {
+			print("[HookCompositionPipeline] blocked reason=day1_behavior_validation")
+			return nil
+		}
 		guard inference.shouldChime else { return nil }
 		guard inference.confidence >= 0.42 else { return nil }
 

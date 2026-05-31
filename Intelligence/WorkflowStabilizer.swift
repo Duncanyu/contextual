@@ -60,6 +60,64 @@ public struct WorkflowStabilizer: Sendable {
             }
         }
 
+        // 0.2. Phase 20B Deterministic Fallback Commit
+        if candidate.uncertainty == "fallback" || candidate.evidence.contains("model_failed") {
+            if current.workflowType == .unknown {
+                print("[WorkflowStability] corrected=\(candidate.workflowType.rawValue) previous=unknown reason=deterministic_fallback")
+            } else {
+                print("[WorkflowStability] committed=\(candidate.workflowType.rawValue) reason=deterministic_fallback")
+            }
+            current = WorkflowState(
+                workflowType: candidate.workflowType,
+                confidence: candidate.confidence,
+                evidence: candidate.evidence,
+                uncertainty: candidate.uncertainty,
+                startedAt: now,
+                lastUpdatedAt: now,
+                stabilityScore: 0.5,
+                dominantApps: candidate.dominantApps,
+                repeatedTerms: candidate.repeatedTerms,
+                recentTransitions: candidate.recentTransitions,
+                suggestedIntentHints: candidate.suggestedIntentHints,
+                sourcePacketHash: candidate.sourcePacketHash,
+                provenanceCorrected: candidate.provenanceCorrected,
+                correctionStrength: candidate.correctionStrength
+            )
+            pendingCandidate = nil
+            pendingConfirmations = 0
+            return current
+        }
+
+        // 0.5. Phase B.1.10: Strong provenance correction immediate commit
+        let candidateProvenanceCorrected = candidate.provenanceCorrected ?? false
+        let candidateCorrectionStrength = candidate.correctionStrength ?? "none"
+        if candidateProvenanceCorrected
+           && candidateCorrectionStrength == "strong"
+           && candidate.confidence >= 0.65
+           && (current.workflowType == .unknown || current.stabilityScore <= 0.5) {
+            
+            current = WorkflowState(
+                workflowType: candidate.workflowType,
+                confidence: candidate.confidence,
+                evidence: candidate.evidence,
+                uncertainty: candidate.uncertainty,
+                startedAt: now,
+                lastUpdatedAt: now,
+                stabilityScore: 0.5,
+                dominantApps: candidate.dominantApps,
+                repeatedTerms: candidate.repeatedTerms,
+                recentTransitions: candidate.recentTransitions,
+                suggestedIntentHints: candidate.suggestedIntentHints,
+                sourcePacketHash: candidate.sourcePacketHash,
+                provenanceCorrected: true,
+                correctionStrength: "strong"
+            )
+            pendingCandidate = nil
+            pendingConfirmations = 0
+            print("[WorkflowStability] committed=\(current.workflowType.rawValue) reason=strong_provenance_correction")
+            return current
+        }
+
         // 1. Same workflow → retain and grow stability.
         if candidate.workflowType == current.workflowType && current.workflowType != .unknown {
             let grown = min(current.stabilityScore + 0.05, 1.0)

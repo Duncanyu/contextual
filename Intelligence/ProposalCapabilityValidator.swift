@@ -67,6 +67,56 @@ enum ProposalCapabilityValidator {
 
 		let lower = trimmed.lowercased()
 
+		// Dev vocabulary block on product shopping pages
+		let appLower = isolated.appName.lowercased()
+		let bundleLower = (isolated.bundleIdentifier ?? "").lowercased()
+		let titleLower = isolated.windowTitle.lowercased()
+		
+		let isIDE = bundleLower.contains("xcode") || appLower.contains("xcode") ||
+		            bundleLower.contains("vscode") || bundleLower.contains("terminal") ||
+		            appLower.contains("terminal") || appLower.contains("vs code") ||
+		            appLower.contains("intellij") || bundleLower.contains("intellij")
+		let isDevContext = isIDE || titleLower.contains(".swift") || titleLower.contains(".py") ||
+		                   titleLower.contains(".rs") || titleLower.contains(".go") ||
+		                   titleLower.contains(".js") || titleLower.contains(".ts") ||
+		                   titleLower.contains(".json") || titleLower.contains("codebase") ||
+		                   titleLower.contains("repository")
+		
+		let allContextText = "\(isolated.appName) \(isolated.windowTitle) \(isolated.ocrExcerpt ?? "") \(isolated.selectedText ?? "") \(isolated.axExcerpt ?? "")".lowercased()
+		
+		let shoppingPlatformKeys = ["amazon", "bestbuy", "best buy", "newegg", "ebay",
+		                            "walmart", "target", "etsy", "shopify", "apple store"]
+		let isShoppingPlatform = shoppingPlatformKeys.contains {
+			bundleLower.contains($0) || appLower.contains($0) || titleLower.contains($0)
+		}
+		
+		let productSignals = [
+			"add to cart", "buy now", "in stock", "sold by", "free shipping",
+			"customer reviews", "verified purchase", "return policy", "model number",
+			"ships free", "compatible with", "compare models", "warranty included",
+			"price:", "list price", "sale price"
+		]
+		let hasPricePattern = allContextText.range(
+			of: #"\$\d"#, options: .regularExpression
+		) != nil
+		let hasProductSignal = productSignals.contains { allContextText.contains($0) }
+		let isProductPage = isShoppingPlatform || hasProductSignal || hasPricePattern
+		let isShopping = isShoppingPlatform || isProductPage
+		
+		if isShopping && !isDevContext {
+			let proposalText = "\(title) \(goal)".lowercased()
+			let forbiddenTerms = [
+				"build plan", "repository", "codebase", "implementation",
+				"self-test", "commit", "file", "source", "version compatibility"
+			]
+			for term in forbiddenTerms {
+				if proposalText.contains(term) {
+					print("[ProposalValidation] rejected reason=dev_vocabulary_on_product_page title=\"\(title)\"")
+					return ValidationResult(accepted: false, reason: "dev_vocabulary_on_product_page", diagnosticTag: "diag:dev_vocabulary_on_product_page")
+				}
+			}
+		}
+
 		// PromptLeakFilter: Reject titles containing internal/tooling terms when page context does not support them
 		let leakTerms = [
 			"active permissions", "permissions", "capability", "router", "prompt", "planner",

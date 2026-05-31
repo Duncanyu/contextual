@@ -26,13 +26,18 @@ public enum WorkflowInferenceSelfTest {
 
         var failures: [String] = []
 
-        let cases: [(name: String, events: [ContextEvent], expected: String)] = [
-            ("studying_sequence",  Fixtures.studyingSequence(),  "studying"),
-            ("gaming_sequence",    Fixtures.gamingSequence(),    "gaming"),
-            ("debugging_sequence", Fixtures.debuggingSequence(), "debugging"),
-            ("research_sequence",  Fixtures.researchSequence(),  "researching"),
-            ("comparing_sequence", Fixtures.comparingSequence(), "comparing"),
-            ("idle_sequence",      Fixtures.idleSequence(),      "idle"),
+        enum Expectation {
+            case exact(String)
+            case notIdle
+        }
+
+        let cases: [(name: String, events: [ContextEvent], expected: Expectation)] = [
+            ("studying_sequence",  Fixtures.studyingSequence(),  .exact("studying")),
+            ("gaming_sequence",    Fixtures.gamingSequence(),    .exact("gaming")),
+            ("debugging_sequence", Fixtures.debuggingSequence(), .exact("debugging")),
+            ("research_sequence",  Fixtures.researchSequence(),  .exact("researching")),
+            ("comparing_sequence", Fixtures.comparingSequence(), .exact("comparing")),
+            ("idle_sequence",      Fixtures.idleSequence(),      .exact("idle")),
             // B.1.6 regression — the exact B.1.5 failure: Gmail (early, lots
             // of repeats) followed by Amazon (recent, fewer repeats). Without
             // recency weighting + fresh-shift correction this returns
@@ -40,7 +45,12 @@ public enum WorkflowInferenceSelfTest {
             // the comparing-family fallback.
             ("shopping_after_gmail_recency_weighted",
              Fixtures.shoppingAfterGmailSequence(),
-             "shopping"),
+             .exact("shopping")),
+            // B.1.7 regression — high browser title churn with no typing/pointer
+            // is ACTIVE browsing/research/shopping/comparing, not idle.
+            ("active_title_churn_not_idle",
+             Fixtures.activeTitleChurnSequence(),
+             .notIdle),
         ]
 
         for tc in cases {
@@ -55,13 +65,481 @@ public enum WorkflowInferenceSelfTest {
             _ = await coordinator.tick(now: now)
             let stabilized = await coordinator.tick(now: now)
 
-            if stabilized.workflowType.rawValue == tc.expected {
+            let got = stabilized.workflowType.rawValue
+            let pass: Bool = {
+                switch tc.expected {
+                case .exact(let label):
+                    return got == label
+                case .notIdle:
+                    return got != "idle"
+                }
+            }()
+
+            if pass {
                 print("[WorkflowInferenceSelfTest] pass case=\(tc.name)")
             } else {
-                print("[WorkflowInferenceSelfTest] fail case=\(tc.name) expected=\(tc.expected) got=\(stabilized.workflowType.rawValue)")
+                let expectedDesc: String = {
+                    switch tc.expected {
+                    case .exact(let label): return label
+                    case .notIdle: return "not_idle"
+                    }
+                }()
+                print("[WorkflowInferenceSelfTest] fail case=\(tc.name) expected=\(expectedDesc) got=\(got)")
                 failures.append(tc.name)
             }
         }
+
+		// MARK: - Guard regression tests (B.1.8)
+		do {
+			let events = Fixtures.activeShoppingTitleChurnSequence()
+			let now = events.last?.timestamp ?? Date()
+			let buffer = TemporalContextBuffer.build(from: events, now: now)
+			let packet = TemporalContextCompressor.compress(buffer: buffer, now: now)
+
+			// 1) Unsupported high-confidence label must be corrected away from reading.
+			let fixedReading = AmbientWorkflowInferenceResult(
+				workflow: "reading",
+				confidence: 1.0,
+				why: "recent_title_changes=11",
+				evidence: [],
+				suggestedIntentHints: [],
+				uncertainty: ""
+			)
+			let corrected = await WorkflowInferenceModel.infer(packet: packet, backend: FixedBackend(result: fixedReading))
+			if corrected.workflow != "reading" {
+				print("[WorkflowInferenceSelfTest] pass case=unsupported_high_confidence_label_downgraded")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=unsupported_high_confidence_label_downgraded expected=not_reading got=reading")
+				failures.append("unsupported_high_confidence_label_downgraded")
+			}
+
+			// 2) Generic title churn must not yield high confidence reading/writing/idle.
+			let churnOnly = AmbientWorkflowInferenceResult(
+				workflow: "writing",
+				confidence: 1.0,
+				why: "recent_title_changes=9",
+				evidence: [],
+				suggestedIntentHints: [],
+				uncertainty: ""
+			)
+			let churnGuarded = await WorkflowInferenceModel.infer(packet: packet, backend: FixedBackend(result: churnOnly))
+			// Accept either a confidence downgrade OR a provenance-based correction away from writing/idle/reading.
+			if churnGuarded.workflow != "writing" || churnGuarded.confidence <= 0.5 || churnGuarded.workflow == "unknown" {
+				print("[WorkflowInferenceSelfTest] pass case=generic_title_churn_not_high_confidence")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=generic_title_churn_not_high_confidence got_workflow=\(churnGuarded.workflow) conf=\(String(format: "%.2f", churnGuarded.confidence))")
+				failures.append("generic_title_churn_not_high_confidence")
+			}
+
+			// 3) B.1.9 regression: model returns writing confidence 1.00 but packet has Amazon/Anker shopping cues.
+			let writingPkt = AmbientWorkflowInferenceResult(
+				workflow: "writing",
+				confidence: 1.0,
+				why: "writing some articles",
+				evidence: [],
+				suggestedIntentHints: [],
+				uncertainty: ""
+			)
+			let writingGuarded = await WorkflowInferenceModel.infer(packet: packet, backend: FixedBackend(result: writingPkt))
+			if writingGuarded.workflow != "writing" && (writingGuarded.workflow == "shopping" || writingGuarded.workflow == "comparing") {
+				print("[WorkflowInferenceSelfTest] pass case=b19_writing_corrected_to_shopping_or_comparing")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=b19_writing_corrected_to_shopping_or_comparing expected=shopping_or_comparing got=\(writingGuarded.workflow)")
+				failures.append("b19_writing_corrected_to_shopping_or_comparing")
+			}
+
+            // Phase 20B: Deterministic Fallback on Model Failure
+            struct TimeoutBackend: WorkflowInferenceBackend {
+                func infer(packet: CompressedTemporalPacket) async -> AmbientWorkflowInferenceResult? {
+                    return nil // simulates timeout/cancel
+                }
+            }
+            let fallbackResult = await WorkflowInferenceModel.infer(packet: packet, backend: TimeoutBackend())
+            if fallbackResult.workflow == "shopping" && fallbackResult.why == "deterministic_temporal_fallback" {
+                print("[WorkflowInferenceSelfTest] pass case=phase20b_model_timeout_triggers_deterministic_fallback")
+            } else {
+                print("[WorkflowInferenceSelfTest] fail case=phase20b_model_timeout_triggers_deterministic_fallback got=\(fallbackResult.workflow)")
+                failures.append("phase20b_model_timeout_triggers_deterministic_fallback")
+            }
+
+			// 4) B.1.10 regression: model returns zero-support high confidence label (writing), guard corrects to shopping, coordinator ticks once, stabilizer commits shopping immediately.
+			let b110Coordinator = WorkflowIntelligenceCoordinator(
+				stream: ContextEventStream(),
+				backend: FixedBackend(result: writingPkt),
+				initial: .empty
+			)
+			for ev in events { await b110Coordinator.recordEvent(ev) }
+			let b110State = await b110Coordinator.tick(now: now)
+			if b110State.workflowType == .shopping
+			   && b110State.provenanceCorrected == true
+			   && b110State.correctionStrength == "strong"
+			   && b110State.stabilityScore == 0.5 {
+				print("[WorkflowInferenceSelfTest] pass case=b110_provenance_corrected_immediate_commit")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=b110_provenance_corrected_immediate_commit expected=shopping(corrected=true,strength=strong,stability=0.5) got=\(b110State.workflowType.rawValue)(corrected=\(b110State.provenanceCorrected ?? false),strength=\(b110State.correctionStrength ?? "nil"),stability=\(b110State.stabilityScore))")
+				failures.append("b110_provenance_corrected_immediate_commit")
+			}
+
+			// MARK: - Validation & Confidence Self-Tests (Phase B.2)
+			
+			// 1) workflow_volatility_detection
+			let volatilityEval = WorkflowEvaluation()
+			let workflows: [AmbientWorkflowType] = [.shopping, .browsing, .shopping, .browsing, .shopping, .browsing]
+			var volScore = 0.0
+			for (i, wf) in workflows.enumerated() {
+				let state = WorkflowState(
+					workflowType: wf,
+					confidence: 0.8,
+					evidence: ["test"],
+					uncertainty: "",
+					startedAt: now,
+					lastUpdatedAt: now,
+					stabilityScore: 0.5,
+					dominantApps: [],
+					repeatedTerms: [],
+					recentTransitions: [],
+					suggestedIntentHints: [],
+					sourcePacketHash: "",
+					provenanceCorrected: false,
+					volatilityScore: 0.0
+				)
+				volScore = await volatilityEval.record(
+					stabilized: state,
+					candidate: state,
+					now: now.addingTimeInterval(Double(i) * 10),
+					contextShiftDetected: false
+				)
+			}
+			
+			let changesCount = await volatilityEval.getVolatilityChangesCount()
+			if changesCount == 5 && volScore == 0.5 {
+				print("[WorkflowInferenceSelfTest] pass case=workflow_volatility_detection")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=workflow_volatility_detection expected=5 changes and 0.5 volScore, got=\(changesCount) and \(volScore)")
+				failures.append("workflow_volatility_detection")
+			}
+
+			// 2) workflow_trust_score
+			let trustUnknown = WorkflowState.empty.workflowTrustScore
+			
+			let perfectState = WorkflowState(
+				workflowType: .shopping,
+				confidence: 1.0,
+				evidence: ["amazon"],
+				uncertainty: "",
+				startedAt: now,
+				lastUpdatedAt: now,
+				stabilityScore: 1.0,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: false,
+				volatilityScore: 0.0
+			)
+			let trustPerfect = perfectState.workflowTrustScore
+			
+			let volatileState = WorkflowState(
+				workflowType: .shopping,
+				confidence: 0.7,
+				evidence: ["amazon"],
+				uncertainty: "",
+				startedAt: now,
+				lastUpdatedAt: now,
+				stabilityScore: 0.4,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: false,
+				volatilityScore: 0.5
+			)
+			let trustVolatile = volatileState.workflowTrustScore
+			
+			let correctedState = WorkflowState(
+				workflowType: .shopping,
+				confidence: 0.75,
+				evidence: ["amazon"],
+				uncertainty: "",
+				startedAt: now,
+				lastUpdatedAt: now,
+				stabilityScore: 0.5,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: true,
+				volatilityScore: 0.0
+			)
+			let trustCorrected = correctedState.workflowTrustScore
+			
+			let isUnknownOk = trustUnknown == 0.0
+			let isPerfectOk = abs(trustPerfect - 1.0) < 1e-9
+			let isVolatileOk = abs(trustVolatile - 0.49) < 1e-9
+			let isCorrectedOk = abs(trustCorrected - 0.75) < 1e-9
+			
+			if isUnknownOk && isPerfectOk && isVolatileOk && isCorrectedOk {
+				print("[WorkflowInferenceSelfTest] pass case=workflow_trust_score")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=workflow_trust_score unknown=\(trustUnknown) perfect=\(trustPerfect) volatile=\(trustVolatile) corrected=\(trustCorrected)")
+				failures.append("workflow_trust_score")
+			}
+
+			// 3) workflow_duration_tracking
+			let durationEval = WorkflowEvaluation()
+			let baseTime = Date()
+			
+			let state1 = WorkflowState(
+				workflowType: .shopping,
+				confidence: 0.8,
+				evidence: ["test"],
+				uncertainty: "",
+				startedAt: baseTime,
+				lastUpdatedAt: baseTime,
+				stabilityScore: 0.5,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: false,
+				volatilityScore: 0.0
+			)
+			await durationEval.record(stabilized: state1, candidate: state1, now: baseTime, contextShiftDetected: false)
+			
+			let state2 = WorkflowState(
+				workflowType: .shopping,
+				confidence: 0.7,
+				evidence: ["test"],
+				uncertainty: "",
+				startedAt: baseTime,
+				lastUpdatedAt: baseTime.addingTimeInterval(20),
+				stabilityScore: 0.5,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: false,
+				volatilityScore: 0.0
+			)
+			await durationEval.record(stabilized: state2, candidate: state2, now: baseTime.addingTimeInterval(20), contextShiftDetected: false)
+			
+			let state3 = WorkflowState(
+				workflowType: .browsing,
+				confidence: 0.6,
+				evidence: ["test"],
+				uncertainty: "",
+				startedAt: baseTime.addingTimeInterval(40),
+				lastUpdatedAt: baseTime.addingTimeInterval(40),
+				stabilityScore: 0.5,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: false,
+				volatilityScore: 0.0
+			)
+			await durationEval.record(stabilized: state3, candidate: state3, now: baseTime.addingTimeInterval(40), contextShiftDetected: false)
+			
+			let completedDurations = await durationEval.getCompletedSessionDurations()
+			if completedDurations.count == 1 && completedDurations[0] == 40.0 {
+				print("[WorkflowInferenceSelfTest] pass case=workflow_duration_tracking")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=workflow_duration_tracking count=\(completedDurations.count) duration=\(completedDurations.first ?? -1)")
+				failures.append("workflow_duration_tracking")
+			}
+
+			// 4) workflow_correction_tracking
+			let corrEval = WorkflowEvaluation()
+			let tick1 = WorkflowState.empty
+			await corrEval.record(stabilized: tick1, candidate: tick1, now: now, contextShiftDetected: false)
+			
+			let tick2 = WorkflowState(
+				workflowType: .shopping,
+				confidence: 0.75,
+				evidence: ["test"],
+				uncertainty: "",
+				startedAt: now,
+				lastUpdatedAt: now,
+				stabilityScore: 0.5,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: true,
+				volatilityScore: 0.0
+			)
+			await corrEval.record(stabilized: tick2, candidate: tick2, now: now, contextShiftDetected: false)
+			
+			let tick3 = WorkflowState(
+				workflowType: .comparing,
+				confidence: 0.8,
+				evidence: ["test"],
+				uncertainty: "",
+				startedAt: now,
+				lastUpdatedAt: now,
+				stabilityScore: 0.5,
+				dominantApps: [],
+				repeatedTerms: [],
+				recentTransitions: [],
+				suggestedIntentHints: [],
+				sourcePacketHash: "",
+				provenanceCorrected: false,
+				volatilityScore: 0.0
+			)
+			await corrEval.record(stabilized: tick3, candidate: tick3, now: now, contextShiftDetected: false)
+			
+			let rates = await corrEval.getDiagnosticRates()
+			let isUnkRateOk = abs(rates.unknownRate - 0.333333) < 0.01
+			let isCorrRateOk = abs(rates.correctionRate - 0.333333) < 0.01
+			
+			if isUnkRateOk && isCorrRateOk {
+				print("[WorkflowInferenceSelfTest] pass case=workflow_correction_tracking")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=workflow_correction_tracking rates=\(rates)")
+				failures.append("workflow_correction_tracking")
+			}
+
+			// 1) workflow_inference_priority_over_goal_generator
+			let backpressure = LocalAIBackpressure.shared
+			let acqGoal = await backpressure.acquire(purpose: "goal_generator")
+			if acqGoal {
+				let acqWorkflow = await backpressure.acquire(purpose: "workflow_inference")
+				if acqWorkflow {
+					print("[WorkflowInferenceSelfTest] pass case=workflow_inference_priority_over_goal_generator")
+				} else {
+					print("[WorkflowInferenceSelfTest] fail case=workflow_inference_priority_over_goal_generator expected=true got=false")
+					failures.append("workflow_inference_priority_over_goal_generator")
+				}
+				await backpressure.release(purpose: "workflow_inference")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=workflow_inference_priority_over_goal_generator setup_failed")
+				failures.append("workflow_inference_priority_over_goal_generator")
+			}
+
+			// 2) phase_b_validation_disables_goal_generation
+			setenv("CONTEXTUAL_PHASE_B_VALIDATION_MODE", "1", 1)
+			let dummySnap = CanonicalGeneratedExecutionContextSnapshot(
+				activeApp: "Firefox",
+				windowTitle: "Swift docs - Mozilla Firefox",
+				inferredWorkflow: .research,
+				workflowConfidence: 0.5,
+				generatedAt: Date(),
+				freshnessScore: 0.5,
+				packetIsStale: false
+			)
+			let engineResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
+				snapshot: dummySnap,
+				existingStaticActions: [],
+				reusableActions: []
+			)
+			unsetenv("CONTEXTUAL_PHASE_B_VALIDATION_MODE")
+			
+			// Phase B validation mode disables goal generation via the gate path,
+			// which the engine surfaces as `status == .quietByGate`. (Equality on
+			// the full `.quiet` constant fails because `createdAt` differs per
+			// invocation — the status enum is the contract.)
+			if engineResult.status == .quietByGate {
+				print("[WorkflowInferenceSelfTest] pass case=phase_b_validation_disables_goal_generation")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=phase_b_validation_disables_goal_generation expected=quietByGate got=\(engineResult.status)")
+				failures.append("phase_b_validation_disables_goal_generation")
+			}
+
+			// 3) agentic_hook_quarantined_by_default
+			let agenticCandidate = GeneratedExecutionProposalCandidate(
+				id: "agentic:test_proposal",
+				title: "Create a build plan based on latest",
+				description: "agentic task",
+				source: .hookComposer,
+				workflowType: .research,
+				intentType: .explain,
+				confidence: 0.9,
+				interruptionCost: 0.2,
+				explainabilitySummary: "hook_composer_agentic",
+				expectedOutputSummary: "Task plan output",
+				requiredContextTypes: [.textSnippet],
+				executionAction: nil,
+				generatedActionId: nil,
+				primitiveSignature: "agentic_test",
+				isExecutableGeneratedProposal: true
+			)
+			let inputSnap = CanonicalGeneratedExecutionContextSnapshot(
+				activeApp: "Firefox",
+				windowTitle: "Swift docs - Mozilla Firefox",
+				inferredWorkflow: .research,
+				workflowConfidence: 0.8,
+				generatedAt: Date(),
+				freshnessScore: 0.8,
+				packetIsStale: false
+			)
+			let agenticActivation = GeneratedExecutionProposalActivator.activateProposals(
+				input: GeneratedExecutionProposalActivationInput(
+					staticActionIds: [],
+					generatedExecutionCandidates: [agenticCandidate],
+					snapshot: inputSnap,
+					useLLMGeneratedCandidatesOnly: true,
+					suppressStaticProposalFallback: true
+				)
+			)
+			if agenticActivation.visibleProposals.isEmpty && agenticActivation.floatingGeneratedProposalId == nil {
+				print("[WorkflowInferenceSelfTest] pass case=agentic_hook_quarantined_by_default")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=agentic_hook_quarantined_by_default visible=\(agenticActivation.visibleProposals.count) float=\(String(describing: agenticActivation.floatingGeneratedProposalId))")
+				failures.append("agentic_hook_quarantined_by_default")
+			}
+
+			// 4) product_page_rejects_dev_vocabulary
+			let shoppingIsolated = IsolatedProposalContext(
+				appName: "Safari",
+				bundleIdentifier: "com.apple.Safari",
+				windowTitle: "Anker Prime 100W Power Bank - Amazon.com",
+				selectedText: nil,
+				ocrExcerpt: "Price: $99.99 list price add to cart",
+				axExcerpt: nil,
+				recentChanges: nil,
+				includedSources: ["window_title"],
+				excludedSources: []
+			)
+			
+			let devVocabValidation = ProposalCapabilityValidator.validate(
+				title: "Find a compatible version of the latest Anker Prime build plan",
+				goal: "List all available Anker Prime builds in the repository",
+				isolated: shoppingIsolated,
+				stage: "selftest"
+			)
+			
+			let xcodeIsolated = IsolatedProposalContext(
+				appName: "Xcode",
+				bundleIdentifier: "com.apple.dt.Xcode",
+				windowTitle: "LocalAIBackpressure.swift",
+				selectedText: nil,
+				ocrExcerpt: "import Foundation",
+				axExcerpt: nil,
+				recentChanges: nil,
+				includedSources: ["window_title"],
+				excludedSources: []
+			)
+			let xcodeValidation = ProposalCapabilityValidator.validate(
+				title: "Create a build plan based on the latest Anker Prime build order",
+				goal: "Verify codebase repository commit status",
+				isolated: xcodeIsolated,
+				stage: "selftest"
+			)
+			
+			if !devVocabValidation.accepted && devVocabValidation.reason == "dev_vocabulary_on_product_page" && xcodeValidation.accepted {
+				print("[WorkflowInferenceSelfTest] pass case=product_page_rejects_dev_vocabulary")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=product_page_rejects_dev_vocabulary shopping_accepted=\(devVocabValidation.accepted) reason=\(devVocabValidation.reason) dev_accepted=\(xcodeValidation.accepted) reason=\(xcodeValidation.reason)")
+				failures.append("product_page_rejects_dev_vocabulary")
+			}
+		}
 
         let ok = failures.isEmpty
         print("[WorkflowInferenceSelfTest] completed ok=\(ok) failures=\(failures.count)")
@@ -161,6 +639,13 @@ private struct SignalDrivenStubBackend: WorkflowInferenceBackend {
             uncertainty: ""
         )
     }
+}
+
+// MARK: - Fixed backend (guard tests)
+
+private struct FixedBackend: WorkflowInferenceBackend {
+	let result: AmbientWorkflowInferenceResult
+	func infer(packet: CompressedTemporalPacket) async -> AmbientWorkflowInferenceResult? { result }
 }
 
 // MARK: - Fixtures
@@ -442,4 +927,66 @@ private enum Fixtures {
             ),
         ]
     }
+
+    // Active browsing title churn with product/search-like hints but no typing/pointer events.
+    static func activeTitleChurnSequence() -> [ContextEvent] {
+        let base = Date(timeIntervalSinceNow: 0).addingTimeInterval(-220)
+        let titles: [String] = [
+            "Search results - USB-C charger 65W",
+            "Results - USB-C charger 65W review",
+            "Product page - 65W USB-C charger specs",
+            "Product page - 65W USB-C charger price",
+        ]
+        let hints: [[String]] = [
+            ["charger", "usb-c", "search"],
+            ["charger", "review", "price"],
+            ["charger", "specs", "watt"],
+            ["charger", "price", "shipping"],
+        ]
+
+        return titles.enumerated().map { i, title in
+            ContextEvent(
+                timestamp: base.addingTimeInterval(Double(i) * 35),
+                type: .windowTitleChanged,
+                appName: "Browser",
+                bundleIdentifier: nil,
+                windowTitle: title,
+                textHints: hints[i],
+                sourceConfidence: 0.9,
+                privacyLevel: .publicMetadata,
+                activityIntensity: 0.05
+            )
+        }
+    }
+
+	// B.1.8: active shopping/comparing title churn with shopping provenance terms.
+	static func activeShoppingTitleChurnSequence() -> [ContextEvent] {
+		let base = Date(timeIntervalSinceNow: 0).addingTimeInterval(-220)
+		let titles: [String] = [
+			"Search results - USB-C charger docking station",
+			"Anker Prime docking station - specs",
+			"Product page - charger docking station price",
+			"Results - docking station reviews",
+		]
+		let hints: [[String]] = [
+			["amazon", "anker", "charger", "docking", "station", "search"],
+			["anker", "prime", "docking", "station", "specs"],
+			["amazon", "price", "shipping", "docking", "station"],
+			["review", "stars", "amazon", "anker"],
+		]
+
+		return titles.enumerated().map { i, title in
+			ContextEvent(
+				timestamp: base.addingTimeInterval(Double(i) * 35),
+				type: .windowTitleChanged,
+				appName: "Browser",
+				bundleIdentifier: nil,
+				windowTitle: title,
+				textHints: hints[i],
+				sourceConfidence: 0.9,
+				privacyLevel: .publicMetadata,
+				activityIntensity: 0.05
+			)
+		}
+	}
 }

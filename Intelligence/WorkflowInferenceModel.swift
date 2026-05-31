@@ -10,6 +10,8 @@ public struct AmbientWorkflowInferenceResult: Sendable, Codable, Equatable {
     public let evidence: [String]
     public let suggestedIntentHints: [String]
     public let uncertainty: String
+    public let provenanceCorrected: Bool?
+    public let correctionStrength: String?
 
     public init(
         workflow: String,
@@ -17,7 +19,9 @@ public struct AmbientWorkflowInferenceResult: Sendable, Codable, Equatable {
         why: String,
         evidence: [String],
         suggestedIntentHints: [String],
-        uncertainty: String
+        uncertainty: String,
+        provenanceCorrected: Bool? = false,
+        correctionStrength: String? = "none"
     ) {
         self.workflow = workflow
         self.confidence = confidence
@@ -25,11 +29,25 @@ public struct AmbientWorkflowInferenceResult: Sendable, Codable, Equatable {
         self.evidence = evidence
         self.suggestedIntentHints = suggestedIntentHints
         self.uncertainty = uncertainty
+        self.provenanceCorrected = provenanceCorrected
+        self.correctionStrength = correctionStrength
     }
 
     enum CodingKeys: String, CodingKey {
-        case workflow, confidence, why, evidence, uncertainty
+        case workflow, confidence, why, evidence, uncertainty, provenanceCorrected, correctionStrength
         case suggestedIntentHints = "suggested_intent_hints"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        workflow = try container.decode(String.self, forKey: .workflow)
+        confidence = try container.decode(Double.self, forKey: .confidence)
+        why = try container.decode(String.self, forKey: .why)
+        evidence = try container.decode([String].self, forKey: .evidence)
+        suggestedIntentHints = try container.decodeIfPresent([String].self, forKey: .suggestedIntentHints) ?? []
+        uncertainty = try container.decode(String.self, forKey: .uncertainty)
+        provenanceCorrected = try container.decodeIfPresent(Bool.self, forKey: .provenanceCorrected) ?? false
+        correctionStrength = try container.decodeIfPresent(String.self, forKey: .correctionStrength) ?? "none"
     }
 
     public static let empty = AmbientWorkflowInferenceResult(
@@ -38,7 +56,9 @@ public struct AmbientWorkflowInferenceResult: Sendable, Codable, Equatable {
         why: "no_inference",
         evidence: [],
         suggestedIntentHints: [],
-        uncertainty: "no_response"
+        uncertainty: "no_response",
+        provenanceCorrected: false,
+        correctionStrength: "none"
     )
 }
 
@@ -155,6 +175,15 @@ public enum WorkflowInferencePromptBuilder {
         - Prefer "unknown" when evidence is weak, mixed, or contradictory.
         - Use recent app/title transitions and REPEATED topic terms over time.
         - Use idle/typing/pointer patterns to detect attention vs idle.
+        - High recent title changes usually indicate ACTIVE browsing/research/shopping/comparing,
+          NOT idle. Title churn is a strong signal of interaction even when typing is low.
+        - "idle" is valid only when there is LOW activity AND LOW context change
+          (few title transitions, stable titles, no repeated topic terms).
+        - If recent titles or topic terms look like page/search/product/navigation evidence,
+          do NOT output "idle". Prefer "browsing", "researching", "shopping", "comparing",
+          or "unknown" when unsure.
+        - Title churn alone is NOT evidence for "reading" or "writing". If titles are changing
+          frequently, the user is likely navigating pages; prefer browsing/research/shopping/comparing.
         - Briefly explain the evidence in "why".
         - Do NOT invent goals the user did not show.
 
@@ -185,11 +214,113 @@ public enum WorkflowInferencePromptBuilder {
 /// clamping, and the canonical `[WorkflowInference]` logs.
 public enum WorkflowInferenceModel {
 
+    private static func titleTransitions(from packet: CompressedTemporalPacket) -> Int {
+        for hint in packet.selectionHints {
+            if hint.hasPrefix("recent_title_changes=") {
+                let n = hint.replacingOccurrences(of: "recent_title_changes=", with: "")
+                return Int(n) ?? 0
+            }
+        }
+        return 0
+    }
+
+    private static func shouldRejectIdle(packet: CompressedTemporalPacket) -> Bool {
+        let transitions = titleTransitions(from: packet)
+        if transitions >= 3 { return true }
+        if packet.recentTitles.count >= 3 { return true }
+        if packet.contextShiftDetected { return true }
+        if !packet.topicTerms.isEmpty { return true }
+        return false
+    }
+
+	private static func isGenericTitleChurnOnlyEvidence(_ raw: AmbientWorkflowInferenceResult) -> Bool {
+		let combined = ([raw.why] + raw.evidence).joined(separator: " ").lowercased()
+		guard combined.contains("recent_title_changes=") else { return false }
+		// Generic if there are no other non-trivial tokens besides the churn hint.
+		let stripped = combined
+			.replacingOccurrences(of: "recent_title_changes=", with: "")
+			.components(separatedBy: CharacterSet.alphanumerics.inverted)
+			.filter { !$0.isEmpty }
+		// Accept numeric-only + "recent_title_changes" as generic.
+		let nonNumeric = stripped.filter { Int($0) == nil }
+		return nonNumeric.isEmpty
+	}
+
+	private static func packetTokens(_ packet: CompressedTemporalPacket) -> [String] {
+		let titles = WorkflowIntelligenceCoordinator.titleTokens(packet.recentTitles)
+		return (packet.topicTerms + packet.ocrHints + titles).map { $0.lowercased() }
+	}
+
+	private static func matchedKeywords(workflow: String, packet: CompressedTemporalPacket) -> [String] {
+		let keys = WorkflowIntelligenceCoordinator.diagnosticKeywords[workflow] ?? []
+		let tokens = packetTokens(packet)
+		return WorkflowIntelligenceCoordinator.matched(in: tokens, for: keys)
+	}
+
+	private static func strongestCompetingWorkflow(
+		excluding picked: String,
+		packet: CompressedTemporalPacket
+	) -> (workflow: String, matched: [String])? {
+		let candidates: [String] = ["shopping", "comparing", "researching"]
+		var best: (String, [String])? = nil
+		for w in candidates where w != picked {
+			let m = matchedKeywords(workflow: w, packet: packet)
+			if m.count > (best?.1.count ?? 0) {
+				best = (w, m)
+			}
+		}
+		// Browsing: no keyword list, but strong title churn implies active navigation.
+		let transitions = titleTransitions(from: packet)
+		if transitions >= 3 && packet.recentTitles.count >= 3, picked != "browsing" {
+			if best == nil || best!.1.isEmpty {
+				best = ("browsing", ["title_churn"])
+			}
+		}
+		return best
+	}
+
     public static func infer(
         packet: CompressedTemporalPacket,
-        backend: WorkflowInferenceBackend
+        backend: WorkflowInferenceBackend,
+        applyProvenanceGuard: Bool = true
     ) async -> AmbientWorkflowInferenceResult {
-        let raw = await backend.infer(packet: packet) ?? AmbientWorkflowInferenceResult.empty
+        let rawOpt = await backend.infer(packet: packet)
+        
+        let raw: AmbientWorkflowInferenceResult
+        if let r = rawOpt {
+            raw = r
+        } else {
+            // Phase 20B/C Deterministic Generic Fallback
+            let transitions = titleTransitions(from: packet)
+            
+            // Generate basic evidence heuristics based on counts rather than magic strings.
+            let appIsBrowser = ["Firefox", "Safari", "Google Chrome", "Browser"].contains(packet.currentApp)
+            
+            // A basic form of entity identification purely by repetition shape.
+            let distinctTitles = Set(packet.recentTitles.filter { !$0.isEmpty }).count
+            let repeatedTopicTerms = packet.topicTerms.count
+            
+            // Determine matched sources without looking at what the text actually is
+            var matchedSources: [String] = []
+            if distinctTitles > 0 { matchedSources.append("titles") }
+            if !packet.topicTerms.isEmpty { matchedSources.append("metadata") }
+            
+            if appIsBrowser && transitions >= 2 && distinctTitles >= 2 && repeatedTopicTerms >= 2 {
+                print("[WorkflowFallback] applied workflow=shopping reason=evidence_pattern matched_entities=\(distinctTitles) matched_sources=\(matchedSources.joined(separator: ","))")
+                raw = AmbientWorkflowInferenceResult(
+                    workflow: "shopping",
+                    confidence: 0.65,
+                    why: "deterministic_temporal_fallback",
+                    evidence: ["model_failed", "strong_temporal_signals", "evidence_pattern"],
+                    suggestedIntentHints: [],
+                    uncertainty: "fallback",
+                    provenanceCorrected: true,
+                    correctionStrength: "strong_provenance_correction"
+                )
+            } else {
+                raw = .empty
+            }
+        }
 
         // Clamp label to closed set; clamp confidence to [0, 1].
         let normalizedLabel: String = WorkflowInferencePromptBuilder
@@ -199,7 +330,7 @@ public enum WorkflowInferenceModel {
         let normalizedConfidence = min(max(raw.confidence, 0.0), 1.0)
         let normalizedWorkflow = AmbientWorkflowType(rawString: normalizedLabel).rawValue
 
-        let result = AmbientWorkflowInferenceResult(
+        var result = AmbientWorkflowInferenceResult(
             workflow: normalizedWorkflow,
             confidence: normalizedConfidence,
             why: raw.why,
@@ -207,6 +338,62 @@ public enum WorkflowInferenceModel {
             suggestedIntentHints: raw.suggestedIntentHints,
             uncertainty: raw.uncertainty
         )
+
+		// Phase B.1.8 — Generic title-churn evidence is not sufficient for high-confidence
+		// idle/reading/writing classifications.
+		let transitions = titleTransitions(from: packet)
+		let genericChurnOnly = isGenericTitleChurnOnlyEvidence(raw)
+		if genericChurnOnly && transitions >= 3 && ["idle", "reading", "writing"].contains(result.workflow) && result.confidence > 0.5 {
+			let from = result.workflow
+			let fromConf = result.confidence
+			let toConf = 0.40
+			print("[WorkflowInferenceGuard] downgraded=\(from) reason=generic_title_churn_only confidence_from=\(String(format: "%.2f", fromConf)) confidence_to=\(String(format: "%.2f", toConf))")
+			
+			result = AmbientWorkflowInferenceResult(
+				workflow: from,
+				confidence: toConf,
+				why: raw.why,
+				evidence: raw.evidence,
+				suggestedIntentHints: raw.suggestedIntentHints,
+				uncertainty: raw.uncertainty
+			)
+		}
+
+		let finalResult = await postGuardedResult(packet: packet, raw: raw, result: result)
+
+		if applyProvenanceGuard {
+			return WorkflowInferenceGuard.apply(result: finalResult, packet: packet)
+		} else {
+			return finalResult
+		}
+    }
+
+	private static func postGuardedResult(
+		packet: CompressedTemporalPacket,
+		raw: AmbientWorkflowInferenceResult,
+		result: AmbientWorkflowInferenceResult
+	) async -> AmbientWorkflowInferenceResult {
+        // Pre-model packet sanity guard (Phase B.1.7): prevent "idle" when there are
+        // clear active context changes (title churn, topic terms, or context shifts).
+        if result.workflow == "idle", shouldRejectIdle(packet: packet) {
+            let transitions = titleTransitions(from: packet)
+            let titleCount = packet.recentTitles.count
+            let termCount = packet.topicTerms.count
+            print("[WorkflowInferenceGuard] rejected=idle reason=active_context_changes title_transitions=\(transitions) recent_titles=\(titleCount) terms=\(termCount)")
+
+            let guarded = AmbientWorkflowInferenceResult(
+                workflow: "unknown",
+                confidence: min(0.25, result.confidence),
+                why: "rejected_idle_active_context_changes",
+                evidence: ["rejected_idle_active_context_changes"],
+                suggestedIntentHints: result.suggestedIntentHints,
+                uncertainty: "guard_rejected_idle"
+            )
+            let confStr = String(format: "%.2f", guarded.confidence)
+            print("[WorkflowInference] model=qwen2.5:0.5b workflow=\(guarded.workflow) confidence=\(confStr)")
+            print("[WorkflowInference] evidence=\"\(guarded.why)\"")
+            return guarded
+        }
 
         let confStr = String(format: "%.2f", result.confidence)
         print("[WorkflowInference] model=qwen2.5:0.5b workflow=\(result.workflow) confidence=\(confStr)")
@@ -219,4 +406,114 @@ public enum WorkflowInferenceModel {
 
         return result
     }
+}
+
+// MARK: - Workflow Inference Provenance Guard (Phase B.1.9)
+
+public struct WorkflowInferenceGuard {
+
+	private static func titleTransitions(from packet: CompressedTemporalPacket) -> Int {
+		for hint in packet.selectionHints {
+			if hint.hasPrefix("recent_title_changes=") {
+				let n = hint.replacingOccurrences(of: "recent_title_changes=", with: "")
+				return Int(n) ?? 0
+			}
+		}
+		return 0
+	}
+
+	private static func packetTokens(_ packet: CompressedTemporalPacket) -> [String] {
+		let titles = WorkflowIntelligenceCoordinator.titleTokens(packet.recentTitles)
+		let apps = (packet.recentApps + [packet.currentApp]).map { $0.lowercased() }
+		return (packet.topicTerms + packet.ocrHints + titles + apps).map { $0.lowercased() }
+	}
+
+	private static func matchedKeywords(workflow: String, packet: CompressedTemporalPacket) -> [String] {
+		let keys = WorkflowIntelligenceCoordinator.diagnosticKeywords[workflow] ?? []
+		let tokens = packetTokens(packet)
+		return WorkflowIntelligenceCoordinator.matched(in: tokens, for: keys)
+	}
+
+	private static func strongestCompetingWorkflow(
+		excluding picked: String,
+		packet: CompressedTemporalPacket
+	) -> (workflow: String, matched: [String])? {
+		let candidates: [String] = ["shopping", "comparing", "researching"]
+		var best: (String, [String])? = nil
+		for w in candidates where w != picked {
+			let m = matchedKeywords(workflow: w, packet: packet)
+			if m.count > (best?.1.count ?? 0) {
+				best = (w, m)
+			}
+		}
+		// Browsing: no keyword list, but strong title churn implies active navigation.
+		let transitions = titleTransitions(from: packet)
+		if transitions >= 3 && packet.recentTitles.count >= 3, picked != "browsing" {
+			if best == nil || best!.1.isEmpty {
+				best = ("browsing", ["title_churn"])
+			}
+		}
+		return best
+	}
+
+	public static func apply(
+		result: AmbientWorkflowInferenceResult,
+		packet: CompressedTemporalPacket
+	) -> AmbientWorkflowInferenceResult {
+		let picked = result.workflow
+		let keys = WorkflowIntelligenceCoordinator.diagnosticKeywords[picked]
+		let pickedMatches = matchedKeywords(workflow: picked, packet: packet)
+		let hasZeroSupport = (keys != nil) && pickedMatches.isEmpty
+
+		if hasZeroSupport {
+			let bestCompetitor = strongestCompetingWorkflow(excluding: picked, packet: packet)
+			let strongCompetitorExists = bestCompetitor != nil && bestCompetitor!.workflow != "browsing" && !bestCompetitor!.matched.isEmpty
+
+			if result.confidence >= 0.80 {
+				let originalConfidence = result.confidence
+				print("[WorkflowInferenceGuard] rejected=\(picked) reason=zero_provenance_high_confidence confidence=\(String(format: "%.2f", originalConfidence))")
+
+				if strongCompetitorExists, let best = bestCompetitor {
+					let matchedStr = best.matched.prefix(4).joined(separator: ",")
+					print("[WorkflowInferenceGuard] corrected from=\(picked) to=\(best.workflow) reason=zero_support_strong_competitor matched=\(matchedStr)")
+					return AmbientWorkflowInferenceResult(
+						workflow: best.workflow,
+						confidence: 0.75,
+						why: "corrected_zero_support_strong_competitor",
+						evidence: ["corrected_from=\(picked) matched=\(matchedStr)"],
+						suggestedIntentHints: result.suggestedIntentHints,
+						uncertainty: "guard_corrected",
+						provenanceCorrected: true,
+						correctionStrength: "strong"
+					)
+				} else {
+					return AmbientWorkflowInferenceResult(
+						workflow: "unknown",
+						confidence: 0.35,
+						why: "rejected_zero_provenance_high_confidence",
+						evidence: ["rejected_zero_provenance_high_confidence"],
+						suggestedIntentHints: result.suggestedIntentHints,
+						uncertainty: "guard_rejected",
+						provenanceCorrected: false,
+						correctionStrength: "none"
+					)
+				}
+			} else if strongCompetitorExists, let best = bestCompetitor {
+				let matchedStr = best.matched.prefix(4).joined(separator: ",")
+				print("[WorkflowInferenceGuard] corrected from=\(picked) to=\(best.workflow) reason=zero_support_strong_competitor matched=\(matchedStr)")
+				return AmbientWorkflowInferenceResult(
+					workflow: best.workflow,
+					confidence: 0.75,
+					why: "corrected_zero_support_strong_competitor",
+					evidence: ["corrected_from=\(picked) matched=\(matchedStr)"],
+					suggestedIntentHints: result.suggestedIntentHints,
+					uncertainty: "guard_corrected",
+					provenanceCorrected: true,
+					correctionStrength: "strong"
+				)
+			}
+		}
+
+		return result
+	}
 }

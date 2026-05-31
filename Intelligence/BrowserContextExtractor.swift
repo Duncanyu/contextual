@@ -1,0 +1,130 @@
+import AppKit
+import ApplicationServices
+import Foundation
+
+/// Read-only browser context via Accessibility (AX) API.
+/// Restricted to non-agentic reading of current tab URL and tab titles.
+///
+/// Phase 20D upgrade — proper AXWebArea descendant traversal, real `AXURL`
+/// query, real `AXTabs` query, and exposes the AXWebArea / AXScrollArea
+/// frames so `SurgicalOCR` can crop to actual page content instead of using a
+/// hardcoded rectangle.
+public struct BrowserContextExtractor: Sendable {
+
+    public struct BrowserContext: Sendable {
+        public let appName: String
+        public let selectedTitle: String?
+        public let currentURL: URL?
+        public let recentTabTitles: [String]
+        public let webAreaFrame: CGRect?
+        public let scrollAreaFrame: CGRect?
+    }
+
+    private static let browserNames: Set<String> = [
+        "Safari", "Google Chrome", "Firefox", "Arc",
+    ]
+
+    public static func extract(appName: String, activeAppPID: pid_t?) -> BrowserContext? {
+        guard browserNames.contains(appName) else { return nil }
+        let app = NSWorkspace.shared.runningApplications.first { $0.localizedName == appName }
+        guard let pid = activeAppPID ?? app?.processIdentifier else { return nil }
+
+        print("[BrowserContextExtractor] started app=\(appName) pid=\(pid)")
+        guard AXIsProcessTrusted() else {
+            print("[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted")
+            return nil
+        }
+
+        let axApp = AXUIElementCreateApplication(pid)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused) == .success,
+              focused != nil else {
+            print("[BrowserContextExtractor] current_url_found=no source=none reason=no_focused_window")
+            return nil
+        }
+        let win = focused as! AXUIElement
+
+        let walk = walkDescendants(of: win, depthLimit: 6)
+
+        // 1. URL — try AXWebArea.AXURL first (Safari/Chrome), then any
+        //    AXTextField/AXComboBox whose value starts with http (Firefox URL
+        //    bar, Chrome omnibox before the address shortens).
+        var url: URL? = nil
+        var urlSource = "none"
+        if let webArea = walk.first(where: { $0.role == "AXWebArea" }) {
+            var urlRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(webArea.element, "AXURL" as CFString, &urlRef) == .success,
+               let any = urlRef {
+                if let u = any as? URL {
+                    url = u; urlSource = "ax_webarea_axurl"
+                } else if let s = any as? String, let u = URL(string: s) {
+                    url = u; urlSource = "ax_webarea_axurl"
+                } else if let n = any as? NSURL {
+                    url = n as URL; urlSource = "ax_webarea_axurl"
+                }
+            }
+        }
+        if url == nil {
+            for node in walk where node.role == "AXTextField" || node.role == "AXComboBox" {
+                if let v = BrowserAXProbe.stringAttr(node.element, kAXValueAttribute as CFString),
+                   v.hasPrefix("http"),
+                   let u = URL(string: v) {
+                    url = u; urlSource = "ax_textfield"
+                    break
+                }
+            }
+        }
+        print("[BrowserContextExtractor] current_url_found=\(url != nil ? "yes" : "no") source=\(urlSource)")
+
+        // 2. Tabs — AXTabGroup with AXTabs attribute.
+        var tabTitles: [String] = []
+        var selectedTabTitle: String? = nil
+        if let tabGroup = walk.first(where: { $0.role == "AXTabGroup" }) {
+            var tabsRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(tabGroup.element, "AXTabs" as CFString, &tabsRef) == .success,
+               let arr = tabsRef as? [AXUIElement] {
+                for tab in arr {
+                    if let title = BrowserAXProbe.stringAttr(tab, kAXTitleAttribute as CFString) {
+                        tabTitles.append(title)
+                        var selRef: CFTypeRef?
+                        if AXUIElementCopyAttributeValue(tab, "AXSelected" as CFString, &selRef) == .success,
+                           let sel = selRef as? Bool, sel {
+                            selectedTabTitle = title
+                        }
+                    }
+                }
+            }
+        }
+        print("[BrowserContextExtractor] tab_titles=[\(tabTitles.joined(separator: ", "))]")
+
+        // 3. Frames for surgical OCR.
+        let webAreaFrame = walk.first(where: { $0.role == "AXWebArea" })?.frame
+        let scrollAreaFrame = walk.first(where: { $0.role == "AXScrollArea" })?.frame
+
+        return BrowserContext(
+            appName: appName,
+            selectedTitle: selectedTabTitle,
+            currentURL: url,
+            recentTabTitles: tabTitles,
+            webAreaFrame: webAreaFrame,
+            scrollAreaFrame: scrollAreaFrame
+        )
+    }
+
+    private static func walkDescendants(of element: AXUIElement, depthLimit: Int, depth: Int = 0, maxNodes: Int = 600) -> [BrowserAXProbe.AXNode] {
+        if depth >= depthLimit { return [] }
+        var out: [BrowserAXProbe.AXNode] = []
+        let role = BrowserAXProbe.stringAttr(element, kAXRoleAttribute as CFString) ?? ""
+        let frame = BrowserAXProbe.frameAttr(element)
+        out.append(BrowserAXProbe.AXNode(role: role, frame: frame, element: element))
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            for child in children {
+                out.append(contentsOf: walkDescendants(of: child, depthLimit: depthLimit, depth: depth + 1, maxNodes: maxNodes))
+                if out.count >= maxNodes { return out }
+            }
+        }
+        return out
+    }
+}

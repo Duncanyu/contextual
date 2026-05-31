@@ -174,7 +174,7 @@ final class AppState: ObservableObject {
 			// refreshModelAuditInfo() also calls refreshModelStatus()
 			await self.refreshModelAuditInfo()
 			let chosen = await ModelAuditManager.shared.selectedModel() ?? base
-			await ModelAuditManager.shared.runWarmupIfNeeded(model: chosen)
+			await ModelAuditManager.shared.runWarmupIfNeeded(model: chosen, isManualInvocation: true)
 			await ModelAuditManager.shared.startPeriodicKeepalive(model: chosen)
 		}
 	}
@@ -270,9 +270,53 @@ final class AppState: ObservableObject {
 		WorkflowIntelligenceCoordinator()
 	}()
 
-	lazy var workflowEventProducer: ContextEventProducer = {
-		ContextEventProducer(coordinator: workflowIntelligenceCoordinator)
+	lazy var behavioralIntelligenceCoordinator: BehavioralIntelligenceCoordinator = {
+		BehavioralIntelligenceCoordinator()
 	}()
+
+	lazy var workflowEventProducer: ContextEventProducer = {
+		let producer = ContextEventProducer(
+			coordinator: workflowIntelligenceCoordinator,
+			behavioralCoordinator: behavioralIntelligenceCoordinator
+		)
+		producer.onAmbientJarvisSuggestionGenerated = { [weak self] suggestion in
+			Task { @MainActor in
+				self?.publishAmbientJarvisSuggestion(suggestion)
+			}
+		}
+		return producer
+	}()
+
+	@Published var activeAmbientJarvisSuggestion: AmbientJarvisSuggestion?
+	
+	func publishAmbientJarvisSuggestion(_ suggestion: AmbientJarvisSuggestion?) {
+		self.activeAmbientJarvisSuggestion = suggestion
+		if let suggestion = suggestion {
+			print("[AmbientSuggestionSurface] visible=yes kind=\(suggestion.kind.rawValue)")
+			print("[JarvisRouting] route=ambient_context_only")
+			// Phase 20D — kind is now display metadata only; intent + judgment
+			// are the semantic drivers of execution.
+			print("[JarvisRouting] kind=\(suggestion.kind.rawValue) semantic_driver=intent+judgment")
+			print("[JarvisRouting] blocked_agentic reason=ambient_context_only")
+			
+			// Build ActionProposal to match the existing proposal UI card
+			let proposal = ActionProposal(
+				title: suggestion.title,
+				sourceCaption: "Jarvis Suggestion (Preview-Only)",
+				primaryActionId: "ambient_jarvis:\(suggestion.id)",
+				secondaryActionIds: [],
+				confidence: suggestion.confidence,
+				reason: "ambient_context_only"
+			)
+			self.currentProposal = proposal
+			self.currentProposalKey = "ambient_jarvis:\(suggestion.id)"
+			self.refreshProposalContext(for: proposal)
+		} else {
+			self.currentProposal = nil
+			self.currentProposalKey = nil
+			self.refreshProposalContext(for: nil)
+		}
+	}
 
 	/// Kick off the quarantined hook sandbox on the fixed debug test chain.
 	/// Safe to call repeatedly; drops concurrent calls.
@@ -370,6 +414,30 @@ final class AppState: ObservableObject {
 	var onRevealAssistantPanel: (() -> Void)?
 
 	func invokeAction(id: String) {
+		if id.hasPrefix("ambient_jarvis:") {
+			print("[AmbientSuggestionSurface] accepted id=\(id)")
+			Task {
+				if let suggestion = self.activeAmbientJarvisSuggestion {
+					// Phase 18C: route ambient acceptance through the generic
+					// ContextExecutionEngine. No workflow-specific action; the
+					// same engine produces Observed / Inferred / Unknown for
+					// every workflow.
+					let snapshot = self.latestCanonicalSnapshot
+					let result = await ContextExecutionEngine.execute(
+						suggestion: suggestion,
+						snapshot: snapshot
+					)
+					let outputText = result.render()
+
+					await MainActor.run {
+						self.latestActionResult = outputText
+						self.latestActionTimestamp = Date()
+						self.latestActionId = id
+					}
+				}
+			}
+			return
+		}
 		if id.hasPrefix(GeneratedExecutionProposalActivator.generatedProposalIdPrefix) {
 			let candidateId = String(id.dropFirst(GeneratedExecutionProposalActivator.generatedProposalIdPrefix.count))
 			invokeGeneratedExecutionProposal(id: candidateId)
@@ -578,6 +646,15 @@ final class AppState: ObservableObject {
 			generatedProposalDebugStatus = debugStatus
 		}
 		print("[GeneratedProposalState] app_state_visible_generated=\(activatedGeneratedProposals.count)")
+	}
+
+	/// Clear the activated generated proposals from the panel. Owned here so the
+	/// `private(set)` encapsulation of `activatedGeneratedProposals` is preserved.
+	/// Used by the Day 2 Ambient MVP suppression path in AppDelegate.
+	func clearActivatedGeneratedProposals(reason: String) {
+		guard !activatedGeneratedProposals.isEmpty else { return }
+		print("[GeneratedProposalState] cleared count=\(activatedGeneratedProposals.count) reason=\(reason)")
+		activatedGeneratedProposals = []
 	}
 
 	/// Determines whether existing visible proposals should be preserved when a new activation

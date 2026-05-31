@@ -301,10 +301,14 @@
 			AA0002320000000000000151 /* AgenticControlSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041C0000000000000151 /* AgenticControlSelfTest.swift */; };
 			AA0002330000000000000152 /* AgenticPerceptionRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00041D0000000000000152 /* AgenticPerceptionRefreshCoordinator.swift */; };
 			AA00B1C2D3E4E5F60718293B /* VLMPerceptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F60718293A /* VLMPerceptionEngine.swift */; };
+			AA00B1C2D3E4E5F607182B1B /* LocalAIBackpressure.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B1A /* LocalAIBackpressure.swift */; };
+			AA00B1C2D3E4E5F607182B1D /* PublicPageContextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B1C /* PublicPageContextExtractor.swift */; };
 			AA00B1C2D3E4E5F60718299C /* VisualGrounder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F60718299D /* VisualGrounder.swift */; };
 			AA00B1C2D3E4E5F607182A10 /* VisualGroundingSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182A11 /* VisualGroundingSelfTest.swift */; };
 			AA00B1C2D3E4E5F607182A20 /* AgenticExperimentalMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182A21 /* AgenticExperimentalMode.swift */; };
 			AA00B1C2D3E4E5F607182B01 /* WorkflowState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B02 /* WorkflowState.swift */; };
+			AA00B1C2D3E4E5F607182C01 /* WorkflowConfidenceReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C02 /* WorkflowConfidenceReport.swift */; };
+			AA00B1C2D3E4E5F607182D01 /* WorkflowEvaluation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182D02 /* WorkflowEvaluation.swift */; };
 			AA00B1C2D3E4E5F607182B03 /* ContextEventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B04 /* ContextEventStream.swift */; };
 			AA00B1C2D3E4E5F607182B05 /* TemporalContextBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B06 /* TemporalContextBuffer.swift */; };
 			AA00B1C2D3E4E5F607182B07 /* TemporalContextCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B08 /* TemporalContextCompressor.swift */; };
@@ -316,6 +320,35 @@
 			AA00B1C2D3E4E5F607182B13 /* WorkflowInferenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B14 /* WorkflowInferenceSelfTest.swift */; };
 			AA00B1C2D3E4E5F607182B15 /* ContextEventProducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B16 /* ContextEventProducer.swift */; };
 			AA00B1C2D3E4E5F607182B17 /* ContextEventProducerSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B18 /* ContextEventProducerSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182E01 /* InferredIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E02 /* InferredIntent.swift */; };
+			AA00B1C2D3E4E5F607182E03 /* ContextExecutionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E04 /* ContextExecutionResult.swift */; };
+			AA00B1C2D3E4E5F607182E05 /* ContextExecutionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E06 /* ContextExecutionEngine.swift */; };
+			AA00B1C2D3E4E5F607182E07 /* ContextExecutionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E08 /* ContextExecutionSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182E11 /* WebContextEnrichment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E12 /* WebContextEnrichment.swift */; };
+			AA00B1C2D3E4E5F607182E13 /* WebContextEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E14 /* WebContextEnricher.swift */; };
+			AA00B1C2D3E4E5F607182F11 /* ContextJudgment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F12 /* ContextJudgment.swift */; };
+			AA00B1C2D3E4E5F607182F13 /* JudgmentLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F14 /* JudgmentLayer.swift */; };
+			AA00B1C2D3E4E5F607182F15 /* ArtifactSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F16 /* ArtifactSelector.swift */; };
+			AA00B1C2D3E4E5F607182F17 /* JudgmentLayerSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F18 /* JudgmentLayerSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182F19 /* BrowserAXProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F1A /* BrowserAXProbe.swift */; };
+			AA00B1C2D3E4E5F607182F21 /* ActiveContextRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F22 /* ActiveContextRefresh.swift */; };
+			AA00B1C2D3E4E5F607182F23 /* ActiveContextRefreshSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F24 /* ActiveContextRefreshSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182F25 /* ManualInvokeJarvis.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F26 /* ManualInvokeJarvis.swift */; };
+			AA00B1C2D3E4E5F607182F27 /* ManualInvokeJarvisSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F28 /* ManualInvokeJarvisSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182B20 /* BehavioralContextPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B21 /* BehavioralContextPacket.swift */; };
+			AA00B1C2D3E4E5F607182B22 /* BehavioralInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B23 /* BehavioralInferenceEngine.swift */; };
+			AA00B1C2D3E4E5F607182B24 /* BehavioralStabilizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B25 /* BehavioralStabilizer.swift */; };
+			AA00B1C2D3E4E5F607182B30 /* BehaviorInferenceGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B31 /* BehaviorInferenceGuard.swift */; };
+			AA00B1C2D3E4E5F607182B32 /* Day1BehaviorValidationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B33 /* Day1BehaviorValidationMode.swift */; };
+			AA00B1C2D3E4E5F607182B34 /* Day1BehaviorValidationModeSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B35 /* Day1BehaviorValidationModeSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182B36 /* ValidationConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B37 /* ValidationConfiguration.swift */; };
+			AA00B1C2D3E4E5F607182C00 /* AmbientJarvisSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C01 /* AmbientJarvisSuggestion.swift */; };
+			AA00B1C2D3E4E5F607182C02 /* JarvisSuggestionGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C03 /* JarvisSuggestionGenerator.swift */; };
+			AA00B1C2D3E4E5F607182C04 /* JarvisSuggestionValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C05 /* JarvisSuggestionValidator.swift */; };
+			AA00B1C2D3E4E5F607182C06 /* ContextOnlyExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C07 /* ContextOnlyExecutor.swift */; };
+			AA00B1C2D3E4E5F607182C08 /* AmbientJarvisSuggestionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C09 /* AmbientJarvisSuggestionSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182B26 /* BehavioralIntelligenceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B27 /* BehavioralIntelligenceCoordinator.swift */; };
+			AA00B1C2D3E4E5F607182B28 /* BehaviorInferenceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B29 /* BehaviorInferenceSelfTest.swift */; };
 			AA00B1C2D3E4E5F60718299E /* ActionableUIAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F60718299E /* ActionableUIAnalyzer.swift */; };
 			AA00B1C2D3E4E5F60718299F /* ExplorationMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F60718299F /* ExplorationMemory.swift */; };
 			AA00B1C2D3E4E5F607182A00 /* AnswerReadinessGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182A00 /* AnswerReadinessGate.swift */; };
@@ -379,6 +412,14 @@
 			AB1A304E03A44F2DDB9F8046 /* TargetWindowAnchoringSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1570D63645E12AB9A153D499 /* TargetWindowAnchoringSelfTest.swift */; };
 			E6B2D6F5C1B75A1B2C3D4E5F /* ProposalCapabilityValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A1C5E4B0A64F0A1B2C3D4E /* ProposalCapabilityValidator.swift */; };
 
+		DD00E1F2G3H4I5J607182C02 /* PublicWebResearchEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C01 /* PublicWebResearchEnricher.swift */; };
+		DD00E1F2G3H4I5J607182C11 /* GoalInference.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C10 /* GoalInference.swift */; };
+		DD00E1F2G3H4I5J607182C13 /* CognitiveArtifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C12 /* CognitiveArtifact.swift */; };
+		DD00E1F2G3H4I5J607182C15 /* GoalInferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C14 /* GoalInferenceEngine.swift */; };
+		DD00E1F2G3H4I5J607182C21 /* WorkingMemorySnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C20 /* WorkingMemorySnapshot.swift */; };
+		DD00E1F2G3H4I5J607182C23 /* WorkingMemoryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C22 /* WorkingMemoryBuilder.swift */; };
+		DD00E1F2G3H4I5J607182C31 /* BrowserContextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C30 /* BrowserContextExtractor.swift */; };
+		DD00E1F2G3H4I5J607182C33 /* SurgicalOCR.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00E1F2G3H4I5J607182C32 /* SurgicalOCR.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -631,9 +672,6 @@
 			AA00040F000000000000013E /* TaskInferencePromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePromptBuilder.swift; sourceTree = "<group>"; };
 			AA000410000000000000013F /* TaskInferenceParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceParser.swift; sourceTree = "<group>"; };
 			AA0004110000000000000140 /* TaskInferenceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceEngine.swift; sourceTree = "<group>"; };
-			AA0002C10000000000000F1 /* TaskInferencePerfStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePerfStats.swift; sourceTree = "<group>"; };
-			AA0002C20000000000000F2 /* ModelTierConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTierConfig.swift; sourceTree = "<group>"; };
-			AA0002C30000000000000F3 /* ModelAuditManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAuditManager.swift; sourceTree = "<group>"; };
 			AA0004120000000000000141 /* TaskInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferenceSelfTest.swift; sourceTree = "<group>"; };
 			AA0004120000000000000199 /* RouterEmptyEscalationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterEmptyEscalationSelfTest.swift; sourceTree = "<group>"; };
 			AA0004130000000000000142 /* TaskInferencePlanningPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskInferencePlanningPipeline.swift; sourceTree = "<group>"; };
@@ -652,10 +690,14 @@
 			AA00041C0000000000000151 /* AgenticControlSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticControlSelfTest.swift; sourceTree = "<group>"; };
 		AA00041D0000000000000152 /* AgenticPerceptionRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticPerceptionRefreshCoordinator.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F60718293A /* VLMPerceptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLMPerceptionEngine.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B1A /* LocalAIBackpressure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAIBackpressure.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B1C /* PublicPageContextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicPageContextExtractor.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F60718299D /* VisualGrounder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualGrounder.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182A11 /* VisualGroundingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualGroundingSelfTest.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182A21 /* AgenticExperimentalMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgenticExperimentalMode.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B02 /* WorkflowState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowState.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182C02 /* WorkflowConfidenceReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowConfidenceReport.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182D02 /* WorkflowEvaluation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowEvaluation.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B04 /* ContextEventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextEventStream.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B06 /* TemporalContextBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporalContextBuffer.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B08 /* TemporalContextCompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporalContextCompressor.swift; sourceTree = "<group>"; };
@@ -667,6 +709,35 @@
 		AA00A1B2C3D4E5F607182B14 /* WorkflowInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowInferenceSelfTest.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B16 /* ContextEventProducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextEventProducer.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B18 /* ContextEventProducerSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextEventProducerSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182E02 /* InferredIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferredIntent.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182E04 /* ContextExecutionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextExecutionResult.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182E06 /* ContextExecutionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextExecutionEngine.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182E08 /* ContextExecutionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextExecutionSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182E12 /* WebContextEnrichment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContextEnrichment.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182E14 /* WebContextEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContextEnricher.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F12 /* ContextJudgment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextJudgment.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F14 /* JudgmentLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JudgmentLayer.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F16 /* ArtifactSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactSelector.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F18 /* JudgmentLayerSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JudgmentLayerSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F1A /* BrowserAXProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAXProbe.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F22 /* ActiveContextRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveContextRefresh.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F24 /* ActiveContextRefreshSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveContextRefreshSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F26 /* ManualInvokeJarvis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualInvokeJarvis.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182F28 /* ManualInvokeJarvisSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualInvokeJarvisSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B21 /* BehavioralContextPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehavioralContextPacket.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B23 /* BehavioralInferenceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehavioralInferenceEngine.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B25 /* BehavioralStabilizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehavioralStabilizer.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B31 /* BehaviorInferenceGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorInferenceGuard.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B33 /* Day1BehaviorValidationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Day1BehaviorValidationMode.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B35 /* Day1BehaviorValidationModeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Day1BehaviorValidationModeSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B37 /* ValidationConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationConfiguration.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182C01 /* AmbientJarvisSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientJarvisSuggestion.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182C03 /* JarvisSuggestionGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisSuggestionGenerator.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182C05 /* JarvisSuggestionValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisSuggestionValidator.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182C07 /* ContextOnlyExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextOnlyExecutor.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182C09 /* AmbientJarvisSuggestionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientJarvisSuggestionSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B27 /* BehavioralIntelligenceCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehavioralIntelligenceCoordinator.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182B29 /* BehaviorInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorInferenceSelfTest.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F60718299E /* ActionableUIAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionableUIAnalyzer.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F60718299F /* ExplorationMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorationMemory.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182A00 /* AnswerReadinessGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnswerReadinessGate.swift; sourceTree = "<group>"; };
@@ -729,6 +800,14 @@
 			1570D63645E12AB9A153D499 /* TargetWindowAnchoringSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetWindowAnchoringSelfTest.swift; sourceTree = "<group>"; };
 			D5A1C5E4B0A64F0A1B2C3D4E /* ProposalCapabilityValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalCapabilityValidator.swift; sourceTree = "<group>"; };
 
+		DD00E1F2G3H4I5J607182C01 /* PublicWebResearchEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicWebResearchEnricher.swift; sourceTree = "<group>"; };
+		DD00E1F2G3H4I5J607182C10 /* GoalInference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalInference.swift; sourceTree = "<group>"; };
+		DD00E1F2G3H4I5J607182C12 /* CognitiveArtifact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CognitiveArtifact.swift; sourceTree = "<group>"; };
+		DD00E1F2G3H4I5J607182C14 /* GoalInferenceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalInferenceEngine.swift; sourceTree = "<group>"; };
+		DD00E1F2G3H4I5J607182C20 /* WorkingMemorySnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingMemorySnapshot.swift; sourceTree = "<group>"; };
+		DD00E1F2G3H4I5J607182C22 /* WorkingMemoryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingMemoryBuilder.swift; sourceTree = "<group>"; };
+		DD00E1F2G3H4I5J607182C30 /* BrowserContextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserContextExtractor.swift; sourceTree = "<group>"; };
+		DD00E1F2G3H4I5J607182C32 /* SurgicalOCR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurgicalOCR.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1033,10 +1112,22 @@
 				AA00041C0000000000000151 /* AgenticControlSelfTest.swift */,
 				AA00041D0000000000000152 /* AgenticPerceptionRefreshCoordinator.swift */,
 				AA00A1B2C3D4E5F60718293A /* VLMPerceptionEngine.swift */,
+				AA00A1B2C3D4E5F607182B1A /* LocalAIBackpressure.swift */,
+				AA00A1B2C3D4E5F607182B1C /* PublicPageContextExtractor.swift */,
+				DD00E1F2G3H4I5J607182C32 /* SurgicalOCR.swift */,
+				DD00E1F2G3H4I5J607182C30 /* BrowserContextExtractor.swift */,
+				DD00E1F2G3H4I5J607182C22 /* WorkingMemoryBuilder.swift */,
+				DD00E1F2G3H4I5J607182C20 /* WorkingMemorySnapshot.swift */,
+				DD00E1F2G3H4I5J607182C14 /* GoalInferenceEngine.swift */,
+				DD00E1F2G3H4I5J607182C12 /* CognitiveArtifact.swift */,
+				DD00E1F2G3H4I5J607182C10 /* GoalInference.swift */,
+				DD00E1F2G3H4I5J607182C01 /* PublicWebResearchEnricher.swift */,
 				AA00A1B2C3D4E5F60718299D /* VisualGrounder.swift */,
 				AA00A1B2C3D4E5F607182A11 /* VisualGroundingSelfTest.swift */,
 				AA00A1B2C3D4E5F607182A21 /* AgenticExperimentalMode.swift */,
 				AA00A1B2C3D4E5F607182B02 /* WorkflowState.swift */,
+				AA00A1B2C3D4E5F607182C02 /* WorkflowConfidenceReport.swift */,
+				AA00A1B2C3D4E5F607182D02 /* WorkflowEvaluation.swift */,
 				AA00A1B2C3D4E5F607182B04 /* ContextEventStream.swift */,
 				AA00A1B2C3D4E5F607182B06 /* TemporalContextBuffer.swift */,
 				AA00A1B2C3D4E5F607182B08 /* TemporalContextCompressor.swift */,
@@ -1048,6 +1139,35 @@
 				AA00A1B2C3D4E5F607182B14 /* WorkflowInferenceSelfTest.swift */,
 				AA00A1B2C3D4E5F607182B16 /* ContextEventProducer.swift */,
 				AA00A1B2C3D4E5F607182B18 /* ContextEventProducerSelfTest.swift */,
+				AA00A1B2C3D4E5F607182E02 /* InferredIntent.swift */,
+				AA00A1B2C3D4E5F607182E04 /* ContextExecutionResult.swift */,
+				AA00A1B2C3D4E5F607182E06 /* ContextExecutionEngine.swift */,
+				AA00A1B2C3D4E5F607182E08 /* ContextExecutionSelfTest.swift */,
+				AA00A1B2C3D4E5F607182E12 /* WebContextEnrichment.swift */,
+				AA00A1B2C3D4E5F607182E14 /* WebContextEnricher.swift */,
+				AA00A1B2C3D4E5F607182F12 /* ContextJudgment.swift */,
+				AA00A1B2C3D4E5F607182F14 /* JudgmentLayer.swift */,
+				AA00A1B2C3D4E5F607182F16 /* ArtifactSelector.swift */,
+				AA00A1B2C3D4E5F607182F18 /* JudgmentLayerSelfTest.swift */,
+				AA00A1B2C3D4E5F607182F1A /* BrowserAXProbe.swift */,
+				AA00A1B2C3D4E5F607182F22 /* ActiveContextRefresh.swift */,
+				AA00A1B2C3D4E5F607182F24 /* ActiveContextRefreshSelfTest.swift */,
+				AA00A1B2C3D4E5F607182F26 /* ManualInvokeJarvis.swift */,
+				AA00A1B2C3D4E5F607182F28 /* ManualInvokeJarvisSelfTest.swift */,
+				AA00A1B2C3D4E5F607182B21 /* BehavioralContextPacket.swift */,
+				AA00A1B2C3D4E5F607182B23 /* BehavioralInferenceEngine.swift */,
+				AA00A1B2C3D4E5F607182B25 /* BehavioralStabilizer.swift */,
+				AA00A1B2C3D4E5F607182B31 /* BehaviorInferenceGuard.swift */,
+				AA00A1B2C3D4E5F607182B33 /* Day1BehaviorValidationMode.swift */,
+				AA00A1B2C3D4E5F607182B35 /* Day1BehaviorValidationModeSelfTest.swift */,
+				AA00A1B2C3D4E5F607182B37 /* ValidationConfiguration.swift */,
+				AA00A1B2C3D4E5F607182C01 /* AmbientJarvisSuggestion.swift */,
+				AA00A1B2C3D4E5F607182C03 /* JarvisSuggestionGenerator.swift */,
+				AA00A1B2C3D4E5F607182C05 /* JarvisSuggestionValidator.swift */,
+				AA00A1B2C3D4E5F607182C07 /* ContextOnlyExecutor.swift */,
+				AA00A1B2C3D4E5F607182C09 /* AmbientJarvisSuggestionSelfTest.swift */,
+				AA00A1B2C3D4E5F607182B27 /* BehavioralIntelligenceCoordinator.swift */,
+				AA00A1B2C3D4E5F607182B29 /* BehaviorInferenceSelfTest.swift */,
 				AA00A1B2C3D4E5F60718299E /* ActionableUIAnalyzer.swift */,
 				AA00A1B2C3D4E5F60718299F /* ExplorationMemory.swift */,
 				AA00A1B2C3D4E5F607182A00 /* AnswerReadinessGate.swift */,
@@ -1500,10 +1620,22 @@
 				AA0002320000000000000151 /* AgenticControlSelfTest.swift in Sources */,
 				AA0002330000000000000152 /* AgenticPerceptionRefreshCoordinator.swift in Sources */,
 				AA00B1C2D3E4E5F60718293B /* VLMPerceptionEngine.swift in Sources */,
+				AA00B1C2D3E4E5F607182B1B /* LocalAIBackpressure.swift in Sources */,
+				AA00B1C2D3E4E5F607182B1D /* PublicPageContextExtractor.swift in Sources */,
+				DD00E1F2G3H4I5J607182C33 /* SurgicalOCR.swift in Sources */,
+				DD00E1F2G3H4I5J607182C31 /* BrowserContextExtractor.swift in Sources */,
+				DD00E1F2G3H4I5J607182C23 /* WorkingMemoryBuilder.swift in Sources */,
+				DD00E1F2G3H4I5J607182C21 /* WorkingMemorySnapshot.swift in Sources */,
+				DD00E1F2G3H4I5J607182C15 /* GoalInferenceEngine.swift in Sources */,
+				DD00E1F2G3H4I5J607182C13 /* CognitiveArtifact.swift in Sources */,
+				DD00E1F2G3H4I5J607182C11 /* GoalInference.swift in Sources */,
+				DD00E1F2G3H4I5J607182C02 /* PublicWebResearchEnricher.swift in Sources */,
 				AA00B1C2D3E4E5F60718299C /* VisualGrounder.swift in Sources */,
 				AA00B1C2D3E4E5F607182A10 /* VisualGroundingSelfTest.swift in Sources */,
 				AA00B1C2D3E4E5F607182A20 /* AgenticExperimentalMode.swift in Sources */,
 				AA00B1C2D3E4E5F607182B01 /* WorkflowState.swift in Sources */,
+				AA00B1C2D3E4E5F607182C01 /* WorkflowConfidenceReport.swift in Sources */,
+				AA00B1C2D3E4E5F607182D01 /* WorkflowEvaluation.swift in Sources */,
 				AA00B1C2D3E4E5F607182B03 /* ContextEventStream.swift in Sources */,
 				AA00B1C2D3E4E5F607182B05 /* TemporalContextBuffer.swift in Sources */,
 				AA00B1C2D3E4E5F607182B07 /* TemporalContextCompressor.swift in Sources */,
@@ -1515,6 +1647,35 @@
 				AA00B1C2D3E4E5F607182B13 /* WorkflowInferenceSelfTest.swift in Sources */,
 				AA00B1C2D3E4E5F607182B15 /* ContextEventProducer.swift in Sources */,
 				AA00B1C2D3E4E5F607182B17 /* ContextEventProducerSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182E01 /* InferredIntent.swift in Sources */,
+				AA00B1C2D3E4E5F607182E03 /* ContextExecutionResult.swift in Sources */,
+				AA00B1C2D3E4E5F607182E05 /* ContextExecutionEngine.swift in Sources */,
+				AA00B1C2D3E4E5F607182E07 /* ContextExecutionSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182E11 /* WebContextEnrichment.swift in Sources */,
+				AA00B1C2D3E4E5F607182E13 /* WebContextEnricher.swift in Sources */,
+				AA00B1C2D3E4E5F607182F11 /* ContextJudgment.swift in Sources */,
+				AA00B1C2D3E4E5F607182F13 /* JudgmentLayer.swift in Sources */,
+				AA00B1C2D3E4E5F607182F15 /* ArtifactSelector.swift in Sources */,
+				AA00B1C2D3E4E5F607182F17 /* JudgmentLayerSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182F19 /* BrowserAXProbe.swift in Sources */,
+				AA00B1C2D3E4E5F607182F21 /* ActiveContextRefresh.swift in Sources */,
+				AA00B1C2D3E4E5F607182F23 /* ActiveContextRefreshSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182F25 /* ManualInvokeJarvis.swift in Sources */,
+				AA00B1C2D3E4E5F607182F27 /* ManualInvokeJarvisSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182B20 /* BehavioralContextPacket.swift in Sources */,
+				AA00B1C2D3E4E5F607182B22 /* BehavioralInferenceEngine.swift in Sources */,
+				AA00B1C2D3E4E5F607182B24 /* BehavioralStabilizer.swift in Sources */,
+				AA00B1C2D3E4E5F607182B30 /* BehaviorInferenceGuard.swift in Sources */,
+				AA00B1C2D3E4E5F607182B32 /* Day1BehaviorValidationMode.swift in Sources */,
+				AA00B1C2D3E4E5F607182B34 /* Day1BehaviorValidationModeSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182B36 /* ValidationConfiguration.swift in Sources */,
+				AA00B1C2D3E4E5F607182C00 /* AmbientJarvisSuggestion.swift in Sources */,
+				AA00B1C2D3E4E5F607182C02 /* JarvisSuggestionGenerator.swift in Sources */,
+				AA00B1C2D3E4E5F607182C04 /* JarvisSuggestionValidator.swift in Sources */,
+				AA00B1C2D3E4E5F607182C06 /* ContextOnlyExecutor.swift in Sources */,
+				AA00B1C2D3E4E5F607182C08 /* AmbientJarvisSuggestionSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182B26 /* BehavioralIntelligenceCoordinator.swift in Sources */,
+				AA00B1C2D3E4E5F607182B28 /* BehaviorInferenceSelfTest.swift in Sources */,
 				AA00B1C2D3E4E5F60718299E /* ActionableUIAnalyzer.swift in Sources */,
 				AA00B1C2D3E4E5F60718299F /* ExplorationMemory.swift in Sources */,
 				AA00B1C2D3E4E5F607182A00 /* AnswerReadinessGate.swift in Sources */,
@@ -1655,6 +1816,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.contextual.Contextual;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 			};
@@ -1697,6 +1859,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.contextual.Contextual;
 				PRODUCT_NAME = Contextual;
 				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_VERSION = 5.0;
 				WRAPPER_EXTENSION = app;
 			};

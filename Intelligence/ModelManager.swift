@@ -22,6 +22,7 @@ final class ModelManager: @unchecked Sendable {
 	private static let postServeProbeSettleSeconds: TimeInterval = 1.35
 
 	private static let startupGraceSeconds: TimeInterval = 5.5
+	private static let startupQuietSeconds: TimeInterval = 60.0
 	private static let availabilityCacheTTL: TimeInterval = 6.0
 	private static let tagsTimeoutQuick: TimeInterval = 2.0
 	private static let tagsTimeoutProbe: TimeInterval = 4.0
@@ -30,6 +31,7 @@ final class ModelManager: @unchecked Sendable {
 
 	private static var appLaunchTime: Date?
 	private static let launchLock = NSLock()
+	nonisolated(unsafe) private static var didLogQuietFinished: Bool = false
 
 	private let availabilityLock = NSLock()
 	private var cachedGenerationAvailable: (value: Bool, at: Date)?
@@ -55,6 +57,30 @@ final class ModelManager: @unchecked Sendable {
 	/// Exposed for LLM proposal diagnostics (T18.3.3B); does not affect availability checks.
 	func isWithinStartupGrace() -> Bool {
 		Self.withinStartupGrace()
+	}
+
+	func secondsSinceLaunch(now: Date = Date()) -> Int? {
+		Self.launchLock.lock()
+		let t = Self.appLaunchTime
+		Self.launchLock.unlock()
+		guard let t else { return nil }
+		return max(0, Int(now.timeIntervalSince(t)))
+	}
+
+	/// Phase B.1.8: quiet period for heavy inference at startup.
+	/// During this period, we collect events but avoid running local models.
+	func isWithinStartupQuietPeriod(now: Date = Date()) -> Bool {
+		Self.launchLock.lock()
+		let t = Self.appLaunchTime
+		Self.launchLock.unlock()
+		guard let t else { return false }
+		let elapsed = now.timeIntervalSince(t)
+		let within = elapsed < Self.startupQuietSeconds
+		if !within, !Self.didLogQuietFinished {
+			Self.didLogQuietFinished = true
+			print("[StartupBudget] quiet_period_finished elapsed_s=\(Int(Self.startupQuietSeconds))")
+		}
+		return within
 	}
 
 	private static func withinStartupGrace() -> Bool {

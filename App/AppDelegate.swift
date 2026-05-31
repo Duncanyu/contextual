@@ -92,16 +92,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastChimeInContext: ChimeInContextSnapshot?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		ValidationConfiguration.logStatus()
+		AmbientMVPMode.logStatus()
+		// Phase 18C — hard proof that the binary actually contains the new
+		// engine + mode types. If any of these symbols were missing, this file
+		// would not have compiled in the first place.
+		_ = ContextExecutionEngine.self
+		_ = AmbientMVPMode.self
+		_ = ValidationConfiguration.self
+		print("[Phase18C] compiled=yes context_execution_engine=yes ambient_mvp_mode=yes")
 		let env = ProcessInfo.processInfo.environment
+		if env["CONTEXTUAL_RUN_AMBIENT_JARVIS_SUGGESTION_SELFTEST"] == "1" {
+			Task {
+				let ok = await AmbientJarvisSuggestionSelfTest.run()
+				print("[AmbientJarvisSuggestionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_DAY1_VALIDATION_MODE_SELFTEST"] == "1" {
+			Task {
+				let ok = await Day1BehaviorValidationModeSelfTest.run()
+				print("[Day1BehaviorValidationModeSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
 		if env["CONTEXTUAL_RUN_HOOK_IO_CONTRACT_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_IO_VALIDATOR_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_CHAIN_REPAIR_SELFTEST"] == "1" {
 			HookCapabilityRegistry.hookAuditEnabled = true
 		}
 		// Phase B / B.1 self-tests.
 		if env["CONTEXTUAL_RUN_WORKFLOW_INFERENCE_SELFTEST"] == "1" {
-			Task { _ = await WorkflowInferenceSelfTest.run() }
+			Task {
+				let ok = await WorkflowInferenceSelfTest.run()
+				print("[WorkflowInferenceSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
 		}
 		if env["CONTEXTUAL_RUN_CONTEXT_EVENT_PRODUCER_SELFTEST"] == "1" {
-			Task { _ = await ContextEventProducerSelfTest.run() }
+			Task {
+				let ok = await ContextEventProducerSelfTest.run()
+				print("[ContextEventProducerSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		// Phase 18C — generic ContextExecutionEngine self-test.
+		if env["CONTEXTUAL_RUN_CONTEXT_EXECUTION_SELFTEST"] == "1" {
+			Task {
+				let ok = await ContextExecutionSelfTest.run()
+				print("[ContextExecutionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		// Phase 20D — Judgment Layer self-test.
+		if env["CONTEXTUAL_RUN_JUDGMENT_LAYER_SELFTEST"] == "1" {
+			Task {
+				let ok = await JudgmentLayerSelfTest.run()
+				print("[JudgmentLayerSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		// Phase 20D — live browser AX probe.
+		if env["CONTEXTUAL_RUN_BROWSER_AX_PROBE"] == "1" {
+			BrowserAXProbe.run()
+		}
+		// Phase 20F — Active Context Refresh + Manual Invoke Jarvis.
+		if env["CONTEXTUAL_RUN_ACTIVE_CONTEXT_REFRESH_SELFTEST"] == "1" {
+			Task {
+				let ok = await ActiveContextRefreshSelfTest.run()
+				print("[ActiveContextRefreshSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_MANUAL_INVOKE_JARVIS_SELFTEST"] == "1" {
+			Task {
+				let ok = await ManualInvokeJarvisSelfTest.run()
+				print("[ManualInvokeJarvisSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_BEHAVIOR_INFERENCE_SELFTEST"] == "1" {
+			Task {
+				let ok = await BehaviorInferenceSelfTest.run()
+				print("[BehaviorInferenceSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
 		}
 		ModelManager.shared.noteAppLaunch()
 		NSApp.setActivationPolicy(.accessory)
@@ -790,6 +863,32 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		didLogManualGuard = false
 		lastManualInvocationAt = now
 
+		// Phase 20F — when Ambient MVP mode is on, manual invoke now routes
+		// through the Ambient Jarvis pipeline instead of the legacy
+		// analyze_screen / Moondream affordance. Visual descriptor is a
+		// fallback (only when no other context exists), not the default.
+		if AmbientMVPMode.isEnabled {
+			print("[ManualInvocation] routing=ManualInvokeJarvis reason=ambient_mvp_enabled")
+			let producer = appState.workflowEventProducer
+			let coordinator = appState.workflowIntelligenceCoordinator
+			let behavioral = appState.behavioralIntelligenceCoordinator
+			let snapshot = appState.latestCanonicalSnapshot
+			Task { @MainActor [weak self] in
+				guard let self else { return }
+				_ = await ManualInvokeJarvis.invoke(
+					source: "menu_or_hotkey",
+					producer: producer,
+					coordinator: coordinator,
+					behavioral: behavioral,
+					currentSnapshot: snapshot,
+					publishSuggestion: { suggestion in
+						self.appState.publishAmbientJarvisSuggestion(suggestion)
+					}
+				)
+			}
+			return
+		}
+
 		print("[ManualInvocation] screen_capture_skipped reason=normal_manual")
 		print("[ScreenCapture] skipped reason=not_explicit_analyze_screen")
 		sourceManager?.refreshSelectionNow()
@@ -953,6 +1052,25 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		// T15.1: lightweight workflow inference (metadata-only, in-memory).
 		WorkflowInferenceEngine.shared.recordAppBundle(bid.isEmpty ? nil : bid)
 		WorkflowInferenceEngine.shared.evaluate(referenceTime: Date())
+
+		// Phase 18B Day 2 — feed the Ambient Jarvis producer on every context
+		// update, NOT only when the trigger engine emits a packet (which is
+		// what gates `updateAvailableActions` at line ~1018 below). Without
+		// this feed, the Day 2 producer only sees snapshots on OCR-flavored
+		// triggers; a shopping comparison driven by window-title changes
+		// alone never reaches the workflow brain.
+		//
+		// Minimal snapshot — `activeApp` is required, everything else is
+		// optional. The producer dedups against prior hashes, so repeated
+		// identical contexts emit nothing.
+		if AmbientMVPMode.isEnabled, let appName = context.activeAppName, !appName.isEmpty {
+			let ambientSnapshot = CanonicalGeneratedExecutionContextSnapshot(
+				activeApp: appName,
+				windowTitle: context.activeWindowTitle ?? "",
+				bundleIdentifier: context.activeAppBundleIdentifier
+			)
+			appState.updateLatestCanonicalSnapshot(ambientSnapshot)
+		}
 
 		// T15.2: session continuity (metadata-only, bounded, decaying).
 		ContextualSessionTracker.shared.recordSample(
@@ -1325,6 +1443,14 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		)
 		let proposalHistory = ProposalHistoryMetadata.fromActivationHistory(activationHistory)
 
+		// Phase B.1.8 — Startup quiet period for heavy inference.
+		if packet.triggerType != .manualInvocation, ModelManager.shared.isWithinStartupQuietPeriod() {
+			let elapsed = ModelManager.shared.secondsSinceLaunch() ?? 0
+			print("[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=\(elapsed)")
+			// Continue with no dynamic proposals during quiet period.
+			return
+		}
+
 		let llmResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
 			snapshot: proposalSnapshot,
 			existingStaticActions: ordered.map(\.id),
@@ -1544,6 +1670,13 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		decision: ReasoningDecision,
 		pendingActionIntentRetry: ActionIntentPendingRequest? = nil
 	) async {
+		if AmbientMVPMode.isEnabled {
+			print("[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available")
+			await MainActor.run {
+				appState.clearActivatedGeneratedProposals(reason: "ambient_mvp_mode_enabled")
+			}
+			return
+		}
 		// Phase 4S — Expire pending action-intent retry request if TTL elapsed.
 		expirePendingActionIntentIfNeeded(now: Date())
 
@@ -1653,6 +1786,13 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			}
 			return true
 		}()
+
+		// Phase B.1.8 — Startup quiet period for heavy inference.
+		if packet.triggerType != .manualInvocation, ModelManager.shared.isWithinStartupQuietPeriod() {
+			let elapsed = ModelManager.shared.secondsSinceLaunch() ?? 0
+			print("[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=\(elapsed)")
+			return
+		}
 
 		let llmResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
 			snapshot: prepared.snapshot,

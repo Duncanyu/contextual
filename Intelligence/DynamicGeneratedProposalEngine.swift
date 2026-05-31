@@ -147,6 +147,27 @@ actor DynamicGeneratedProposalEngine {
 		isWarmupReady: Bool = true,
 		forcePlannerFromPendingActionIntentRetry: Bool = false
 	) async -> DynamicGeneratedProposalResult {
+		if ValidationConfiguration.phaseBValidationModeEnabled {
+			print("[ProposalPipeline] disabled reason=phase_b_validation_mode")
+			return DynamicGeneratedProposalResult.quiet
+		}
+		if !ValidationConfiguration.proposalGenerationEnabled {
+			print("[ProposalPipeline] disabled reason=proposal_generation_disabled")
+			return DynamicGeneratedProposalResult.quiet
+		}
+		if Day1BehaviorValidationMode.isEnabled {
+			print("[ProposalPipeline] disabled reason=day1_behavior_validation")
+			return DynamicGeneratedProposalResult.quiet
+		}
+
+		// Phase B.1.8: avoid competing with workflow inference (single local model lane).
+		let acquired = await LocalAIBackpressure.shared.acquire(purpose: "goal_generator")
+		if !acquired {
+			print("[LocalAIBackpressure] deferred goal_generator reason=workflow_inference_active")
+			return DynamicGeneratedProposalResult.quiet
+		}
+		defer { Task { await LocalAIBackpressure.shared.release(purpose: "goal_generator") } }
+
 		// Emit active architecture mode on every attempt so traces are always unambiguous.
 		let fallback = ProposalLoggingFlags.templateFallbackEnabled ? "yes" : "no"
 		print("[ProposalArchitecture] mode=task_inference_hooks live_llm_enabled=no template_fallback_enabled=\(fallback)")

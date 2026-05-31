@@ -515,8 +515,19 @@ actor ModelAuditManager {
 
 extension ModelAuditManager {
 	/// Fire one tiny silent inference to warm model caches. Never shows a proposal.
-	func runWarmupIfNeeded(model: String) async {
+	func runWarmupIfNeeded(model: String, isManualInvocation: Bool = false) async {
 		guard LocalAISettings.shared.localAIEnabled else { return }
+
+		// Phase B.1.9 - Task 3: Startup warmup budget check
+		if ModelManager.shared.isWithinStartupQuietPeriod() && !isManualInvocation {
+			if model.lowercased().contains("qwen") {
+				print("[StartupBudget] warmup_allowed model=\(model) reason=router_lightweight")
+			} else if model.lowercased().contains("phi") {
+				print("[StartupBudget] deferred_warmup model=\(model) reason=startup_quiet_period")
+				return
+			}
+		}
+
 		print("[TaskInferenceWarmup] started model=\(model)")
 		let start = Date()
 		let tiny = "Reply: {\"c\":0,\"p\":0.0}"

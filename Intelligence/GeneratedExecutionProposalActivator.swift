@@ -35,6 +35,27 @@ enum GeneratedExecutionProposalActivator {
 	static func activateProposals(
 		input: GeneratedExecutionProposalActivationInput
 	) -> GeneratedExecutionProposalActivationResult {
+		if Day1BehaviorValidationMode.isEnabled {
+			print("[ProposalRouting] blocked reason=day1_behavior_validation")
+			return GeneratedExecutionProposalActivationResult(
+				visibleProposals: [],
+				visibleStaticActionIds: [],
+				suppressedGeneratedCount: input.generatedExecutionCandidates.count,
+				suppressedStaticCount: input.staticActionIds.count,
+				topSourceType: nil,
+				rankingSummary: "day1_behavior_validation",
+				timingDecision: GeneratedExecutionProposalTimingDecision(
+					outcome: .suppressAll,
+					reason: "day1_behavior_validation",
+					allowsFloatingGenerated: false,
+					allowsPanelGenerated: false
+				),
+				warnings: [],
+				createdAt: input.referenceTime,
+				floatingGeneratedProposalId: nil,
+				isPolicySuppressed: true
+			)
+		}
 		let att = ProposalAttemptScope.currentId ?? "none"
 		print("[ProposalAttempt] id=\(att) activation_started candidates=\(input.generatedExecutionCandidates.count)")
 
@@ -277,6 +298,16 @@ enum GeneratedExecutionProposalActivator {
 			if isHighConfidenceLLM {
 				// Dogfooding/debug mode override: high-confidence LLM candidates bypass ranking suppression
 				suppressed = false
+			}
+
+			if let candidate, candidate.source == .hookComposer {
+				let idHasPrefix = candidate.id.hasPrefix("agentic:")
+				let hasPlan = candidate.agenticPlan != nil
+				let explContains = candidate.explainabilitySummary.contains("hook_composer_agentic")
+				if idHasPrefix || hasPlan || explContains {
+					print("[ProposalRouting] quarantined_agentic reason=ambient_validation")
+					suppressed = true
+				}
 			}
 
 			if action.sourceType == .staticAction {

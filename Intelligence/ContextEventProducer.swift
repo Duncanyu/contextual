@@ -19,6 +19,8 @@ final class ContextEventProducer {
     // MARK: - Dependencies
 
     private let coordinator: WorkflowIntelligenceCoordinator
+    private let behavioralCoordinator: BehavioralIntelligenceCoordinator?
+    public var onAmbientJarvisSuggestionGenerated: (@Sendable (AmbientJarvisSuggestion?) -> Void)?
 
     // MARK: - Diff state (so we don't emit duplicate events)
 
@@ -36,11 +38,18 @@ final class ContextEventProducer {
     // MARK: - One-shot logging
 
     private var didLogPrivacyBanner = false
+	nonisolated(unsafe) private static var didDeferTickForModelNotReady: Bool = false
+	nonisolated(unsafe) private static var didLogTickResumed: Bool = false
 
     // MARK: - Init
 
-    init(coordinator: WorkflowIntelligenceCoordinator, debounceSeconds: Double = 2.5) {
+    init(
+        coordinator: WorkflowIntelligenceCoordinator,
+        behavioralCoordinator: BehavioralIntelligenceCoordinator? = nil,
+        debounceSeconds: Double = 2.5
+    ) {
         self.coordinator = coordinator
+        self.behavioralCoordinator = behavioralCoordinator
         self.debounceSeconds = max(0.5, debounceSeconds)
     }
 
@@ -184,6 +193,10 @@ final class ContextEventProducer {
         await coordinator.recordProposalDismissed(title)
     }
 
+    // Actor-isolated state for concurrency control
+    private var inferenceInFlight: Bool = false
+    private var tickPending: Bool = false
+
     // MARK: - Internal emission
 
     private func emit(_ event: ContextEvent, extra: String = "") async {
@@ -201,16 +214,99 @@ final class ContextEventProducer {
         print("[WorkflowPipeline] tick_scheduled delay_ms=\(delayMs) reason=meaningful_event")
         let oldLabel = oldInferenceLabel
         let delay = debounceSeconds
-        let coordinator = self.coordinator
         tickTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             if Task.isCancelled { return }
-            guard let _ = self else { return }
-            print("[WorkflowPipeline] tick_started")
-            let state = await coordinator.tick(now: Date(), oldInferenceLabel: oldLabel)
-            let confStr = String(format: "%.2f", state.confidence)
-            print("[WorkflowPipeline] tick_completed workflow=\(state.workflowType.rawValue) confidence=\(confStr)")
+            guard let self = self else { return }
+
+            if self.inferenceInFlight {
+                self.tickPending = true
+                print("[WorkflowPipeline] tick_coalesced reason=inference_in_flight")
+                return
+            }
+
+            await self.executeTick(oldInferenceLabel: oldLabel)
         }
+    }
+
+    private func executeTick(oldInferenceLabel: String?) async {
+        inferenceInFlight = true
+        tickPending = false
+        defer {
+            inferenceInFlight = false
+            if tickPending {
+                print("[WorkflowPipeline] pending_tick_started reason=coalesced_updates")
+                scheduleTick(oldInferenceLabel: oldInferenceLabel)
+            }
+        }
+
+        // Phase B.1.8 — Startup quiet period: collect events, but do not run local models yet.
+        if ModelManager.shared.isWithinStartupQuietPeriod() {
+            let elapsed = ModelManager.shared.secondsSinceLaunch() ?? 0
+            print("[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=\(elapsed)")
+            return
+        }
+
+        // Phase B.1.8 — Gate workflow inference on model readiness.
+        let ready = await ModelManager.shared.isGenerationAvailable()
+        if !ready {
+            Self.didDeferTickForModelNotReady = true
+            print("[WorkflowPipeline] tick_deferred reason=model_not_ready")
+            return
+        }
+        if Self.didDeferTickForModelNotReady, !Self.didLogTickResumed {
+            Self.didLogTickResumed = true
+            print("[WorkflowPipeline] tick_resumed reason=model_ready")
+        }
+
+        // Phase B.1.8 — Single local model lane backpressure.
+        let acquired = await LocalAIBackpressure.shared.acquire(purpose: "workflow_inference")
+        if !acquired {
+            print("[LocalAIBackpressure] deferred workflow_inference reason=goal_generator_active")
+            return
+        }
+        defer {
+            Task { await LocalAIBackpressure.shared.release(purpose: "workflow_inference") }
+        }
+
+        print("[WorkflowPipeline] tick_started")
+        let state = await coordinator.tick(now: Date(), oldInferenceLabel: oldInferenceLabel)
+        let confStr = String(format: "%.2f", state.confidence)
+        print("[WorkflowPipeline] tick_completed workflow=\(state.workflowType.rawValue) confidence=\(confStr)")
+
+        if let behavioral = self.behavioralCoordinator {
+            let events = await coordinator.getEventStreamSnapshot()
+            let buffer = TemporalContextBuffer.build(from: events, now: Date())
+            let stabilized = await behavioral.tick(
+                workflowState: state,
+                shortWindow: buffer.short,
+                now: Date()
+            )
+                
+                // Phase 20D.5 — eligibility is now any workflow + behavior
+                // that are both actionable (neither `.unknown` nor `.idle`).
+                // The actual gate still lives inside JarvisSuggestionGenerator;
+                // this is just the user-visible "I would have surfaced but the
+                // mode is off" trace.
+                let workflowActionable = state.workflowType != .unknown && state.workflowType != .idle
+                let behaviorActionable = stabilized.state != .unknown && stabilized.state != .idle
+                let isEligible = workflowActionable && behaviorActionable
+                if isEligible && !AmbientMVPMode.isEnabled {
+                    print("[AmbientMVPMode] warning=eligible_context_but_mode_disabled workflow=\(state.workflowType.rawValue) behavior=\(stabilized.state.rawValue)")
+                }
+
+                if AmbientMVPMode.isEnabled {
+                    let compressor = TemporalContextCompressor.compress(buffer: buffer)
+                    let suggestion = await JarvisSuggestionGenerator.generate(
+                        workflowState: state,
+                        behavioralRecord: stabilized,
+                        packet: compressor,
+                        recentTitles: buffer.short.recentTitles,
+                        repeatedTerms: buffer.short.repeatedTerms
+                    )
+                    self.onAmbientJarvisSuggestionGenerated?(suggestion)
+                }
+            }
     }
 
     // MARK: - One-shot privacy banner
@@ -298,10 +394,7 @@ final class ContextEventProducer {
 enum WorkflowIntelligencePipeline {
 
     static var isEnabled: Bool {
-        let raw = ProcessInfo.processInfo.environment["CONTEXTUAL_WORKFLOW_INTELLIGENCE_ENABLED"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        if raw == "0" || raw == "no" || raw == "false" { return false }
-        return true
+        return ValidationConfiguration.workflowIntelligenceEnabled
     }
 
     nonisolated(unsafe) private static var didLogDisabled = false

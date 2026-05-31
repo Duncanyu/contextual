@@ -104,6 +104,10 @@ struct AgenticRuntimeBridge {
     
     /// Derives an AgenticTaskPlan from a contract if it is eligible.
     static func derivePlan(from contract: DynamicGeneratedActionContract, workflow: String) -> AgenticTaskPlan? {
+        if Day1BehaviorValidationMode.isEnabled {
+            print("[AgenticPlan] blocked reason=day1_behavior_validation")
+            return nil
+        }
         let eligibility = classify(contract: contract)
         
         print("[AgenticPlan] eligibility=\(eligibility == .agentic_runtime_candidate ? "yes" : "no") reason=\(eligibility.rawValue)")

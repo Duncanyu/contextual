@@ -52,9 +52,36 @@ public struct WorkflowState: Sendable, Codable, Equatable {
     public let recentTransitions: [String]
     public let suggestedIntentHints: [String]
     public let sourcePacketHash: String
+    public let provenanceCorrected: Bool?
+    public let correctionStrength: String?
+    public let volatilityScore: Double?
 
     public var durationSeconds: TimeInterval {
         max(0, lastUpdatedAt.timeIntervalSince(startedAt))
+    }
+
+    public var workflowTrustScore: Double {
+        guard workflowType != .unknown else { return 0.0 }
+        
+        let confWeight = 0.4
+        let stabWeight = 0.4
+        let evidenceWeight = 0.2
+        
+        let confPart = confidence * confWeight
+        let stabPart = stabilityScore * stabWeight
+        let evidencePart = evidence.isEmpty ? 0.0 : evidenceWeight
+        
+        var base = confPart + stabPart + evidencePart
+        
+        // Volatility penalty: subtract up to 0.3
+        base -= (volatilityScore ?? 0.0) * 0.3
+        
+        // Correction influence: if provenance corrected, add a small 0.05 bonus
+        if provenanceCorrected == true {
+            base += 0.05
+        }
+        
+        return min(max(base, 0.0), 1.0)
     }
 
     public init(
@@ -69,7 +96,10 @@ public struct WorkflowState: Sendable, Codable, Equatable {
         repeatedTerms: [String],
         recentTransitions: [String],
         suggestedIntentHints: [String],
-        sourcePacketHash: String
+        sourcePacketHash: String,
+        provenanceCorrected: Bool? = false,
+        correctionStrength: String? = "none",
+        volatilityScore: Double? = 0.0
     ) {
         self.workflowType = workflowType
         self.confidence = confidence
@@ -83,6 +113,9 @@ public struct WorkflowState: Sendable, Codable, Equatable {
         self.recentTransitions = recentTransitions
         self.suggestedIntentHints = suggestedIntentHints
         self.sourcePacketHash = sourcePacketHash
+        self.provenanceCorrected = provenanceCorrected
+        self.correctionStrength = correctionStrength
+        self.volatilityScore = volatilityScore
     }
 
     /// Conservative default — the "no information" state.
@@ -98,12 +131,16 @@ public struct WorkflowState: Sendable, Codable, Equatable {
         repeatedTerms: [],
         recentTransitions: [],
         suggestedIntentHints: [],
-        sourcePacketHash: ""
+        sourcePacketHash: "",
+        provenanceCorrected: false,
+        correctionStrength: "none",
+        volatilityScore: 0.0
     )
 
     /// Canonical Phase B log line.
     public func log() {
         let dur = Int(durationSeconds)
-        print("[WorkflowState] type=\(workflowType.rawValue) confidence=\(String(format: "%.2f", confidence)) stability=\(String(format: "%.2f", stabilityScore)) duration_s=\(dur)")
+        let trust = String(format: "%.2f", workflowTrustScore)
+        print("[WorkflowState] type=\(workflowType.rawValue) confidence=\(String(format: "%.2f", confidence)) stability=\(String(format: "%.2f", stabilityScore)) duration_s=\(dur) trust=\(trust)")
     }
 }
