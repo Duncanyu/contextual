@@ -298,6 +298,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			print("[ActivityStateSelfTest] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 		}
+		// Phase 22 — OpportunityEngine: need inference, action-verb titles, observation rejection.
+		if env["CONTEXTUAL_RUN_OPPORTUNITY_ENGINE_SELFTEST"] == "1" {
+			let ok = OpportunityEngineSelfTest.run()
+			print("[OpportunityEngineSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+		}
+		// Phase 22 — OpportunityExecution: click path → artifact generation → honest capability reporting.
+		if env["CONTEXTUAL_RUN_OPPORTUNITY_EXECUTION_SELFTEST"] == "1" {
+			Task {
+				let ok = await OpportunityExecutionSelfTest.run()
+				print("[OpportunityExecutionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		// Phase 22 — CompartmentTransition: verify compartment boundaries hold after domain switch.
+		if env["CONTEXTUAL_RUN_COMPARTMENT_TRANSITION_SELFTEST"] == "1" {
+			Task {
+				let ok = await CompartmentTransitionSelfTest.run()
+				print("[CompartmentTransitionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
 		// Phase 20G dogfood regression: TES bypass + Scratch/Gemini classification.
 		if env["CONTEXTUAL_RUN_AMBIENT_VISIBILITY_REGRESSION_SELFTEST"] == "1" {
 			Task {

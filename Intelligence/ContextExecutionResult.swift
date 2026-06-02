@@ -339,7 +339,10 @@ public final class CognitiveCapabilityRegistry: Sendable {
             CognitiveCapability(id: "create_game_design_checklist", label: "Create game design checklist", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only"),
             CognitiveCapability(id: "explain_how_to_make_faster", label: "Explain how to make it faster", inputRequirements: ["recent_titles"], outputType: "explanation", evidenceThreshold: "title_only"),
             CognitiveCapability(id: "summarize_reference", label: "Summarize reference material", inputRequirements: ["recent_titles"], outputType: "summary", evidenceThreshold: "title_only"),
-            CognitiveCapability(id: "create_next_steps", label: "Create next steps", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only")
+            CognitiveCapability(id: "create_next_steps", label: "Create next steps", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only"),
+            // Phase 22 — OpportunityEngine capabilities
+            CognitiveCapability(id: "create_study_outline", label: "Create study outline", inputRequirements: ["recent_titles"], outputType: "outline", evidenceThreshold: "title_only"),
+            CognitiveCapability(id: "generate_test_checklist", label: "Create testing checklist", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only")
         ]
 
         for c in cognitiveList { caps[c.id] = c }
@@ -627,9 +630,10 @@ public final class CapabilityExecutor {
     }
     
     private func startFocusTimer(context: [String: Any]) -> CapabilityExecutionStatus {
-        // Implementation would interface with a timer service.
-        print("[CapabilityExecution] completed status=success id=start_focus_timer")
-        return .success
+        // No timer service is wired in this build.
+        // Returning .unavailable rather than faking success — honest about capability state.
+        print("[CapabilityExecution] completed status=unavailable id=start_focus_timer reason=no_timer_service_wired")
+        return .unavailable
     }
     
     private func playFocusMedia() async -> CapabilityExecutionStatus {

@@ -168,18 +168,27 @@ enum ContextExecutionEngine {
             
             var downgrade = false
             if req == "generate_quiz" || req == "explain_topic" {
-                if evidenceQuality != "selection" {
+                // Phase 22 — When the user explicitly clicks the action card the
+                // intent is user-initiated: preserve it and let fallbackStructured
+                // generate an honest artifact that acknowledges the evidence gap.
+                // Downgrade only applies for autonomously inferred intents (no
+                // explicit request), where thin evidence means we shouldn't promise
+                // a quiz we can't deliver.
+                // Note: `requestedIntent != nil` is always true inside this block,
+                // but keeping the check explicit clarifies the intent.
+                let isAutonomous = false  // requestedIntent is non-nil here by construction
+                if isAutonomous && evidenceQuality != "selection" {
                     if !contentRich || evidenceQuality == "title_only" || evidenceQuality == "browser_tabs" {
                         finalIntentStr = "organize_review_plan"
                         downgrade = true
                     }
                 }
             }
-            
+
             if downgrade {
                 print("[ExecutionCapability] downgrade=yes reason=insufficient_content")
             } else {
-                print("[ExecutionCapability] downgrade=no reason=not_applicable_or_sufficient")
+                print("[ExecutionCapability] downgrade=no reason=user_initiated_intent_preserved")
             }
             print("[ExecutionCapability] final=\(finalIntentStr)")
         }
@@ -259,6 +268,11 @@ enum ContextExecutionEngine {
         suggestion: AmbientJarvisSuggestion,
         snapshot: CanonicalGeneratedExecutionContextSnapshot?
     ) async -> ContextExecutionResult {
+        // Phase 22 — surface opportunity context for logging and routing.
+        if let opp = suggestion.topOpportunity {
+            print("[OpportunityExecution] started opportunity=\(opp.capabilityId) need=\(opp.inferredNeed.rawValue) confidence=\(String(format: "%.2f", opp.confidence)) entity=\"\(opp.title.prefix(60))\"")
+            print("[ContextExecutionEngine] using_opportunity=yes capabilityId=\(opp.capabilityId) evidence=\(opp.requiredEvidence)")
+        }
         print("[ContextExecutionEngine] using_intent=\(suggestion.intent) goal=\"\(suggestion.intentGoal)\"")
         let workflow = synthesizeWorkflow(from: suggestion, snapshot: snapshot)
         let behavior = synthesizeBehavior(from: suggestion)
@@ -552,16 +566,28 @@ enum ContextExecutionEngine {
         // 5. Next question — single generic prompt that works across workflows.
         let nextQuestion = "Which dimension matters most to you here — and which item would you like to focus on first?"
 
+        // Entity from working memory — used in opportunity-keyed artifact titles.
+        let entity = envelope.memory.currentEntity
+        let entityShort = String(entity.prefix(42)).trimmingCharacters(in: .whitespaces)
+
         var title = "Context Summary"
         var subtitle = "Observation of recent activity."
+        var artifactType = intent.intent   // overridden to canonical type below
         var sections: [ArtifactSection] = []
         var primaryCards: [ArtifactCard] = []
         var tableRows: [[String]]? = nil
         var nextActions: [String] = []
         var missingInfo = unknown
-        
+
+        // Phase 22 — Opportunity-keyed artifact generation.
+        // Switches on intent.intent (= opportunity.capabilityId when driven by
+        // OpportunityEngine). Each branch generates concrete, honest content
+        // using only what is in the envelope — no hallucinated specs or facts.
         switch intent.intent {
-        case "compare_options":
+
+        // ── Comparison ─────────────────────────────────────────────────────
+        case "compare_options", "decision_matrix":
+            artifactType = "table"
             title = "Comparison"
             subtitle = "Evaluation based on \(observed.count) signals"
             if !envelope.memory.comparisonCandidates.isEmpty {
@@ -574,43 +600,227 @@ enum ContextExecutionEngine {
             sections.append(ArtifactSection(header: "Missing Criteria", items: unknown))
             nextActions.append("What to check next")
             missingInfo = envelope.judgment.missingInformation
-            
-        case "organize_review_plan":
-            title = "Study Plan"
-            subtitle = "Review strategy for detected topics."
-            sections.append(ArtifactSection(header: "Topics Detected", items: envelope.packet.topicTerms.isEmpty ? ["Unknown"] : Array(envelope.packet.topicTerms.prefix(5))))
-            sections.append(ArtifactSection(header: "Suggested Review Order", items: ["Start with basics", "Move to advanced"]))
-            sections.append(ArtifactSection(header: "Checklist", items: ["Review notes", "Check syllabus"]))
-            
+
+        // ── Game / Creative-coding testing checklist ────────────────────────
+        case "generate_test_checklist", "create_game_design_checklist":
+            artifactType = "checklist"
+            title = entityShort.isEmpty ? "Testing Checklist" : "Testing Checklist: \(entityShort)"
+            subtitle = "Verify your project works correctly before sharing."
+            let terms = Set(envelope.packet.topicTerms.map { $0.lowercased() })
+            let hasShooter = terms.contains(where: { $0.contains("shoot") || $0.contains("tank") || $0.contains("bullet") || $0.contains("gun") })
+            let hasPlatform = terms.contains(where: { $0.contains("jump") || $0.contains("platform") || $0.contains("gravity") })
+            let controlsItems: [String] = [
+                "Movement responds to keyboard/mouse input correctly",
+                hasShooter ? "Shooting fires in the correct direction" :
+                hasPlatform ? "Jump and gravity feel natural" : "Primary action triggers correctly",
+                "Player cannot move outside the stage boundaries"
+            ]
+            sections.append(ArtifactSection(header: "Player Controls", items: controlsItems))
+            sections.append(ArtifactSection(header: "Collision Detection", items: [
+                "Projectiles or attacks register hits on enemies/targets",
+                "Player takes damage or reacts on collision",
+                "Solid boundaries block movement as intended"
+            ]))
+            sections.append(ArtifactSection(header: "Game State", items: [
+                "Win condition triggers and displays a message",
+                "Game over / lose condition fires correctly",
+                "Score or progress increments as expected"
+            ]))
+            sections.append(ArtifactSection(header: "Performance", items: [
+                "Frame rate stays smooth when many sprites are on screen",
+                "No 'too many clones' or sprite-limit errors appear"
+            ]))
+            missingInfo = [
+                "Specific sprite names and behaviors (no screen content — title only)",
+                "Custom scoring rules or level structure (need AX content to verify)",
+                "Sound and music trigger conditions"
+            ]
+            print("[ArtifactRender] type=checklist capability=\(intent.intent)")
+
+        // ── Studying: practice quiz ─────────────────────────────────────────
         case "generate_quiz":
-            title = "Practice Quiz"
-            subtitle = "Generated from screen context"
-            sections.append(ArtifactSection(header: "Questions (Topic 1)", items: ["Q1: What is the main concept?", "Q2: How does it apply?"]))
-            sections.append(ArtifactSection(header: "Answer Key (Separate)", items: ["A1: Details...", "A2: Application..."]))
-            
-        case "synthesize_sources":
-            title = "Research Synthesis"
-            subtitle = "Synthesis of \(envelope.memory.recentEntities.count) sources."
-            sections.append(ArtifactSection(header: "Shared Concepts", items: envelope.judgment.rationale.filter { $0.hasPrefix("shared_concepts=") }))
-            sections.append(ArtifactSection(header: "Key Takeaways", items: Array(observed.prefix(3))))
-            
-        case "diagnose_error":
-            title = "Diagnostic"
-            subtitle = "Potential cause and next steps."
-            sections.append(ArtifactSection(header: "Strongest Evidence", items: Array(observed.prefix(3))))
-            sections.append(ArtifactSection(header: "Likely Cause", items: ["Potential misconfiguration or missing dependency"]))
-            nextActions.append("Next Investigation: Check logs")
-            missingInfo = unknown
-            
+            artifactType = "quiz"
+            title = entityShort.isEmpty ? "Practice Quiz" : "Practice Questions: \(entityShort)"
+            subtitle = "Generated from detected topic terms (title-only evidence)."
+            let topicTerms = Array(envelope.packet.topicTerms.prefix(4))
+            let questions: [String]
+            if topicTerms.isEmpty {
+                questions = [
+                    "Q1: What is the central concept covered in this material?",
+                    "Q2: How does the main idea apply in a real example?",
+                    "Q3: What would you need to look up to go deeper?"
+                ]
+            } else {
+                questions = topicTerms.map { t in
+                    "Q: What is the key insight behind '\(t)' — and why does it matter?"
+                }
+            }
+            sections.append(ArtifactSection(header: "Practice Questions", items: questions))
+            sections.append(ArtifactSection(header: "Note on Evidence", items: [
+                "AX screen content would enable questions drawn directly from your notes.",
+                "Current evidence is title-only — questions are based on detected topic terms."
+            ]))
+            missingInfo = [
+                "Specific note or lecture content (no AX content available)",
+                "Exact question wording from course material",
+                "Answer key (requires note text)"
+            ]
+            print("[ArtifactRender] type=quiz capability=\(intent.intent)")
+
+        // ── Studying: review plan / outline ────────────────────────────────
+        case "create_review_plan", "create_study_outline", "organize_review_plan":
+            artifactType = "checklist"
+            title = entityShort.isEmpty ? "Review Plan" : "Review Plan: \(entityShort)"
+            subtitle = "Structured review strategy based on detected topics."
+            let topicTerms = Array(envelope.packet.topicTerms.prefix(5))
+            sections.append(ArtifactSection(
+                header: "Topics Detected",
+                items: topicTerms.isEmpty ? ["No specific topics extracted yet (title-only)"] : topicTerms
+            ))
+            sections.append(ArtifactSection(header: "Suggested Review Order", items: [
+                "1. Scan headings and key terms to build a mental map",
+                "2. Summarize each topic in one sentence from memory",
+                "3. Write 2–3 practice questions per topic",
+                "4. Test recall without looking at notes"
+            ]))
+            sections.append(ArtifactSection(header: "Review Checklist", items: [
+                "Notes from last session reviewed",
+                "Syllabus checked for upcoming deadlines",
+                "Concepts that need follow-up flagged"
+            ]))
+            missingInfo = [
+                "Specific note content (no AX content — title only)",
+                "Assignment deadlines (not in context)",
+                "Prior quiz or test results"
+            ]
+            print("[ArtifactRender] type=checklist capability=\(intent.intent)")
+
+        // ── Debugging / error diagnosis ────────────────────────────────────
+        case "diagnose_error", "debug_performance":
+            artifactType = "diagnostic"
+            title = entityShort.isEmpty ? "Debug Checklist" : "Debug Checklist: \(entityShort)"
+            subtitle = "Investigation steps based on detected error signals."
+            let errorTerms = envelope.packet.topicTerms.filter { t in
+                let errWords: Set<String> = ["error", "exception", "crash", "failed", "bug", "undefined", "null", "warning"]
+                return errWords.contains(t.lowercased())
+            }
+            sections.append(ArtifactSection(
+                header: "Error Signals Detected",
+                items: errorTerms.isEmpty ? ["Error terms detected via topic signals (details unavailable)"] : errorTerms
+            ))
+            sections.append(ArtifactSection(header: "Investigation Steps", items: [
+                "1. Read the full error message — note the exact type and line number",
+                "2. Check the most recent change that could have caused this",
+                "3. Verify all dependencies and imports are present",
+                "4. Search the error message text for known solutions"
+            ]))
+            sections.append(ArtifactSection(header: "Likely Causes (Hedged)", items: [
+                "Missing import or misconfigured dependency (common for build errors)",
+                "Type mismatch or nil access (common for runtime crashes)",
+                "Logic error introduced in a recent edit"
+            ]))
+            missingInfo = [
+                "Full error text (no AX content — need screen access)",
+                "Stack trace and line number (no OCR in current window)",
+                "Specific file or function where error occurs"
+            ]
+            nextActions.append("Open the error output and paste it into a search or AI assistant")
+            print("[ArtifactRender] type=diagnostic capability=\(intent.intent)")
+
+        // ── Communication: draft reply ──────────────────────────────────────
+        case "draft_reply", "extract_action_items":
+            artifactType = intent.intent == "draft_reply" ? "draft" : "checklist"
+            if intent.intent == "draft_reply" {
+                title = entityShort.isEmpty ? "Reply Outline" : "Reply Outline: \(entityShort)"
+                subtitle = "Confirmation required — this will not be sent automatically."
+                sections.append(ArtifactSection(header: "⚠ Confirmation Required", items: [
+                    "Review this outline before any message is composed.",
+                    "No message will be sent or drafted without your explicit approval."
+                ]))
+                sections.append(ArtifactSection(header: "Reply Structure", items: [
+                    "1. Acknowledge the original message or request",
+                    "2. State your main response clearly and directly",
+                    "3. Include any action items, questions, or attachments",
+                    "4. Close with a clear next step or expected response"
+                ]))
+                missingInfo = [
+                    "Message body text (no AX content — title only)",
+                    "Sender name and original subject line",
+                    "Thread context beyond the visible window title"
+                ]
+                print("[ArtifactRender] type=draft capability=draft_reply")
+            } else {
+                title = entityShort.isEmpty ? "Action Items" : "Action Items: \(entityShort)"
+                subtitle = "Extracted from communication context."
+                sections.append(ArtifactSection(header: "Likely Action Items", items: [
+                    "Identify who owns each outstanding request",
+                    "Check for deadlines mentioned in the thread",
+                    "Flag items that need follow-up"
+                ]))
+                missingInfo = [
+                    "Message body text (no AX content)",
+                    "Specific names and dates (not in context)"
+                ]
+                print("[ArtifactRender] type=checklist capability=extract_action_items")
+            }
+
+        // ── Research: source synthesis ──────────────────────────────────────
+        case "synthesize_sources", "summarize_reference":
+            artifactType = "synthesis"
+            let sourceCount = envelope.memory.relatedFocusEntities.count + 1
+            title = entityShort.isEmpty ? "Research Synthesis" : "Synthesis: \(entityShort)"
+            subtitle = "Combined notes from \(sourceCount) detected source(s)."
+            let sourceList = envelope.memory.relatedFocusEntities.isEmpty
+                ? (entityShort.isEmpty ? ["(No sources extracted)"] : [entityShort])
+                : ([entityShort] + Array(envelope.memory.relatedFocusEntities.prefix(3))).filter { !$0.isEmpty }
+            sections.append(ArtifactSection(header: "Sources Detected", items: sourceList))
+            let sharedTerms = Array(envelope.packet.topicTerms.prefix(4))
+            sections.append(ArtifactSection(
+                header: "Shared Concepts",
+                items: sharedTerms.isEmpty ? ["No shared terms extracted yet"] : sharedTerms
+            ))
+            sections.append(ArtifactSection(header: "Synthesis Structure", items: [
+                "Main thesis or conclusion across all sources",
+                "Points of agreement between sources",
+                "Contradictions or gaps that need resolution",
+                "Key evidence or quotes worth preserving"
+            ]))
+            missingInfo = [
+                "Full text content from each source (title-only evidence)",
+                "Publication dates and author credibility signals",
+                "Methodology and scope of each source"
+            ]
+            print("[ArtifactRender] type=synthesis capability=\(intent.intent)")
+
+        // ── Planning / next steps ────────────────────────────────────────────
+        case "create_next_steps", "create_checklist", "create_outline", "improve_project":
+            artifactType = "checklist"
+            title = entityShort.isEmpty ? "Next Steps" : "Next Steps: \(entityShort)"
+            subtitle = "Suggested actions based on detected context."
+            sections.append(ArtifactSection(
+                header: "Current Focus",
+                items: [entityShort.isEmpty ? "Task not identified from context" : entityShort]
+            ))
+            sections.append(ArtifactSection(header: "Suggested Steps", items: [
+                "Define your immediate goal for this session",
+                "Break the next task into smaller, specific pieces",
+                "Identify what is currently blocking progress",
+                "Set a time limit for this work block"
+            ]))
+            print("[ArtifactRender] type=checklist capability=\(intent.intent)")
+
+        // ── Fallback: summarize / explain / unknown ─────────────────────────
         default:
-            title = "Context Execution"
+            artifactType = "summary"
+            title = "Context Summary"
             subtitle = "Summary of observed activity."
             sections.append(ArtifactSection(header: "Observed", items: observed))
             sections.append(ArtifactSection(header: "Inferred", items: inferred))
+            print("[ArtifactRender] type=summary capability=\(intent.intent)")
         }
 
         let artifact = ArtifactResult(
-            type: intent.intent,
+            type: artifactType,
             title: title,
             subtitle: subtitle,
             sections: sections,

@@ -100,20 +100,45 @@ public struct DeterminerSignal: Sendable, Equatable {
             )
         }
 
-        // ── 1. Collect all available terms for domain scoring ─────────────────
+        // ── 1. Collect terms — current-focus separate from compartment history ──
+        //
+        // Phase 22 — Domain scoring fix.
+        //
+        // Before this fix, `allTerms` included compartment.dominantTerms and was
+        // passed directly to inferDomain().  This caused stale compartment terms
+        // (e.g., "scratch/sprite/shooter" from a Scratch session) to persist into
+        // domain classification even after a full context switch, because the
+        // compartment hadn't yet been evicted.
+        //
+        // Fix: build two separate sets.
+        //   domainScoringTerms — current-focus evidence only (entity, memory,
+        //                        activeTerms).  Used for inferDomain() and
+        //                        BestEffortDomain decisions.  No compartment history.
+        //   allTerms           — full union including compartment.  Still used for
+        //                        structural actionability (activeTermCount gate) and
+        //                        mode inference where recency matters less.
         var allTerms = Set<String>()
+        var domainScoringTerms = Set<String>()   // current focus only — no compartment history
+
         if let mem = memory {
             allTerms.formUnion(mem.repeatedConcepts.map { $0.lowercased() })
             allTerms.formUnion(mem.relatedFocusEntities.flatMap { tokenize($0) })
             allTerms.formUnion(tokenize(mem.currentEntity))
+            // Same sources added to domainScoringTerms — compartment intentionally excluded
+            domainScoringTerms.formUnion(mem.repeatedConcepts.map { $0.lowercased() })
+            domainScoringTerms.formUnion(mem.relatedFocusEntities.flatMap { tokenize($0) })
+            domainScoringTerms.formUnion(tokenize(mem.currentEntity))
         }
         if let comp = compartment {
+            // Compartment history in allTerms only — NOT in domainScoringTerms
             allTerms.formUnion(comp.dominantTerms.map { $0.lowercased() })
             allTerms.formUnion(comp.entities.flatMap { tokenize($0) })
         }
         allTerms.formUnion(activeTerms.map { $0.lowercased() })
+        domainScoringTerms.formUnion(activeTerms.map { $0.lowercased() })
         if !currentEntity.isEmpty {
             allTerms.formUnion(tokenize(currentEntity))
+            domainScoringTerms.formUnion(tokenize(currentEntity))
         }
 
         // ── 2. Structural actionability gates ─────────────────────────────────
@@ -147,23 +172,50 @@ public struct DeterminerSignal: Sendable, Equatable {
         }()
 
         // ── 3. Domain / Mode scoring ──────────────────────────────────────────
-        var domain = inferDomain(terms: allTerms)
+        // Phase 22 — Use domainScoringTerms (current-focus only) for inferDomain().
+        // This prevents a stale compartment (e.g., Scratch/creative_coding) from
+        // winning domain classification after the user switches to unrelated content
+        // (e.g., a TV show → no creative_coding vocabulary in current focus).
+        print("[DomainClassifier] scoring_source=current_focus_only focus_term_count=\(domainScoringTerms.count) all_term_count=\(allTerms.count)")
+        var domain = inferDomain(terms: domainScoringTerms)
 
-        // Phase 21.4 — Task B: Best-effort domain when unknown + user is active.
-        // If the term scorer returned .unknown but the user is clearly active
-        // (typing/interacting/engaged) and a compartment workflow hint is available,
-        // promote it to a best-effort domain so CapabilitySelector can route
-        // to create_next_steps instead of suppressing.
+        // Phase 21.4 / Phase 22 — Best-effort domain when unknown + user is active.
+        // If the term scorer returned .unknown but the user is clearly active and a
+        // compartment workflow hint is available, promote it — BUT only when the
+        // current-focus terms actually contain vocabulary from that domain.
+        //
+        // Phase 22 guard: without currentFocusSupportsWorkflow(), a stale Scratch
+        // compartment would push domain=creative_coding even while watching a TV show.
         if domain == .unknown && userIsActive {
             if let compWorkflow = compartment?.workflow {
-                switch compWorkflow {
-                case .gaming:      domain = .gaming;       print("[BestEffortDomain] selected=gaming confidence=0.40 source=compartment_workflow")
-                case .coding:      domain = .coding;       print("[BestEffortDomain] selected=coding confidence=0.40 source=compartment_workflow")
-                case .studying, .reading, .researching:
-                                   domain = .studying;     print("[BestEffortDomain] selected=studying confidence=0.40 source=compartment_workflow")
-                case .shopping, .comparing:
-                                   domain = .shopping;     print("[BestEffortDomain] selected=shopping confidence=0.40 source=compartment_workflow")
-                default:           break
+                if currentFocusSupportsWorkflow(compWorkflow, focusTerms: domainScoringTerms) {
+                    switch compWorkflow {
+                    case .gaming:
+                        domain = .gaming
+                        print("[BestEffortDomain] selected=gaming confidence=0.40 source=compartment_workflow focus_supported=yes")
+                    case .coding:
+                        domain = .coding
+                        print("[BestEffortDomain] selected=coding confidence=0.40 source=compartment_workflow focus_supported=yes")
+                    case .debugging:
+                        domain = .coding
+                        print("[BestEffortDomain] selected=coding confidence=0.40 source=compartment_workflow_debugging focus_supported=yes")
+                    case .studying, .reading, .researching:
+                        domain = .studying
+                        print("[BestEffortDomain] selected=studying confidence=0.40 source=compartment_workflow focus_supported=yes")
+                    case .shopping, .comparing:
+                        domain = .shopping
+                        print("[BestEffortDomain] selected=shopping confidence=0.40 source=compartment_workflow focus_supported=yes")
+                    case .watching:
+                        domain = .watching
+                        print("[BestEffortDomain] selected=watching confidence=0.40 source=compartment_workflow focus_supported=yes")
+                    case .emailing, .writing:
+                        domain = .communicating
+                        print("[BestEffortDomain] selected=communicating confidence=0.40 source=compartment_workflow focus_supported=yes")
+                    default:
+                        break
+                    }
+                } else {
+                    print("[BestEffortDomain] blocked reason=current_focus_contradicts_compartment comp_workflow=\(compWorkflow.rawValue) focus_terms=\(domainScoringTerms.count)")
                 }
             }
             // Even with no compartment hint, keep domain=unknown but signal active_unknown.
@@ -172,7 +224,7 @@ public struct DeterminerSignal: Sendable, Equatable {
             }
         }
 
-        let mode = inferMode(terms: allTerms, domain: domain)
+        let mode = inferMode(terms: domainScoringTerms, domain: domain)
 
         // ── 4. Confidence: max of available structural + temporal signals ──────
         let structuralConfidence: Double = {
@@ -278,6 +330,37 @@ public struct DeterminerSignal: Sendable, Equatable {
     ]
 
     // MARK: - Inference helpers
+
+    // Phase 22 — Check whether current-focus terms contain vocabulary from the
+    // workflow's domain.  Used by BestEffortDomain to prevent a stale compartment
+    // from promoting its workflow when the user has already moved on.
+    //
+    // Design: generic domain vocabulary matching — no app/brand/keyword hardcoding.
+    // Each workflow maps to the same generic term set already used in inferDomain().
+    private static func currentFocusSupportsWorkflow(
+        _ workflow: AmbientWorkflowType,
+        focusTerms: Set<String>
+    ) -> Bool {
+        func hits(_ vocab: Set<String>) -> Bool { !focusTerms.intersection(vocab).isEmpty }
+        switch workflow {
+        case .coding, .debugging:
+            // Check both engineering and creative/game coding vocabularies
+            return hits(codingTerms) || hits(creativeCodingTerms)
+        case .studying, .reading, .researching:
+            return hits(studyingTerms) || hits(researchTerms)
+        case .shopping, .comparing:
+            return hits(shoppingTerms)
+        case .watching:
+            return hits(watchingTerms)
+        case .gaming:
+            return hits(gamingTerms)
+        case .emailing, .writing:
+            return hits(communicatingTerms)
+        default:
+            // browsing / idle / meeting / unknown: permissive — no specific domain to verify
+            return true
+        }
+    }
 
     // Phase 21.2 — email/document negative gate terms.
     // These terms mean the user is in a communicating/admin context,

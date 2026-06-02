@@ -26,7 +26,8 @@ public struct JarvisSuggestionGenerator: Sendable {
         hasAXContent: Bool = false,
         hasErrorTerms: Bool = false,
         activeCompartment: TaskCompartment? = nil,
-        determinerSignal: DeterminerSignal? = nil
+        determinerSignal: DeterminerSignal? = nil,
+        topOpportunity: Opportunity? = nil      // Phase 22: OpportunityEngine output
     ) async -> AmbientJarvisSuggestion? {
         let cycleId = UUID().uuidString
         PerformanceBudgetManager.shared.beginAmbientCycle(id: cycleId)
@@ -175,62 +176,84 @@ public struct JarvisSuggestionGenerator: Sendable {
         let compHash = activeCompartment?.id.hashValue ?? 0
         let focusHash = effectiveMemory.currentEntity.hashValue
         if let cachedPayload = PerformanceBudgetManager.shared.getCachedPayload(compartmentHash: compHash, focusHash: focusHash) {
-            // Found a cached payload; use deterministic ActionIntent label
+            // Found a cached payload. Use opportunity capabilityId as intent when present,
+            // so the execution engine routes to the correct artifact branch on acceptance.
+            let cachedIntent = topOpportunity?.capabilityId ?? actionIntent.id
+            let cachedTitle = topOpportunity?.title ?? actionIntent.label
             let suggestion = AmbientJarvisSuggestion(
-                title: actionIntent.label,
+                title: cachedTitle,
                 subtitle: "Context-only — preview based on your recent activity.",
                 whyNow: "\(behavior.rawValue) behavior in \(workflow.rawValue) workflow",
                 workflow: workflow.rawValue,
                 behavior: behavior.rawValue,
                 confidence: max(workflowState.confidence, behavioralRecord.confidence),
-                kind: .compare_context,
-                intent: actionIntent.id,
+                kind: .cognitive_action,
+                intent: cachedIntent,
                 intentConfidence: max(workflowState.confidence, behavioralRecord.confidence),
-                intentGoal: "Bounded cognitive action (\(actionIntent.id)) over recent \(workflow.rawValue) context. Output type: \(actionIntent.outputType).",
+                intentGoal: "Bounded cognitive action (\(cachedIntent)) over recent \(workflow.rawValue) context. Output type: \(actionIntent.outputType).",
                 targetEntity: effectiveMemory.currentEntity,
                 executionMode: .context_only_preview,
                 previewOnly: true,
                 sourceEvidence: promptTerms.joined(separator: ","),
-                contextPayload: cachedPayload
+                contextPayload: cachedPayload,
+                topOpportunity: topOpportunity
             )
-            print("[JarvisSuggestionGenerator] generated kind=\(suggestion.kind.rawValue) intent=\(actionIntent.id) title=\"\(suggestion.title)\" (cached)")
+            print("[JarvisRouting] kind=cognitive_action semantic_driver=action_opportunity")
+            print("[JarvisSuggestionGenerator] generated kind=\(suggestion.kind.rawValue) intent=\(cachedIntent) title=\"\(suggestion.title)\" (cached)")
             return suggestion
         }
 
         var generatedTitle = ""
         let model = "qwen2.5:0.5b"
 
-        if actionIntent.id == "compare_options" {
+        // Phase 22 — OpportunityEngine title is authoritative.
+        // When an opportunity is provided, use its deterministic action-verb title directly.
+        // The model is only called to generate a richer subtitle explanation when budget allows.
+        if let opp = topOpportunity {
+            generatedTitle = opp.title
+            print("[JarvisRouting] kind=cognitive_action semantic_driver=action_opportunity capability=\(opp.capabilityId)")
+            print("[OpportunityEngine] top_title=\"\(opp.title)\"")
+        } else if actionIntent.id == "compare_options" {
+            // Legacy compare_options path — retained for backward compat
             let candidates = effectiveMemory.comparisonCandidates
             if candidates.count >= 2 {
-                let cleanNames = candidates.map { $0.replacingOccurrences(of: "Amazon.ca: Buy ", with: "").replacingOccurrences(of: " product page", with: "") }
+                let cleanNames = candidates.map {
+                    $0.replacingOccurrences(of: "Amazon.ca: Buy ", with: "")
+                      .replacingOccurrences(of: " product page", with: "")
+                }
                 if cleanNames.count == 2 {
                     generatedTitle = "Compare \(cleanNames[0]) and \(cleanNames[1])?"
                 } else {
-                    let formatted = cleanNames.prefix(cleanNames.count - 1).joined(separator: ", ") + ", and " + cleanNames.last!
+                    let formatted = cleanNames.prefix(cleanNames.count - 1).joined(separator: ", ")
+                                  + ", and " + cleanNames.last!
                     generatedTitle = "Compare \(formatted)?"
                 }
             } else {
-                generatedTitle = "Compare these items?"
+                generatedTitle = "Compare the options you're viewing"
             }
         } else {
+            // Phase 22 — model is called to generate action-oriented subtitles, NOT observation titles.
+            // The title MUST start with an action verb or the output is rejected.
             let canGenerate = PerformanceBudgetManager.shared.allowHeavyModelGeneration()
             let isAvailable = await ModelManager.shared.isGenerationAvailable()
             if canGenerate && isAvailable {
                 let termsDesc = promptTerms.prefix(3).joined(separator: ", ")
                 let titlesDesc = promptEntities.prefix(3).joined(separator: " | ")
+                let intent = actionIntent.id
                 let prompt = """
-                Generate a short, friendly observation (max 12 words) about what the user appears to be doing right now. Start with "Looks like you're" and use the workflow/behavior/terms below.
+                You are a helpful assistant. Generate a SHORT action proposal (max 10 words) for what you can do for the user right now. Start with an ACTION VERB (Create, Generate, Summarize, Compare, Explain, Draft, Diagnose, Find, etc.). DO NOT start with "Looks like", "It seems", or any observation phrase.
 
-                Workflow: \(workflow.rawValue)
-                Behavior: \(behavior.rawValue)
-                Recent terms: \(termsDesc)
-                Recent titles: \(titlesDesc)
+                Context:
+                - Task: \(intent)
+                - Workflow: \(workflow.rawValue)
+                - Behavior: \(behavior.rawValue)
+                - Terms: \(termsDesc)
+                - Titles: \(titlesDesc)
 
-                Strict rules:
-                - Do NOT use action verbs (click, open, navigate, search, buy, install, run).
-                - Do NOT invent specifics not in the terms/titles.
-                - Output one line only.
+                Rules:
+                - Start with an action verb.
+                - Describe what you will DO, not what the user IS DOING.
+                - Output one line only. No quotes.
                 """
 
                 do {
@@ -243,21 +266,22 @@ public struct JarvisSuggestionGenerator: Sendable {
                         schema: nil
                     )
                     let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                        .replacingOccurrences(of: "\"", with: "")
-                    if !cleaned.isEmpty && cleaned.count < 140 {
+                                     .replacingOccurrences(of: "\"", with: "")
+                    // Validate: must pass OpportunityValidator (action verb, no observation prefix)
+                    if !cleaned.isEmpty && cleaned.count < 140
+                       && OpportunityValidator.validate(cleaned) {
                         generatedTitle = cleaned
                     }
                 } catch {
-                    print("[JarvisSuggestionGenerator] wording generation failed, error=\(error)")
+                    print("[JarvisSuggestionGenerator] title generation failed, error=\(error)")
                 }
             }
         }
 
-        // Phase 20G — fallback now uses the ActionIntent label, so the user
-        // sees a specific cognitive offer ("Make practice questions from
-        // these materials?") rather than a generic "make sense of it" line.
+        // Phase 22 — Fallback uses the opportunity title (deterministic) or actionIntent.label.
+        // Either way the result is an action phrase, never an observation.
         if generatedTitle.isEmpty {
-            generatedTitle = actionIntent.label
+            generatedTitle = topOpportunity?.title ?? actionIntent.label
         }
 
         let subtitle = "Context-only — preview based on your recent activity."
@@ -269,9 +293,10 @@ public struct JarvisSuggestionGenerator: Sendable {
             return nil
         }
 
-        // Phase 21 — intent now comes from the CapabilitySelector
-        let intent = actionIntent.id
-        let intentGoal = "Bounded cognitive action (\(actionIntent.id)) over recent \(workflow.rawValue) context. Output type: \(actionIntent.outputType)."
+        // Phase 21 — intent comes from CapabilitySelector; Phase 22 overrides with
+        // the opportunity's capabilityId so the execution engine routes correctly.
+        let intent = topOpportunity?.capabilityId ?? actionIntent.id
+        let intentGoal = "Bounded cognitive action (\(intent)) over recent \(workflow.rawValue) context. Output type: \(actionIntent.outputType)."
 
         let payload = SuggestionContextPayload(
             taskCompartmentSnapshot: activeCompartment,
@@ -284,10 +309,29 @@ public struct JarvisSuggestionGenerator: Sendable {
             actionIntent: intent
         )
 
-        // Phase 21.2 — Failure 5: Build ActionCard exposing primary/secondary/auxiliary actions.
-        // Each suggestion gets a structured card with non-text action slots.
+        // Phase 22 — Build ActionCard. When an opportunity is available, its
+        // capability drives primary/secondary/auxiliary. Falls back to CapabilitySelector.
+        let registry = CognitiveCapabilityRegistry.shared
+        let primaryAction: CognitiveCapability
+        let secondaryAction: CognitiveCapability?
+        let auxiliaryAction: CognitiveCapability?
+        let cardKind: AmbientSuggestionKind
+
+        if let opp = topOpportunity {
+            primaryAction   = registry.get(opp.capabilityId) ?? actionIntent
+            secondaryAction = opp.auxiliaryCapabilityIds.first.flatMap { registry.get($0) }
+            auxiliaryAction = opp.auxiliaryCapabilityIds.dropFirst().first.flatMap { registry.get($0) }
+            cardKind = opp.capabilityId.contains("play_") || opp.capabilityId.contains("timer")
+                ? .comfort_action : .cognitive_action
+        } else {
+            primaryAction   = actionIntent
+            secondaryAction = selection.secondary
+            auxiliaryAction = selection.auxiliary
+            cardKind = forceShow ? .user_initiated : .cognitive_action
+        }
+
         let previewArtifact = ArtifactResult(
-            type: actionIntent.outputType,
+            type: primaryAction.outputType,
             title: generatedTitle,
             subtitle: intentGoal,
             confidence: max(workflowState.confidence, behavioralRecord.confidence)
@@ -296,15 +340,16 @@ public struct JarvisSuggestionGenerator: Sendable {
             id: "ambient:\(intent):\(effectiveMemory.currentEntity.prefix(32).replacingOccurrences(of: " ", with: "_"))",
             title: generatedTitle,
             explanation: intentGoal,
-            primaryAction: actionIntent,
-            secondaryAction: selection.secondary,
-            auxiliaryAction: selection.auxiliary,
+            primaryAction: primaryAction,
+            secondaryAction: secondaryAction,
+            auxiliaryAction: auxiliaryAction,
             previewPayload: previewArtifact,
             evidenceNote: "evidence_quality=\(evidenceQuality)",
             confidence: max(workflowState.confidence, behavioralRecord.confidence)
         )
         // [ActionCard] logs emitted inside ActionCard.init
-        print("[CognitiveOutput] format=\(actionIntent.outputType) intent=\(intent)")
+        print("[ActionCard] observation_only=no")
+        print("[CognitiveOutput] format=\(primaryAction.outputType) intent=\(intent)")
 
         let suggestion = AmbientJarvisSuggestion(
             title: generatedTitle,
@@ -313,7 +358,7 @@ public struct JarvisSuggestionGenerator: Sendable {
             workflow: workflow.rawValue,
             behavior: behavior.rawValue,
             confidence: max(workflowState.confidence, behavioralRecord.confidence),
-            kind: .compare_context,
+            kind: cardKind,
 			intent: intent,
 			intentConfidence: max(workflowState.confidence, behavioralRecord.confidence),
 			intentGoal: intentGoal,
@@ -322,7 +367,8 @@ public struct JarvisSuggestionGenerator: Sendable {
             previewOnly: true,
             sourceEvidence: promptTerms.joined(separator: ","),
             contextPayload: payload,
-            actionCard: card
+            actionCard: card,
+            topOpportunity: topOpportunity
         )
         
         PerformanceBudgetManager.shared.setCachedPayload(compartmentHash: compHash, focusHash: focusHash, payload: payload)

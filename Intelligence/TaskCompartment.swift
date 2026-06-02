@@ -284,6 +284,24 @@ public final class TaskCompartmentTracker {
         }
     }
     
+    // Phase 22 — Source-aware compartment matching.
+    //
+    // The key insight is that `cleanTokens` passed from ingestUpdate() is a union
+    // of BOTH current-window-title tokens AND temporal-packet terms.  Temporal
+    // packet terms accumulate over a sliding window and can be many seconds stale
+    // after a context switch (e.g., Scratch → Dexter).  Treating all of them at
+    // 3.0x weight means a Scratch compartment with 7 matching stale terms scores
+    // 21+ against a threshold of 1.2 — the compartment never releases even though
+    // the user is now watching a TV show.
+    //
+    // Fix:
+    //   • Recompute title tokens and tab tokens inside this function (high signal).
+    //   • Anything in cleanTokens NOT in title/tabs = packet-only (stale risk, 0.1x).
+    //   • Recency bonus capped at 0.25 (was 1.0) — can't carry a stale match.
+    //   • Domain-mismatch penalty when comp has zero title/tab overlap.
+    //   • Expanded workflow-family incompatibility check.
+    //   • Threshold raised 1.2 → 1.5.
+    //   • Per-candidate observability logs for every evaluation.
     private func findBestCompartment(
         workflow: AmbientWorkflowType,
         title: String,
@@ -292,45 +310,100 @@ public final class TaskCompartmentTracker {
     ) -> TaskCompartment? {
         var bestMatch: TaskCompartment? = nil
         var bestScore = 0.0
-        
+
+        // Re-derive source-specific token sets so we can weight them differently.
+        let titleTokens = Self.extractCleanTokens(from: title)
+        var tabTokens = Set<String>()
+        for tab in tabs { tabTokens.formUnion(Self.extractCleanTokens(from: tab)) }
+        // Anything in cleanTokens that didn't come from title/tabs = packet-only
+        // These terms may be stale — give them very low weight.
+        let packetOnlyTokens = cleanTokens.subtracting(titleTokens).subtracting(tabTokens)
+
         for comp in compartments {
-            // 1. Workflow compatibility:
-            let isCompStudy = comp.workflow == .studying || comp.workflow == .reading || comp.workflow == .researching
-            let isCurrentStudy = workflow == .studying || workflow == .reading || workflow == .researching
-            
-            let isCompShop = comp.workflow == .shopping || comp.workflow == .comparing
-            let isCurrentShop = workflow == .shopping || workflow == .comparing
-            
-            if isCompStudy != isCurrentStudy {
+            // 1. Workflow-family incompatibility hard-block.
+            if Self.isWorkflowIncompatible(comp.workflow, workflow) {
+                print("[CompartmentMatch] rejected id=\(comp.id) label=\"\(comp.label)\" reason=workflow_family_incompatible comp=\(comp.workflow.rawValue) current=\(workflow.rawValue)")
                 continue
             }
-            if isCompShop != isCurrentShop {
-                continue
-            }
-            
-            // 2. Token overlap:
-            let titleOverlap = comp.dominantTerms.intersection(cleanTokens)
-            var overlapCount = Double(titleOverlap.count) * 3.0
-            
-            // Tab token overlap
-            for tab in tabs {
-                let tabTokens = Self.extractCleanTokens(from: tab)
-                let tabOverlap = comp.dominantTerms.intersection(tabTokens)
-                overlapCount += Double(tabOverlap.count) * 0.4
-            }
-            
-            // Add a small recency bonus
-            let recencyBonus = max(0.0, 1.0 - Date().timeIntervalSince(comp.lastSeen) / 300.0)
-            let score = overlapCount + recencyBonus
-            
-            // Score threshold of 1.2 to be a valid match
-            if score > 1.2 && score > bestScore {
+
+            // 2. Source-aware overlap scoring.
+            //    Title tokens   → 3.0x  (definitive: what is on screen right now)
+            //    Tab tokens     → 1.0x  (moderate: open browser context)
+            //    Packet-only    → 0.1x  (very low: may be 30+ second old stale terms)
+            let titleOverlap  = comp.dominantTerms.intersection(titleTokens)
+            let tabOverlap    = comp.dominantTerms.intersection(tabTokens)
+            let packetOverlap = comp.dominantTerms.intersection(packetOnlyTokens)
+
+            let overlapScore = Double(titleOverlap.count)  * 3.0
+                             + Double(tabOverlap.count)    * 1.0
+                             + Double(packetOverlap.count) * 0.1
+
+            // 3. Recency bonus — capped at 0.25 (was 1.0).
+            //    A fresh compartment gets a small boost; a stale one gets nothing.
+            //    This cap prevents a just-used-but-wrong compartment from crossing
+            //    the threshold on recency alone when there is no real token match.
+            let ageSec = Date().timeIntervalSince(comp.lastSeen)
+            let recencyBonus = max(0.0, 0.25 * (1.0 - ageSec / 300.0))
+
+            // 4. Domain mismatch penalty.
+            //    If the compartment has ZERO overlap with the current title/tabs
+            //    (i.e., only matching on packet-only/stale terms), penalise hard.
+            //    This is the key fix for Scratch → Dexter: the Scratch compartment
+            //    matches "scratch/tank/shooter" via stale packet, but has zero
+            //    overlap with the Dexter title/tabs → heavy penalty applied.
+            let hasTitleTabOverlap = !titleOverlap.isEmpty || !tabOverlap.isEmpty
+            let mismatchPenalty: Double = hasTitleTabOverlap ? 0.0
+                : min(1.2, Double(packetOverlap.count) * 0.15)
+
+            let score = overlapScore + recencyBonus - mismatchPenalty
+
+            print("[CompartmentMatch] candidate id=\(comp.id) label=\"\(comp.label)\" workflow=\(comp.workflow.rawValue) score=\(String(format: "%.2f", score)) title_overlap=\(titleOverlap.count) tab_overlap=\(tabOverlap.count) packet_overlap=\(packetOverlap.count) recency=\(String(format: "%.2f", recencyBonus)) penalty=\(String(format: "%.2f", mismatchPenalty))")
+
+            // 5. Selection threshold raised to 1.5 (was 1.2).
+            if score > 1.5 && score > bestScore {
                 bestScore = score
                 bestMatch = comp
             }
         }
-        
+
+        if let match = bestMatch {
+            print("[CompartmentMatch] selected id=\(match.id) label=\"\(match.label)\" score=\(String(format: "%.2f", bestScore)) reason=best_overlap")
+        } else {
+            print("[CompartmentMatch] no_match reason=all_candidates_below_threshold will_create_new_compartment")
+        }
+
         return bestMatch
+    }
+
+    /// Returns true when two workflows belong to clearly distinct activity families,
+    /// meaning a compartment in one family should not be reused for the other.
+    ///
+    /// "Permissive" workflows (.browsing, .working, .unknown) never block — they are
+    /// catch-all states that can coexist with any compartment.
+    ///
+    /// Design: generic workflow-family grouping, no hardcoded app/site/keyword rules.
+    private static func isWorkflowIncompatible(
+        _ compWorkflow: AmbientWorkflowType,
+        _ currentWorkflow: AmbientWorkflowType
+    ) -> Bool {
+        if compWorkflow == currentWorkflow { return false }
+        // Permissive workflows are compatible with everything.
+        // .idle / .meeting / .browsing / .unknown are catch-all states.
+        let permissive: Set<AmbientWorkflowType> = [.unknown, .browsing, .idle, .meeting]
+        if permissive.contains(compWorkflow) || permissive.contains(currentWorkflow) { return false }
+
+        // Mutually exclusive activity families.
+        // A compartment in one family should not be reused when the user switches
+        // to a different family (e.g., coding a game ≠ watching TV).
+        let studyFamily:   Set<AmbientWorkflowType> = [.studying, .reading, .researching]
+        let shopFamily:    Set<AmbientWorkflowType> = [.shopping, .comparing]
+        let buildFamily:   Set<AmbientWorkflowType> = [.coding, .debugging]
+        let passiveFamily: Set<AmbientWorkflowType> = [.watching, .gaming]
+
+        for family in [studyFamily, shopFamily, buildFamily, passiveFamily] {
+            if family.contains(compWorkflow) && !family.contains(currentWorkflow) { return true }
+        }
+        return false
     }
     
     public static func extractCleanTokens(from text: String) -> Set<String> {

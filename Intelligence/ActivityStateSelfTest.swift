@@ -81,7 +81,10 @@ enum ActivityStateSelfTest {
         check("dwell_deep_work", deep.dwellState == .deep_work)
 
         // ── Case 9: DeterminerSignal actionable via activity gate ─────────────
-        // No compartment, no terms, but user is actively typing + entity present.
+        // "TurboWarp" tokenizes to exactly 1 term → activeTermCount=1, which
+        // cannot satisfy the old gate (entityPresent && activeTermCount >= 2).
+        // Only the Phase 21.4 activity gate (userIsActive && entityPresent) can
+        // make this actionable, so the reason must be "active_user_entity_present".
         let typingActivity = ActivityState.derive(typingScore: 0.9, pointerScore: 0, dwellSeconds: 60)
         let ds9 = DeterminerSignal.evaluate(
             memory: nil,
@@ -89,12 +92,11 @@ enum ActivityStateSelfTest {
             workflowConfidence: 0.0,
             behaviorConfidence: 0.0,
             activeTerms: [],
-            currentEntity: "Some Page",
+            currentEntity: "TurboWarp",
             activityState: typingActivity
         )
         check("determiner_actionable_via_activity", ds9.actionable)
-        check("determiner_activity_reason",
-              ds9.reason == "active_user_entity_present" || ds9.reason == "entity_and_terms_sufficient")
+        check("determiner_activity_reason", ds9.reason == "active_user_entity_present")
 
         // ── Case 10: DeterminerSignal NOT actionable when idle + no other signals ──
         let idleActivity = ActivityState.derive(typingScore: 0.0, pointerScore: 0.0, dwellSeconds: 200, idleThresholdSeconds: 90)

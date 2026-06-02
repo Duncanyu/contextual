@@ -39,6 +39,8 @@ final class ContextEventProducer {
 	private var lastObservedWindowTitle: String?
 	private var latestWorkflowState: WorkflowState?
 	private var latestBehaviorRecord: BehavioralStateRecord?
+	private var latestTypingScore: Double = 0.0
+	private var latestPointerScore: Double = 0.0
 
     // MARK: - One-shot logging
 
@@ -285,6 +287,8 @@ final class ContextEventProducer {
         if let behavioral = self.behavioralCoordinator {
             let events = await coordinator.getEventStreamSnapshot()
             let buffer = TemporalContextBuffer.build(from: events, now: Date())
+            latestTypingScore = buffer.short.typingScore
+            latestPointerScore = buffer.short.pointerScore
             let stabilized = await behavioral.tick(
                 workflowState: state,
                 shortWindow: buffer.short,
@@ -391,6 +395,20 @@ final class ContextEventProducer {
 					)
 					print("[DeterminerSignal] evaluated=yes actionable=\(determinerSignal.actionable ? "yes" : "no")")
 
+					// Phase 22 — OpportunityEngine: infer need → ranked opportunities.
+					// Fully deterministic, zero model calls.
+					let evidenceQualityTick = selectedURLFound ? "browser_context" : "title_only"
+					let opportunities = OpportunityEngine.evaluate(
+						determinerSignal: determinerSignal,
+						activityState: activityState,
+						compartment: activeComp,
+						memory: memory,
+						evidenceQuality: evidenceQualityTick
+					)
+					let topOpportunity = opportunities.first
+					print("[PerformanceBudget] allowed model=yes ax=no ocr=no visual=no")
+					print("[OpportunityBudget] deterministic=yes opportunities_count=\(opportunities.count)")
+
                     let suggestion = await JarvisSuggestionGenerator.generate(
                         workflowState: effective.effectiveWorkflow,
                         behavioralRecord: effective.effectiveBehavior,
@@ -399,7 +417,8 @@ final class ContextEventProducer {
 						repeatedTerms: buffer.short.repeatedTerms,
 						memory: memory,
                         activeCompartment: activeComp,
-						determinerSignal: determinerSignal
+						determinerSignal: determinerSignal,
+						topOpportunity: topOpportunity
                     )
 					if focusShift && suggestion != nil {
 						print("[JarvisPipeline] regenerated reason=focus_shift")
@@ -437,8 +456,8 @@ final class ContextEventProducer {
 				let refreshActiveComp = await TaskCompartmentTracker.shared.getActiveCompartment()
 				let refreshDwellSecs = refreshActiveComp?.dwellSeconds ?? 0
 				let loopActivityState = ActivityState.derive(
-					typingScore: self.latestWorkflowState?.confidence ?? 0,
-					pointerScore: 0,
+					typingScore: self.latestTypingScore,
+					pointerScore: self.latestPointerScore,
 					dwellSeconds: refreshDwellSecs
 				)
 				let decision = await ActiveContextRefresh.shared.tick(
@@ -537,6 +556,16 @@ final class ContextEventProducer {
 				print("[ActiveContextRefresh] determiner_actionable=\(refreshDeterminer.actionable ? "yes" : "no")")
 
 				print("[ActiveContextRefresh] jarvis_refresh=yes reason=stable_meaningful_context")
+				// Phase 22 — OpportunityEngine in refresh path.
+				let refreshEvidenceQuality = (browser?.currentURL != nil) ? "browser_context" : "title_only"
+				let refreshOpportunities = OpportunityEngine.evaluate(
+					determinerSignal: refreshDeterminer,
+					activityState: refreshActivityState,
+					compartment: activeComp,
+					memory: memory,
+					evidenceQuality: refreshEvidenceQuality
+				)
+				print("[OpportunityBudget] deterministic=yes opportunities_count=\(refreshOpportunities.count)")
 				let suggestion = await JarvisSuggestionGenerator.generate(
 					workflowState: effective.effectiveWorkflow,
 					behavioralRecord: effective.effectiveBehavior,
@@ -545,7 +574,8 @@ final class ContextEventProducer {
 					repeatedTerms: buffer.short.repeatedTerms,
 					memory: memory,
 					activeCompartment: activeComp,
-					determinerSignal: refreshDeterminer
+					determinerSignal: refreshDeterminer,
+					topOpportunity: refreshOpportunities.first
 				)
 				self.onAmbientJarvisSuggestionGenerated?(suggestion)
 				let evidenceQuality = (browser?.currentURL != nil) ? "browser_context" : "title_only"

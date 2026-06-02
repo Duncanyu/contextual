@@ -1,6 +1,15 @@
 import Foundation
 
 public enum AmbientSuggestionKind: String, Sendable, Codable {
+    /// Phase 22 — Standard action opportunity (driven by OpportunityEngine).
+    case cognitive_action = "cognitive_action"
+    /// Comfort/local action (play music, start timer, open app).
+    case comfort_action = "comfort_action"
+    /// Manually triggered by the user.
+    case user_initiated = "user_initiated"
+    /// No useful opportunity found — suppressed.
+    case suppressed = "suppressed"
+    // Legacy — kept for Codable backward compatibility only. Not used in new paths.
     case compare_context = "compare_context"
     case summarize_context = "summarize_context"
     case explain_context = "explain_context"
@@ -52,6 +61,11 @@ public struct AmbientJarvisSuggestion: Sendable, Codable, Equatable, Identifiabl
     // Phase 21.2: Non-text ActionCard with primary/secondary/auxiliary actions.
     public let actionCard: ActionCard?
 
+    // Phase 22 — Opportunity that drove this suggestion. Preserved so
+    // ContextExecutionEngine can log [OpportunityExecution] and generate
+    // domain-specific artifacts on acceptance. Nil for legacy/pre-22 paths.
+    public let topOpportunity: Opportunity?
+
     public init(
         id: String = UUID().uuidString,
         title: String,
@@ -70,7 +84,8 @@ public struct AmbientJarvisSuggestion: Sendable, Codable, Equatable, Identifiabl
         sourceEvidence: String,
         createdAt: Date = Date(),
         contextPayload: SuggestionContextPayload? = nil,
-        actionCard: ActionCard? = nil
+        actionCard: ActionCard? = nil,
+        topOpportunity: Opportunity? = nil
     ) {
         self.id = id
         self.title = title
@@ -90,6 +105,7 @@ public struct AmbientJarvisSuggestion: Sendable, Codable, Equatable, Identifiabl
         self.createdAt = createdAt
         self.contextPayload = contextPayload
         self.actionCard = actionCard
+        self.topOpportunity = topOpportunity
 
         let confStr = String(format: "%.2f", confidence)
         print("[AmbientJarvisSuggestion] created kind=\(kind.rawValue) confidence=\(confStr)")
