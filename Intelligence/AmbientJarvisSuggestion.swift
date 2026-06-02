@@ -13,6 +13,17 @@ public enum AmbientExecutionMode: String, Sendable, Codable {
     case blocked_requires_control = "blocked_requires_control"
 }
 
+public struct SuggestionContextPayload: Sendable, Codable, Equatable {
+    public let taskCompartmentSnapshot: TaskCompartment?
+    public let workingMemorySnapshot: WorkingMemorySnapshot
+    public let comparisonCandidates: [String]
+    public let relatedFocusEntities: [String]
+    public let activeTerms: [String]
+    public let evidenceQuality: String
+    public let browserTabs: [String]
+    public let actionIntent: String
+}
+
 public struct AmbientJarvisSuggestion: Sendable, Codable, Equatable, Identifiable {
     public let id: String
     public let title: String
@@ -27,12 +38,20 @@ public struct AmbientJarvisSuggestion: Sendable, Codable, Equatable, Identifiabl
 	public let intent: String
 	public let intentConfidence: Double
 	public let intentGoal: String
+	// Phase 20G.2: current-focus target entity (from WorkingMemory)
+	public let targetEntity: String
 
     public let executionMode: AmbientExecutionMode
     public let previewOnly: Bool
     public let sourceEvidence: String
     public let createdAt: Date
     
+    // Phase 20I: Context Handoff
+    public let contextPayload: SuggestionContextPayload?
+
+    // Phase 21.2: Non-text ActionCard with primary/secondary/auxiliary actions.
+    public let actionCard: ActionCard?
+
     public init(
         id: String = UUID().uuidString,
         title: String,
@@ -45,10 +64,13 @@ public struct AmbientJarvisSuggestion: Sendable, Codable, Equatable, Identifiabl
 		intent: String = "understand_context",
 		intentConfidence: Double = 0.5,
 		intentGoal: String = "",
+		targetEntity: String = "",
         executionMode: AmbientExecutionMode = .context_only_preview,
         previewOnly: Bool = true,
         sourceEvidence: String,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        contextPayload: SuggestionContextPayload? = nil,
+        actionCard: ActionCard? = nil
     ) {
         self.id = id
         self.title = title
@@ -61,13 +83,20 @@ public struct AmbientJarvisSuggestion: Sendable, Codable, Equatable, Identifiabl
 		self.intent = intent
 		self.intentConfidence = intentConfidence
 		self.intentGoal = intentGoal
+		self.targetEntity = targetEntity
         self.executionMode = executionMode
         self.previewOnly = previewOnly
         self.sourceEvidence = sourceEvidence
         self.createdAt = createdAt
-        
+        self.contextPayload = contextPayload
+        self.actionCard = actionCard
+
         let confStr = String(format: "%.2f", confidence)
         print("[AmbientJarvisSuggestion] created kind=\(kind.rawValue) confidence=\(confStr)")
 		print("[AmbientIntent] generated intent=\(intent) confidence=\(String(format: "%.2f", intentConfidence)) goal=\"\(intentGoal)\"")
+        
+        if let payload = contextPayload {
+            print("[SuggestionContextPayload] attached=yes entities=\(payload.workingMemorySnapshot.recentEntities.count) comparisons=\(payload.comparisonCandidates.count)")
+        }
     }
 }

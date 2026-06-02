@@ -46,6 +46,17 @@ public struct ContextShiftAnalysis: Sendable, Codable, Equatable {
         var earlyApps: [String: Int] = [:]
         var recentApps: [String: Int] = [:]
 
+        func titleTokens(_ title: String) -> [String] {
+            // Tokenize titles into short hints. This is generic (no app hardcoding),
+            // and matches the existing privacy property: titles are already stored
+            // verbatim in the event stream.
+            let raw = title.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count >= 3 && $0.count <= 20 }
+            let stop: Set<String> = ["the", "and", "for", "with", "from", "home", "page", "tab"]
+            return raw.filter { !stop.contains($0) }
+        }
+
         for ev in events {
             let recent = ev.timestamp >= midpoint
             for term in ev.textHints {
@@ -53,6 +64,12 @@ public struct ContextShiftAnalysis: Sendable, Codable, Equatable {
                 guard n.count >= 3 else { continue }
                 if recent { recentCounts[n, default: 0] += 1 }
                 else      { earlyCounts[n, default: 0] += 1 }
+            }
+            // Title tokens are an additional signal channel. They help detect
+            // shifts when the repeated-terms channel is weak or noisy.
+            for t in titleTokens(ev.windowTitle) {
+                if recent { recentCounts[t, default: 0] += 1 }
+                else      { earlyCounts[t, default: 0] += 1 }
             }
             if recent { recentApps[ev.appName, default: 0] += 1 }
             else      { earlyApps[ev.appName, default: 0] += 1 }
@@ -72,10 +89,26 @@ public struct ContextShiftAnalysis: Sendable, Codable, Equatable {
         let topicDrift = jaccard < 0.30 && !earlyTop.isEmpty && !recentTop.isEmpty
         let appDrift   = appChanged && jaccard < 0.50 && !earlyTop.isEmpty
 
-        let detected = topicDrift || appDrift
+        // Extra recent-title-cluster shift: compare last few titles vs the
+        // previous few titles. This is robust even when term repetition stays
+        // high (e.g. browser chrome retains old terms).
+        let titles = events.map { $0.windowTitle }.filter { !$0.isEmpty }
+        let tail = Array(titles.suffix(6))
+        let split = max(1, tail.count / 2)
+        let recentTitles = tail.suffix(split)
+        let earlyTitles = tail.prefix(tail.count - split)
+        let earlyTitleTokens = Set(earlyTitles.flatMap { titleTokens($0) })
+        let recentTitleTokens = Set(recentTitles.flatMap { titleTokens($0) })
+        let titleInter = earlyTitleTokens.intersection(recentTitleTokens).count
+        let titleUnion = earlyTitleTokens.union(recentTitleTokens).count
+        let titleJaccard: Double = titleUnion > 0 ? Double(titleInter) / Double(titleUnion) : 1.0
+        let titleClusterShift = titleJaccard < 0.25 && !earlyTitleTokens.isEmpty && !recentTitleTokens.isEmpty
+
+        let detected = topicDrift || appDrift || titleClusterShift
         let reason: String = {
             if topicDrift { return "topic_distribution_changed" }
             if appDrift   { return "app_changed_with_topic_drift" }
+            if titleClusterShift { return "recent_title_cluster_shift" }
             return "no_shift"
         }()
         let downweighted = detected

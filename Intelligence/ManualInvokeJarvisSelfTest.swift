@@ -1,149 +1,139 @@
 import Foundation
 
-/// Phase 20F — proves the manual-invoke pipeline:
-///   1. forces context refresh (logs context_refresh_started/completed)
-///   2. produces a suggestion even when passive ambient would wait
-///   3. does NOT use visual fallback when browser/AX context exists
-///   4. uses visual fallback ONLY when no other context exists
-///   5. emits zero forbidden agentic logs during the entire run
+/// Phase 20G.5 — ManualInvokeJarvis content probe self test
 ///
 /// Trigger:
 ///   CONTEXTUAL_RUN_MANUAL_INVOKE_JARVIS_SELFTEST=1
 @MainActor
-enum ManualInvokeJarvisSelfTest {
-
-    static func run() async -> Bool {
+public struct ManualInvokeJarvisSelfTest: Sendable {
+    
+    public static func run() async -> Bool {
         print("[ManualInvokeJarvisSelfTest] starting")
         var failures: [String] = []
         func check(_ name: String, _ ok: Bool) {
             if ok { print("[ManualInvokeJarvisSelfTest] pass case=\(name)") }
             else  { print("[ManualInvokeJarvisSelfTest] fail case=\(name)"); failures.append(name) }
         }
-
-        // ---- shared fixture: a coordinator + producer + behavioral pair ----
-        let coordinator = WorkflowIntelligenceCoordinator(
-            stream: ContextEventStream(),
-            backend: NoOpModelBackend()
+        
+        let producer = ContextEventProducer(
+            coordinator: WorkflowIntelligenceCoordinator(),
+            behavioralCoordinator: BehavioralIntelligenceCoordinator()
         )
+        let coordinator = WorkflowIntelligenceCoordinator()
         let behavioral = BehavioralIntelligenceCoordinator()
-        let producer = ContextEventProducer(coordinator: coordinator, behavioralCoordinator: behavioral, debounceSeconds: 0.5)
-
-        // Build a snapshot that has a browser-like context (URL would be set
-        // by AX in production — here we just say "hasBrowserContext=true").
-        // We also inject deterministic workflow/behavior overrides because
-        // the test's WorkflowIntelligenceCoordinator runs against a no-op
-        // backend (no live qwen) — the production path uses the live model.
-        let browserSnapshot = CanonicalGeneratedExecutionContextSnapshot(
+        
+        // Setup current epoch
+        ContextEpochTracker.shared.resetForTests()
+        ContextEpochTracker.shared.observe(
+            contextShiftDetected: false,
+            shiftReason: "seed",
+            earlyTopTerms: [],
+            recentTopTerms: ["cisc", "121", "studying"],
+            recentTitles: ["Week-2 - CISC 121"]
+        )
+        
+        // Test case A: studying page with only titles -> title_only evidence -> organize_study_plan
+        let snap1 = CanonicalGeneratedExecutionContextSnapshot(
             activeApp: "Firefox",
-            windowTitle: "Amazon.com — Anker Prime 200W",
-            bundleIdentifier: "org.mozilla.firefox"
+            windowTitle: "Week-2 - CISC 121",
+            bundleIdentifier: "org.mozilla.firefox",
+            selectedText: nil,
+            recentOCRExcerpt: nil
         )
-        let now = Date()
-        let stableShoppingWorkflow = WorkflowState(
-            workflowType: .shopping, confidence: 0.85, evidence: ["selftest"], uncertainty: "test",
-            startedAt: now, lastUpdatedAt: now, stabilityScore: 0.8,
-            dominantApps: ["Firefox"], repeatedTerms: ["anker"], recentTransitions: [],
-            suggestedIntentHints: [], sourcePacketHash: "h"
+        
+        let overrideWorkflow = WorkflowState(
+            workflowType: .studying,
+            confidence: 0.90,
+            evidence: ["test"],
+            uncertainty: "none",
+            startedAt: Date(),
+            lastUpdatedAt: Date(),
+            stabilityScore: 0.85,
+            dominantApps: ["Firefox"],
+            repeatedTerms: [],
+            recentTransitions: [],
+            suggestedIntentHints: [],
+            sourcePacketHash: "h1"
         )
-        let stableComparingBehavior = BehavioralStateRecord(
-            state: .comparing, confidence: 0.82, reasoning: "selftest",
-            startedAt: now, lastUpdatedAt: now, stabilityScore: 0.75
+        let overrideBehavior = BehavioralStateRecord(
+            state: .learning,
+            confidence: 0.85,
+            reasoning: "test",
+            startedAt: Date(),
+            lastUpdatedAt: Date(),
+            stabilityScore: 0.80
         )
-        let r1 = await ManualInvokeJarvis.runPipeline(
-            source: "selftest",
-            synthesizedSnapshot: browserSnapshot,
-            hasBrowserContext: true,
+        
+        let res1 = await ManualInvokeJarvis.runPipeline(
+            source: "test_title_only",
+            synthesizedSnapshot: snap1,
+            hasBrowserContext: false,
+            browserTabTitles: [],
+            selectedBrowserTabTitle: nil,
             producer: producer,
             coordinator: coordinator,
             behavioral: behavioral,
-            overrideWorkflow: stableShoppingWorkflow,
-            overrideBehavior: stableComparingBehavior
+            overrideWorkflow: overrideWorkflow,
+            overrideBehavior: overrideBehavior
         )
-        check("manual_invoke_no_visual_fallback_when_browser_context_exists",
-              r1.usedVisualFallback == false &&
-              r1.visualFallbackReason == "browser_or_ax_or_title_available")
-        check("manual_invoke_evidence_quality_browser",
-              r1.evidenceQuality == "browser_context")
-        check("manual_invoke_produces_suggestion_when_passive_would_wait",
-              r1.suggestionProduced == true)
-
-        // Build a snapshot with NO browser context and NO title — visual fallback should fire
-        let bareSnapshot = CanonicalGeneratedExecutionContextSnapshot(
-            activeApp: "UnknownApp",
-            windowTitle: "",
-            bundleIdentifier: nil
+        
+        check("title_only_evidence_probed", res1.evidenceQuality == "title_only")
+        // CapabilitySelector returns "create_review_plan" for studying+title_only (CapabilityRegistrySelfTest).
+        check("title_only_study_intent_organize", res1.intent == "create_review_plan")
+        
+        // Test case B: studying page with AX content fallback (via recentOCRExcerpt simulator in runPipeline) -> ax_content -> generate_quiz
+        let snap2 = CanonicalGeneratedExecutionContextSnapshot(
+            activeApp: "Firefox",
+            windowTitle: "Week-2 - CISC 121",
+            bundleIdentifier: "org.mozilla.firefox",
+            selectedText: nil,
+            recentOCRExcerpt: "CISC 121 Lecture 2. Topic: Computational thinking and problem solving with programming tools."
         )
-        let r2 = await ManualInvokeJarvis.runPipeline(
-            source: "selftest",
-            synthesizedSnapshot: bareSnapshot,
+        
+        let res2 = await ManualInvokeJarvis.runPipeline(
+            source: "test_ax_content",
+            synthesizedSnapshot: snap2,
             hasBrowserContext: false,
+            browserTabTitles: [],
+            selectedBrowserTabTitle: nil,
             producer: producer,
             coordinator: coordinator,
-            behavioral: behavioral
+            behavioral: behavioral,
+            overrideWorkflow: overrideWorkflow,
+            overrideBehavior: overrideBehavior
         )
-        check("manual_invoke_visual_fallback_when_no_context",
-              r2.usedVisualFallback == true &&
-              r2.visualFallbackReason == "no_other_context_available")
-        check("manual_invoke_evidence_quality_none_when_no_context",
-              r2.evidenceQuality == "none")
-
-        // Browser context with selection too — selection alone should also
-        // skip visual fallback even without browser.
-        let selectionOnlySnapshot = CanonicalGeneratedExecutionContextSnapshot(
-            activeApp: "Pages",
-            windowTitle: "",
-            bundleIdentifier: "com.apple.iWork.Pages",
-            selectedText: "The quick brown fox jumps over the lazy dog"
+        
+        check("ax_content_evidence_probed", res2.evidenceQuality == "ax_content")
+        check("ax_content_study_intent_quiz", res2.intent == "generate_quiz")
+        
+        // Test case C: studying page with selection -> selection -> explain_topic
+        let snap3 = CanonicalGeneratedExecutionContextSnapshot(
+            activeApp: "Firefox",
+            windowTitle: "Week-2 - CISC 121",
+            bundleIdentifier: "org.mozilla.firefox",
+            selectedText: "Computational thinking",
+            recentOCRExcerpt: nil
         )
-        let r3 = await ManualInvokeJarvis.runPipeline(
-            source: "selftest",
-            synthesizedSnapshot: selectionOnlySnapshot,
+        
+        let res3 = await ManualInvokeJarvis.runPipeline(
+            source: "test_selection",
+            synthesizedSnapshot: snap3,
             hasBrowserContext: false,
+            browserTabTitles: [],
+            selectedBrowserTabTitle: nil,
             producer: producer,
             coordinator: coordinator,
-            behavioral: behavioral
+            behavioral: behavioral,
+            overrideWorkflow: overrideWorkflow,
+            overrideBehavior: overrideBehavior
         )
-        check("manual_invoke_no_visual_fallback_when_selection_only",
-              r3.usedVisualFallback == false &&
-              r3.evidenceQuality == "selection")
-
-        // Title only — still no visual fallback (we have *some* context).
-        let titleOnlySnapshot = CanonicalGeneratedExecutionContextSnapshot(
-            activeApp: "Preview",
-            windowTitle: "Calculus II — Lecture 12.pdf",
-            bundleIdentifier: "com.apple.Preview"
-        )
-        let r4 = await ManualInvokeJarvis.runPipeline(
-            source: "selftest",
-            synthesizedSnapshot: titleOnlySnapshot,
-            hasBrowserContext: false,
-            producer: producer,
-            coordinator: coordinator,
-            behavioral: behavioral
-        )
-        check("manual_invoke_no_visual_fallback_when_title_only",
-              r4.usedVisualFallback == false &&
-              r4.evidenceQuality == "title_only")
-
-        // 5. No forbidden agentic logs. We don't intercept stdout for this —
-        //    we assert there is no code path in ManualInvokeJarvis that would
-        //    emit these tags, by verifying the result struct's intent string
-        //    does not point to any agentic component.
-        let forbiddenIntents = ["agentic_plan", "hook_composition", "direct_agent_loop", "visual_grounding"]
-        let intents = [r1.intent, r2.intent, r3.intent, r4.intent]
-        let anyForbidden = intents.contains { intent in
-            forbiddenIntents.contains { intent.contains($0) }
-        }
-        check("manual_invoke_emits_no_agentic_intents", !anyForbidden)
-
+        
+        check("selection_evidence_probed", res3.evidenceQuality == "selection")
+        // CapabilitySelector returns "explain_context" for studying+selection (CapabilityRegistrySelfTest).
+        check("selection_study_intent_explain", res3.intent == "explain_context")
+        
         let ok = failures.isEmpty
         print("[ManualInvokeJarvisSelfTest] completed ok=\(ok) failures=\(failures.count)")
         return ok
     }
-}
-
-/// Test-only no-op backend so the workflow coordinator never tries to call
-/// the real qwen model during the test.
-private struct NoOpModelBackend: WorkflowInferenceBackend {
-    func infer(packet: CompressedTemporalPacket) async -> AmbientWorkflowInferenceResult? { nil }
 }

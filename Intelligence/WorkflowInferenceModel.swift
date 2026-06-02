@@ -305,7 +305,14 @@ public enum WorkflowInferenceModel {
             if distinctTitles > 0 { matchedSources.append("titles") }
             if !packet.topicTerms.isEmpty { matchedSources.append("metadata") }
             
-            if appIsBrowser && transitions >= 2 && distinctTitles >= 2 && repeatedTopicTerms >= 2 {
+            if packet.contextShiftDetected {
+                // Phase 20G.1 — if a context epoch shift is in progress, do not
+                // apply the deterministic shopping fallback. That fallback is
+                // intentionally coarse and would re-lock a stale shopping state
+                // right as the user switches to a new topic cluster.
+                print("[WorkflowFallback] blocked reason=stale_epoch_conflict old_workflow=shopping")
+                raw = .empty
+            } else if appIsBrowser && transitions >= 2 && distinctTitles >= 2 && repeatedTopicTerms >= 2 {
                 print("[WorkflowFallback] applied workflow=shopping reason=evidence_pattern matched_entities=\(distinctTitles) matched_sources=\(matchedSources.joined(separator: ","))")
                 raw = AmbientWorkflowInferenceResult(
                     workflow: "shopping",

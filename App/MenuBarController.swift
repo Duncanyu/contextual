@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class MenuBarController {
+final class MenuBarController: NSObject, NSPopoverDelegate {
 	private let statusItem: NSStatusItem
 	private let popover: NSPopover
 
@@ -10,12 +10,17 @@ final class MenuBarController {
 
 	/// Called after the popover is shown (manual toggle or programmatic reveal).
 	var onPopoverDidShow: (() -> Void)?
+	/// Called after the popover is closed.
+	var onPopoverDidClose: (() -> Void)?
 
 	init(appState: AppState) {
 		let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 		let popover = NSPopover()
 		self.statusItem = statusItem
 		self.popover = popover
+
+        super.init()
+        popover.delegate = self
 
 		let image = NSImage(
 			systemSymbolName: "sparkles",
@@ -51,5 +56,9 @@ final class MenuBarController {
 		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 		onPopoverDidShow?()
 	}
+
+    public func popoverDidClose(_ notification: Notification) {
+        onPopoverDidClose?()
+    }
 }
 

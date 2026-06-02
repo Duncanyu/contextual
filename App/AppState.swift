@@ -284,10 +284,26 @@ final class AppState: ObservableObject {
 				self?.publishAmbientJarvisSuggestion(suggestion)
 			}
 		}
+		producer.onAmbientJarvisSuggestionInvalidated = { [weak self] oldEntity, newEntity in
+			Task { @MainActor in
+				self?.invalidateAmbientJarvisSuggestion(reason: "focus_shift", oldEntity: oldEntity, newEntity: newEntity)
+			}
+		}
 		return producer
 	}()
 
 	@Published var activeAmbientJarvisSuggestion: AmbientJarvisSuggestion?
+	private var lastAmbientJarvisTargetEntity: String = ""
+
+	func invalidateAmbientJarvisSuggestion(reason: String, oldEntity: String, newEntity: String) {
+		guard activeAmbientJarvisSuggestion != nil else { return }
+		print("[AmbientSuggestionSurface] invalidated reason=\(reason) old_entity=\(oldEntity.prefix(120)) new_entity=\(newEntity.prefix(120))")
+		activeAmbientJarvisSuggestion = nil
+		currentProposal = nil
+		currentProposalKey = nil
+		refreshProposalContext(for: nil)
+		lastAmbientJarvisTargetEntity = ""
+	}
 	
 	func publishAmbientJarvisSuggestion(_ suggestion: AmbientJarvisSuggestion?) {
 		self.activeAmbientJarvisSuggestion = suggestion
@@ -311,10 +327,13 @@ final class AppState: ObservableObject {
 			self.currentProposal = proposal
 			self.currentProposalKey = "ambient_jarvis:\(suggestion.id)"
 			self.refreshProposalContext(for: proposal)
+			lastAmbientJarvisTargetEntity = suggestion.targetEntity
+			self.onAmbientJarvisFloatingSuggestionCandidate?(proposal)
 		} else {
 			self.currentProposal = nil
 			self.currentProposalKey = nil
 			self.refreshProposalContext(for: nil)
+			lastAmbientJarvisTargetEntity = ""
 		}
 	}
 
@@ -361,6 +380,8 @@ final class AppState: ObservableObject {
 
 	@Published var floatingSuggestion: SuggestionViewModel?
 	@Published var isFloatingSuggestionVisible: Bool = false
+    @Published var isPanelVisible: Bool = false
+    @Published var ambientSuggestionDogfoodMode: Bool = true // Default to true for Phase 20I
 
 	/// Phase 4M: True between `ExecutionFocusHandoff.prepare()` and `finalize()`.
 	/// Views that contribute to OCR (panel chrome, processing overlays) should
@@ -412,6 +433,9 @@ final class AppState: ObservableObject {
 	var onPullLocalAIModel: (() -> Void)?
 	/// Opens the assistant popover (menu bar); wired by app lifecycle.
 	var onRevealAssistantPanel: (() -> Void)?
+	/// Phase 20G.4 — request that the ambient Jarvis suggestion be surfaced
+	/// via the floating suggestion panel (legacy path remains unchanged).
+	var onAmbientJarvisFloatingSuggestionCandidate: ((ActionProposal) -> Void)?
 
 	func invokeAction(id: String) {
 		if id.hasPrefix("ambient_jarvis:") {
@@ -513,10 +537,14 @@ final class AppState: ObservableObject {
 
 	func isSuggestionOnCooldown(_ proposal: ActionProposal, context: ContextModel, now: Date = Date()) -> Bool {
 		let key = suggestionKey(for: proposal, context: context)
-		if dismissedSuggestionCooldown.isCoolingDown(key: key, interval: dismissedSuggestionCooldownSeconds, now: now) {
+        
+        let dismissedInterval = ambientSuggestionDogfoodMode ? 10.0 : dismissedSuggestionCooldownSeconds
+        let acceptedInterval = ambientSuggestionDogfoodMode ? 30.0 : acceptedSuggestionCooldownSeconds
+
+		if dismissedSuggestionCooldown.isCoolingDown(key: key, interval: dismissedInterval, now: now) {
 			return true
 		}
-		if acceptedSuggestionCooldown.isCoolingDown(key: key, interval: acceptedSuggestionCooldownSeconds, now: now) {
+		if acceptedSuggestionCooldown.isCoolingDown(key: key, interval: acceptedInterval, now: now) {
 			return true
 		}
 		return false

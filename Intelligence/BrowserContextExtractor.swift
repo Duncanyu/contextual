@@ -15,6 +15,9 @@ public struct BrowserContextExtractor: Sendable {
         public let appName: String
         public let selectedTitle: String?
         public let currentURL: URL?
+        /// Best-effort "selected tab" URL. Most browsers expose only the
+        /// frontmost web area URL; treat that as the selected URL.
+        public let selectedURL: URL?
         public let recentTabTitles: [String]
         public let webAreaFrame: CGRect?
         public let scrollAreaFrame: CGRect?
@@ -97,6 +100,11 @@ public struct BrowserContextExtractor: Sendable {
         }
         print("[BrowserContextExtractor] tab_titles=[\(tabTitles.joined(separator: ", "))]")
 
+        if let st = selectedTabTitle {
+            print("[BrowserTabs] selected_title=\"\(st.prefix(120))\"")
+        }
+		print("[BrowserTabs] selected_url_found=\(url != nil ? "yes" : "no")")
+
         // 3. Frames for surgical OCR.
         let webAreaFrame = walk.first(where: { $0.role == "AXWebArea" })?.frame
         let scrollAreaFrame = walk.first(where: { $0.role == "AXScrollArea" })?.frame
@@ -105,6 +113,7 @@ public struct BrowserContextExtractor: Sendable {
             appName: appName,
             selectedTitle: selectedTabTitle,
             currentURL: url,
+            selectedURL: url,
             recentTabTitles: tabTitles,
             webAreaFrame: webAreaFrame,
             scrollAreaFrame: scrollAreaFrame

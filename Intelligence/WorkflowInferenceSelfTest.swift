@@ -541,6 +541,38 @@ public enum WorkflowInferenceSelfTest {
 			}
 		}
 
+		// MARK: - Phase 20G.1 regression — context shift blocks deterministic shopping fallback.
+		do {
+			let shiftedPacket = CompressedTemporalPacket(
+				currentApp: "Firefox",
+				recentApps: ["Firefox"],
+				recentTitles: ["Course Page", "Week 1", "Assignment"],
+				topicTerms: ["course", "week", "assignment"],
+				activityPattern: "steady",
+				idlePattern: "active",
+				typingPattern: "light",
+				pointerPattern: "steady",
+				ocrHints: [],
+				selectionHints: [],
+				clipboardMetadata: "none",
+				recentUserAccepts: [],
+				recentUserIgnores: [],
+				spanSeconds: 300,
+				eventCount: 20,
+				contextShiftDetected: true
+			)
+			struct NilBackend: WorkflowInferenceBackend {
+				func infer(packet: CompressedTemporalPacket) async -> AmbientWorkflowInferenceResult? { nil }
+			}
+			let inferred = await WorkflowInferenceModel.infer(packet: shiftedPacket, backend: NilBackend(), applyProvenanceGuard: false)
+			if inferred.workflow == "unknown" {
+				print("[WorkflowInferenceSelfTest] pass case=fallback_blocked_after_epoch_shift")
+			} else {
+				print("[WorkflowInferenceSelfTest] fail case=fallback_blocked_after_epoch_shift expected=unknown got=\(inferred.workflow)")
+				failures.append("fallback_blocked_after_epoch_shift")
+			}
+		}
+
         let ok = failures.isEmpty
         print("[WorkflowInferenceSelfTest] completed ok=\(ok) failures=\(failures.count)")
         return ok

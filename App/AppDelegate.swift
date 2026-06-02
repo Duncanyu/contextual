@@ -102,6 +102,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		_ = ValidationConfiguration.self
 		print("[Phase18C] compiled=yes context_execution_engine=yes ambient_mvp_mode=yes")
 		let env = ProcessInfo.processInfo.environment
+		if env["CONTEXTUAL_RUN_BROWSER_TAB_MEMORY_SELFTEST"] == "1" {
+			Task {
+				let ok = await BrowserTabMemorySelfTest.run()
+				print("[BrowserTabMemorySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_WORKING_MEMORY_SELFTEST"] == "1" {
+			Task {
+				let ok = await WorkingMemorySelfTest.run()
+				print("[WorkingMemorySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_ACTION_INTENT_SELFTEST"] == "1" {
+			Task {
+				let ok = await ActionIntentSelfTest.run()
+				print("[ActionIntentSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_MANUAL_INVOKE_JARVIS_SELFTEST"] == "1" {
+			Task {
+				let ok = await ManualInvokeJarvisSelfTest.run()
+				print("[ManualInvokeJarvisSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_CONTEXT_EXECUTION_SELFTEST"] == "1" {
+			Task {
+				let ok = await ContextExecutionSelfTest.run()
+				print("[ContextExecutionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
 		if env["CONTEXTUAL_RUN_AMBIENT_JARVIS_SUGGESTION_SELFTEST"] == "1" {
 			Task {
 				let ok = await AmbientJarvisSuggestionSelfTest.run()
@@ -162,6 +197,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 		}
+		// Phase 20G — Context epochs + deprecation gates.
+		if env["CONTEXTUAL_RUN_CONTEXT_EPOCH_SELFTEST"] == "1" {
+			Task {
+				let ok = await ContextEpochSelfTest.run()
+				print("[ContextEpochSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_CONTEXT_DEPRECATION_SELFTEST"] == "1" {
+			Task {
+				let ok = await ContextDeprecationSelfTest.run()
+				print("[ContextDeprecationSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_ACTION_INTENT_SELFTEST"] == "1" {
+			Task {
+				let ok = await ActionIntentSelfTest.run()
+				print("[ActionIntentSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_BROWSER_TAB_MEMORY_SELFTEST"] == "1" {
+			Task {
+				let ok = await BrowserTabMemorySelfTest.run()
+				print("[BrowserTabMemorySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_FOCUS_EPOCH_SELFTEST"] == "1" {
+			Task {
+				let ok = await FocusEpochSelfTest.run()
+				print("[FocusEpochSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_PERFORMANCE_BUDGET_SELFTEST"] == "1" {
+			Task {
+				let ok = await PerformanceBudgetSelfTest.run()
+				print("[PerformanceBudgetSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+        
+        // Phase 21 — Liquid Capabilities
+        if env["CONTEXTUAL_RUN_CAPABILITY_REGISTRY_SELFTEST"] == "1" {
+            let ok = CapabilityRegistrySelfTest.run()
+            print("[CapabilityRegistrySelfTest] env selftest ok=\(ok)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+        }
+        if env["CONTEXTUAL_RUN_CAPABILITY_SELECTOR_SELFTEST"] == "1" {
+            let ok = CapabilitySelectorSelfTest.run()
+            print("[CapabilitySelectorSelfTest] env selftest ok=\(ok)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+        }
+        if env["CONTEXTUAL_RUN_CAPABILITY_EXECUTION_SELFTEST"] == "1" {
+            Task {
+                let ok = await CapabilityExecutionSelfTest.run()
+                print("[CapabilityExecutionSelfTest] env selftest ok=\(ok)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+            }
+        }
+        
+		if env["CONTEXTUAL_RUN_FOCUS_OVERRIDE_SELFTEST"] == "1" {
+			Task {
+				let ok = await FocusOverrideSelfTest.run()
+				print("[FocusOverrideSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_AMBIENT_FLOATING_SUGGESTION_SELFTEST"] == "1" {
+			Task {
+				let ok = await AmbientFloatingSuggestionSelfTest.run()
+				print("[AmbientFloatingSuggestionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		// Phase 21.1 — DeterminerSignal: composite actionability signal.
+		if env["CONTEXTUAL_RUN_DETERMINER_SIGNAL_SELFTEST"] == "1" {
+			let ok = DeterminerSignalSelfTest.run()
+			print("[DeterminerSignalSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+		}
+		// Phase 21.2 — Domain classification + editor fallback + ActionCard regressions.
+		if env["CONTEXTUAL_RUN_DOMAIN_CLASSIFIER_SELFTEST"] == "1" {
+			let ok = DomainClassifierSelfTest.run()
+			print("[DomainClassifierSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+		}
+		// Phase 21.2 — ActionCard structural test (subset of DomainClassifier cases).
+		if env["CONTEXTUAL_RUN_ACTION_CARD_SELFTEST"] == "1" {
+			let ok = DomainClassifierSelfTest.run()
+			print("[ActionCardSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+		}
+		// Phase 21.4 — Activity state + dwell + active-unknown routing tests.
+		if env["CONTEXTUAL_RUN_ACTIVITY_STATE_SELFTEST"] == "1" {
+			let ok = ActivityStateSelfTest.run()
+			print("[ActivityStateSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+		}
+		// Phase 20G dogfood regression: TES bypass + Scratch/Gemini classification.
+		if env["CONTEXTUAL_RUN_AMBIENT_VISIBILITY_REGRESSION_SELFTEST"] == "1" {
+			Task {
+				let ok = await AmbientVisibilityRegressionSelfTest.run()
+				print("[AmbientVisibilityRegressionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
 		if env["CONTEXTUAL_RUN_MANUAL_INVOKE_JARVIS_SELFTEST"] == "1" {
 			Task {
 				let ok = await ManualInvokeJarvisSelfTest.run()
@@ -173,6 +317,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			Task {
 				let ok = await BehaviorInferenceSelfTest.run()
 				print("[BehaviorInferenceSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_TASK_COMPARTMENT_SELFTEST"] == "1" {
+			Task {
+				await TaskCompartmentSelfTest.run()
+				print("[TaskCompartmentSelfTest] env selftest ok=true")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 		}
@@ -560,10 +711,19 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		appState.onRevealAssistantPanel = { [weak self] in
 			self?.menuBarController?.revealPopoverIfNeeded()
 		}
+		appState.onAmbientJarvisFloatingSuggestionCandidate = { [weak self] proposal in
+			Task { @MainActor in
+				self?.maybeShowAmbientJarvisFloatingSuggestion(proposal: proposal)
+			}
+		}
 
 		menuBarController?.onPopoverDidShow = { [weak self] in
+            self?.appState.isPanelVisible = true
 			self?.appState.dismissFloatingSuggestion(reason: .panelOpen)
 		}
+        menuBarController?.onPopoverDidClose = { [weak self] in
+            self?.appState.isPanelVisible = false
+        }
 
 		appState.requestManualInvocation = { [weak self] in
 			Task { @MainActor in
@@ -2826,6 +2986,99 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		} else if shouldLogTES {
 			print("[TES] suppressed reason=\(tes.reason) score=\(scoreLabel)")
 		}
+	}
+
+	// MARK: - Phase 20G.4 Ambient Jarvis → floating surface
+
+	@MainActor
+	private func maybeShowAmbientJarvisFloatingSuggestion(proposal: ActionProposal) {
+		// Ambient Jarvis proposals are context-grounded (workflow/behavior/epoch),
+		// NOT text-input-grounded. The standard TES path requires selected text or
+		// clipboard — ambient tabs like Scratch / Gemini / course pages have neither,
+		// so routing through TES always produces `no_meaningful_input` and the
+		// floating window never appears.
+		//
+		// Fix: after ambient-appropriate gate checks (panel, cooldown, paused,
+		// executing), go directly to the lifecycle dedup check and show. Skip TES.
+		let ctx = contextBuilder.model
+
+		// 1. Panel-open: attach inline instead of floating.
+		if appState.isPanelVisible {
+			print("[AmbientSuggestionSurface] attached_to_panel=yes")
+			print("[AmbientFloatingSuggestion] skipped reason=panel_open_attached_inline")
+			return
+		}
+		// 2. Ambient cooldown / dismissed / accepted.
+		if appState.isSuggestionOnCooldown(proposal, context: ctx) {
+			print("[AmbientFloatingSuggestion] skipped reason=cooldown|dismissed|accepted")
+			return
+		}
+		// 3. Floating already visible.
+		if appState.isFloatingSuggestionVisible {
+			print("[AmbientFloatingSuggestion] skipped reason=already_visible")
+			return
+		}
+		// 4. Assistant paused.
+		if appState.isPaused {
+			print("[AmbientFloatingSuggestion] skipped reason=assistant_paused")
+			return
+		}
+		// 5. Another action is currently executing.
+		if appState.isActionExecuting {
+			print("[AmbientFloatingSuggestion] skipped reason=executing_action")
+			return
+		}
+
+		print("[AmbientFloatingSuggestion] eligible=yes id=\(proposal.primaryActionId)")
+
+		// 6. Lifecycle dedup — prevent the same ambient suggestion from re-surfacing
+		// on every tick. Use the ambient trigger type so lifecycle state is isolated
+		// from regular floating suggestions.
+		let packet = TriggerPacket(
+			triggerType: .contextMetadataEligible,
+			reason: "ambient_jarvis",
+			candidateActions: [],
+			createdAt: Date()
+		)
+		let resolvedInput = appState.effectiveInputSource(for: ctx)
+		let rawSimilarity = FloatingSimilarityText.material(
+			for: ctx,
+			triggerType: packet.triggerType,
+			inputPreference: resolvedInput
+		)
+		let profile = ContentSimilarityProfile.make(from: rawSimilarity)
+		let life = appState.floatingSuggestionLifecycle.shouldSuppressNewFloating(
+			triggerType: packet.triggerType,
+			primaryActionId: proposal.primaryActionId,
+			profile: profile
+		)
+		if life.suppressed, let r = life.reason {
+			appState.floatingSuggestionLifecycle.logSuppressedIfNeeded(state: r, safeKey: life.safeKey)
+			print("[AmbientFloatingSuggestion] skipped reason=lifecycle_suppressed")
+			return
+		}
+
+		// 7. Show — bypasses TES (no selection/clipboard required for ambient context).
+		print("[AmbientFloatingSuggestion] tes_bypassed reason=context_grounded_no_text_input_needed")
+		let exactKey = appState.floatingSuggestionLifecycle.exactKey(
+			triggerType: packet.triggerType,
+			primaryActionId: proposal.primaryActionId,
+			profile: profile
+		)
+		let safeKey = appState.floatingSuggestionLifecycle.safeLogKey(
+			triggerType: packet.triggerType,
+			primaryActionId: proposal.primaryActionId,
+			profile: profile
+		)
+		let bind = ActiveFloatingLifecycleBinding(
+			exactKey: exactKey,
+			safeKey: safeKey,
+			profile: profile,
+			primaryActionId: proposal.primaryActionId
+		)
+		appState.showFloatingSuggestion(proposal, lifecycle: bind)
+		print("[AmbientFloatingSuggestion] attached=yes")
+		print("[AmbientFloatingSuggestion] shown=yes reason=ambient_jarvis")
 	}
 
 	private func preserveOrClearAvailableActions(reason: String) {

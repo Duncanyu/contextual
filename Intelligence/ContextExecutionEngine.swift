@@ -29,7 +29,12 @@ enum ContextExecutionEngine {
         workflow: WorkflowState,
         behavior: BehavioralStateRecord,
         packet: CompressedTemporalPacket,
-        snapshot: CanonicalGeneratedExecutionContextSnapshot?
+        snapshot: CanonicalGeneratedExecutionContextSnapshot?,
+        overriddenMemory: WorkingMemorySnapshot? = nil,
+        overriddenCompartment: TaskCompartment? = nil,
+        overriddenEvidenceQuality: String? = nil,
+        requestedIntent: String? = nil,
+        requestedGoal: String? = nil
     ) async -> ContextExecutionResult {
         print("[ContextExecutionEngine] started workflow=\(workflow.workflowType.rawValue) behavior=\(behavior.state.rawValue)")
 
@@ -52,21 +57,70 @@ enum ContextExecutionEngine {
 			clipboardText: snapshot?.clipboardText
 		)
 
+        let activeComp: TaskCompartment?
+        if let overridden = overriddenCompartment {
+            activeComp = overridden
+        } else {
+            activeComp = await TaskCompartmentTracker.shared.getActiveCompartment()
+        }
+        let allComps = await TaskCompartmentTracker.shared.compartments
+
         // Phase 18C grounding fix — passive public-web enrichment runs BEFORE
         // intent inference so both stages can use the same enriched envelope.
         // Sensitive workflows + env disable + non-eligible terms all return
         // an empty WebContextEnrichment; downstream code never branches on it.
         let webEnrichment = await WebContextEnricher.shared.enrich(
             terms: packet.topicTerms,
-            workflowType: workflow.workflowType
+            workflowType: workflow.workflowType,
+            activeCompartment: activeComp,
+            allCompartments: allComps
         )
 
         // Phase 20A Working Memory Generation
-        let memory = WorkingMemoryBuilder.build(
-            workflow: workflow,
-            behavior: behavior,
-            packet: packet
-        )
+        let memory: WorkingMemorySnapshot
+        if let over = overriddenMemory {
+            memory = over
+        } else {
+            let tabTitles = browserCtx?.recentTabTitles ?? []
+            let selectedTab = browserCtx?.selectedTitle
+            memory = WorkingMemoryBuilder.build(
+                workflow: workflow,
+                behavior: behavior,
+                packet: packet,
+                browserTabTitles: tabTitles,
+                selectedBrowserTabTitle: selectedTab,
+                activeCompartment: activeComp,
+                allCompartments: allComps
+            )
+        }
+
+        let isStudy = workflow.workflowType == .studying || behavior.state == .learning
+        if isStudy {
+            let hasSel = !(snapshot?.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let hasAX = !axFragments.isEmpty
+            let quality: String = {
+                if hasSel { return "selection" }
+                if hasAX { return "ax_content" }
+                if !memory.relatedFocusEntities.isEmpty { return "browser_tabs" }
+                return "title_only"
+            }()
+            
+            print("[ContextExecutionEngine] related_focus_entities count=\(memory.relatedFocusEntities.count)")
+            print("[ContextExecutionEngine] evidence_quality=\(quality)")
+            
+            let studyAction: String
+            switch quality {
+            case "selection":
+                studyAction = "explain_topic"
+            case "ax_content":
+                studyAction = "generate_quiz"
+            case "browser_tabs":
+                studyAction = "create_study_outline"
+            default:
+                studyAction = "organize_study_plan"
+            }
+            print("[ContextExecutionEngine] study_action=\(studyAction)")
+        }
 
         var envelope = Envelope(
             workflow: workflow,
@@ -79,13 +133,66 @@ enum ContextExecutionEngine {
             judgment: .empty
         )
 
-		var evidenceQuality: String = pageCtx.productFacts.isEmpty ? "title_only" : "product_metadata"
+		var evidenceQuality: String = overriddenEvidenceQuality ?? (pageCtx.productFacts.isEmpty ? "title_only" : "product_metadata")
+		if overriddenEvidenceQuality == nil && isStudy {
+			let hasSel = !(snapshot?.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			let hasAX = !axFragments.isEmpty
+			evidenceQuality = {
+				if hasSel { return "selection" }
+				if hasAX { return "ax_content" }
+				if !memory.relatedFocusEntities.isEmpty { return "browser_tabs" }
+				return "title_only"
+			}()
+		}
 		print("[ContextEvidence] quality=\(evidenceQuality)")
 
-        // Stage 1 — intent inference.
-        let intent = await inferIntent(envelope: envelope)
+        // Stage 1 — intent inference & Evidence Gating (Task B).
+        var finalIntentStr = requestedIntent ?? "understand_context"
+        var finalGoalStr = requestedGoal ?? ""
+        var sourceStr = "suggestion"
+        
+        if requestedIntent == nil {
+            let inferred = await inferIntent(envelope: envelope)
+            finalIntentStr = inferred.intent
+            finalGoalStr = inferred.goal
+            sourceStr = inferred.source
+        }
+
+        if let req = requestedIntent {
+            print("[ExecutionCapability] requested=\(req)")
+            let axChars = axFragments.joined(separator: " ").count
+            let axConf = 1.0
+            print("[ExecutionEvidence] ax_chars=\(axChars) ax_confidence=\(axConf)")
+            let contentRich = axChars > 500
+            print("[ExecutionEvidence] content_rich=\(contentRich ? "yes" : "no")")
+            
+            var downgrade = false
+            if req == "generate_quiz" || req == "explain_topic" {
+                if evidenceQuality != "selection" {
+                    if !contentRich || evidenceQuality == "title_only" || evidenceQuality == "browser_tabs" {
+                        finalIntentStr = "organize_review_plan"
+                        downgrade = true
+                    }
+                }
+            }
+            
+            if downgrade {
+                print("[ExecutionCapability] downgrade=yes reason=insufficient_content")
+            } else {
+                print("[ExecutionCapability] downgrade=no reason=not_applicable_or_sufficient")
+            }
+            print("[ExecutionCapability] final=\(finalIntentStr)")
+        }
+
+        let intent = InferredIntent(intent: finalIntentStr, subject: "", goal: finalGoalStr, confidence: 0.9, source: sourceStr)
         let confStr = String(format: "%.2f", intent.confidence)
         print("[ContextExecutionEngine] stage1_intent=\(intent.intent) source=\(intent.source) confidence=\(confStr)")
+        
+        if intent.intent == "compare_options" {
+            let candidates = envelope.memory.comparisonCandidates
+            print("[ContextExecutionEngine] comparison_candidates count=\(candidates.count)")
+            print("[ContextExecutionEngine] comparison_candidates=[\(candidates.joined(separator: ", "))]")
+        }
 
         // Phase 19: Goal inference.
         let goal = await GoalInferenceEngine.inferGoal(
@@ -105,7 +212,9 @@ enum ContextExecutionEngine {
                 workflow: workflow.workflowType,
                 behavior: behavior.state,
                 titles: searchTitles,
-                terms: packet.topicTerms
+                terms: packet.topicTerms,
+                activeCompartment: activeComp,
+                allCompartments: allComps
             )
             envelope.webResearchFacts = researchResult.facts
             if !envelope.webResearchFacts.isEmpty {
@@ -133,7 +242,9 @@ enum ContextExecutionEngine {
             intent: intent,
             goal: goal,
             envelope: envelope,
-            evidenceQuality: evidenceQuality
+            evidenceQuality: evidenceQuality,
+            activeComp: activeComp,
+            requestedIntent: requestedIntent
         )
 		print("[ContextExecutionEngine] grounded_facts=count=\(result.extractedProductFacts.count + envelope.webResearchFacts.count)")
         print("[ContextExecutionEngine] completed observed=\(result.observed.count) inferred=\(result.inferred.count) unknown=\(result.unknown.count) web=\(result.webContext.count) source=\(result.source)")
@@ -148,11 +259,30 @@ enum ContextExecutionEngine {
         suggestion: AmbientJarvisSuggestion,
         snapshot: CanonicalGeneratedExecutionContextSnapshot?
     ) async -> ContextExecutionResult {
-    print("[ContextExecutionEngine] using_intent=\(suggestion.intent) goal=\"\(suggestion.intentGoal)\"")
+        print("[ContextExecutionEngine] using_intent=\(suggestion.intent) goal=\"\(suggestion.intentGoal)\"")
         let workflow = synthesizeWorkflow(from: suggestion, snapshot: snapshot)
         let behavior = synthesizeBehavior(from: suggestion)
         let packet   = synthesizePacket(from: suggestion, snapshot: snapshot)
-        return await execute(workflow: workflow, behavior: behavior, packet: packet, snapshot: snapshot)
+        
+        if let payload = suggestion.contextPayload {
+            print("[ContextExecutionEngine] using_payload_context=yes")
+            print("[ContextExecutionEngine] comparison_candidates count=\(payload.comparisonCandidates.count)")
+            print("[ContextExecutionEngine] related_focus_entities count=\(payload.relatedFocusEntities.count)")
+            
+            return await execute(
+                workflow: workflow,
+                behavior: behavior,
+                packet: packet,
+                snapshot: snapshot,
+                overriddenMemory: payload.workingMemorySnapshot,
+                overriddenCompartment: payload.taskCompartmentSnapshot,
+                overriddenEvidenceQuality: payload.evidenceQuality,
+                requestedIntent: suggestion.intent,
+                requestedGoal: suggestion.intentGoal
+            )
+        }
+        
+        return await execute(workflow: workflow, behavior: behavior, packet: packet, snapshot: snapshot, requestedIntent: suggestion.intent, requestedGoal: suggestion.intentGoal)
     }
 
 
@@ -241,7 +371,9 @@ enum ContextExecutionEngine {
         intent: InferredIntent,
         goal: GoalInference,
         envelope: Envelope,
-        evidenceQuality: String
+        evidenceQuality: String,
+        activeComp: TaskCompartment?,
+        requestedIntent: String?
     ) async -> ContextExecutionResult {
         let prompt = executionPrompt(intent: intent, goal: goal, envelope: envelope, evidenceQuality: evidenceQuality)
 
@@ -267,26 +399,50 @@ enum ContextExecutionEngine {
                         // the artifact type even when the model produced one.
                         // Section content stays the model's; the rendered
                         // judgment line above the artifact tells the user why.
-                        let finalArtifact: CognitiveArtifact = {
+                        let finalArtifact: ArtifactResult = {
                             if envelope.judgment.comparisonValidity == .invalid,
-                               parsed.artifact.artifactType != "clarification_brief" {
+                               parsed.artifact.type != "clarification_brief" {
                                 print("[ArtifactSelector] override=clarification_brief reason=model_attempted_invalid_comparison")
-                                return CognitiveArtifact(artifactType: "clarification_brief", sections: parsed.artifact.sections)
+                                return ArtifactResult(type: "clarification_brief", title: "Clarification Needed", subtitle: "", sections: parsed.artifact.sections)
                             }
                             return parsed.artifact
                         }()
+                        
+                        let selection = CapabilitySelector.select(
+                            compartment: activeComp,
+                            workingMemory: envelope.memory,
+                            evidenceQuality: evidenceQuality,
+                            currentApp: envelope.packet.currentApp,
+                            behavior: envelope.behavior.state,
+                            userInitiated: requestedIntent != nil,
+                            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+                        )
+                        
+                        let card = ActionCard(
+                            title: finalArtifact.title,
+                            explanation: finalArtifact.subtitle,
+                            primaryAction: selection.primary,
+                            secondaryAction: selection.secondary,
+                            auxiliaryAction: selection.auxiliary,
+                            previewPayload: finalArtifact,
+                            evidenceNote: "Based on \(evidenceQuality) evidence",
+                            confidence: intent.confidence,
+                            confirmationState: selection.primary.requiresConfirmation ? "required" : "none"
+                        )
+
                         return ContextExecutionResult(
                             intent: intent,
                             goalInference: goal,
                             cognitiveArtifact: finalArtifact,
+                            actionCard: card,
                             judgment: envelope.judgment,
                             observed: parsed.observed,
                             inferred: parsed.inferred,
                             unknown: parsed.unknown,
                             nextQuestion: parsed.nextQuestion,
-                            webContext: web,
-                            publicPageMetadata: pageMeta,
-                            extractedProductFacts: productFacts,
+                            webContext: envelope.webResearchFacts,
+                            publicPageMetadata: envelope.page,
+                            extractedProductFacts: envelope.page.productFacts,
                             evidenceQuality: evidenceQuality,
                             source: "model"
                         )
@@ -301,14 +457,16 @@ enum ContextExecutionEngine {
             }
         }
         print("[ContextExecutionEngine] fallback_preserving_web_facts=yes")
-        return fallbackStructured(intent: intent, goal: goal, envelope: envelope, evidenceQuality: evidenceQuality)
+        return fallbackStructured(intent: intent, goal: goal, envelope: envelope, evidenceQuality: evidenceQuality, activeComp: activeComp, requestedIntent: requestedIntent)
     }
 
     private static func fallbackStructured(
         intent: InferredIntent,
         goal: GoalInference,
         envelope: Envelope,
-        evidenceQuality: String
+        evidenceQuality: String,
+        activeComp: TaskCompartment?,
+        requestedIntent: String?
     ) -> ContextExecutionResult {
 
         // 1. Observed — derive from packet data verbatim. NEVER define what
@@ -333,6 +491,12 @@ enum ContextExecutionEngine {
         if envelope.hasOCRDetail {
             let topOCR = envelope.packet.ocrHints.prefix(3).joined(separator: ", ")
             observed.append("OCR signal: \(topOCR)")
+        }
+        if !envelope.memory.relatedFocusEntities.isEmpty {
+            observed.append("Related materials from tabs:")
+            for tab in envelope.memory.relatedFocusEntities.prefix(4) {
+                observed.append("  • \(tab)")
+            }
         }
 
         // 2. Public web context — rendered as its own list passed to the
@@ -388,20 +552,74 @@ enum ContextExecutionEngine {
         // 5. Next question — single generic prompt that works across workflows.
         let nextQuestion = "Which dimension matters most to you here — and which item would you like to focus on first?"
 
-        // Phase 20D — artifact type is now derived from the JUDGMENT, not
-        // from a goal-string switch. Section content comes from evidence
-        // (observed + judgment.rationale + judgment.missingInformation),
-        // not from canned strings per artifact type.
-        let artifactType = ArtifactSelector.type(for: envelope.judgment)
-        let sections = buildFallbackSections(
-            artifactType: artifactType,
-            judgment: envelope.judgment,
-            observed: observed,
-            inferred: inferred,
-            unknown: unknown
-        )
+        var title = "Context Summary"
+        var subtitle = "Observation of recent activity."
+        var sections: [ArtifactSection] = []
+        var primaryCards: [ArtifactCard] = []
+        var tableRows: [[String]]? = nil
+        var nextActions: [String] = []
+        var missingInfo = unknown
+        
+        switch intent.intent {
+        case "compare_options":
+            title = "Comparison"
+            subtitle = "Evaluation based on \(observed.count) signals"
+            if !envelope.memory.comparisonCandidates.isEmpty {
+                var header = ["Feature"]
+                header.append(contentsOf: envelope.memory.comparisonCandidates)
+                tableRows = [header]
+            } else {
+                tableRows = [["Feature", "Item 1", "Item 2"]]
+            }
+            sections.append(ArtifactSection(header: "Missing Criteria", items: unknown))
+            nextActions.append("What to check next")
+            missingInfo = envelope.judgment.missingInformation
+            
+        case "organize_review_plan":
+            title = "Study Plan"
+            subtitle = "Review strategy for detected topics."
+            sections.append(ArtifactSection(header: "Topics Detected", items: envelope.packet.topicTerms.isEmpty ? ["Unknown"] : Array(envelope.packet.topicTerms.prefix(5))))
+            sections.append(ArtifactSection(header: "Suggested Review Order", items: ["Start with basics", "Move to advanced"]))
+            sections.append(ArtifactSection(header: "Checklist", items: ["Review notes", "Check syllabus"]))
+            
+        case "generate_quiz":
+            title = "Practice Quiz"
+            subtitle = "Generated from screen context"
+            sections.append(ArtifactSection(header: "Questions (Topic 1)", items: ["Q1: What is the main concept?", "Q2: How does it apply?"]))
+            sections.append(ArtifactSection(header: "Answer Key (Separate)", items: ["A1: Details...", "A2: Application..."]))
+            
+        case "synthesize_sources":
+            title = "Research Synthesis"
+            subtitle = "Synthesis of \(envelope.memory.recentEntities.count) sources."
+            sections.append(ArtifactSection(header: "Shared Concepts", items: envelope.judgment.rationale.filter { $0.hasPrefix("shared_concepts=") }))
+            sections.append(ArtifactSection(header: "Key Takeaways", items: Array(observed.prefix(3))))
+            
+        case "diagnose_error":
+            title = "Diagnostic"
+            subtitle = "Potential cause and next steps."
+            sections.append(ArtifactSection(header: "Strongest Evidence", items: Array(observed.prefix(3))))
+            sections.append(ArtifactSection(header: "Likely Cause", items: ["Potential misconfiguration or missing dependency"]))
+            nextActions.append("Next Investigation: Check logs")
+            missingInfo = unknown
+            
+        default:
+            title = "Context Execution"
+            subtitle = "Summary of observed activity."
+            sections.append(ArtifactSection(header: "Observed", items: observed))
+            sections.append(ArtifactSection(header: "Inferred", items: inferred))
+        }
 
-        let artifact = CognitiveArtifact(artifactType: artifactType, sections: sections)
+        let artifact = ArtifactResult(
+            type: intent.intent,
+            title: title,
+            subtitle: subtitle,
+            sections: sections,
+            primaryCards: primaryCards,
+            tableRows: tableRows,
+            missingInfo: missingInfo,
+            confidence: envelope.judgment.confidence,
+            nextActions: nextActions
+        )
 
         // Override next question if judgment is invalid — the brief requires
         // we ask the clarifying question rather than push a comparison.
@@ -410,77 +628,44 @@ enum ContextExecutionEngine {
             finalNextQuestion = "It looks like these items may serve different needs — what are you actually trying to accomplish here?"
         }
 
+        let selection = CapabilitySelector.select(
+            compartment: activeComp,
+            workingMemory: envelope.memory,
+            evidenceQuality: evidenceQuality,
+            currentApp: envelope.packet.currentApp,
+            behavior: envelope.behavior.state,
+            userInitiated: requestedIntent != nil,
+            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+        )
+        
+        let card = ActionCard(
+            title: artifact.title,
+            explanation: artifact.subtitle,
+            primaryAction: selection.primary,
+            secondaryAction: selection.secondary,
+            auxiliaryAction: selection.auxiliary,
+            previewPayload: artifact,
+            evidenceNote: "Fallback based on \(evidenceQuality) evidence",
+            confidence: envelope.judgment.confidence,
+            confirmationState: selection.primary.requiresConfirmation ? "required" : "none"
+        )
+
         return ContextExecutionResult(
             intent: intent,
             goalInference: goal,
             cognitiveArtifact: artifact,
+            actionCard: card,
             judgment: envelope.judgment,
             observed: observed,
             inferred: inferred,
             unknown: unknown,
             nextQuestion: finalNextQuestion,
-            webContext: webContext,
-			publicPageMetadata: pageMeta,
-			extractedProductFacts: productFacts,
+            webContext: envelope.webResearchFacts,
+			publicPageMetadata: envelope.page,
+			extractedProductFacts: envelope.page.productFacts,
 			evidenceQuality: quality,
             source: "fallback"
         )
-    }
-
-    /// Build the cognitive-artifact sections from judgment + evidence. No
-    /// canned strings per artifact type — section CONTENT comes from
-    /// `judgment.rationale` and `judgment.missingInformation`, plus the
-    /// engine's already-collected observed/inferred/unknown bullets.
-    private static func buildFallbackSections(
-        artifactType: String,
-        judgment: ContextJudgment,
-        observed: [String],
-        inferred: [String],
-        unknown: [String]
-    ) -> [CognitiveArtifact.ArtifactSection] {
-        switch artifactType {
-        case "clarification_brief":
-            return [
-                .init(heading: "What I noticed",
-                      items: Array(observed.prefix(3))),
-                .init(heading: "Why I can't directly compare these",
-                      items: judgment.rationale.filter { !$0.hasPrefix("entities=") }),
-                .init(heading: "What's missing",
-                      items: judgment.missingInformation),
-            ]
-        case "recommendation_brief":
-            return [
-                .init(heading: "Items being compared",
-                      items: judgment.entities.map { String($0.prefix(80)) }),
-                .init(heading: "Shared dimensions worth comparing",
-                      items: judgment.rationale.filter { $0.hasPrefix("dimensions=") || $0.hasPrefix("shared_concepts=") }),
-                .init(heading: "Missing for a complete recommendation",
-                      items: judgment.missingInformation),
-            ]
-        case "research_brief":
-            return [
-                .init(heading: "Main takeaways",
-                      items: Array(observed.prefix(3))),
-                .init(heading: "Shared concepts across sources",
-                      items: judgment.rationale.filter { $0.hasPrefix("shared_concepts=") }),
-                .init(heading: "Worth investigating next",
-                      items: judgment.missingInformation),
-            ]
-        case "diagnostic_brief":
-            return [
-                .init(heading: "Strongest signals",
-                      items: Array(observed.prefix(3))),
-                .init(heading: "What's still unclear",
-                      items: judgment.missingInformation),
-            ]
-        default: // knowledge_brief
-            return [
-                .init(heading: "Key signals",
-                      items: Array(observed.prefix(2)) + Array(inferred.prefix(2))),
-                .init(heading: "Likely questions",
-                      items: Array(unknown.prefix(3))),
-            ]
-        }
     }
 
     // MARK: - Prompts (identical shape for every workflow)
@@ -682,7 +867,7 @@ enum ContextExecutionEngine {
     }
 
     private struct ParsedExecution {
-        let artifact: CognitiveArtifact
+        let artifact: ArtifactResult
         let observed: [String]
         let inferred: [String]
         let unknown: [String]
@@ -696,7 +881,7 @@ enum ContextExecutionEngine {
 		) -> Bool {
             var all = observed + inferred + unknown + [nextQuestion]
             for section in artifact.sections {
-                all.append(section.heading)
+                all.append(section.header)
                 all.append(contentsOf: section.items)
             }
             for item in all {
@@ -744,14 +929,16 @@ enum ContextExecutionEngine {
             print("[ArtifactReasoning] comparison_reframed reason=entities_not_same_category")
         }
         
-        let artifact: CognitiveArtifact
+        let artifact: ArtifactResult
         if let a = decoded.artifact {
-            artifact = CognitiveArtifact(
-                artifactType: a.artifactType,
-                sections: a.sections.map { .init(heading: $0.heading, items: $0.items) }
+            artifact = ArtifactResult(
+                type: a.artifactType,
+                title: a.artifactType.capitalized,
+                subtitle: "",
+                sections: a.sections.map { .init(header: $0.heading, items: $0.items) }
             )
         } else {
-            artifact = CognitiveArtifact(artifactType: "knowledge_brief", sections: [])
+            artifact = ArtifactResult(type: "knowledge_brief", title: "Knowledge Brief", subtitle: "")
         }
         
         guard !(observed.isEmpty && inferred.isEmpty && unknown.isEmpty && artifact.sections.isEmpty) else { return nil }

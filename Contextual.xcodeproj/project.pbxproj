@@ -11,7 +11,15 @@
 		AA0001020000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002020000000000000002 /* AppDelegate.swift */; };
 		AA00018A00000000000000BA /* Phase14TuningSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029200000000000000BA /* Phase14TuningSelfTest.swift */; };
 		AA00018B00000000000000BB /* Phase15TuningSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00029300000000000000BB /* Phase15TuningSelfTest.swift */; };
+		C0FFEE112233445566778812 /* AmbientFloatingSuggestionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778812 /* AmbientFloatingSuggestionSelfTest.swift */; };
 		AABB00010000000000000001 /* GeneratedProposalPreservationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00020000000000000001 /* GeneratedProposalPreservationSelfTest.swift */; };
+		F3A001B100000000000000B1 /* AmbientVisibilityRegressionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A002B100000000000000B1 /* AmbientVisibilityRegressionSelfTest.swift */; };
+		F3B001C100000000000001C1 /* DeterminerSignal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B002C100000000000001C1 /* DeterminerSignal.swift */; };
+		F3B001C200000000000001C2 /* DeterminerSignalSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B002C200000000000001C2 /* DeterminerSignalSelfTest.swift */; };
+		F3C001D100000000000001D1 /* EditorContextFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C002D100000000000001D1 /* EditorContextFallback.swift */; };
+		F3D001E100000000000001E1 /* DomainClassifierSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D002E100000000000001E1 /* DomainClassifierSelfTest.swift */; };
+		F3E001F100000000000001F1 /* ActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3E002F100000000000001F1 /* ActivityState.swift */; };
+		F3F001A100000000000001A1 /* ActivityStateSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F002A100000000000001A1 /* ActivityStateSelfTest.swift */; };
 		AA0001030000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030000000000000003 /* AppState.swift */; };
 		AA0001040000000000000004 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040000000000000004 /* MenuBarController.swift */; };
 		AA0001050000000000000005 /* AssistantPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050000000000000005 /* AssistantPanelView.swift */; };
@@ -32,6 +40,7 @@
 		AA0001140000000000000014 /* ActionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000214000000000000001E /* ActionResult.swift */; };
 		AA0001150000000000000015 /* SummarizeAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000215000000000000001F /* SummarizeAction.swift */; };
 		AA000148000000000000004C /* ActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000252000000000000004D /* ActionIntent.swift */; };
+		C0FFEE112233445566778803 /* ActionIntentSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778803 /* ActionIntentSelfTest.swift */; };
 		AA000149000000000000004E /* TemporaryWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000253000000000000004F /* TemporaryWorkflow.swift */; };
 		AA0001500000000000000050 /* GeneratedActionDescriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002540000000000000051 /* GeneratedActionDescriptor.swift */; };
 		AA0001160000000000000016 /* ActionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002160000000000000020 /* ActionRouter.swift */; };
@@ -312,6 +321,8 @@
 			AA00B1C2D3E4E5F607182B03 /* ContextEventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B04 /* ContextEventStream.swift */; };
 			AA00B1C2D3E4E5F607182B05 /* TemporalContextBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B06 /* TemporalContextBuffer.swift */; };
 			AA00B1C2D3E4E5F607182B07 /* TemporalContextCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B08 /* TemporalContextCompressor.swift */; };
+			C0FFEE112233445566778801 /* ContextEpoch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778801 /* ContextEpoch.swift */; };
+			C0FFEE112233445566778802 /* ContextEpochSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778802 /* ContextEpochSelfTest.swift */; };
 			AA00B1C2D3E4E5F607182B09 /* WorkflowInferenceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B0A /* WorkflowInferenceModel.swift */; };
 			AA00B1C2D3E4E5F607182B0B /* WorkflowStabilizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B0C /* WorkflowStabilizer.swift */; };
 			AA00B1C2D3E4E5F607182B0D /* AmbientOpportunity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B0E /* AmbientOpportunity.swift */; };
@@ -324,6 +335,13 @@
 			AA00B1C2D3E4E5F607182E03 /* ContextExecutionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E04 /* ContextExecutionResult.swift */; };
 			AA00B1C2D3E4E5F607182E05 /* ContextExecutionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E06 /* ContextExecutionEngine.swift */; };
 			AA00B1C2D3E4E5F607182E07 /* ContextExecutionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E08 /* ContextExecutionSelfTest.swift */; };
+			C0FFEE112233445566778899 /* ContextDeprecationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778899 /* ContextDeprecationSelfTest.swift */; };
+			C0FFEE112233445566778805 /* BrowserTabMemorySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778805 /* BrowserTabMemorySelfTest.swift */; };
+			AA00B1C2D3E4E5F607182D10 /* WorkingMemorySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182D11 /* WorkingMemorySelfTest.swift */; };
+			C0FFEE112233445566778806 /* FocusEpoch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778806 /* FocusEpoch.swift */; };
+			C0FFEE112233445566778807 /* FocusEpochSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778807 /* FocusEpochSelfTest.swift */; };
+			C0FFEE112233445566778810 /* FocusOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778810 /* FocusOverride.swift */; };
+			C0FFEE112233445566778811 /* FocusOverrideSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778811 /* FocusOverrideSelfTest.swift */; };
 			AA00B1C2D3E4E5F607182E11 /* WebContextEnrichment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E12 /* WebContextEnrichment.swift */; };
 			AA00B1C2D3E4E5F607182E13 /* WebContextEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182E14 /* WebContextEnricher.swift */; };
 			AA00B1C2D3E4E5F607182F11 /* ContextJudgment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182F12 /* ContextJudgment.swift */; };
@@ -344,6 +362,7 @@
 			AA00B1C2D3E4E5F607182B36 /* ValidationConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182B37 /* ValidationConfiguration.swift */; };
 			AA00B1C2D3E4E5F607182C00 /* AmbientJarvisSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C01 /* AmbientJarvisSuggestion.swift */; };
 			AA00B1C2D3E4E5F607182C02 /* JarvisSuggestionGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C03 /* JarvisSuggestionGenerator.swift */; };
+			C0FFEE112233445566778804 /* CognitiveActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEEAA2233445566778804 /* CognitiveActionIntent.swift */; };
 			AA00B1C2D3E4E5F607182C04 /* JarvisSuggestionValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C05 /* JarvisSuggestionValidator.swift */; };
 			AA00B1C2D3E4E5F607182C06 /* ContextOnlyExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C07 /* ContextOnlyExecutor.swift */; };
 			AA00B1C2D3E4E5F607182C08 /* AmbientJarvisSuggestionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182C09 /* AmbientJarvisSuggestionSelfTest.swift */; };
@@ -367,6 +386,8 @@
 			AA0002360000000000000308 /* VisualTargetingCorrectnessSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000308 /* VisualTargetingCorrectnessSelfTest.swift */; };
 			AA0002360000000000000309 /* VisualContextRehydrationSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004210000000000000309 /* VisualContextRehydrationSelfTest.swift */; };
 			AA000236000000000000030E /* AgenticLLMDeciderSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000421000000000000030E /* AgenticLLMDeciderSelfTest.swift */; };
+			AA00B1C2D3E4E5F607182D12 /* TaskCompartment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182D13 /* TaskCompartment.swift */; };
+			AA00B1C2D3E4E5F607182D14 /* TaskCompartmentSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00A1B2C3D4E5F607182D15 /* TaskCompartmentSelfTest.swift */; };
 			AA0002270000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000240 /* TwoStageCompactPlannerPromptBuilder.swift */; };
 			AA0002270000000000000241 /* TwoStageRouterPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000241 /* TwoStageRouterPromptBuilder.swift */; };
 			AA0002270000000000000242 /* TwoStageLaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004110000000000000242 /* TwoStageLaneManager.swift */; };
@@ -428,7 +449,15 @@
 		AA0002020000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AA00029200000000000000BA /* Phase14TuningSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase14TuningSelfTest.swift; sourceTree = "<group>"; };
 		AA00029300000000000000BB /* Phase15TuningSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase15TuningSelfTest.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778812 /* AmbientFloatingSuggestionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientFloatingSuggestionSelfTest.swift; sourceTree = "<group>"; };
 		AABB00020000000000000001 /* GeneratedProposalPreservationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedProposalPreservationSelfTest.swift; sourceTree = "<group>"; };
+		F3A002B100000000000000B1 /* AmbientVisibilityRegressionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientVisibilityRegressionSelfTest.swift; sourceTree = "<group>"; };
+		F3B002C100000000000001C1 /* DeterminerSignal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterminerSignal.swift; sourceTree = "<group>"; };
+		F3B002C200000000000001C2 /* DeterminerSignalSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterminerSignalSelfTest.swift; sourceTree = "<group>"; };
+		F3C002D100000000000001D1 /* EditorContextFallback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorContextFallback.swift; sourceTree = "<group>"; };
+		F3D002E100000000000001E1 /* DomainClassifierSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainClassifierSelfTest.swift; sourceTree = "<group>"; };
+		F3E002F100000000000001F1 /* ActivityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityState.swift; sourceTree = "<group>"; };
+		F3F002A100000000000001A1 /* ActivityStateSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityStateSelfTest.swift; sourceTree = "<group>"; };
 		AA0002030000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSuggestionWindowController.swift; sourceTree = "<group>"; };
@@ -455,6 +484,7 @@
 		AA000214000000000000001E /* ActionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionResult.swift; sourceTree = "<group>"; };
 		AA000215000000000000001F /* SummarizeAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizeAction.swift; sourceTree = "<group>"; };
 		AA000252000000000000004D /* ActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionIntent.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778803 /* ActionIntentSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionIntentSelfTest.swift; sourceTree = "<group>"; };
 		AA000253000000000000004F /* TemporaryWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryWorkflow.swift; sourceTree = "<group>"; };
 		AA0002540000000000000051 /* GeneratedActionDescriptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionDescriptor.swift; sourceTree = "<group>"; };
 		AA0002160000000000000020 /* ActionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRouter.swift; sourceTree = "<group>"; };
@@ -701,6 +731,8 @@
 		AA00A1B2C3D4E5F607182B04 /* ContextEventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextEventStream.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B06 /* TemporalContextBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporalContextBuffer.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B08 /* TemporalContextCompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporalContextCompressor.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778801 /* ContextEpoch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextEpoch.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778802 /* ContextEpochSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextEpochSelfTest.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B0A /* WorkflowInferenceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowInferenceModel.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B0C /* WorkflowStabilizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowStabilizer.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B0E /* AmbientOpportunity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientOpportunity.swift; sourceTree = "<group>"; };
@@ -713,6 +745,13 @@
 		AA00A1B2C3D4E5F607182E04 /* ContextExecutionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextExecutionResult.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182E06 /* ContextExecutionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextExecutionEngine.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182E08 /* ContextExecutionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextExecutionSelfTest.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778899 /* ContextDeprecationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextDeprecationSelfTest.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778805 /* BrowserTabMemorySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserTabMemorySelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182D11 /* WorkingMemorySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingMemorySelfTest.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778806 /* FocusEpoch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusEpoch.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778807 /* FocusEpochSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusEpochSelfTest.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778810 /* FocusOverride.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusOverride.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778811 /* FocusOverrideSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusOverrideSelfTest.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182E12 /* WebContextEnrichment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContextEnrichment.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182E14 /* WebContextEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContextEnricher.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182F12 /* ContextJudgment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextJudgment.swift; sourceTree = "<group>"; };
@@ -733,11 +772,14 @@
 		AA00A1B2C3D4E5F607182B37 /* ValidationConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationConfiguration.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182C01 /* AmbientJarvisSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientJarvisSuggestion.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182C03 /* JarvisSuggestionGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisSuggestionGenerator.swift; sourceTree = "<group>"; };
+		C0FFEEAA2233445566778804 /* CognitiveActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CognitiveActionIntent.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182C05 /* JarvisSuggestionValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisSuggestionValidator.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182C07 /* ContextOnlyExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextOnlyExecutor.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182C09 /* AmbientJarvisSuggestionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientJarvisSuggestionSelfTest.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B27 /* BehavioralIntelligenceCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehavioralIntelligenceCoordinator.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182B29 /* BehaviorInferenceSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorInferenceSelfTest.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182D13 /* TaskCompartment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskCompartment.swift; sourceTree = "<group>"; };
+		AA00A1B2C3D4E5F607182D15 /* TaskCompartmentSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskCompartmentSelfTest.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F60718299E /* ActionableUIAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionableUIAnalyzer.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F60718299F /* ExplorationMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorationMemory.swift; sourceTree = "<group>"; };
 		AA00A1B2C3D4E5F607182A00 /* AnswerReadinessGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnswerReadinessGate.swift; sourceTree = "<group>"; };
@@ -844,7 +886,9 @@
 				AA0002020000000000000002 /* AppDelegate.swift */,
 				AA00029200000000000000BA /* Phase14TuningSelfTest.swift */,
 				AA00029300000000000000BB /* Phase15TuningSelfTest.swift */,
+				C0FFEEAA2233445566778812 /* AmbientFloatingSuggestionSelfTest.swift */,
 				AABB00020000000000000001 /* GeneratedProposalPreservationSelfTest.swift */,
+				F3A002B100000000000000B1 /* AmbientVisibilityRegressionSelfTest.swift */,
 				AA0002030000000000000003 /* AppState.swift */,
 				AA0002040000000000000004 /* MenuBarController.swift */,
 				AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */,
@@ -1023,6 +1067,7 @@
 				29B61C9907CD47F39ADE614C /* StrongContextAnchorSelfTest.swift */,
 				A216F1AEE9E74ADEBB7CD367 /* EmailReviewEvidenceSelfTest.swift */,
 				A2B3C4D5E6F708192A3B4C5D /* ProposalActionIntentSelfTest.swift */,
+				C0FFEEAA2233445566778803 /* ActionIntentSelfTest.swift */,
 				A2B3C4D5E6F708192A3B4C5E /* ActionIntentRetrySelfTest.swift */,
 				E3F6A1B2C3D4E5F60718293B /* StrongContextRouterOverrideSelfTest.swift */,
 				8C7D6E5F4A3B2C1D0E9F8A7C /* ActionIntentPlannerBridgeSelfTest.swift */,
@@ -1131,6 +1176,8 @@
 				AA00A1B2C3D4E5F607182B04 /* ContextEventStream.swift */,
 				AA00A1B2C3D4E5F607182B06 /* TemporalContextBuffer.swift */,
 				AA00A1B2C3D4E5F607182B08 /* TemporalContextCompressor.swift */,
+				C0FFEEAA2233445566778801 /* ContextEpoch.swift */,
+				C0FFEEAA2233445566778802 /* ContextEpochSelfTest.swift */,
 				AA00A1B2C3D4E5F607182B0A /* WorkflowInferenceModel.swift */,
 				AA00A1B2C3D4E5F607182B0C /* WorkflowStabilizer.swift */,
 				AA00A1B2C3D4E5F607182B0E /* AmbientOpportunity.swift */,
@@ -1143,6 +1190,15 @@
 				AA00A1B2C3D4E5F607182E04 /* ContextExecutionResult.swift */,
 				AA00A1B2C3D4E5F607182E06 /* ContextExecutionEngine.swift */,
 				AA00A1B2C3D4E5F607182E08 /* ContextExecutionSelfTest.swift */,
+				C0FFEEAA2233445566778899 /* ContextDeprecationSelfTest.swift */,
+				C0FFEEAA2233445566778805 /* BrowserTabMemorySelfTest.swift */,
+				AA00A1B2C3D4E5F607182D11 /* WorkingMemorySelfTest.swift */,
+				AA00A1B2C3D4E5F607182D13 /* TaskCompartment.swift */,
+				AA00A1B2C3D4E5F607182D15 /* TaskCompartmentSelfTest.swift */,
+				C0FFEEAA2233445566778806 /* FocusEpoch.swift */,
+				C0FFEEAA2233445566778807 /* FocusEpochSelfTest.swift */,
+				C0FFEEAA2233445566778810 /* FocusOverride.swift */,
+				C0FFEEAA2233445566778811 /* FocusOverrideSelfTest.swift */,
 				AA00A1B2C3D4E5F607182E12 /* WebContextEnrichment.swift */,
 				AA00A1B2C3D4E5F607182E14 /* WebContextEnricher.swift */,
 				AA00A1B2C3D4E5F607182F12 /* ContextJudgment.swift */,
@@ -1154,6 +1210,12 @@
 				AA00A1B2C3D4E5F607182F24 /* ActiveContextRefreshSelfTest.swift */,
 				AA00A1B2C3D4E5F607182F26 /* ManualInvokeJarvis.swift */,
 				AA00A1B2C3D4E5F607182F28 /* ManualInvokeJarvisSelfTest.swift */,
+				F3B002C100000000000001C1 /* DeterminerSignal.swift */,
+				F3B002C200000000000001C2 /* DeterminerSignalSelfTest.swift */,
+				F3C002D100000000000001D1 /* EditorContextFallback.swift */,
+				F3D002E100000000000001E1 /* DomainClassifierSelfTest.swift */,
+				F3E002F100000000000001F1 /* ActivityState.swift */,
+				F3F002A100000000000001A1 /* ActivityStateSelfTest.swift */,
 				AA00A1B2C3D4E5F607182B21 /* BehavioralContextPacket.swift */,
 				AA00A1B2C3D4E5F607182B23 /* BehavioralInferenceEngine.swift */,
 				AA00A1B2C3D4E5F607182B25 /* BehavioralStabilizer.swift */,
@@ -1163,6 +1225,7 @@
 				AA00A1B2C3D4E5F607182B37 /* ValidationConfiguration.swift */,
 				AA00A1B2C3D4E5F607182C01 /* AmbientJarvisSuggestion.swift */,
 				AA00A1B2C3D4E5F607182C03 /* JarvisSuggestionGenerator.swift */,
+				C0FFEEAA2233445566778804 /* CognitiveActionIntent.swift */,
 				AA00A1B2C3D4E5F607182C05 /* JarvisSuggestionValidator.swift */,
 				AA00A1B2C3D4E5F607182C07 /* ContextOnlyExecutor.swift */,
 				AA00A1B2C3D4E5F607182C09 /* AmbientJarvisSuggestionSelfTest.swift */,
@@ -1401,7 +1464,9 @@
 				AA0001020000000000000002 /* AppDelegate.swift in Sources */,
 				AA00018A00000000000000BA /* Phase14TuningSelfTest.swift in Sources */,
 				AA00018B00000000000000BB /* Phase15TuningSelfTest.swift in Sources */,
+				C0FFEE112233445566778812 /* AmbientFloatingSuggestionSelfTest.swift in Sources */,
 				AABB00010000000000000001 /* GeneratedProposalPreservationSelfTest.swift in Sources */,
+				F3A001B100000000000000B1 /* AmbientVisibilityRegressionSelfTest.swift in Sources */,
 				AA0001030000000000000003 /* AppState.swift in Sources */,
 				AA0001040000000000000004 /* MenuBarController.swift in Sources */,
 				AA0001360000000000000036 /* FloatingSuggestionWindowController.swift in Sources */,
@@ -1483,6 +1548,9 @@
 				AA0001140000000000000014 /* ActionResult.swift in Sources */,
 				AA0001150000000000000015 /* SummarizeAction.swift in Sources */,
 				AA000148000000000000004C /* ActionIntent.swift in Sources */,
+				C0FFEE112233445566778803 /* ActionIntentSelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182D12 /* TaskCompartment.swift in Sources */,
+				AA00B1C2D3E4E5F607182D14 /* TaskCompartmentSelfTest.swift in Sources */,
 				AA000149000000000000004E /* TemporaryWorkflow.swift in Sources */,
 				AA0001500000000000000050 /* GeneratedActionDescriptor.swift in Sources */,
 				AA0001160000000000000016 /* ActionRouter.swift in Sources */,
@@ -1639,6 +1707,8 @@
 				AA00B1C2D3E4E5F607182B03 /* ContextEventStream.swift in Sources */,
 				AA00B1C2D3E4E5F607182B05 /* TemporalContextBuffer.swift in Sources */,
 				AA00B1C2D3E4E5F607182B07 /* TemporalContextCompressor.swift in Sources */,
+				C0FFEE112233445566778801 /* ContextEpoch.swift in Sources */,
+				C0FFEE112233445566778802 /* ContextEpochSelfTest.swift in Sources */,
 				AA00B1C2D3E4E5F607182B09 /* WorkflowInferenceModel.swift in Sources */,
 				AA00B1C2D3E4E5F607182B0B /* WorkflowStabilizer.swift in Sources */,
 				AA00B1C2D3E4E5F607182B0D /* AmbientOpportunity.swift in Sources */,
@@ -1651,6 +1721,13 @@
 				AA00B1C2D3E4E5F607182E03 /* ContextExecutionResult.swift in Sources */,
 				AA00B1C2D3E4E5F607182E05 /* ContextExecutionEngine.swift in Sources */,
 				AA00B1C2D3E4E5F607182E07 /* ContextExecutionSelfTest.swift in Sources */,
+				C0FFEE112233445566778899 /* ContextDeprecationSelfTest.swift in Sources */,
+				C0FFEE112233445566778805 /* BrowserTabMemorySelfTest.swift in Sources */,
+				AA00B1C2D3E4E5F607182D10 /* WorkingMemorySelfTest.swift in Sources */,
+				C0FFEE112233445566778806 /* FocusEpoch.swift in Sources */,
+				C0FFEE112233445566778807 /* FocusEpochSelfTest.swift in Sources */,
+				C0FFEE112233445566778810 /* FocusOverride.swift in Sources */,
+				C0FFEE112233445566778811 /* FocusOverrideSelfTest.swift in Sources */,
 				AA00B1C2D3E4E5F607182E11 /* WebContextEnrichment.swift in Sources */,
 				AA00B1C2D3E4E5F607182E13 /* WebContextEnricher.swift in Sources */,
 				AA00B1C2D3E4E5F607182F11 /* ContextJudgment.swift in Sources */,
@@ -1662,6 +1739,12 @@
 				AA00B1C2D3E4E5F607182F23 /* ActiveContextRefreshSelfTest.swift in Sources */,
 				AA00B1C2D3E4E5F607182F25 /* ManualInvokeJarvis.swift in Sources */,
 				AA00B1C2D3E4E5F607182F27 /* ManualInvokeJarvisSelfTest.swift in Sources */,
+				F3B001C100000000000001C1 /* DeterminerSignal.swift in Sources */,
+				F3B001C200000000000001C2 /* DeterminerSignalSelfTest.swift in Sources */,
+				F3C001D100000000000001D1 /* EditorContextFallback.swift in Sources */,
+				F3D001E100000000000001E1 /* DomainClassifierSelfTest.swift in Sources */,
+				F3E001F100000000000001F1 /* ActivityState.swift in Sources */,
+				F3F001A100000000000001A1 /* ActivityStateSelfTest.swift in Sources */,
 				AA00B1C2D3E4E5F607182B20 /* BehavioralContextPacket.swift in Sources */,
 				AA00B1C2D3E4E5F607182B22 /* BehavioralInferenceEngine.swift in Sources */,
 				AA00B1C2D3E4E5F607182B24 /* BehavioralStabilizer.swift in Sources */,
@@ -1671,6 +1754,7 @@
 				AA00B1C2D3E4E5F607182B36 /* ValidationConfiguration.swift in Sources */,
 				AA00B1C2D3E4E5F607182C00 /* AmbientJarvisSuggestion.swift in Sources */,
 				AA00B1C2D3E4E5F607182C02 /* JarvisSuggestionGenerator.swift in Sources */,
+				C0FFEE112233445566778804 /* CognitiveActionIntent.swift in Sources */,
 				AA00B1C2D3E4E5F607182C04 /* JarvisSuggestionValidator.swift in Sources */,
 				AA00B1C2D3E4E5F607182C06 /* ContextOnlyExecutor.swift in Sources */,
 				AA00B1C2D3E4E5F607182C08 /* AmbientJarvisSuggestionSelfTest.swift in Sources */,

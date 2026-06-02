@@ -211,6 +211,9 @@ final class ContextCapabilityRegistry {
 	}
 
 	private func seedInitialCapabilities() {
+        print("[ExpensiveContext] ocr_auto_enabled=false")
+        print("[ExpensiveContext] visual_auto_enabled=false")
+        print("[VisualGrounding] skipped reason=automatic_disabled")
 		// Metadata-only; no new collection is introduced here.
 		register(
 			ContextCapability(
@@ -390,12 +393,12 @@ final class ContextCapabilityRegistry {
 				collectionCost: .expensive,
 				privacySensitivity: .high,
 				latencyCategory: .slow,
-				collectionMode: .hybrid,
+				collectionMode: .manual,
 				isCurrentlyStale: true,
 				supportsContinuousCollection: false,
 				supportsManualInvocation: true,
 				supportsBackgroundCollection: false,
-				notes: "Manual/hybrid: depends on explicit capture + OCR pipeline.",
+				notes: "Manual only for dogfood mode to preserve battery and avoid spam.",
 				sourceVersion: nil,
 				metadata: nil,
 				lastAvailabilityCheckedAt: nil,

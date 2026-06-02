@@ -7,17 +7,27 @@ import Foundation
 /// - URL is discovered only from existing local context (AX fragments, snapshot clipboard text).
 /// - If a public URL is available, fetch HTML directly (timeout <= 2s) and extract:
 ///   title / og:title / og:description / JSON-LD Product fields (when present).
-actor PublicPageContextExtractor {
+public actor PublicPageContextExtractor {
 	static let shared = PublicPageContextExtractor()
 
-	struct PublicPageContext: Sendable, Equatable {
-		let url: URL?
-		let pageTitle: String?
-		let ogTitle: String?
-		let ogDescription: String?
-		let productFacts: [String: String]
-		let extractedAt: Date
-		let source: String // "none" | "url_html"
+	public struct PublicPageContext: Sendable, Equatable, Codable {
+		public let url: URL?
+		public let pageTitle: String?
+		public let ogTitle: String?
+		public let ogDescription: String?
+		public let productFacts: [String: String]
+		public let extractedAt: Date
+		public let source: String // "none" | "url_html"
+        
+        public init(url: URL?, pageTitle: String?, ogTitle: String?, ogDescription: String?, productFacts: [String : String], extractedAt: Date, source: String) {
+            self.url = url
+            self.pageTitle = pageTitle
+            self.ogTitle = ogTitle
+            self.ogDescription = ogDescription
+            self.productFacts = productFacts
+            self.extractedAt = extractedAt
+            self.source = source
+        }
 	}
 
 	private struct CacheEntry {

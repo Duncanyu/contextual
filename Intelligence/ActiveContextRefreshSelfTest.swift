@@ -136,3 +136,60 @@ enum ActiveContextRefreshSelfTest {
         return ok
     }
 }
+
+@MainActor
+public enum PerformanceBudgetSelfTest {
+    
+    public static func run() async -> Bool {
+        print("[PerformanceBudgetSelfTest] starting")
+        var failures = 0
+        
+        let pbm = PerformanceBudgetManager.shared
+        pbm.beginAmbientCycle(id: "test1")
+        
+        // Test heavy generation allowed once
+        if !pbm.allowHeavyModelGeneration() {
+            print("[PerformanceBudgetSelfTest] fail: heavy generation should be allowed initially")
+            failures += 1
+        }
+        
+        if pbm.allowHeavyModelGeneration() {
+            print("[PerformanceBudgetSelfTest] fail: heavy generation should NOT be allowed twice in a cycle")
+            failures += 1
+        }
+        
+        // Cache tests
+        pbm.setCachedAX(app: "Safari", url: "http://test", title: "Test", context: AXWindowContentContext(
+            id: UUID(),
+            extractedAt: Date(),
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            sourceWindowTitleAvailable: true,
+            visibleTextFragments: ["test"],
+            visibleControlKinds: [],
+            estimatedVisibleTextLength: 4,
+            estimatedInteractiveElementCount: 0,
+            containsScrollableRegion: false,
+            containsEditorLikeRegion: false,
+            containsFormLikeRegion: false,
+            containsTableLikeRegion: false,
+            hierarchyDepthEstimate: 1,
+            extractionConfidence: 0.9
+        ))
+        
+        if pbm.getCachedAX(app: "Safari", url: "http://test", title: "Test") == nil {
+            print("[PerformanceBudgetSelfTest] fail: ax cache should hit")
+            failures += 1
+        }
+        
+        if pbm.getCachedAX(app: "Safari", url: "http://test", title: "Test2") != nil {
+            print("[PerformanceBudgetSelfTest] fail: ax cache should miss for different title")
+            failures += 1
+        }
+        
+        let ok = failures == 0
+        print("[PerformanceBudgetSelfTest] completed ok=\(ok) failures=\(failures)")
+        return ok
+    }
+}
+

@@ -69,16 +69,51 @@ public actor ActiveContextRefresh {
         lastMeaningfulEventAge: TimeInterval,
         lastSuggestionAge: TimeInterval?,
         lastRefreshAge: TimeInterval?,
-        modelBusy: Bool
+        modelBusy: Bool,
+        determinerSignal: DeterminerSignal? = nil,
+        activityState: ActivityState? = nil,
+        compartmentDwellSeconds: TimeInterval = 0
     ) -> Decision {
+        // Phase 21.1 — DeterminerSignal can pre-empt the workflow/behavior
+        // suppression gates when structural context (compartment/memory) is
+        // already strong enough, even if the temporal model hasn't stabilised.
+        let determinerActionable = determinerSignal?.actionable == true
+
+        // Phase 21.4 — Task E: Dwell-based refresh trigger.
+        // An actively engaged user in a stable compartment (dwell ≥ 2 min)
+        // should trigger a refresh even when workflow=unknown — they may be
+        // in a canvas/game/editor that produces no navigation events.
+        // This check runs BEFORE the workflow suppression gate so that
+        // active-unknown contexts are never silently frozen.
+        let userIsActiveNow = activityState?.isActive == true && activityState?.state != .idle
+        if userIsActiveNow && compartmentDwellSeconds >= 120 && !modelBusy {
+            let withinCooldown: Bool = {
+                guard let age = lastRefreshAge else { return false }
+                return age < refreshCooldownSeconds
+            }()
+            if !withinCooldown {
+                print("[ActiveContextRefresh] scheduled reason=stable_active_context dwell_s=\(String(format: "%.0f", compartmentDwellSeconds))")
+                return Decision(action: .refresh, reason: "stable_active_context")
+            }
+        }
+
         // Suppress when there is no actionable workflow / behavior. This is
         // the same "unknown / idle" gate the suggestion generator uses, so
         // refresh logic and surface logic share a single notion of "actionable".
         if workflow == .unknown || workflow == .idle {
-            return Decision(action: .suppress, reason: "workflow_not_actionable")
+            if determinerActionable {
+                print("[ActiveContextRefresh] allowed reason=determiner_signal_sufficient workflow=\(workflow.rawValue)")
+                // Fall through — do not suppress.
+            } else {
+                return Decision(action: .suppress, reason: "workflow_not_actionable")
+            }
         }
         if behavior == .unknown || behavior == .idle {
-            return Decision(action: .suppress, reason: "behavior_not_actionable")
+            if determinerActionable {
+                // Already logged above; fall through.
+            } else {
+                return Decision(action: .suppress, reason: "behavior_not_actionable")
+            }
         }
 
         // Model busy / backpressure — coalesce.
@@ -134,7 +169,13 @@ public actor ActiveContextRefresh {
     /// Decide-only entry. Logs the decision and returns it. Stateful (records
     /// `lastRefreshAt` on `.refresh`). Used by the production loop.
     @discardableResult
-    public func tick(now: Date = Date(), modelBusy: Bool) -> Decision {
+    public func tick(
+        now: Date = Date(),
+        modelBusy: Bool,
+        determinerSignal: DeterminerSignal? = nil,
+        activityState: ActivityState? = nil,
+        compartmentDwellSeconds: TimeInterval = 0
+    ) -> Decision {
         let eventAge = now.timeIntervalSince(lastMeaningfulEventAt)
         let suggestionAge = lastSuggestionAt.map { now.timeIntervalSince($0) }
         let refreshAge = lastRefreshAt.map { now.timeIntervalSince($0) }
@@ -146,7 +187,10 @@ public actor ActiveContextRefresh {
             lastMeaningfulEventAge: eventAge,
             lastSuggestionAge: suggestionAge,
             lastRefreshAge: refreshAge,
-            modelBusy: modelBusy
+            modelBusy: modelBusy,
+            determinerSignal: determinerSignal,
+            activityState: activityState,
+            compartmentDwellSeconds: compartmentDwellSeconds
         )
         switch d.action {
         case .suppress: print("[ActiveContextRefresh] suppressed reason=\(d.reason)")

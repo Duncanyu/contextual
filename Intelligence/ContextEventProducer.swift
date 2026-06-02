@@ -21,6 +21,7 @@ final class ContextEventProducer {
     private let coordinator: WorkflowIntelligenceCoordinator
     private let behavioralCoordinator: BehavioralIntelligenceCoordinator?
     public var onAmbientJarvisSuggestionGenerated: (@Sendable (AmbientJarvisSuggestion?) -> Void)?
+	public var onAmbientJarvisSuggestionInvalidated: (@Sendable (_ oldEntity: String, _ newEntity: String) -> Void)?
 
     // MARK: - Diff state (so we don't emit duplicate events)
 
@@ -34,6 +35,10 @@ final class ContextEventProducer {
 
     private var tickTask: Task<Void, Never>?
     private let debounceSeconds: Double
+	private var activeRefreshLoopTask: Task<Void, Never>?
+	private var lastObservedWindowTitle: String?
+	private var latestWorkflowState: WorkflowState?
+	private var latestBehaviorRecord: BehavioralStateRecord?
 
     // MARK: - One-shot logging
 
@@ -91,6 +96,7 @@ final class ContextEventProducer {
 
         // 2. windowTitleChanged
         let title = snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+		lastObservedWindowTitle = title
         if !title.isEmpty {
             let titleHash = Self.fnv1a(title)
             if titleHash != lastTitleHash {
@@ -166,6 +172,8 @@ final class ContextEventProducer {
         }
 
         if producedAny {
+			let sig = "\(snapshot.bundleIdentifier ?? "")|\(title)"
+			await ActiveContextRefresh.shared.noteSignature(sig, now: now)
             scheduleTick(oldInferenceLabel: snapshot.inferredWorkflow.rawValue)
         } else {
             print("[WorkflowPipeline] tick_skipped reason=no_meaningful_events")
@@ -297,17 +305,254 @@ final class ContextEventProducer {
 
                 if AmbientMVPMode.isEnabled {
                     let compressor = TemporalContextCompressor.compress(buffer: buffer)
+					let browser = BrowserContextExtractor.extract(appName: compressor.currentApp, activeAppPID: nil)
+					let tabTitles = browser?.recentTabTitles ?? []
+					let selectedTitle = browser?.selectedTitle
+					let selectedURLFound = browser?.selectedURL != nil
+					var focusShift = false
+					var focusObs: FocusEpochTracker.Observation?
+					if let st = selectedTitle, !st.isEmpty {
+						print("[CurrentContext] selected_tab_priority=yes")
+						let obs = FocusEpochTracker.shared.observeSelectedTab(
+							title: st,
+							workflowLabel: state.workflowType.rawValue
+						)
+						focusObs = obs
+						print("[CurrentContext] selected_terms=\(obs.selectedTerms.joined(separator: ","))")
+						print("[BrowserTabs] selected_url_found=\(selectedURLFound ? "yes" : "no")")
+						print("[BrowserTabs] selected_tab_age_s=\(obs.selectedAgeSeconds)")
+						if obs.focusShiftDetected {
+							focusShift = true
+							self.onAmbientJarvisSuggestionInvalidated?(obs.previousEntity ?? "", obs.currentEntity)
+							print("[JarvisSuggestion] invalidated reason=focus_shift")
+						}
+					}
+
+					let effective: FocusOverride.Decision = {
+						guard let obs = focusObs else {
+							return FocusOverride.Decision(
+								applied: false,
+								effectiveWorkflow: state,
+								effectiveBehavior: stabilized,
+								reason: "no_focus_observation"
+							)
+						}
+						return FocusOverride.applyIfNeeded(
+							workflowState: state,
+							behavioralRecord: stabilized,
+							focusObservation: obs,
+							recentTabTitles: tabTitles
+						)
+					}()
+
+					if effective.applied {
+						print("[FocusOverride] applied=yes old_workflow=\(state.workflowType.rawValue) new_workflow=\(effective.effectiveWorkflow.workflowType.rawValue) reason=\(effective.reason)")
+						print("[FocusOverride] old_behavior=\(stabilized.state.rawValue) new_behavior=\(effective.effectiveBehavior.state.rawValue) reason=\(effective.reason)")
+					}
+
+					let activeComp = await TaskCompartmentTracker.shared.ingestUpdate(
+						workflow: effective.effectiveWorkflow.workflowType,
+						behavior: effective.effectiveBehavior.state,
+						title: selectedTitle ?? compressor.recentTitles.first ?? "",
+						tabs: tabTitles,
+						topicTerms: compressor.topicTerms
+					)
+					let allComps = await TaskCompartmentTracker.shared.compartments
+
+					let memory = WorkingMemoryBuilder.build(
+						workflow: effective.effectiveWorkflow,
+						behavior: effective.effectiveBehavior,
+						packet: compressor,
+						browserTabTitles: tabTitles,
+						selectedBrowserTabTitle: selectedTitle,
+						activeCompartment: activeComp,
+						allCompartments: allComps
+					)
+					// Phase 21.2 — Evaluate DeterminerSignal every tick so the
+					// live Jarvis path can escape workflow=unknown suppression
+					// when compartment/memory context is already strong.
+					// Phase 21.4 — Derive ActivityState from buffer scores + dwell.
+					let activityState = ActivityState.derive(
+						typingScore: buffer.short.typingScore,
+						pointerScore: buffer.short.pointerScore,
+						dwellSeconds: activeComp.dwellSeconds,
+						hadRecentNavigation: !tabTitles.isEmpty
+					)
+					let determinerSignal = DeterminerSignal.evaluate(
+						memory: memory,
+						compartment: activeComp,
+						workflowConfidence: effective.effectiveWorkflow.confidence,
+						behaviorConfidence: effective.effectiveBehavior.confidence,
+						browserTabCount: tabTitles.count,
+						hasSelectedURL: selectedURLFound,
+						activeTerms: memory.repeatedConcepts,
+						currentEntity: memory.currentEntity,
+						activityState: activityState
+					)
+					print("[DeterminerSignal] evaluated=yes actionable=\(determinerSignal.actionable ? "yes" : "no")")
+
                     let suggestion = await JarvisSuggestionGenerator.generate(
-                        workflowState: state,
-                        behavioralRecord: stabilized,
+                        workflowState: effective.effectiveWorkflow,
+                        behavioralRecord: effective.effectiveBehavior,
                         packet: compressor,
                         recentTitles: buffer.short.recentTitles,
-                        repeatedTerms: buffer.short.repeatedTerms
+						repeatedTerms: buffer.short.repeatedTerms,
+						memory: memory,
+                        activeCompartment: activeComp,
+						determinerSignal: determinerSignal
                     )
+					if focusShift && suggestion != nil {
+						print("[JarvisPipeline] regenerated reason=focus_shift")
+					}
                     self.onAmbientJarvisSuggestionGenerated?(suggestion)
+					self.latestWorkflowState = effective.effectiveWorkflow
+					self.latestBehaviorRecord = effective.effectiveBehavior
+					await ActiveContextRefresh.shared.noteWorkflowAndBehavior(
+						workflow: effective.effectiveWorkflow.workflowType,
+						behavior: effective.effectiveBehavior.state,
+						evidenceQuality: selectedURLFound ? "browser_context" : "title_only"
+					)
+					if suggestion != nil {
+						await ActiveContextRefresh.shared.noteSuggestion()
+					}
+					self.ensureActiveRefreshLoop()
                 }
             }
     }
+
+	// MARK: - ActiveContextRefresh loop (Phase 20G.4)
+
+	private func ensureActiveRefreshLoop() {
+		guard activeRefreshLoopTask == nil else { return }
+		activeRefreshLoopTask = Task { @MainActor [weak self] in
+			guard let self else { return }
+			while !Task.isCancelled {
+				// Adaptive cadence: wake infrequently unless a refresh is near-due.
+				try? await Task.sleep(nanoseconds: 8_000_000_000) // 8s baseline cadence
+				if Task.isCancelled { break }
+				if !AmbientMVPMode.isEnabled { continue }
+
+				// Phase 21.4 — Pass ActivityState + dwell into tick() so the
+				// dwell-based refresh trigger can fire for canvas-type apps.
+				let refreshActiveComp = await TaskCompartmentTracker.shared.getActiveCompartment()
+				let refreshDwellSecs = refreshActiveComp?.dwellSeconds ?? 0
+				let loopActivityState = ActivityState.derive(
+					typingScore: self.latestWorkflowState?.confidence ?? 0,
+					pointerScore: 0,
+					dwellSeconds: refreshDwellSecs
+				)
+				let decision = await ActiveContextRefresh.shared.tick(
+					now: Date(),
+					modelBusy: self.inferenceInFlight,
+					determinerSignal: nil,
+					activityState: loopActivityState,
+					compartmentDwellSeconds: refreshDwellSecs
+				)
+				guard decision.action == .refresh else { continue }
+
+				let app = self.lastAppName ?? (NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown")
+				let bundle = self.lastBundleID ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+				let title = self.lastObservedWindowTitle
+				print("[ActiveContextRefresh] started tier=cheap")
+				let refresh = await ActiveContextRefresh.shared.performRefresh(
+					activeApp: app,
+					windowTitle: title,
+					bundleIdentifier: bundle
+				)
+				print("[ActiveContextRefresh] focus_refresh=yes")
+
+				guard let workflowState = self.latestWorkflowState,
+					  let behaviorRecord = self.latestBehaviorRecord else {
+					print("[ActiveContextRefresh] jarvis_refresh=no reason=no_latest_state")
+					continue
+				}
+
+				let events = await self.coordinator.getEventStreamSnapshot()
+				let buffer = TemporalContextBuffer.build(from: events, now: Date())
+				let compressor = TemporalContextCompressor.compress(buffer: buffer)
+
+				let browser = BrowserContextExtractor.extract(appName: compressor.currentApp, activeAppPID: nil)
+				let tabTitles = browser?.recentTabTitles ?? refresh.tabTitles
+				let selectedTitle = browser?.selectedTitle
+				let focusObs: FocusEpochTracker.Observation? = {
+					guard let st = selectedTitle, !st.isEmpty else { return nil }
+					return FocusEpochTracker.shared.observeSelectedTab(title: st, workflowLabel: workflowState.workflowType.rawValue)
+				}()
+
+				let effective: FocusOverride.Decision = {
+					guard let obs = focusObs else {
+						return FocusOverride.Decision(applied: false, effectiveWorkflow: workflowState, effectiveBehavior: behaviorRecord, reason: "no_focus_observation")
+					}
+					return FocusOverride.applyIfNeeded(
+						workflowState: workflowState,
+						behavioralRecord: behaviorRecord,
+						focusObservation: obs,
+						recentTabTitles: tabTitles
+					)
+				}()
+				if effective.applied {
+					print("[FocusOverride] applied=yes old_workflow=\(workflowState.workflowType.rawValue) new_workflow=\(effective.effectiveWorkflow.workflowType.rawValue) reason=\(effective.reason)")
+					print("[FocusOverride] old_behavior=\(behaviorRecord.state.rawValue) new_behavior=\(effective.effectiveBehavior.state.rawValue) reason=\(effective.reason)")
+				}
+
+				let activeComp = await TaskCompartmentTracker.shared.ingestUpdate(
+					workflow: effective.effectiveWorkflow.workflowType,
+					behavior: effective.effectiveBehavior.state,
+					title: selectedTitle ?? compressor.recentTitles.first ?? "",
+					tabs: tabTitles,
+					topicTerms: compressor.topicTerms
+				)
+				let allComps = await TaskCompartmentTracker.shared.compartments
+
+				let memory = WorkingMemoryBuilder.build(
+					workflow: effective.effectiveWorkflow,
+					behavior: effective.effectiveBehavior,
+					packet: compressor,
+					browserTabTitles: tabTitles,
+					selectedBrowserTabTitle: selectedTitle,
+					activeCompartment: activeComp,
+					allCompartments: allComps
+				)
+
+				// Phase 21.2 — DeterminerSignal in refresh loop.
+				// Phase 21.4 — Derive ActivityState for refresh path too.
+				let refreshActivityState = ActivityState.derive(
+					typingScore: buffer.short.typingScore,
+					pointerScore: buffer.short.pointerScore,
+					dwellSeconds: activeComp.dwellSeconds,
+					hadRecentNavigation: !tabTitles.isEmpty
+				)
+				let refreshDeterminer = DeterminerSignal.evaluate(
+					memory: memory,
+					compartment: activeComp,
+					workflowConfidence: effective.effectiveWorkflow.confidence,
+					behaviorConfidence: effective.effectiveBehavior.confidence,
+					browserTabCount: tabTitles.count,
+					hasSelectedURL: browser?.currentURL != nil,
+					activeTerms: memory.repeatedConcepts,
+					currentEntity: memory.currentEntity,
+					activityState: refreshActivityState
+				)
+				print("[DeterminerSignal] evaluated=yes actionable=\(refreshDeterminer.actionable ? "yes" : "no")")
+				print("[ActiveContextRefresh] determiner_actionable=\(refreshDeterminer.actionable ? "yes" : "no")")
+
+				print("[ActiveContextRefresh] jarvis_refresh=yes reason=stable_meaningful_context")
+				let suggestion = await JarvisSuggestionGenerator.generate(
+					workflowState: effective.effectiveWorkflow,
+					behavioralRecord: effective.effectiveBehavior,
+					packet: compressor,
+					recentTitles: buffer.short.recentTitles,
+					repeatedTerms: buffer.short.repeatedTerms,
+					memory: memory,
+					activeCompartment: activeComp,
+					determinerSignal: refreshDeterminer
+				)
+				self.onAmbientJarvisSuggestionGenerated?(suggestion)
+				let evidenceQuality = (browser?.currentURL != nil) ? "browser_context" : "title_only"
+				print("[ActiveContextRefresh] completed evidence_quality=\(evidenceQuality)")
+			}
+		}
+	}
 
     // MARK: - One-shot privacy banner
 

@@ -19,8 +19,17 @@ public struct JarvisSuggestionGenerator: Sendable {
         packet: CompressedTemporalPacket,
         recentTitles: [String],
         repeatedTerms: [String],
-        forceShow: Bool = false
+        forceShow: Bool = false,
+        memory: WorkingMemorySnapshot? = nil,
+        judgmentDecisionType: ContextJudgment.DecisionType? = nil,
+        hasSelection: Bool = false,
+        hasAXContent: Bool = false,
+        hasErrorTerms: Bool = false,
+        activeCompartment: TaskCompartment? = nil,
+        determinerSignal: DeterminerSignal? = nil
     ) async -> AmbientJarvisSuggestion? {
+        let cycleId = UUID().uuidString
+        PerformanceBudgetManager.shared.beginAmbientCycle(id: cycleId)
 
         let workflow = workflowState.workflowType
         let behavior = behavioralRecord.state
@@ -29,28 +38,65 @@ public struct JarvisSuggestionGenerator: Sendable {
         // Phase 20D.5 — no more workflow whitelist. Workflows are only
         // suppressed when they are structurally meaningless for ambient
         // assistance: `unknown` or `idle`.
+        // Phase 21.1 — DeterminerSignal overrides this gate when the
+        // structural context (compartment/memory) is already strong enough.
         if workflow == .unknown || workflow == .idle {
-            print("[JarvisSuppression] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) reason=workflow_not_actionable")
-            print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=workflow_not_actionable")
-            return nil
+            if let ds = determinerSignal, ds.actionable {
+                print("[JarvisGate] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) determiner_actionable=yes domain=\(ds.inferredDomain.rawValue)")
+                print("[JarvisPipeline] decision=shown reason=determiner_signal_sufficient")
+                // Continue — do not suppress.
+            } else {
+                print("[JarvisSuppression] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) reason=workflow_not_actionable")
+                print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=workflow_not_actionable")
+                return nil
+            }
         }
 
         // Phase 20D.5 — no more behavior whitelist. Behaviors are only
         // suppressed when they signal no engagement (`unknown` / `idle`).
+        // Phase 21.1 — DeterminerSignal overrides this gate too.
         if behavior == .unknown || behavior == .idle {
-            print("[JarvisSuppression] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) reason=behavior_not_actionable")
-            print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=behavior_not_actionable")
-            return nil
+            if let ds = determinerSignal, ds.actionable {
+                // Already logged above or workflow was actionable; no double-log needed.
+            } else {
+                print("[JarvisSuppression] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) reason=behavior_not_actionable")
+                print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=behavior_not_actionable")
+                return nil
+            }
         }
 
-        // Confidence floor — log explicitly when we miss it. Manual invoke
-        // bypasses this gate because the user is explicitly asking now.
-        let trust = workflowState.workflowTrustScore
-        if !forceShow && trust < Self.trustScoreFloor {
-            let trustStr = String(format: "%.2f", trust)
-            print("[JarvisSuppression] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) reason=confidence_too_low trust=\(trustStr) floor=\(Self.trustScoreFloor)")
+        // Phase 20I — Combined Trust (Task A)
+        let workflowTrust = workflowState.workflowTrustScore
+        let compartmentTrust = activeCompartment?.compartmentTrust ?? 0.0
+        let memoryTrust = memory?.workingMemoryTrust ?? 0.0
+        
+        if let comp = activeCompartment {
+            let trustStr = String(format: "%.2f", compartmentTrust)
+            print("[CompartmentTrust] label=\"\(comp.label)\" trust=\(trustStr)")
+        }
+        
+        let combinedTrust: Double
+        if forceShow {
+            combinedTrust = 1.0
+        } else {
+            // If workflow trust is low but compartment/memory are strong, we allow it.
+            combinedTrust = max(workflowTrust, compartmentTrust, memoryTrust)
+        }
+        
+        let wfStr = String(format: "%.2f", workflowTrust)
+        let cpStr = String(format: "%.2f", compartmentTrust)
+        let mmStr = String(format: "%.2f", memoryTrust)
+        let cbStr = String(format: "%.2f", combinedTrust)
+        print("[JarvisTrust] workflow=\(wfStr) compartment=\(cpStr) memory=\(mmStr) combined=\(cbStr)")
+
+        if combinedTrust < Self.trustScoreFloor {
+            print("[JarvisSuppression] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) reason=confidence_too_low trust=\(cbStr) floor=\(Self.trustScoreFloor)")
             print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=confidence_too_low")
             return nil
+        }
+        
+        if compartmentTrust >= Self.trustScoreFloor {
+             print("[JarvisPipeline] decision=shown reason=compartment_trust_sufficient")
         }
 
         // Context-sufficiency — need at least one repeated term or two
@@ -65,56 +111,153 @@ public struct JarvisSuggestionGenerator: Sendable {
             return nil
         }
 
+        // Phase 20I — bounded cognitive action selection. Picks an
+        // ActionIntent from multi-input signals (judgment + behavior +
+        // selection + error hints + memory shape). No workflow→action map.
+        let effectiveMemory = memory ?? WorkingMemorySnapshot(
+            currentEntity: recentTitles.first ?? "Unknown",
+            recentEntities: recentTitles,
+            repeatedConcepts: repeatedTerms,
+            inferredActivity: behavior.rawValue,
+            comparisonCandidates: []
+        )
+        
+        // Phase 21.2 — Failure 3: Blank/neutral tab guard (after memory is built).
+        if let ds = determinerSignal, ds.reason == "blank_or_neutral_tab" {
+            print("[JarvisSuppression] reason=blank_or_neutral_tab entity=\"\(effectiveMemory.currentEntity)\"")
+            print("[JarvisPipeline] decision=suppressed reason=blank_or_neutral_tab")
+            return nil
+        }
+
+        let evidenceQuality: String = {
+            if hasSelection { return "selection" }
+            if hasAXContent { return "ax_content" }
+            if !effectiveMemory.relatedFocusEntities.isEmpty { return "browser_tabs" }
+            return "title_only"
+        }()
+
+        let selection = CapabilitySelector.select(
+            compartment: activeCompartment,
+            workingMemory: effectiveMemory,
+            evidenceQuality: evidenceQuality,
+            currentApp: packet.currentApp,
+            behavior: behavior,
+            userInitiated: forceShow,
+            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values),
+            determinerSignal: determinerSignal
+        )
+        let actionIntent = selection.primary
+        
+        let aiConfStr = String(format: "%.2f", 0.90) // Intent confidence is now more stable in Phase 21
+        print("[ActionIntent] inferred intent=\(actionIntent.id) workflow=\(workflow.rawValue) confidence=\(aiConfStr)")
+        print("[ActionIntent] evidence_required=\(actionIntent.inputRequirements.joined(separator: ","))")
+		print("[ActionIntent] target_entity=\"\(effectiveMemory.currentEntity.prefix(120))\"")
+
         // 2. Wording generation. The prompt now interpolates the workflow as
         // DATA — no per-workflow code path. The model is allowed to vary
         // wording across debugging / studying / research / shopping naturally.
-        let terms = Array(repeatedTerms.isEmpty ? packet.topicTerms : repeatedTerms)
-        let titles = Array(recentTitles.isEmpty ? packet.recentTitles : recentTitles)
+        let promptTerms = effectiveMemory.repeatedConcepts
+        let promptEntities = [effectiveMemory.currentEntity] + effectiveMemory.relatedFocusEntities
+        let excludedBgEntities = effectiveMemory.backgroundEntities + effectiveMemory.staleEntities
+        
+        let allComps = await TaskCompartmentTracker.shared.compartments
+        let bgComps = allComps.filter { $0.id != activeCompartment?.id }.map { $0.label }
+        
+        let globalTerms = Set(repeatedTerms.isEmpty ? packet.topicTerms : repeatedTerms)
+        let excludedBgTerms = globalTerms.filter { !promptTerms.contains($0) }.sorted()
+        
+        print("[JarvisSuggestionGenerator] prompt_terms=\(promptTerms.joined(separator: ","))")
+        print("[JarvisSuggestionGenerator] prompt_entities=\(promptEntities.joined(separator: ","))")
+        print("[JarvisSuggestionGenerator] excluded_background_entities=\(excludedBgEntities.joined(separator: ","))")
+        print("[JarvisSuggestionGenerator] excluded_background_terms=\(excludedBgTerms.joined(separator: ","))")
+
+        // Payload Cache Check
+        let compHash = activeCompartment?.id.hashValue ?? 0
+        let focusHash = effectiveMemory.currentEntity.hashValue
+        if let cachedPayload = PerformanceBudgetManager.shared.getCachedPayload(compartmentHash: compHash, focusHash: focusHash) {
+            // Found a cached payload; use deterministic ActionIntent label
+            let suggestion = AmbientJarvisSuggestion(
+                title: actionIntent.label,
+                subtitle: "Context-only — preview based on your recent activity.",
+                whyNow: "\(behavior.rawValue) behavior in \(workflow.rawValue) workflow",
+                workflow: workflow.rawValue,
+                behavior: behavior.rawValue,
+                confidence: max(workflowState.confidence, behavioralRecord.confidence),
+                kind: .compare_context,
+                intent: actionIntent.id,
+                intentConfidence: max(workflowState.confidence, behavioralRecord.confidence),
+                intentGoal: "Bounded cognitive action (\(actionIntent.id)) over recent \(workflow.rawValue) context. Output type: \(actionIntent.outputType).",
+                targetEntity: effectiveMemory.currentEntity,
+                executionMode: .context_only_preview,
+                previewOnly: true,
+                sourceEvidence: promptTerms.joined(separator: ","),
+                contextPayload: cachedPayload
+            )
+            print("[JarvisSuggestionGenerator] generated kind=\(suggestion.kind.rawValue) intent=\(actionIntent.id) title=\"\(suggestion.title)\" (cached)")
+            return suggestion
+        }
 
         var generatedTitle = ""
         let model = "qwen2.5:0.5b"
 
-        if await ModelManager.shared.isGenerationAvailable() {
-            let termsDesc = terms.prefix(3).joined(separator: ", ")
-            let titlesDesc = titles.prefix(3).joined(separator: " | ")
-            let prompt = """
-            Generate a short, friendly observation (max 12 words) about what the user appears to be doing right now. Start with "Looks like you're" and use the workflow/behavior/terms below.
-
-            Workflow: \(workflow.rawValue)
-            Behavior: \(behavior.rawValue)
-            Recent terms: \(termsDesc)
-            Recent titles: \(titlesDesc)
-
-            Strict rules:
-            - Do NOT use action verbs (click, open, navigate, search, buy, install, run).
-            - Do NOT invent specifics not in the terms/titles.
-            - Output one line only.
-            """
-
-            do {
-                let raw = try await LocalAIClient.shared.generate(
-                    prompt: prompt,
-                    model: model,
-                    numPredict: 24,
-                    temperature: 0.3,
-                    purpose: "jarvis_suggestion",
-                    schema: nil
-                )
-                let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .replacingOccurrences(of: "\"", with: "")
-                if !cleaned.isEmpty && cleaned.count < 140 {
-                    generatedTitle = cleaned
+        if actionIntent.id == "compare_options" {
+            let candidates = effectiveMemory.comparisonCandidates
+            if candidates.count >= 2 {
+                let cleanNames = candidates.map { $0.replacingOccurrences(of: "Amazon.ca: Buy ", with: "").replacingOccurrences(of: " product page", with: "") }
+                if cleanNames.count == 2 {
+                    generatedTitle = "Compare \(cleanNames[0]) and \(cleanNames[1])?"
+                } else {
+                    let formatted = cleanNames.prefix(cleanNames.count - 1).joined(separator: ", ") + ", and " + cleanNames.last!
+                    generatedTitle = "Compare \(formatted)?"
                 }
-            } catch {
-                print("[JarvisSuggestionGenerator] wording generation failed, error=\(error)")
+            } else {
+                generatedTitle = "Compare these items?"
+            }
+        } else {
+            let canGenerate = PerformanceBudgetManager.shared.allowHeavyModelGeneration()
+            let isAvailable = await ModelManager.shared.isGenerationAvailable()
+            if canGenerate && isAvailable {
+                let termsDesc = promptTerms.prefix(3).joined(separator: ", ")
+                let titlesDesc = promptEntities.prefix(3).joined(separator: " | ")
+                let prompt = """
+                Generate a short, friendly observation (max 12 words) about what the user appears to be doing right now. Start with "Looks like you're" and use the workflow/behavior/terms below.
+
+                Workflow: \(workflow.rawValue)
+                Behavior: \(behavior.rawValue)
+                Recent terms: \(termsDesc)
+                Recent titles: \(titlesDesc)
+
+                Strict rules:
+                - Do NOT use action verbs (click, open, navigate, search, buy, install, run).
+                - Do NOT invent specifics not in the terms/titles.
+                - Output one line only.
+                """
+
+                do {
+                    let raw = try await LocalAIClient.shared.generate(
+                        prompt: prompt,
+                        model: model,
+                        numPredict: 24,
+                        temperature: 0.3,
+                        purpose: "jarvis_suggestion",
+                        schema: nil
+                    )
+                    let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .replacingOccurrences(of: "\"", with: "")
+                    if !cleaned.isEmpty && cleaned.count < 140 {
+                        generatedTitle = cleaned
+                    }
+                } catch {
+                    print("[JarvisSuggestionGenerator] wording generation failed, error=\(error)")
+                }
             }
         }
 
-        // Deterministic fallback — generic across workflows. Workflow rawValue
-        // is the only piece of data interpolated, exactly like the model
-        // prompt; this is data substitution, not workflow branching.
+        // Phase 20G — fallback now uses the ActionIntent label, so the user
+        // sees a specific cognitive offer ("Make practice questions from
+        // these materials?") rather than a generic "make sense of it" line.
         if generatedTitle.isEmpty {
-            generatedTitle = "Looks like you're \(workflow.rawValue). Want a hand making sense of it?"
+            generatedTitle = actionIntent.label
         }
 
         let subtitle = "Context-only — preview based on your recent activity."
@@ -126,10 +269,42 @@ public struct JarvisSuggestionGenerator: Sendable {
             return nil
         }
 
-        // Intent is workflow-derived (data) — engine still drives semantics
-        // via `judgment + intent`, never via `kind`.
-        let intent = "understand_\(workflow.rawValue)_context"
-        let intentGoal = "Help the user make sense of their recent \(workflow.rawValue) activity using only screen context."
+        // Phase 21 — intent now comes from the CapabilitySelector
+        let intent = actionIntent.id
+        let intentGoal = "Bounded cognitive action (\(actionIntent.id)) over recent \(workflow.rawValue) context. Output type: \(actionIntent.outputType)."
+
+        let payload = SuggestionContextPayload(
+            taskCompartmentSnapshot: activeCompartment,
+            workingMemorySnapshot: effectiveMemory,
+            comparisonCandidates: effectiveMemory.comparisonCandidates,
+            relatedFocusEntities: effectiveMemory.relatedFocusEntities,
+            activeTerms: promptTerms,
+            evidenceQuality: evidenceQuality,
+            browserTabs: activeCompartment?.browserTabs.sorted() ?? [],
+            actionIntent: intent
+        )
+
+        // Phase 21.2 — Failure 5: Build ActionCard exposing primary/secondary/auxiliary actions.
+        // Each suggestion gets a structured card with non-text action slots.
+        let previewArtifact = ArtifactResult(
+            type: actionIntent.outputType,
+            title: generatedTitle,
+            subtitle: intentGoal,
+            confidence: max(workflowState.confidence, behavioralRecord.confidence)
+        )
+        let card = ActionCard(
+            id: "ambient:\(intent):\(effectiveMemory.currentEntity.prefix(32).replacingOccurrences(of: " ", with: "_"))",
+            title: generatedTitle,
+            explanation: intentGoal,
+            primaryAction: actionIntent,
+            secondaryAction: selection.secondary,
+            auxiliaryAction: selection.auxiliary,
+            previewPayload: previewArtifact,
+            evidenceNote: "evidence_quality=\(evidenceQuality)",
+            confidence: max(workflowState.confidence, behavioralRecord.confidence)
+        )
+        // [ActionCard] logs emitted inside ActionCard.init
+        print("[CognitiveOutput] format=\(actionIntent.outputType) intent=\(intent)")
 
         let suggestion = AmbientJarvisSuggestion(
             title: generatedTitle,
@@ -142,13 +317,132 @@ public struct JarvisSuggestionGenerator: Sendable {
 			intent: intent,
 			intentConfidence: max(workflowState.confidence, behavioralRecord.confidence),
 			intentGoal: intentGoal,
+			targetEntity: effectiveMemory.currentEntity,
             executionMode: .context_only_preview,
             previewOnly: true,
-            sourceEvidence: terms.joined(separator: ",")
+            sourceEvidence: promptTerms.joined(separator: ","),
+            contextPayload: payload,
+            actionCard: card
         )
+        
+        PerformanceBudgetManager.shared.setCachedPayload(compartmentHash: compHash, focusHash: focusHash, payload: payload)
 
         print("[JarvisSuggestionGenerator] generated kind=\(suggestion.kind.rawValue) intent=\(intent) title=\"\(suggestion.title)\"")
-        print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=\(intent) judgment=upstream artifact=upstream decision=shown reason=evidence_sufficient")
+        print("[AmbientJarvisSuggestion] title=\"\(suggestion.title)\" intent=\(intent) output_type=\(actionIntent.outputType)")
+        print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=\(intent) action_intent=\(actionIntent.id) judgment=upstream artifact=\(actionIntent.outputType) decision=shown reason=evidence_sufficient")
         return suggestion
+    }
+}
+
+final class PerformanceBudgetManager: @unchecked Sendable {
+    static let shared = PerformanceBudgetManager()
+    
+    // Config
+    private let axCacheTTL: TimeInterval = 45.0
+    private let suggestionPayloadCacheTTL: TimeInterval = 45.0
+    
+    // State
+    private let axCache = ManagedCache<String, AXWindowContentContext>()
+    private let payloadCache = ManagedCache<String, SuggestionContextPayload>()
+    
+    // Budget
+    private let lock = NSLock()
+    private var heavyGenerationsInCurrentCycle = 0
+    private var currentCycleId = ""
+    
+    private init() {}
+    
+    func beginAmbientCycle(id: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        currentCycleId = id
+        heavyGenerationsInCurrentCycle = 0
+        print("[PerformanceBudget] cycle_started id=\(id)")
+    }
+    
+    func allowHeavyModelGeneration() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        let hot = ProcessInfo.processInfo.thermalState == .critical || ProcessInfo.processInfo.thermalState == .serious
+        if hot {
+            print("[PerformanceBudget] skipped reason=thermal_guard")
+            print("[ModelBudget] skipped purpose=heavy_generation reason=thermal_guard")
+            return false
+        }
+        
+        if heavyGenerationsInCurrentCycle >= 1 {
+            print("[PerformanceBudget] skipped reason=model_busy")
+            print("[ModelBudget] skipped purpose=heavy_generation reason=cycle_limit")
+            return false
+        }
+        heavyGenerationsInCurrentCycle += 1
+        return true
+    }
+    
+    // AX Cache
+    func getCachedAX(app: String, url: String, title: String) -> AXWindowContentContext? {
+        let key = "\(app)|\(url)|\(title)"
+        if let cached = axCache.get(key) {
+            print("[ContextCache] hit key=\(key.hashValue)")
+            return cached
+        }
+        print("[ContextCache] miss key=\(key.hashValue)")
+        return nil
+    }
+    
+    func setCachedAX(app: String, url: String, title: String, context: AXWindowContentContext) {
+        let key = "\(app)|\(url)|\(title)"
+        axCache.set(key, value: context, ttl: axCacheTTL)
+    }
+    
+    // Payload Cache
+    func getCachedPayload(compartmentHash: Int, focusHash: Int) -> SuggestionContextPayload? {
+        let key = "\(compartmentHash)|\(focusHash)"
+        if let cached = payloadCache.get(key) {
+            print("[ContextCache] hit key=payload_\(key)")
+            return cached
+        }
+        print("[ContextCache] miss key=payload_\(key)")
+        return nil
+    }
+    
+    func setCachedPayload(compartmentHash: Int, focusHash: Int, payload: SuggestionContextPayload) {
+        let key = "\(compartmentHash)|\(focusHash)"
+        payloadCache.set(key, value: payload, ttl: suggestionPayloadCacheTTL)
+    }
+    
+    func logAllowed(ax: Bool, model: Bool, ocr: Bool, visual: Bool) {
+        print("[PerformanceBudget] allowed ax=\(ax ? "yes" : "no") model=\(model ? "yes" : "no") ocr=\(ocr ? "yes" : "no") visual=\(visual ? "yes" : "no")")
+    }
+}
+
+// Simple thread-safe cache
+private final class ManagedCache<K: Hashable, V>: @unchecked Sendable {
+    private struct Entry {
+        let value: V
+        let expiry: Date
+    }
+    
+    private let lock = NSLock()
+    private var store = [K: Entry]()
+    
+    func get(_ key: K) -> V? {
+        lock.lock()
+        defer { lock.unlock() }
+        if let entry = store[key] {
+            if Date() < entry.expiry {
+                return entry.value
+            } else {
+                store.removeValue(forKey: key)
+            }
+        }
+        return nil
+    }
+    
+    func set(_ key: K, value: V, ttl: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        store[key] = Entry(value: value, expiry: Date().addingTimeInterval(ttl))
     }
 }

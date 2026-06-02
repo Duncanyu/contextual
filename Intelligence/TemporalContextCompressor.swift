@@ -150,6 +150,18 @@ public enum TemporalContextCompressor {
         let encodedChars = (try? JSONEncoder().encode(packet))?.count ?? 0
         print("[TemporalContextCompressor] packet_chars=\(encodedChars) events_used=\(packet.eventCount)")
 
+        // Phase 20G — feed the epoch tracker. This is the single canonical
+        // observation point: every caller of `compress` (producer, coordinator,
+        // ManualInvokeJarvis, tests) advances the tracker uniformly.
+        ContextEpochTracker.shared.observe(
+            contextShiftDetected: medium.contextShift.detected,
+            shiftReason: medium.contextShift.reason,
+            earlyTopTerms: medium.contextShift.earlyTopTerms,
+            recentTopTerms: medium.contextShift.recentTopTerms,
+            recentTitles: Array(recentTitles),
+            at: now
+        )
+
         // B.1.5: freshness for every term/title in the packet, now sourced from
         // the medium window (the same window topicTerms come from after B.1.6).
         for term in topicTerms {

@@ -191,6 +191,29 @@ public struct WorkflowStabilizer: Sendable {
             return current
         }
 
+        // Phase 20G — Stale Workflow Guard. When a fresh topic-shift fires and
+        // the candidate disagrees with the current workflow, the old workflow
+        // is suspect even if the candidate's confidence is weak. Decide
+        // between RELEASE (drop the current state) and BLOCK (hold it) based
+        // on how entrenched current is.
+        if freshShiftSignal
+           && current.workflowType != .unknown
+           && candidate.workflowType != current.workflowType {
+            if current.stabilityScore >= 0.85 {
+                // Highly entrenched — block the correction this tick, but
+                // surface the disagreement so dogfood can see it.
+                print("[WorkflowGuard] stale_correction_blocked old=\(current.workflowType.rawValue) candidate=\(candidate.workflowType.rawValue) reason=new_epoch_conflict")
+                // fall through to normal retain/debounce paths
+            } else {
+                let oldLabel = current.workflowType.rawValue
+                print("[WorkflowStability] released_stale_workflow old=\(oldLabel) reason=context_epoch_shift")
+                current = WorkflowState.empty
+                pendingCandidate = nil
+                pendingConfirmations = 0
+                // fall through — the candidate now competes against `unknown`
+            }
+        }
+
         // 3. Weak confidence → retain. Distinguish the "no fresh shift" reason
         // when one was specifically NOT detected, so dogfood logs can see why
         // the stabilizer didn't take the candidate.

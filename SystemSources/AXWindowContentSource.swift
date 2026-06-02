@@ -46,17 +46,24 @@ final class AXWindowContentSource {
 			ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "contextual_window")
 			return nil
 		}
+        
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        guard let window = focusedWindow(for: axApp) else {
+            print("[AXContent] skipped reason=no_focused_window")
+            ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "no_focused_window")
+            return nil
+        }
+        
+        let title = copyAXString(window, attribute: kAXTitleAttribute as CFString) ?? ""
+        let windowTitleAvailable = !title.isEmpty
+        let url = BrowserContextExtractor.extract(appName: app.localizedName ?? "", activeAppPID: app.processIdentifier)?.currentURL?.absoluteString ?? ""
+        
+        if let cached = PerformanceBudgetManager.shared.getCachedAX(app: bundleId ?? "", url: url, title: title) {
+            print("[PerformanceBudget] skipped reason=cached_context")
+            return cached
+        }
 
 		let start = Date()
-		let axApp = AXUIElementCreateApplication(app.processIdentifier)
-
-		guard let window = focusedWindow(for: axApp) else {
-			print("[AXContent] skipped reason=no_focused_window")
-			ContextDebugLogger.shared.log(stage: .ax, event: .skipped, source: "axText", reason: "no_focused_window")
-			return nil
-		}
-
-		let windowTitleAvailable = (copyAXString(window, attribute: kAXTitleAttribute as CFString)?.isEmpty == false)
 
 		var visited = 0
 		var maxSeenDepth = 0
@@ -233,6 +240,8 @@ final class AXWindowContentSource {
 		)
 
 		lastContext = ctx
+        
+        PerformanceBudgetManager.shared.setCachedAX(app: bundleId ?? "", url: url, title: title, context: ctx)
 
 		let c = String(format: "%.2f", conf)
 		print("[AXContent] extracted app=\(app.localizedName ?? "nil") nodes=\(visited) textFragments=\(fragments.count) conf=\(c)")

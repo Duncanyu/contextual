@@ -2,16 +2,25 @@ import Foundation
 
 /// Bounded, non-agentic public web research enrichment layer.
 /// No API keys, no browser automation, no agentic loops.
-actor PublicWebResearchEnricher {
+public actor PublicWebResearchEnricher {
     static let shared = PublicWebResearchEnricher()
 
-    struct PublicGroundedFact: Sendable, Equatable {
-        let label: String
-        let value: String
-        let sourceURL: String
-        let sourceTitle: String
-        let method: String
-        let confidence: Double
+    public struct PublicGroundedFact: Sendable, Equatable, Codable {
+        public let label: String
+        public let value: String
+        public let sourceURL: String
+        public let sourceTitle: String
+        public let method: String
+        public let confidence: Double
+        
+        public init(label: String, value: String, sourceURL: String, sourceTitle: String, method: String, confidence: Double) {
+            self.label = label
+            self.value = value
+            self.sourceURL = sourceURL
+            self.sourceTitle = sourceTitle
+            self.method = method
+            self.confidence = confidence
+        }
     }
 
     struct ResearchResult: Sendable {
@@ -47,11 +56,19 @@ actor PublicWebResearchEnricher {
         behavior: BehavioralState,
         titles: [String],
         terms: [String],
+        activeCompartment: TaskCompartment? = nil,
+        allCompartments: [TaskCompartment] = [],
         now: Date = Date()
     ) async -> ResearchResult {
         print("[PublicWebResearchEnricher] started intent=\(intent) workflow=\(workflow.rawValue)")
 
-        let query = Self.buildQuery(titles: titles, terms: terms)
+        let filteredTerms: [String] = {
+            let base = activeCompartment?.dominantTerms.map { $0 } ?? terms
+            let bg = Set(allCompartments.filter { $0.id != activeCompartment?.id }.flatMap { $0.dominantTerms }.map { $0.lowercased() })
+            return base.filter { !bg.contains($0.lowercased()) }
+        }()
+
+        let query = Self.buildQuery(titles: titles, terms: filteredTerms)
         if query.isEmpty {
             print("[PublicWebResearchEnricher] skipped reason=not_public_web_context")
             return ResearchResult(query: "", facts: [], genericSnippets: [], status: "skipped_no_query")

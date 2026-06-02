@@ -59,8 +59,16 @@ actor WebContextEnricher {
     func enrich(
         terms: [String],
         workflowType: AmbientWorkflowType,
+        activeCompartment: TaskCompartment? = nil,
+        allCompartments: [TaskCompartment] = [],
         now: Date = Date()
     ) async -> WebContextEnrichment {
+        if let active = activeCompartment {
+            print("[WebContextEnricher] compartment_id=\(active.id)")
+            let bgTermsList = allCompartments.filter { $0.id != active.id }.flatMap { $0.dominantTerms }.sorted()
+            print("[WebContextEnricher] excluded_background_terms=\(bgTermsList.joined(separator: ","))")
+        }
+
         // Phase 18C grounding fix: Wikipedia is low-precision for product contexts.
         // It frequently causes false grounding when the term picker selects ambiguous
         // tokens like "bank" (power bank) or "prime" (brand line).
@@ -78,8 +86,17 @@ actor WebContextEnricher {
             print("[WebContextEnricher] skipped reason=env_disabled workflow=\(workflowType.rawValue)")
             return WebContextEnrichment(entries: [], reason: "skipped_env_disabled")
         }
-        // 3. Term eligibility.
-        let queryTerms = Self.selectQueryTerms(terms)
+        
+        // 3. Term eligibility & Background Exclusion
+        let filteredTerms: [String] = {
+            let base = activeCompartment?.dominantTerms.map { $0 } ?? terms
+            let bg = Set(allCompartments.filter { $0.id != activeCompartment?.id }.flatMap { $0.dominantTerms }.map { $0.lowercased() })
+            return base.filter { !bg.contains($0.lowercased()) }
+        }()
+        
+        let queryTerms = Self.selectQueryTerms(filteredTerms)
+        print("[WebContextEnricher] terms=\(queryTerms.joined(separator: ","))")
+        
         if queryTerms.isEmpty {
             print("[WebContextEnricher] skipped reason=no_eligible_terms workflow=\(workflowType.rawValue)")
             return WebContextEnrichment(entries: [], reason: "skipped_no_eligible_terms")

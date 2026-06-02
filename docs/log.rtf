@@ -1,12 +1,15 @@
 {\rtf1\ansi\ansicpg1252\cocoartf2870
 \cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;}
-{\colortbl;\red255\green255\blue255;\red255\green255\blue255;\red31\green31\blue36;}
-{\*\expandedcolortbl;;\csgenericrgb\c100000\c100000\c100000;\csgenericrgb\c12054\c12284\c14131;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red255\green255\blue255;}
+{\*\expandedcolortbl;;\csgenericrgb\c0\c0\c0;\csgenericrgb\c100000\c100000\c100000;}
 \margl1440\margr1440\vieww7860\viewh4200\viewkind0
 \deftab593
 \pard\tx593\pardeftab593\partightenfactor0
 
-\f0\fs24 \cf2 \cb3 [ContextCapability] registered id=activeApp\
+\f0\fs24 \cf2 \cb3 [ExpensiveContext] ocr_auto_enabled=false\
+[ExpensiveContext] visual_auto_enabled=false\
+[VisualGrounding] skipped reason=automatic_disabled\
+[ContextCapability] registered id=activeApp\
 [ContextDebug] stage=capability event=registered source=activeApp cost=cheap privacy=low latency=instant permission=notRequired mode=automatic\
 [ContextCapability] registered id=windowTitle\
 [ContextDebug] stage=capability event=registered source=windowTitle cost=cheap privacy=moderate latency=instant permission=unknown mode=automatic\
@@ -21,7 +24,7 @@
 [ContextCapability] registered id=visualDescriptor\
 [ContextDebug] stage=capability event=registered source=visualDescriptor cost=medium privacy=high latency=fast permission=unknown mode=manual\
 [ContextCapability] registered id=screenOCR\
-[ContextDebug] stage=capability event=registered source=screenOCR cost=expensive privacy=high latency=slow permission=unknown mode=hybrid\
+[ContextDebug] stage=capability event=registered source=screenOCR cost=expensive privacy=high latency=slow permission=unknown mode=manual\
 [ContextCapability] registered id=screenVision\
 [ContextDebug] stage=capability event=registered source=screenVision cost=expensive privacy=high latency=slow permission=unavailable mode=manual\
 [ContextCapability] registered id=typingActivity\
@@ -37,7 +40,7 @@
 [ContextCapability] updated id=axWindowContent availability=true\
 [ContextDebug] stage=capability event=updated source=axWindowContent reason=availability_refresh cost=medium privacy=high latency=fast permission=granted mode=manual\
 [ContextCapability] updated id=screenOCR availability=true\
-[ContextDebug] stage=capability event=updated source=screenOCR reason=availability_refresh cost=expensive privacy=high latency=slow permission=granted mode=hybrid\
+[ContextDebug] stage=capability event=updated source=screenOCR reason=availability_refresh cost=expensive privacy=high latency=slow permission=granted mode=manual\
 [ContextCapability] updated id=activeWindowSnapshot availability=true\
 [ContextDebug] stage=capability event=updated source=activeWindowSnapshot reason=availability_refresh cost=medium privacy=high latency=fast permission=granted mode=manual\
 [ContextCapability] updated id=visualDescriptor availability=true\
@@ -75,18 +78,18 @@
 [WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
 [SessionTracking] continuity=0.09 confidence=0.20 workflow=unknown patterns=weakEvidenceDampen\
 [IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=0 selectionLength=0 createdAt=2026-05-30 03:09:14 +0000\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=0 selectionLength=0 createdAt=2026-06-02 00:44:15 +0000\
 [SourceEvent] sourceChanged(Contextual.SourceChange.activeAppChanged(bundleIdentifier: "com.contextual.Contextual", name: Optional("Contextual")))\
 [DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
 [VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
 [WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Contextual bundle=com.contextual.Contextual windowTitle=false clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=clipboardTextChanged\
+[ContextModel] app=Contextual bundle=com.contextual.Contextual windowTitle=false clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=clipboardTextChanged\
 [SessionTracking] continuity=0.15 confidence=0.23 workflow=unknown patterns=weakEvidenceDampen\
 [IntentSynthesis] suppressed reason=stale_context\
 [GeneratedProposal] activation_skipped phase=skipped_before_situational_synthesis detail=no_trigger_packet last=clipboardTextChanged\
-[SourceEvent] clipboardTextChanged exists=true length=14206\
+[SourceEvent] clipboardTextChanged exists=true length=6541\
 [SelectionSource] unavailable reason=noFocusedElement bundle=com.contextual.Contextual\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
@@ -98,7 +101,7 @@
 [WorkflowPrivacy] selected_text_mode=metadata_only\
 [WorkflowPrivacy] ocr_topic_extraction=enabled\
 [ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ProposalAttempt] id=84C8A8 started app=com.contextual.Contextual title=none\
+[ProposalAttempt] id=2C8ADA started app=com.contextual.Contextual title=none\
 [ContextEventStream] appended type=activeAppChanged app=Contextual title=""\
 [ContextEventStream] size=1 window_s=0\
 [ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
@@ -109,89 +112,58 @@
 [TemplateSeeder] seed_started version=3\
 [ContextEventProducer] produced type=activeAppChanged app=Contextual title_hash=cbf29ce4\
 [WorkflowPipeline] event_recorded type=activeAppChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=84C8A8 stored_visible=0 ui_visible=0 final_status=hidden\
+[ProposalAttempt] id=2C8ADA stored_visible=0 ui_visible=0 final_status=hidden\
 [TemplateSeeder] seed_finished inserted=0 total=28 version=3\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
+[ContextFeatures] len=6541 words=751 sentences=51 punct=0.0197 question=true code=true log=true lines=135 rep=0.340\
+[ContextEventProducer] produced type=activeAppChanged app=Contextual title_hash=cbf29ce4\
+[WorkflowPipeline] event_recorded type=activeAppChanged\
 [ContextEventProducer] produced type=activeAppChanged app=Contextual title_hash=cbf29ce4\
 [WorkflowPipeline] event_recorded type=activeAppChanged\
 [WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ContextEventProducer] produced type=activeAppChanged app=Contextual title_hash=cbf29ce4\
-[WorkflowPipeline] event_recorded type=activeAppChanged\
 [WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[SelectionSource] unavailable reason=noFocusedElement bundle=com.contextual.Contextual\
-[SelectionSource] unavailable reason=noFocusedElement bundle=com.contextual.Contextual\
-[SelectionSource] unavailable reason=noFocusedElement bundle=com.contextual.Contextual\
-[SelectionSource] unavailable reason=noFocusedElement bundle=com.contextual.Contextual\
-[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=3\
-[SelectionSource] unavailable reason=noFocusedElement bundle=com.contextual.Contextual\
-[SelectionSource] unavailable reason=noFocusedElement bundle=com.contextual.Contextual\
-[ContextAwarenessUI] hidden reason=no_context\
-[RichContextDebugUI] hidden reason=no_context\
-[AssistanceCategory] summary top=none detail=\
-[DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
-[PointerActivity] state=burst moveEvents=38 clickEvents=1 moveIntensity=high clickIntensity=low\
-[ContextDebug] stage=pointer event=updated source=pointerActivity meta=clickEvents=1,clickIntensity=low,moveEvents=38,moveIntensity=high,state=burst\
-[DynamicActionUX] hidden reason=no_generated_actions\
-[VisibleGeneratedAction] hidden reason=no_items\
+[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
+[PointerActivity] state=burst moveEvents=11 clickEvents=0 moveIntensity=high clickIntensity=none\
+[ContextDebug] stage=pointer event=updated source=pointerActivity meta=clickEvents=0,clickIntensity=none,moveEvents=11,moveIntensity=high,state=burst\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=0 primary=nil reason=none\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=false clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=activeAppChanged\
+[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=false clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=activeAppChanged\
 [ContextPipeline] redundancy_prune reason=active_app_change\
-[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.21 confidence=0.26 workflow=unknown patterns=decayApplied,weakEvidenceDampen\
+[SessionTracking] continuity=0.21 confidence=0.26 workflow=unknown patterns=weakEvidenceDampen\
 [IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:09:18 +0000\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:44:15 +0000\
 [SourceEvent] sourceChanged(Contextual.SourceChange.activeAppChanged(bundleIdentifier: "org.mozilla.firefox", name: Optional("Firefox")))\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
+[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=windowTitleChanged\
+[SessionTracking] continuity=0.23 confidence=0.27 workflow=unknown patterns=weakEvidenceDampen\
 [IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:09:18 +0000\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Amazon.ca: Anker: Anker Prime")))\
-[ContextEventStream] appended type=activeAppChanged app=Firefox title=""\
-[ContextEventStream] size=4 window_s=4\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:44:15 +0000\
+[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Realistic Tank Shooter Demo(5) - TurboWarp")))\
 [ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ProposalAttempt] id=60BC45 started app=org.mozilla.firefox title=none\
+[ContextEventStream] appended type=activeAppChanged app=Firefox title=""\
+[ContextEventStream] size=4 window_s=0\
+[ProposalAttempt] id=80088C started app=org.mozilla.firefox title=none\
 [ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
 [ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ProposalAttempt] id=3C8F3F started app=org.mozilla.firefox title=Amazon.ca: Anker: Anker Prime\
-[ContextEventStream] appended type=activeAppChanged app=Firefox title="Amazon.ca: Anker: Anker Prime"\
-[ContextEventStream] size=5 window_s=4\
+[ContextEventStream] appended type=activeAppChanged app=Firefox title="Realistic Tank Shooter Demo(5) - TurboWa"\
+[ContextEventStream] size=5 window_s=0\
+[ProposalAttempt] id=CDDE0C started app=org.mozilla.firefox title=Realistic Tank Shooter Demo(5) - TurboWa\
 [ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
 [ContextEventProducer] produced type=activeAppChanged app=Firefox title_hash=cbf29ce4\
 [WorkflowPipeline] event_recorded type=activeAppChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=60BC45 stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
-[ContextEventProducer] produced type=activeAppChanged app=Firefox title_hash=a4c152a4\
+[ProposalAttempt] id=80088C stored_visible=0 ui_visible=0 final_status=hidden\
+[ContextEventProducer] produced type=activeAppChanged app=Firefox title_hash=2135b53b\
 [WorkflowPipeline] event_recorded type=activeAppChanged\
-[ProposalAttempt] id=3C8F3F stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Amazon.ca: Anker: Anker Prime"\
-[ContextEventStream] size=6 window_s=4\
-[ModelManager] status=checking\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=a4c152a4\
+[ProposalAttempt] id=CDDE0C stored_visible=0 ui_visible=0 final_status=hidden\
+[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Realistic Tank Shooter Demo(5) - TurboWa"\
+[ContextEventStream] size=6 window_s=0\
+[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
+[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=2135b53b\
 [WorkflowPipeline] event_recorded type=windowTitleChanged\
 [WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-nw_socket_handle_socket_event [C1:2] Socket SO_ERROR [61: Connection refused]\
-[SelectionSource] focusedRole=AXLink extractionSource=none visitedCount=3 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-nw_endpoint_flow_failed_with_error [C1 127.0.0.1:11434 in_progress socket-flow (satisfied (Path is satisfied), viable, interface: lo0)] already failing, returning\
-Connection 1: received failure notification\
-Connection 1: failed to connect 1:61, reason -1\
-Connection 1: encountered error(1:61)\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C1] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C1] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C1] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_connected_local_endpoint_block_invoke [C1] Client called nw_connection_copy_connected_local_endpoint on unconnected nw_connection\
-nw_connection_copy_connected_remote_endpoint_block_invoke [C1] Client called nw_connection_copy_connected_remote_endpoint on unconnected nw_connection\
-Task <3405300D-A2A1-463B-BEC4-77A718349F6A>.<1> HTTP load failed, 0/0 bytes (error code: -1004 [1:61])\
-Task <3405300D-A2A1-463B-BEC4-77A718349F6A>.<1> finished with error [-1004] Error Domain=NSURLErrorDomain Code=-1004 "Could not connect to the server." UserInfo=\{_kCFStreamErrorCodeKey=61, NSUnderlyingError=0xa7bcbd5c0 \{Error Domain=kCFErrorDomainCFNetwork Code=-1004 "(null)" UserInfo=\{_NSURLErrorNWPathKey=satisfied (Path is satisfied), viable, interface: lo0, _kCFStreamErrorCodeKey=61, _kCFStreamErrorDomainKey=1\}\}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <3405300D-A2A1-463B-BEC4-77A718349F6A>.<1>, _NSURLErrorRelatedURLSessionTaskErrorKey=(\
-    "LocalDataTask <3405300D-A2A1-463B-BEC4-77A718349F6A>.<1>"\
-), NSLocalizedDescription=Could not connect to the server., NSErrorFailingURLStringKey=http://127.0.0.1:11434/api/tags, NSErrorFailingURLKey=http://127.0.0.1:11434/api/tags, _kCFStreamErrorDomainKey=1\}\
-[ModelManager] status=starting\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=3\
+[ModelManager] status=checking\
 nw_socket_handle_socket_event [C2:2] Socket SO_ERROR [61: Connection refused]\
 nw_endpoint_flow_failed_with_error [C2 127.0.0.1:11434 in_progress socket-flow (satisfied (Path is satisfied), viable, interface: lo0)] already failing, returning\
 Connection 2: received failure notification\
@@ -202,9 +174,24 @@ nw_connection_copy_protocol_metadata_internal_block_invoke [C2] Client called nw
 nw_connection_copy_protocol_metadata_internal_block_invoke [C2] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
 nw_connection_copy_connected_local_endpoint_block_invoke [C2] Client called nw_connection_copy_connected_local_endpoint on unconnected nw_connection\
 nw_connection_copy_connected_remote_endpoint_block_invoke [C2] Client called nw_connection_copy_connected_remote_endpoint on unconnected nw_connection\
-Task <5B7BC493-82C5-449B-82D0-4232CF2F2374>.<2> HTTP load failed, 0/0 bytes (error code: -1004 [1:61])\
-Task <5B7BC493-82C5-449B-82D0-4232CF2F2374>.<2> finished with error [-1004] Error Domain=NSURLErrorDomain Code=-1004 "Could not connect to the server." UserInfo=\{_kCFStreamErrorCodeKey=61, NSUnderlyingError=0xa7bcbf810 \{Error Domain=kCFErrorDomainCFNetwork Code=-1004 "(null)" UserInfo=\{_NSURLErrorNWPathKey=satisfied (Path is satisfied), viable, interface: lo0, _kCFStreamErrorCodeKey=61, _kCFStreamErrorDomainKey=1\}\}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <5B7BC493-82C5-449B-82D0-4232CF2F2374>.<2>, _NSURLErrorRelatedURLSessionTaskErrorKey=(\
-    "LocalDataTask <5B7BC493-82C5-449B-82D0-4232CF2F2374>.<2>"\
+Task <5E5FB507-00EA-44F6-A199-CBC7B67A539D>.<1> HTTP load failed, 225/0 bytes (error code: -1004 [1:61])\
+Task <5E5FB507-00EA-44F6-A199-CBC7B67A539D>.<1> finished with error [-1004] Error Domain=NSURLErrorDomain Code=-1004 "Could not connect to the server." UserInfo=\{_kCFStreamErrorCodeKey=61, NSUnderlyingError=0x7993f0480 \{Error Domain=kCFErrorDomainCFNetwork Code=-1004 "(null)" UserInfo=\{_kCFStreamErrorDomainKey=1, _kCFStreamErrorCodeKey=61, NSErrorPeerAddressKey=<CFData 0x798fd1ea0 [0x1f39b8800]>\{length = 16, capacity = 16, bytes = 0x10022caa7f0000010000000000000000\}, _NSURLErrorNWPathKey=satisfied (Path is satisfied), viable, interface: lo0\}\}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <5E5FB507-00EA-44F6-A199-CBC7B67A539D>.<1>, _NSURLErrorRelatedURLSessionTaskErrorKey=(\
+    "LocalDataTask <5E5FB507-00EA-44F6-A199-CBC7B67A539D>.<1>"\
+), NSLocalizedDescription=Could not connect to the server., NSErrorFailingURLStringKey=http://127.0.0.1:11434/api/tags, NSErrorFailingURLKey=http://127.0.0.1:11434/api/tags, _kCFStreamErrorDomainKey=1\}\
+[ModelManager] status=starting\
+nw_socket_handle_socket_event [C3:2] Socket SO_ERROR [61: Connection refused]\
+nw_endpoint_flow_failed_with_error [C3 127.0.0.1:11434 in_progress socket-flow (satisfied (Path is satisfied), viable, interface: lo0)] already failing, returning\
+Connection 3: received failure notification\
+Connection 3: failed to connect 1:61, reason -1\
+Connection 3: encountered error(1:61)\
+nw_connection_copy_protocol_metadata_internal_block_invoke [C3] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
+nw_connection_copy_protocol_metadata_internal_block_invoke [C3] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
+nw_connection_copy_protocol_metadata_internal_block_invoke [C3] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
+nw_connection_copy_connected_local_endpoint_block_invoke [C3] Client called nw_connection_copy_connected_local_endpoint on unconnected nw_connection\
+nw_connection_copy_connected_remote_endpoint_block_invoke [C3] Client called nw_connection_copy_connected_remote_endpoint on unconnected nw_connection\
+Task <C027EE8A-C03E-4C1D-80D8-D253E42E9A47>.<2> HTTP load failed, 0/0 bytes (error code: -1004 [1:61])\
+Task <C027EE8A-C03E-4C1D-80D8-D253E42E9A47>.<2> finished with error [-1004] Error Domain=NSURLErrorDomain Code=-1004 "Could not connect to the server." UserInfo=\{_kCFStreamErrorCodeKey=61, NSUnderlyingError=0x7993f0480 \{Error Domain=kCFErrorDomainCFNetwork Code=-1004 "(null)" UserInfo=\{_NSURLErrorNWPathKey=satisfied (Path is satisfied), viable, interface: lo0, _kCFStreamErrorCodeKey=61, _kCFStreamErrorDomainKey=1\}\}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <C027EE8A-C03E-4C1D-80D8-D253E42E9A47>.<2>, _NSURLErrorRelatedURLSessionTaskErrorKey=(\
+    "LocalDataTask <C027EE8A-C03E-4C1D-80D8-D253E42E9A47>.<2>"\
 ), NSLocalizedDescription=Could not connect to the server., NSErrorFailingURLStringKey=http://127.0.0.1:11434/api/tags, NSErrorFailingURLKey=http://127.0.0.1:11434/api/tags, _kCFStreamErrorDomainKey=1\}\
 [ModelManager] start_requested\
 [ModelManager] status=starting detail=tags_wait_s=1.35\
@@ -218,48 +205,101 @@ Task <5B7BC493-82C5-449B-82D0-4232CF2F2374>.<2> finished with error [-1004] Erro
 [LocalAIConcurrency] started purpose=warmup active_requests=1\
 [LocalAI] generate_started model=qwen2.5:0.5b purpose=warmup inputBytes=22\
 [LocalModelConfig] model=qwen2.5:0.5b temp=0.0 mode=instruct\
-[ContextAwarenessUI] hidden reason=no_context\
-[RichContextDebugUI] hidden reason=no_context\
-[AssistanceCategory] summary top=none detail=\
-[DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
-[DynamicActionUX] hidden reason=no_generated_actions\
-[VisibleGeneratedAction] hidden reason=no_items\
-[InlineAssistance] suppressed reason=no_context\
-[InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=0 primary=nil reason=none\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
-[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.22 confidence=0.26 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
-[IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:09:21 +0000\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Inbox (4) - duncan.w.yu@gmail.com - Gmail")))\
-[ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Inbox (4) - duncan.w.yu@gmail.com - Gmai"\
-[ContextEventStream] size=7 window_s=6\
-[ProposalAttempt] id=12583B started app=org.mozilla.firefox title=Inbox (4) - duncan.w.yu@gmail.com - Gmai\
-[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=70b38280\
-[WorkflowPipeline] event_recorded type=windowTitleChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=12583B stored_visible=0 ui_visible=0 final_status=hidden\
 [LocalAI] generate_done model=qwen2.5:0.5b purpose=warmup outputBytes=77\
 [LocalAIConcurrency] completed purpose=warmup active_requests=0\
-[TaskInferenceWarmup] completed elapsed_ms=862\
+[TaskInferenceWarmup] completed elapsed_ms=1550\
 [TwoStageWarmup] warming planner=phi4-mini\
-[TwoStageLane] released purpose=keepalive elapsed_ms=862\
+[TwoStageLane] released purpose=keepalive elapsed_ms=1550\
 [StartupBudget] deferred_warmup model=phi4-mini reason=startup_quiet_period\
 [TwoStageWarmup] ready_for_inference=yes\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
-[SelectionSource] focusedRole=AXRadioButton extractionSource=none visitedCount=5 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
 [TaskInferenceWarmup] keepalive_started model=qwen2.5:0.5b interval_s=240\
-[FloatingSuggestionDebug] state=detached\
-[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=9\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXIncrementor extractionSource=none visitedCount=2 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=0 rangeLoc=0 rangeLen=0 valueLen=0 emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=0 rangeLoc=0 rangeLen=0 valueLen=0 emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXMenu extractionSource=none visitedCount=22 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXMenuItem extractionSource=none visitedCount=3 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[TwoStageLane] acquired purpose=keepalive queue_depth=0\
+[LocalAIConcurrency] started purpose=warmup active_requests=1\
+[LocalAI] generate_started model=qwen2.5:0.5b purpose=warmup inputBytes=14\
+[LocalModelConfig] model=qwen2.5:0.5b temp=0.0 mode=instruct\
+[LocalAI] generate_done model=qwen2.5:0.5b purpose=warmup outputBytes=26\
+[LocalAIConcurrency] completed purpose=warmup active_requests=0\
+[TaskInferenceWarmup] keepalive_ping_ok model=qwen2.5:0.5b\
+[TwoStageLane] released purpose=keepalive elapsed_ms=248\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=1 rangeLoc=0 rangeLen=1 valueLen=1 emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=0 rangeLoc=1 rangeLen=0 valueLen=1 emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=3 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=0 rangeLoc=3 rangeLen=0 valueLen=3 emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=0 rangeLoc=1 rangeLen=0 valueLen=1 emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXTextField extractionSource=none visitedCount=1 directLen=0 rangeLoc=3 rangeLen=0 valueLen=3 emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[TwoStageLane] acquired purpose=keepalive queue_depth=0\
+[LocalAIConcurrency] started purpose=warmup active_requests=1\
+[LocalAI] generate_started model=qwen2.5:0.5b purpose=warmup inputBytes=14\
+[LocalModelConfig] model=qwen2.5:0.5b temp=0.0 mode=instruct\
+[LocalAI] generate_done model=qwen2.5:0.5b purpose=warmup outputBytes=26\
+[LocalAIConcurrency] completed purpose=warmup active_requests=0\
+[TaskInferenceWarmup] keepalive_ping_ok model=qwen2.5:0.5b\
+[TwoStageLane] released purpose=keepalive elapsed_ms=304\
 [ContextAwarenessUI] hidden reason=no_context\
 [RichContextDebugUI] hidden reason=no_context\
 [AssistanceCategory] summary top=none detail=\
 [DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
+[TypingActivity] state=active intensity=low events=2\
+[ContextDebug] stage=typing event=updated source=typingActivity meta=events=2,intensity=low,state=active\
 [DynamicActionUX] hidden reason=no_generated_actions\
 [VisibleGeneratedAction] hidden reason=no_items\
 [InlineAssistance] suppressed reason=no_context\
@@ -267,307 +307,249 @@ Task <5B7BC493-82C5-449B-82D0-4232CF2F2374>.<2> finished with error [-1004] Erro
 [RichAssistanceRank] ranked count=0 primary=nil reason=none\
 [VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
 [WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
+[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=windowTitleChanged\
 [WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.21 confidence=0.26 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
+[SessionTracking] continuity=0.24 confidence=0.28 workflow=unknown patterns=weakEvidenceDampen\
 [IntentSynthesis] suppressed reason=stale_context\
-[GeneratedProposal] activation_skipped phase=skipped_before_situational_synthesis detail=no_trigger_packet last=windowTitleChanged\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Amazon.ca: Anker: Anker Prime")))\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Amazon.ca: Anker: Anker Prime"\
-[ContextEventStream] size=8 window_s=10\
-[SelectionSource] focusedRole=AXLink extractionSource=none visitedCount=3 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=a4c152a4\
-[WorkflowPipeline] event_recorded type=windowTitleChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=13\
-[SelectionSource] focusedRole=AXLink extractionSource=none visitedCount=3 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[ContextAwarenessUI] hidden reason=no_context\
-[RichContextDebugUI] hidden reason=no_context\
-[AssistanceCategory] summary top=none detail=\
-[DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
-[TypingActivity] state=started intensity=low events=1\
-[ContextDebug] stage=typing event=updated source=typingActivity meta=events=1,intensity=low,state=started\
-[PointerActivity] state=idle moveEvents=0 clickEvents=0 moveIntensity=none clickIntensity=none\
-[ContextDebug] stage=pointer event=updated source=pointerActivity meta=clickEvents=0,clickIntensity=none,moveEvents=0,moveIntensity=none,state=idle\
-[DynamicActionUX] hidden reason=no_generated_actions\
-[VisibleGeneratedAction] hidden reason=no_items\
-[InlineAssistance] suppressed reason=no_context\
-[InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=0 primary=nil reason=none\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
-[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.17 confidence=0.24 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
-[IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:09:44 +0000\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Anker 24,000 mAh Power Bank with 140W Output Smart Display")))\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:53:09 +0000\
+[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("ChatGPT")))\
 [ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Anker 24,000 mAh Power Bank with 140W Ou"\
-[ContextEventStream] size=9 window_s=29\
-[ProposalAttempt] id=3521F5 started app=org.mozilla.firefox title=Anker 24,000 mAh Power Bank with 140W Ou\
+[ProposalAttempt] id=D2789F started app=org.mozilla.firefox title=ChatGPT\
+[ContextEventStream] appended type=windowTitleChanged app=Firefox title="ChatGPT"\
+[ContextEventStream] size=7 window_s=534\
 [ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=2b22236c\
+[SelectionSource] focusedRole=AXTextArea extractionSource=none visitedCount=3 directLen=0 rangeLoc=12 rangeLen=0 valueLen=13 emittedLen=0 bundle=org.mozilla.firefox\
+[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=db97fff0\
 [WorkflowPipeline] event_recorded type=windowTitleChanged\
+[ProposalAttempt] id=D2789F stored_visible=0 ui_visible=0 final_status=hidden\
+[ContextFeatures] len=6541 words=751 sentences=51 punct=0.0197 question=true code=true log=true lines=135 rep=0.340\
 [WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=3521F5 stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
-[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=33\
-[ContextAwarenessUI] hidden reason=no_context\
-[RichContextDebugUI] hidden reason=no_context\
-[AssistanceCategory] summary top=none detail=\
-[DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
-[TypingActivity] state=active intensity=low events=1\
-[ContextDebug] stage=typing event=updated source=typingActivity meta=events=1,intensity=low,state=active\
-[DynamicActionUX] hidden reason=no_generated_actions\
-[VisibleGeneratedAction] hidden reason=no_items\
-[InlineAssistance] suppressed reason=no_context\
-[InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=0 primary=nil reason=none\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
-[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.16 confidence=0.23 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
-[IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:09:51 +0000\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Anker Laptop Power Bank, 25,000mAh Portable Charger with Triple 100W USB-C Ports, Built-in Retractable Cables, Flight-Approved for Travel, iPhone 17/16 Series, MacBook, Samsung, and More : Amazon.ca: Electronics")))\
-[ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Anker Laptop Power Bank, 25,000mAh Porta"\
-[ContextEventStream] size=10 window_s=36\
-[ProposalAttempt] id=3996DB started app=org.mozilla.firefox title=Anker Laptop Power Bank, 25,000mAh Porta\
-[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=daca8fc7\
-[WorkflowPipeline] event_recorded type=windowTitleChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=3996DB stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
-[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=39\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[ContextAwarenessUI] hidden reason=no_context\
-[RichContextDebugUI] hidden reason=no_context\
-[AssistanceCategory] summary top=none detail=\
-[DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
-[TypingActivity] state=started intensity=low events=1\
-[ContextDebug] stage=typing event=updated source=typingActivity meta=events=1,intensity=low,state=started\
-[DynamicActionUX] hidden reason=no_generated_actions\
-[VisibleGeneratedAction] hidden reason=no_items\
-[InlineAssistance] suppressed reason=no_context\
-[InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=0 primary=nil reason=none\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
-[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.15 confidence=0.23 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
-[IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:10:02 +0000\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Anker 24,000 mAh Power Bank with 140W Output Smart Display")))\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Anker 24,000 mAh Power Bank with 140W Ou"\
-[ContextEventStream] size=11 window_s=47\
-[ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ProposalAttempt] id=EB20AC started app=org.mozilla.firefox title=Anker 24,000 mAh Power Bank with 140W Ou\
-[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=2b22236c\
-[WorkflowPipeline] event_recorded type=windowTitleChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=EB20AC stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=51\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[FloatingSuggestionDebug] state=detached\
-[ContextAwarenessUI] hidden reason=no_context\
-[RichContextDebugUI] hidden reason=no_context\
-[AssistanceCategory] summary top=none detail=\
-[DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
-[TypingActivity] state=idle intensity=none events=0\
-[ContextDebug] stage=typing event=updated source=typingActivity meta=events=0,intensity=none,state=idle\
-[PointerActivity] state=burst moveEvents=120 clickEvents=3 moveIntensity=high clickIntensity=low\
-[ContextDebug] stage=pointer event=updated source=pointerActivity meta=clickEvents=3,clickIntensity=low,moveEvents=120,moveIntensity=high,state=burst\
-[DynamicActionUX] hidden reason=no_generated_actions\
-[VisibleGeneratedAction] hidden reason=no_items\
-[InlineAssistance] suppressed reason=no_context\
-[InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=0 primary=nil reason=none\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
-[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.14 confidence=0.22 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
-[IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:10:24 +0000\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Anker Laptop Power Bank, 25,000mAh Portable Charger with Triple 100W USB-C Ports, Built-in Retractable Cables, Flight-Approved for Travel, iPhone 17/16 Series, MacBook, Samsung, and More : Amazon.ca: Electronics")))\
-[ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Anker Laptop Power Bank, 25,000mAh Porta"\
-[ContextEventStream] size=12 window_s=70\
-[ProposalAttempt] id=6B5E2A started app=org.mozilla.firefox title=Anker Laptop Power Bank, 25,000mAh Porta\
-[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=daca8fc7\
-[WorkflowPipeline] event_recorded type=windowTitleChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=6B5E2A stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[SelectionSource] focusedRole=AXGroup extractionSource=none visitedCount=60 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
 [StartupBudget] quiet_period_finished elapsed_s=60\
 [ModelManager] status=ready backend=ollama active_router=qwen2.5:0.5b active_planner=phi4-mini\
 [WorkflowPipeline] tick_started\
-[WorkflowRetention] window=short_5m events_total=12 events_in=12 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=short_5m types=[windowTitleChanged=7,activeAppChanged=5] title_transitions=7 app_transitions=1\
-[WorkflowContextShift] detected=no reason=no_shift\
-[WorkflowRetention] window=medium_15m events_total=12 events_in=12 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=medium_15m types=[windowTitleChanged=7,activeAppChanged=5] title_transitions=7 app_transitions=1\
-[WorkflowRetention] window=long_30m events_total=12 events_in=12 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=long_30m types=[windowTitleChanged=7,activeAppChanged=5] title_transitions=7 app_transitions=1\
-[TemporalContextBuffer] updated events=12 span_s=1800\
+[WorkflowRetention] window=short_5m events_total=7 events_in=1 dropped=6 reason=outside_window_cutoff\
+[WorkflowRetention] window=short_5m types=[windowTitleChanged=1] title_transitions=0 app_transitions=0\
+[WorkflowContextShift] detected=yes reason=topic_distribution_changed\
+[WorkflowContextShift] shifted_at_age_s=269\
+[WorkflowContextShift] downweighted_stale_terms=demo,realistic,shooter,tank,turbowarp\
+[WorkflowRetention] window=medium_15m events_total=7 events_in=7 dropped=0 reason=outside_window_cutoff\
+[WorkflowRetention] window=medium_15m types=[activeAppChanged=5,windowTitleChanged=2] title_transitions=2 app_transitions=1\
+[WorkflowRetention] window=long_30m events_total=7 events_in=7 dropped=0 reason=outside_window_cutoff\
+[WorkflowRetention] window=long_30m types=[activeAppChanged=5,windowTitleChanged=2] title_transitions=2 app_transitions=1\
+[TemporalContextBuffer] updated events=7 span_s=1800\
 [TemporalContextBuffer] dominant_apps=Firefox,Contextual\
-[TemporalContextBuffer] repeated_terms=anker,bank,power,laptop,with\
-[WorkflowPacket] titles=7 ocr_events=0 selection_events=0 typing_events=0 pointer_events=0\
-[WorkflowPacket] repeated_terms_medium=7 repeated_terms_long=7 dominant_apps_medium=2\
+[TemporalContextBuffer] repeated_terms=\
+[WorkflowPacket] titles=2 ocr_events=0 selection_events=0 typing_events=0 pointer_events=0\
+[WorkflowPacket] repeated_terms_medium=0 repeated_terms_long=0 dominant_apps_medium=2\
 [WorkflowPacket] topic_source=medium_weighted\
 [WorkflowPacket] ocr_source=fresh_ocr_terms\
 [WorkflowPacket] long_window_role=continuity_only\
 [WorkflowPacket] discarded_titles=0 discarded_terms=0\
 [WorkflowPacket] ocr_hints_source=ocr_events_only ocr_hints_count=0 reason=no_ocr_events_or_below_threshold\
-[WorkflowTermScore] term=anker raw=6 weighted=5.27 first_age_s=68 last_age_s=2\
-[WorkflowTermScore] term=power raw=4 weighted=3.66 first_age_s=42 last_age_s=2\
-[WorkflowTermScore] term=bank raw=4 weighted=3.66 first_age_s=42 last_age_s=2\
-[WorkflowTermScore] term=laptop raw=2 weighted=1.88 first_age_s=36 last_age_s=2\
-[WorkflowTermScore] term=with raw=2 weighted=1.79 first_age_s=42 last_age_s=24\
-[WorkflowTermScore] term=amazon raw=2 weighted=1.61 first_age_s=68 last_age_s=62\
-[WorkflowTermScore] term=prime raw=2 weighted=1.61 first_age_s=68 last_age_s=62\
-[TemporalContextCompressor] packet_chars=836 events_used=12\
-[WorkflowFreshness] term=anker age_s=68 last_seen_age_s=2\
-[WorkflowFreshness] term=power age_s=42 last_seen_age_s=2\
-[WorkflowFreshness] term=bank age_s=42 last_seen_age_s=2\
-[WorkflowFreshness] term=laptop age_s=36 last_seen_age_s=2\
-[WorkflowFreshness] term=with age_s=42 last_seen_age_s=24\
-[WorkflowFreshness] term=amazon age_s=68 last_seen_age_s=62\
-[WorkflowFreshness] term=prime age_s=68 last_seen_age_s=62\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=36 last_seen_age_s=2\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=42 last_seen_age_s=24\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=36 last_seen_age_s=2\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=42 last_seen_age_s=24\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=68 last_seen_age_s=62\
-[WorkflowFreshness] title="Inbox (4) - duncan.w.yu@gmail.com - Gmai" age_s=66 last_seen_age_s=66\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=68 last_seen_age_s=62\
+[TemporalContextCompressor] packet_chars=438 events_used=7\
+[ContextEpoch] started id=E1C7C4C9 reason=topic_distribution_changed\
+[ContextEpoch] old_terms=demo,realistic,shooter,tank,turbowarp\
+[ContextEpoch] new_terms=chatgpt\
+[ContextEpoch] deprecated_previous=yes\
+[WorkflowFreshness] title="ChatGPT" age_s=2 last_seen_age_s=2\
+[WorkflowFreshness] title="Realistic Tank Shooter Demo(5) - TurboWa" age_s=536 last_seen_age_s=536\
 [TemporalContextCompressor] sources=apps,titles,activity,selection\
-[WorkflowFallback] applied workflow=shopping reason=evidence_pattern matched_entities=4 matched_sources=titles,metadata\
-[WorkflowInference] model=qwen2.5:0.5b workflow=shopping confidence=0.65\
-[WorkflowInference] evidence="model_failed | strong_temporal_signals | evidence_pattern"\
-[WorkflowEvidence] picked=shopping\
-[WorkflowEvidence] picked=shopping source=topic_terms matched=amazon,anker,prime\
-[WorkflowEvidence] picked=shopping source=ocr_hints matched=none\
-[WorkflowEvidence] picked=shopping source=recent_apps matched=none\
-[WorkflowEvidence] picked=shopping source=recent_titles matched=amazon,anker,prime\
-[WorkflowEvidence] competing=emailing source=recent_titles matched=inbox,gmail\
-[WorkflowStability] corrected=shopping previous=unknown reason=deterministic_fallback\
+[WorkflowInference] model=qwen2.5:0.5b workflow=reading confidence=1.00\
+[WorkflowInference] evidence="recent_title_changes=2"\
+[WorkflowEvidence] picked=reading\
+[WorkflowEvidence] picked=reading source=topic_terms matched=none\
+[WorkflowEvidence] picked=reading source=ocr_hints matched=none\
+[WorkflowEvidence] picked=reading source=recent_apps matched=none\
+[WorkflowEvidence] picked=reading source=recent_titles matched=none\
+[WorkflowInferenceGuard] rejected=reading reason=zero_provenance_high_confidence confidence=1.00\
+[WorkflowStability] current=unknown candidate=unknown retained=yes reason=weak_confidence_despite_shift\
 [WorkflowVolatility]\
 detected=no\
 changes=0\
 window=10m\
 [WorkflowDiagnostics]\
 top_workflows=\
-shopping=100%\
 \
-unknown_rate=0%\
+unknown_rate=100%\
 correction_rate=0%\
 volatility_score=0.00\
-[WorkflowState] type=shopping confidence=0.65 stability=0.50 duration_s=0 trust=0.66\
-[WorkflowCompare] old=unknown new=shopping agreement=no\
+[WorkflowState] type=unknown confidence=0.00 stability=0.00 duration_s=0 trust=0.00\
+[WorkflowCompare] old=unknown new=unknown agreement=yes\
 [WorkflowDebug]\
-[WorkflowDebug] workflow=shopping\
-[WorkflowDebug] confidence=0.65\
-[WorkflowDebug] stability=0.50\
+[WorkflowDebug] workflow=unknown\
+[WorkflowDebug] confidence=0.00\
+[WorkflowDebug] stability=0.00\
 [WorkflowDebug] duration_s=0\
-[WorkflowDebug] evidence=model_failed | strong_temporal_signals | evidence_pattern\
-[WorkflowDebug] uncertainty=fallback\
-[WorkflowDebug] dominant_apps=Firefox,Contextual\
-[WorkflowDebug] repeated_terms=anker,bank,power,laptop,with\
-[WorkflowDebug] recent_transitions=Contextual\uc0\u8594 Firefox\
+[WorkflowDebug] evidence=none\
+[WorkflowDebug] uncertainty=no_data\
+[WorkflowDebug] dominant_apps=none\
+[WorkflowDebug] repeated_terms=none\
+[WorkflowDebug] recent_transitions=none\
 [WorkflowDebug] activity=idle idle=active typing=none pointer=none\
-[WorkflowDebug] span_s=1800 events_used=12\
+[WorkflowDebug] span_s=1800 events_used=7\
 [WorkflowDebug] opportunities=none\
-[WorkflowPipeline] tick_completed workflow=shopping confidence=0.65\
-[WorkflowRetention] window=short_5m events_total=12 events_in=12 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=short_5m types=[windowTitleChanged=7,activeAppChanged=5] title_transitions=7 app_transitions=1\
-[WorkflowContextShift] detected=no reason=no_shift\
-[WorkflowRetention] window=medium_15m events_total=12 events_in=12 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=medium_15m types=[windowTitleChanged=7,activeAppChanged=5] title_transitions=7 app_transitions=1\
-[WorkflowRetention] window=long_30m events_total=12 events_in=12 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=long_30m types=[windowTitleChanged=7,activeAppChanged=5] title_transitions=7 app_transitions=1\
-[TemporalContextBuffer] updated events=12 span_s=1800\
+[WorkflowPipeline] tick_completed workflow=unknown confidence=0.00\
+[WorkflowRetention] window=short_5m events_total=7 events_in=1 dropped=6 reason=outside_window_cutoff\
+[WorkflowRetention] window=short_5m types=[windowTitleChanged=1] title_transitions=0 app_transitions=0\
+[WorkflowContextShift] detected=yes reason=topic_distribution_changed\
+[WorkflowContextShift] shifted_at_age_s=271\
+[WorkflowContextShift] downweighted_stale_terms=demo,realistic,shooter,tank,turbowarp\
+[WorkflowRetention] window=medium_15m events_total=7 events_in=7 dropped=0 reason=outside_window_cutoff\
+[WorkflowRetention] window=medium_15m types=[activeAppChanged=5,windowTitleChanged=2] title_transitions=2 app_transitions=1\
+[WorkflowRetention] window=long_30m events_total=7 events_in=7 dropped=0 reason=outside_window_cutoff\
+[WorkflowRetention] window=long_30m types=[activeAppChanged=5,windowTitleChanged=2] title_transitions=2 app_transitions=1\
+[TemporalContextBuffer] updated events=7 span_s=1800\
 [TemporalContextBuffer] dominant_apps=Firefox,Contextual\
-[TemporalContextBuffer] repeated_terms=anker,bank,power,laptop,with\
-[BehaviorInferenceGuard] rejected=idle reason=active_workflow_context workflow=shopping title_transitions=7 repeated_terms=anker,bank,power,laptop,with,amazon,prime\
-[BehaviorInferenceGuard] corrected from=idle to=comparing reason=workflow_supported_temporal_evidence\
+[TemporalContextBuffer] repeated_terms=\
 \
 [BehaviorInference]\
-state=comparing\
-confidence=0.82\
+state=idle\
+confidence=1.00\
 \
 [BehaviorReasoning]\
-reason=workflow_supported_temporal_evidence\
+reason=The user's recent sequence of events is idle, with no specific activities or transitions observed.\
 \
 [BehaviorState]\
-committed=comparing\
+committed=idle\
 stability=0.50\
 \
-[WorkflowPacket] titles=7 ocr_events=0 selection_events=0 typing_events=0 pointer_events=0\
-[WorkflowPacket] repeated_terms_medium=7 repeated_terms_long=7 dominant_apps_medium=2\
+[WorkflowPacket] titles=2 ocr_events=0 selection_events=0 typing_events=0 pointer_events=0\
+[WorkflowPacket] repeated_terms_medium=0 repeated_terms_long=0 dominant_apps_medium=2\
 [WorkflowPacket] topic_source=medium_weighted\
 [WorkflowPacket] ocr_source=fresh_ocr_terms\
 [WorkflowPacket] long_window_role=continuity_only\
 [WorkflowPacket] discarded_titles=0 discarded_terms=0\
 [WorkflowPacket] ocr_hints_source=ocr_events_only ocr_hints_count=0 reason=no_ocr_events_or_below_threshold\
-[WorkflowTermScore] term=anker raw=6 weighted=5.24 first_age_s=71 last_age_s=5\
-[WorkflowTermScore] term=bank raw=4 weighted=3.64 first_age_s=45 last_age_s=5\
-[WorkflowTermScore] term=power raw=4 weighted=3.64 first_age_s=45 last_age_s=5\
-[WorkflowTermScore] term=laptop raw=2 weighted=1.87 first_age_s=38 last_age_s=5\
-[WorkflowTermScore] term=with raw=2 weighted=1.78 first_age_s=45 last_age_s=27\
-[WorkflowTermScore] term=amazon raw=2 weighted=1.60 first_age_s=71 last_age_s=65\
-[WorkflowTermScore] term=prime raw=2 weighted=1.60 first_age_s=71 last_age_s=65\
-[TemporalContextCompressor] packet_chars=836 events_used=12\
-[WorkflowFreshness] term=anker age_s=71 last_seen_age_s=5\
-[WorkflowFreshness] term=bank age_s=45 last_seen_age_s=5\
-[WorkflowFreshness] term=power age_s=45 last_seen_age_s=5\
-[WorkflowFreshness] term=laptop age_s=38 last_seen_age_s=5\
-[WorkflowFreshness] term=with age_s=45 last_seen_age_s=27\
-[WorkflowFreshness] term=amazon age_s=71 last_seen_age_s=65\
-[WorkflowFreshness] term=prime age_s=71 last_seen_age_s=65\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=38 last_seen_age_s=5\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=45 last_seen_age_s=27\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=38 last_seen_age_s=5\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=45 last_seen_age_s=27\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=71 last_seen_age_s=65\
-[WorkflowFreshness] title="Inbox (4) - duncan.w.yu@gmail.com - Gmai" age_s=68 last_seen_age_s=68\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=71 last_seen_age_s=65\
+[TemporalContextCompressor] packet_chars=438 events_used=7\
+[ContextEpoch] started id=55BF0B3B reason=topic_distribution_changed\
+[ContextEpoch] old_terms=demo,realistic,shooter,tank,turbowarp\
+[ContextEpoch] new_terms=chatgpt\
+[ContextEpoch] deprecated_previous=yes\
+[WorkflowFreshness] title="ChatGPT" age_s=5 last_seen_age_s=5\
+[WorkflowFreshness] title="Realistic Tank Shooter Demo(5) - TurboWa" age_s=539 last_seen_age_s=539\
 [TemporalContextCompressor] sources=apps,titles,activity,selection\
-[JarvisSuggestionGenerator] started workflow=shopping behavior=comparing\
+[BrowserContextExtractor] started app=Firefox pid=97091\
+[BrowserContextExtractor] current_url_found=yes source=ax_webarea_axurl\
+[BrowserContextExtractor] tab_titles=[Realistic Tank Shooter Demo(5) - TurboWarp, ChatGPT]\
+[BrowserTabs] selected_title="ChatGPT"\
+[BrowserTabs] selected_url_found=yes\
+[CurrentContext] selected_tab_priority=yes\
+[FocusEpoch] started id=5FF4C3FB reason=selected_tab_changed\
+[FocusEpoch] current_entity="ChatGPT"\
+[FocusEpoch] workflow_unchanged=yes\
+[CurrentContext] selected_terms=chatgpt\
+[BrowserTabs] selected_url_found=yes\
+[BrowserTabs] selected_tab_age_s=0\
+[TaskCompartment] update_source=current_focus|related_entities|global_packet\
+[TaskCompartment] rejected_terms=[] reason=not_supported_by_active_compartment\
+[TaskCompartment] terms_after_filter=chatgpt\
+[TaskCompartment] created id=7B35C170-6643-49C8-9518-11CEBE951D1F workflow=idle label="Chatgpt"\
+[TaskCompartment] activated id=7B35C170-6643-49C8-9518-11CEBE951D1F reason=current_focus_match\
+[TaskCompartment] activated label="Chatgpt"\
+[TaskCompartment] active id=7B35C170-6643-49C8-9518-11CEBE951D1F label="Chatgpt" workflow=idle\
+[TaskCompartment] candidates count=1\
+[WorkingMemory] current_entity="ChatGPT"\
+[WorkingMemory] related_focus_entities=[]\
+[WorkingMemory] background_entities=[]\
+[WorkingMemory] stale_entities=[Realistic Tank Shooter Demo(5) - TurboWarp]\
+[WorkingMemory] related_focus_entities count=0\
+[WorkingMemory] active_terms_before_filter=chatgpt\
+[WorkingMemory] rejected_background_terms=\
+[WorkingMemory] active_terms_after_filter=chatgpt\
+[WorkingMemory] compartment_id=7B35C170-6643-49C8-9518-11CEBE951D1F\
+[WorkingMemory] compartment_label="Chatgpt"\
+[WorkingMemory] active_terms=chatgpt\
+[WorkingMemory] background_compartments=[]\
+[WorkingMemory] recent_entities=[ChatGPT]\
+[WorkingMemory] comparison_candidates=[ChatGPT]\
+[WorkingMemory] entities=1 concepts=1 comparisons=1\
+[WorkingMemory] summary="idle chatgpt"\
+[DomainClassifier] domain=researching score=1\
+[DeterminerSignal] actionable=yes confidence=0.95 compartment_trust=0.95\
+[DeterminerSignal] inferred_domain=researching inferred_mode=learning\
+[DeterminerSignal] reason=compartment_memory_sufficient\
+[DeterminerSignal] evaluated=yes actionable=yes\
+[PerformanceBudget] cycle_started id=6719A82F-B793-4801-9400-730415E4DCBC\
+[JarvisSuggestionGenerator] started workflow=unknown behavior=idle force_show=false\
+[JarvisGate] workflow=unknown behavior=idle determiner_actionable=yes domain=researching\
+[JarvisPipeline] decision=shown reason=determiner_signal_sufficient\
+[CompartmentTrust] label="Chatgpt" trust=0.95\
+[JarvisTrust] workflow=0.00 compartment=0.95 memory=0.25 combined=0.95\
+[JarvisPipeline] decision=shown reason=compartment_trust_sufficient\
+[CapabilityRegistry] loaded count=25\
+[Capability] id=compare_options mode=preview_only risk=read_only confirmation=no\
+[Capability] id=copy_result_to_clipboard mode=local_action risk=light_action confirmation=no\
+[Capability] id=create_checklist mode=preview_only risk=read_only confirmation=no\
+[Capability] id=create_game_design_checklist mode=preview_only risk=read_only confirmation=no\
+[Capability] id=create_next_steps mode=preview_only risk=read_only confirmation=no\
+[Capability] id=create_outline mode=preview_only risk=read_only confirmation=no\
+[Capability] id=create_review_plan mode=preview_only risk=read_only confirmation=no\
+[Capability] id=debug_performance mode=preview_only risk=read_only confirmation=no\
+[Capability] id=decision_matrix mode=preview_only risk=read_only confirmation=no\
+[Capability] id=diagnose_error mode=preview_only risk=read_only confirmation=no\
+[Capability] id=draft_reply mode=preview_only risk=read_only confirmation=yes\
+[Capability] id=explain_context mode=preview_only risk=read_only confirmation=no\
+[Capability] id=explain_how_to_make_faster mode=preview_only risk=read_only confirmation=no\
+[Capability] id=extract_action_items mode=preview_only risk=read_only confirmation=no\
+[Capability] id=generate_quiz mode=preview_only risk=read_only confirmation=no\
+[Capability] id=improve_project mode=preview_only risk=read_only confirmation=no\
+[Capability] id=improve_text mode=preview_only risk=read_only confirmation=no\
+[Capability] id=open_relevant_app mode=local_action risk=light_action confirmation=yes\
+[Capability] id=pause_media mode=local_action risk=light_action confirmation=no\
+[Capability] id=play_focus_media mode=local_action risk=light_action confirmation=yes\
+[Capability] id=rewrite_text mode=preview_only risk=read_only confirmation=no\
+[Capability] id=start_focus_timer mode=local_action risk=light_action confirmation=yes\
+[Capability] id=summarize_context mode=preview_only risk=read_only confirmation=no\
+[Capability] id=summarize_reference mode=preview_only risk=read_only confirmation=no\
+[Capability] id=synthesize_sources mode=preview_only risk=read_only confirmation=no\
+[CapabilitySelector] evidence_quality=title_only\
+[CapabilitySelector] domain_override=researching mode=learning\
+[CapabilitySelector] selected=summarize_reference reason="DeterminerSignal domain=researching" can_execute_now=no\
+[ActionIntent] inferred intent=summarize_reference workflow=unknown confidence=0.90\
+[ActionIntent] evidence_required=recent_titles\
+[ActionIntent] target_entity="ChatGPT"\
+[JarvisSuggestionGenerator] prompt_terms=chatgpt\
+[JarvisSuggestionGenerator] prompt_entities=ChatGPT\
+[JarvisSuggestionGenerator] excluded_background_entities=Realistic Tank Shooter Demo(5) - TurboWarp\
+[JarvisSuggestionGenerator] excluded_background_terms=\
+[ContextCache] miss key=payload_-8475135711074389746|6281489838671490002\
 [ModelManager] check_cached status=ready\
 [LocalAIConcurrency] started purpose=jarvis_suggestion active_requests=1\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=jarvis_suggestion inputBytes=557\
+[LocalAI] generate_started model=qwen2.5:0.5b purpose=jarvis_suggestion inputBytes=425\
 [LocalModelConfig] model=qwen2.5:0.5b temp=0.3 mode=instruct\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=jarvis_suggestion outputBytes=59\
+[LocalAI] generate_done model=qwen2.5:0.5b purpose=jarvis_suggestion outputBytes=50\
 [LocalAIConcurrency] completed purpose=jarvis_suggestion active_requests=0\
 [JarvisSuggestionValidation] accepted=yes reason=context_only\
-[AmbientJarvisSuggestion] created kind=compare_context confidence=0.82\
-[AmbientIntent] generated intent=compare_context confidence=0.82 goal="Compare the items or pages you've been looking at (anker or bank) based on screen context."\
-[JarvisSuggestionGenerator] generated kind=compare_context title="Are there any Anker power banks available for comparison?"\
+[ActionCard] rendered id=ambient:summarize_reference:ChatGPT\
+[ActionCard] primary=summarize_reference\
+[ActionCard] secondary=create_next_steps\
+[ActionCard] auxiliary=summarize_context\
+[CognitiveOutput] format=summary intent=summarize_reference\
+[AmbientJarvisSuggestion] created kind=compare_context confidence=1.00\
+[AmbientIntent] generated intent=summarize_reference confidence=1.00 goal="Bounded cognitive action (summarize_reference) over recent unknown context. Output type: summary."\
+[SuggestionContextPayload] attached=yes entities=1 comparisons=1\
+[JarvisSuggestionGenerator] generated kind=compare_context intent=summarize_reference title="Looks like you're chatting with ChatGPT right now."\
+[AmbientJarvisSuggestion] title="Looks like you're chatting with ChatGPT right now." intent=summarize_reference output_type=summary\
+[JarvisPipeline] workflow=unknown behavior=idle intent=summarize_reference action_intent=summarize_reference judgment=upstream artifact=summary decision=shown reason=evidence_sufficient\
 [AmbientSuggestionSurface] visible=yes kind=compare_context\
 [JarvisRouting] route=ambient_context_only\
 [JarvisRouting] kind=compare_context semantic_driver=intent+judgment\
 [JarvisRouting] blocked_agentic reason=ambient_context_only\
 [ProposalContext] hidden reason=no_context\
-[PointerActivity] state=idle moveEvents=0 clickEvents=0 moveIntensity=none clickIntensity=none\
-[ContextDebug] stage=pointer event=updated source=pointerActivity meta=clickEvents=0,clickIntensity=none,moveEvents=0,moveIntensity=none,state=idle\
+[TypingActivity] state=stopped intensity=none events=1\
+[ContextDebug] stage=typing event=updated source=typingActivity meta=events=1,intensity=none,state=stopped\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
 [VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[AmbientFloatingSuggestion] eligible=yes id=ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186\
+[AmbientFloatingSuggestion] tes_bypassed reason=context_grounded_no_text_input_needed\
+[FloatingSuggestion] show key=trigHash=dc670df541a60447|primary=ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186|titleHash=1f8681b6c82b562e|src=automatic|skHash=61f6add62cdecb8\
+[FloatingLifecycle] recorded state=shown key=trig=context_metadata_eligible|primary=ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186|bucket=6500|ph=b6b7f94739aa99d3|sh=b3603134a4629fd7\
+[RedundancyMemory] event=shown action=ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186\
+[AmbientFloatingSuggestion] attached=yes\
+[AmbientFloatingSuggestion] shown=yes reason=ambient_jarvis\
+[FloatingSuggestionDebug] state=attached alpha=1.00 on_screen=true frame=(1130,703,320,200) level=3 screen=yes\
 [ContextAwarenessUI] hidden reason=no_context\
 [RichContextDebugUI] hidden reason=no_context\
 [AssistanceCategory] summary top=none detail=\
@@ -578,357 +560,115 @@ stability=0.50\
 [VisibleGeneratedAction] hidden reason=no_items\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=1 primary=pr:ambient_jarvis:FA54429C-FF3E-4244-8C01-0E891CAC969B reason=static_base_relevance\
-[VisibleIntelligenceDebug] updated top=Top: pr:ambient_jarviFA54429C-FF3E-4244-8C01-0E891CAC969B \'b7 secondary \'b7 proposal generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
+[RichAssistanceRank] ranked count=1 primary=pr:ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186 reason=static_base_relevance\
+[VisibleIntelligenceDebug] updated top=Top: pr:ambient_jarviFE78D3A2-2185-45CA-B23B-5C3587628186 \'b7 secondary \'b7 proposal generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
 [WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
+[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=windowTitleChanged\
 [WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.13 confidence=0.22 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
+[SessionTracking] continuity=0.21 confidence=0.26 workflow=unknown patterns=decayApplied,weakEvidenceDampen\
 [IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:10:48 +0000\
-[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Anker 24,000 mAh Power Bank with 140W Output Smart Display")))\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:53:19 +0000\
+[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("Realistic Tank Shooter Demo(5) - TurboWarp")))\
 [ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Anker 24,000 mAh Power Bank with 140W Ou"\
-[ContextEventStream] size=13 window_s=93\
-[ProposalAttempt] id=1792A2 started app=org.mozilla.firefox title=Anker 24,000 mAh Power Bank with 140W Ou\
+[ContextEventStream] appended type=windowTitleChanged app=Firefox title="Realistic Tank Shooter Demo(5) - TurboWa"\
+[ContextEventStream] size=8 window_s=544\
+[ProposalAttempt] id=2D3567 started app=org.mozilla.firefox title=Realistic Tank Shooter Demo(5) - TurboWa\
 [ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
-[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=2b22236c\
+[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[ContextEventProducer] produced type=windowTitleChanged app=Firefox title_hash=2135b53b\
 [WorkflowPipeline] event_recorded type=windowTitleChanged\
+[ProposalAttempt] id=2D3567 stored_visible=0 ui_visible=0 final_status=hidden\
+[ContextFeatures] len=6541 words=751 sentences=51 punct=0.0197 question=true code=true log=true lines=135 rep=0.340\
 [WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=1792A2 stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
+[FloatingLifecycle] recorded state=manually_dismissed key=trig=context_metadata_eligible|primary=ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186|bucket=6500|ph=b6b7f94739aa99d3|sh=b3603134a4629fd7\
+[RedundancyMemory] event=manual_dismissed action=ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186\
+[FloatingSuggestion] dismissed key=trigHash=dc670df541a60447|primary=ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186|titleHash=1f8681b6c82b562e|src=automatic|skHash=61f6add62cdecb8 reason=manual\
 [FloatingSuggestionDebug] state=detached\
-[ModelManager] status=ready backend=ollama active_router=qwen2.5:0.5b active_planner=phi4-mini\
-[WorkflowPipeline] tick_started\
-[WorkflowRetention] window=short_5m events_total=13 events_in=13 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=short_5m types=[windowTitleChanged=8,activeAppChanged=5] title_transitions=8 app_transitions=1\
-[WorkflowContextShift] detected=no reason=no_shift\
-[WorkflowRetention] window=medium_15m events_total=13 events_in=13 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=medium_15m types=[windowTitleChanged=8,activeAppChanged=5] title_transitions=8 app_transitions=1\
-[WorkflowRetention] window=long_30m events_total=13 events_in=13 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=long_30m types=[windowTitleChanged=8,activeAppChanged=5] title_transitions=8 app_transitions=1\
-[TemporalContextBuffer] updated events=13 span_s=1800\
-[TemporalContextBuffer] dominant_apps=Firefox,Contextual\
-[TemporalContextBuffer] repeated_terms=anker,bank,power,with,laptop\
-[WorkflowPacket] titles=8 ocr_events=0 selection_events=0 typing_events=0 pointer_events=0\
-[WorkflowPacket] repeated_terms_medium=7 repeated_terms_long=7 dominant_apps_medium=2\
-[WorkflowPacket] topic_source=medium_weighted\
-[WorkflowPacket] ocr_source=fresh_ocr_terms\
-[WorkflowPacket] long_window_role=continuity_only\
-[WorkflowPacket] discarded_titles=0 discarded_terms=0\
-[WorkflowPacket] ocr_hints_source=ocr_events_only ocr_hints_count=0 reason=no_ocr_events_or_below_threshold\
-[WorkflowTermScore] term=anker raw=7 weighted=5.87 first_age_s=92 last_age_s=2\
-[WorkflowTermScore] term=power raw=5 weighted=4.38 first_age_s=66 last_age_s=2\
-[WorkflowTermScore] term=bank raw=5 weighted=4.38 first_age_s=66 last_age_s=2\
-[WorkflowTermScore] term=with raw=3 weighted=2.64 first_age_s=66 last_age_s=2\
-[WorkflowTermScore] term=laptop raw=2 weighted=1.74 first_age_s=59 last_age_s=26\
-[WorkflowTermScore] term=amazon raw=2 weighted=1.49 first_age_s=92 last_age_s=86\
-[WorkflowTermScore] term=prime raw=2 weighted=1.49 first_age_s=92 last_age_s=86\
-[TemporalContextCompressor] packet_chars=897 events_used=13\
-[WorkflowFreshness] term=anker age_s=92 last_seen_age_s=2\
-[WorkflowFreshness] term=power age_s=66 last_seen_age_s=2\
-[WorkflowFreshness] term=bank age_s=66 last_seen_age_s=2\
-[WorkflowFreshness] term=with age_s=66 last_seen_age_s=2\
-[WorkflowFreshness] term=laptop age_s=59 last_seen_age_s=26\
-[WorkflowFreshness] term=amazon age_s=92 last_seen_age_s=86\
-[WorkflowFreshness] term=prime age_s=92 last_seen_age_s=86\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=66 last_seen_age_s=2\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=59 last_seen_age_s=26\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=66 last_seen_age_s=2\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=59 last_seen_age_s=26\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=66 last_seen_age_s=2\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=92 last_seen_age_s=86\
-[WorkflowFreshness] title="Inbox (4) - duncan.w.yu@gmail.com - Gmai" age_s=89 last_seen_age_s=89\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=92 last_seen_age_s=86\
-[TemporalContextCompressor] sources=apps,titles,activity,selection\
-[SuggestionCard] accepted proposal primary=ambient_jarvis:FA54429C-FF3E-4244-8C01-0E891CAC969B\
-[RedundancyMemory] event=accepted action=ambient_jarvis:FA54429C-FF3E-4244-8C01-0E891CAC969B\
-[ProposalCooldown] recorded accept key=ambient_jarvis:FA54429C-FF3E-4244-8C01-0E891CAC969B\
-[AmbientSuggestionSurface] accepted id=ambient_jarvis:FA54429C-FF3E-4244-8C01-0E891CAC969B\
-[ProposalContext] hidden reason=no_context\
+[ContextAwarenessUI] hidden reason=no_context\
+[RichContextDebugUI] hidden reason=no_context\
+[AssistanceCategory] summary top=none detail=\
+[DynamicIntentDebugUI] updated workflow=Workflow: unknown \'b7 conf medium \'b7 inference_stal intents=0 actions=0 plans=0\
+[TypingActivity] state=active intensity=none events=1\
+[ContextDebug] stage=typing event=updated source=typingActivity meta=events=1,intensity=none,state=active\
+[DynamicActionUX] hidden reason=no_generated_actions\
+[VisibleGeneratedAction] hidden reason=no_items\
+[InlineAssistance] suppressed reason=no_context\
+[InlineAssistance] skipped reason=no_context\
+[RichAssistanceRank] ranked count=1 primary=pr:ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186 reason=static_base_relevance\
+[VisibleIntelligenceDebug] updated top=Top: pr:ambient_jarviFE78D3A2-2185-45CA-B23B-5C3587628186 \'b7 secondary \'b7 proposal generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
+[WorkflowContinuityUI] hidden reason=no_fused_packet\
+[ContextModel] app=ChatGPT bundle=com.openai.chat windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=activeAppChanged\
+[ContextPipeline] redundancy_prune reason=active_app_change\
+[SessionTracking] continuity=0.19 confidence=0.25 workflow=unknown patterns=decayApplied,weakEvidenceDampen\
+[IntentSynthesis] suppressed reason=stale_context\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:53:21 +0000\
+[SourceEvent] sourceChanged(Contextual.SourceChange.activeAppChanged(bundleIdentifier: "com.openai.chat", name: Optional("ChatGPT")))\
 [TypingActivity] state=stopped intensity=none events=1\
 [ContextDebug] stage=typing event=updated source=typingActivity meta=events=1,intensity=none,state=stopped\
-[PointerActivity] state=interacting moveEvents=83 clickEvents=2 moveIntensity=none clickIntensity=low\
-[ContextDebug] stage=pointer event=updated source=pointerActivity meta=clickEvents=2,clickIntensity=low,moveEvents=83,moveIntensity=none,state=interacting\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[VisibleIntelligenceDebug] updated top=Top: pr:ambient_jarviFA54429C-FF3E-4244-8C01-0E891CAC969B \'b7 secondary \'b7 proposal generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[ContextExecutionEngine] using_intent=compare_context goal="Compare the items or pages you've been looking at (anker or bank) based on screen context."\
-[ContextExecutionEngine] started workflow=shopping behavior=comparing\
-[ContextDebug] stage=ax event=collected source=axText reason=attempt\
-[AXContent] extracted app=Firefox nodes=82 textFragments=46 conf=0.67\
-[ContextDebug] stage=ax event=collected source=axText privacy=moderate confidence=0.67 meta=controls=4,fragments=46,nodes=82\
-[AXContent] skipped reason=depth_limit\
-[ContextDebug] stage=ax event=skipped source=axText reason=depth_limit\
-[BrowserContextExtractor] started app=Firefox pid=97091\
-[BrowserContextExtractor] current_url_found=yes source=ax_webarea_axurl\
-[BrowserContextExtractor] tab_titles=[Dexter, Inbox (4) - duncan.w.yu@gmail.com - Gmail, Amazon.ca: Anker: Anker Prime, Anker 24,000 mAh Power Bank with 140W Output Smart Display, Anker Laptop Power Bank, 25,000mAh Portable Charger with Triple 100W USB-C Ports, Built-in Retractable Cables, Flight-Approved for Travel, iPhone 17/16 Series, MacBook, Samsung, and More : Amazon.ca: Electronics, first project as a reformed man - TurboWarp]\
-[PublicPageContextExtractor] skipped reason=sensitive_or_private_url\
-[PublicPageContextExtractor] skipped reason=no_public_url_available\
-[WebContextEnricher] skipped reason=low_precision_for_product_context\
-[WorkingMemory] recent_entities=[Anker 24,000 mAh Power Bank with 140W Output Smart Display]\
-[WorkingMemory] comparison_candidates=[Anker 24,000 mAh Power Bank with 140W Output Smart Display]\
-[WorkingMemory] entities=1 concepts=3 comparisons=1\
-[WorkingMemory] summary="comparing anker amazon prime"\
-[ContextEvidence] quality=title_only\
-[ModelManager] check_cached status=ready\
-[LocalAIConcurrency] started purpose=ambient_intent_inference active_requests=1\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=ambient_intent_inference inputBytes=1034\
-[LocalModelConfig] model=qwen2.5:0.5b temp=0.2 mode=instruct\
-[WorkflowInference] model=qwen2.5:0.5b workflow=writing confidence=0.90\
-[WorkflowInference] evidence="The user is most likely writing, as they are using the context of anker and lapt"\
-[WorkflowEvidence] picked=writing\
-[WorkflowEvidence] picked=writing source=topic_terms matched=none\
-[WorkflowEvidence] picked=writing source=ocr_hints matched=none\
-[WorkflowEvidence] picked=writing source=recent_apps matched=none\
-[WorkflowEvidence] picked=writing source=recent_titles matched=none\
-[WorkflowEvidence] competing=shopping source=topic_terms matched=amazon,anker,prime\
-[WorkflowEvidence] competing=shopping source=recent_titles matched=amazon,anker,prime\
-[WorkflowEvidence] competing=emailing source=recent_titles matched=inbox,gmail\
-[WorkflowInferenceGuard] rejected=writing reason=zero_provenance_high_confidence confidence=0.90\
-[WorkflowInferenceGuard] corrected from=writing to=shopping reason=zero_support_strong_competitor matched=amazon,anker,prime\
-[WorkflowStability] committed=shopping reason=strong_provenance_correction\
-[WorkflowVolatility]\
-detected=no\
-changes=0\
-window=10m\
-[WorkflowDiagnostics]\
-top_workflows=\
-shopping=100%\
-\
-unknown_rate=0%\
-correction_rate=50%\
-volatility_score=0.00\
-[WorkflowState] type=shopping confidence=0.75 stability=0.50 duration_s=0 trust=0.75\
-[WorkflowCompare] old=unknown new=shopping agreement=no\
-[WorkflowDebug]\
-[WorkflowDebug] workflow=shopping\
-[WorkflowDebug] confidence=0.75\
-[WorkflowDebug] stability=0.50\
-[WorkflowDebug] duration_s=0\
-[WorkflowDebug] evidence=corrected_from=writing matched=amazon,anker,prime\
-[WorkflowDebug] uncertainty=guard_corrected\
-[WorkflowDebug] dominant_apps=Firefox,Contextual\
-[WorkflowDebug] repeated_terms=anker,bank,power,with,laptop\
-[WorkflowDebug] recent_transitions=Contextual\uc0\u8594 Firefox\
-[WorkflowDebug] activity=idle idle=active typing=none pointer=none\
-[WorkflowDebug] span_s=1800 events_used=13\
-[WorkflowDebug] opportunities=none\
-[WorkflowPipeline] tick_completed workflow=shopping confidence=0.75\
-[WorkflowRetention] window=short_5m events_total=13 events_in=13 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=short_5m types=[windowTitleChanged=8,activeAppChanged=5] title_transitions=8 app_transitions=1\
-[WorkflowContextShift] detected=no reason=no_shift\
-[WorkflowRetention] window=medium_15m events_total=13 events_in=13 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=medium_15m types=[windowTitleChanged=8,activeAppChanged=5] title_transitions=8 app_transitions=1\
-[WorkflowRetention] window=long_30m events_total=13 events_in=13 dropped=0 reason=outside_window_cutoff\
-[WorkflowRetention] window=long_30m types=[windowTitleChanged=8,activeAppChanged=5] title_transitions=8 app_transitions=1\
-[TemporalContextBuffer] updated events=13 span_s=1800\
-[TemporalContextBuffer] dominant_apps=Firefox,Contextual\
-[TemporalContextBuffer] repeated_terms=anker,bank,power,with,laptop\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=ambient_intent_inference outputBytes=157\
-[LocalAIConcurrency] completed purpose=ambient_intent_inference active_requests=0\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[ContextExecutionEngine] stage1_intent=understand_compare source=model confidence=1.00\
-[LocalAIConcurrency] started purpose=goal_inference active_requests=1\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=goal_inference inputBytes=755\
-[LocalModelConfig] model=qwen2.5:0.5b temp=0.1 mode=instruct\
-[BehaviorInferenceGuard] rejected=idle reason=active_workflow_context workflow=shopping title_transitions=8 repeated_terms=anker,bank,power,with,laptop,amazon,prime\
-[BehaviorInferenceGuard] corrected from=idle to=comparing reason=workflow_supported_temporal_evidence\
-\
-[BehaviorInference]\
-state=comparing\
-confidence=0.82\
-\
-[BehaviorReasoning]\
-reason=workflow_supported_temporal_evidence\
-\
-[BehaviorState]\
-committed=comparing\
-stability=0.60\
-\
-[WorkflowPacket] titles=8 ocr_events=0 selection_events=0 typing_events=0 pointer_events=0\
-[WorkflowPacket] repeated_terms_medium=7 repeated_terms_long=7 dominant_apps_medium=2\
-[WorkflowPacket] topic_source=medium_weighted\
-[WorkflowPacket] ocr_source=fresh_ocr_terms\
-[WorkflowPacket] long_window_role=continuity_only\
-[WorkflowPacket] discarded_titles=0 discarded_terms=0\
-[WorkflowPacket] ocr_hints_source=ocr_events_only ocr_hints_count=0 reason=no_ocr_events_or_below_threshold\
-[WorkflowTermScore] term=anker raw=7 weighted=5.83 first_age_s=95 last_age_s=6\
-[WorkflowTermScore] term=bank raw=5 weighted=4.35 first_age_s=70 last_age_s=6\
-[WorkflowTermScore] term=power raw=5 weighted=4.35 first_age_s=70 last_age_s=6\
-[WorkflowTermScore] term=with raw=3 weighted=2.63 first_age_s=70 last_age_s=6\
-[WorkflowTermScore] term=laptop raw=2 weighted=1.72 first_age_s=63 last_age_s=29\
-[WorkflowTermScore] term=amazon raw=2 weighted=1.48 first_age_s=95 last_age_s=89\
-[WorkflowTermScore] term=prime raw=2 weighted=1.48 first_age_s=95 last_age_s=89\
-[TemporalContextCompressor] packet_chars=897 events_used=13\
-[WorkflowFreshness] term=anker age_s=95 last_seen_age_s=6\
-[WorkflowFreshness] term=bank age_s=70 last_seen_age_s=6\
-[WorkflowFreshness] term=power age_s=70 last_seen_age_s=6\
-[WorkflowFreshness] term=with age_s=70 last_seen_age_s=6\
-[WorkflowFreshness] term=laptop age_s=63 last_seen_age_s=29\
-[WorkflowFreshness] term=amazon age_s=95 last_seen_age_s=89\
-[WorkflowFreshness] term=prime age_s=95 last_seen_age_s=89\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=70 last_seen_age_s=6\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=63 last_seen_age_s=29\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=70 last_seen_age_s=6\
-[WorkflowFreshness] title="Anker Laptop Power Bank, 25,000mAh Porta" age_s=63 last_seen_age_s=29\
-[WorkflowFreshness] title="Anker 24,000 mAh Power Bank with 140W Ou" age_s=70 last_seen_age_s=6\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=95 last_seen_age_s=89\
-[WorkflowFreshness] title="Inbox (4) - duncan.w.yu@gmail.com - Gmai" age_s=93 last_seen_age_s=93\
-[WorkflowFreshness] title="Amazon.ca: Anker: Anker Prime" age_s=95 last_seen_age_s=89\
-[TemporalContextCompressor] sources=apps,titles,activity,selection\
-[JarvisSuggestionGenerator] started workflow=shopping behavior=comparing\
-[LocalAIConcurrency] started purpose=jarvis_suggestion active_requests=2\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=jarvis_suggestion inputBytes=557\
-[LocalModelConfig] model=qwen2.5:0.5b temp=0.3 mode=instruct\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=goal_inference outputBytes=184\
-[LocalAIConcurrency] completed purpose=goal_inference active_requests=1\
-[GoalInferenceEngine] inferred goal=find_answer confidence=1.0\
-[ContextEvidence] attempting_public_web_research=yes\
-[PublicWebResearchEnricher] started intent=understand_compare workflow=shopping\
-[PublicWebResearchEnricher] query="Anker 24,000 mAh Power Bank with 140W Output Smart Display"\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=jarvis_suggestion outputBytes=45\
-[LocalAIConcurrency] completed purpose=jarvis_suggestion active_requests=0\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[AmbientJarvisSuggestion] created kind=compare_context confidence=0.82\
-[AmbientIntent] generated intent=compare_context confidence=0.82 goal="Compare the items or pages you've been looking at (anker or bank) based on screen context."\
-[JarvisSuggestionGenerator] generated kind=compare_context title="Do you want to compare the Anker power banks?"\
-[AmbientSuggestionSurface] visible=yes kind=compare_context\
-[JarvisRouting] route=ambient_context_only\
-[JarvisRouting] kind=compare_context semantic_driver=intent+judgment\
-[JarvisRouting] blocked_agentic reason=ambient_context_only\
-[ProposalContext] hidden reason=no_context\
-[TypingActivity] state=idle intensity=none events=0\
-[ContextDebug] stage=typing event=updated source=typingActivity meta=events=0,intensity=none,state=idle\
+[ContextModel] app=ChatGPT bundle=com.openai.chat windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=windowTitleChanged\
+[IntentSynthesis] suppressed reason=stale_context\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:53:22 +0000\
+[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "com.openai.chat", appName: Optional("ChatGPT"), title: Optional("ChatGPT")))\
+[ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
+[ContextEventStream] appended type=activeAppChanged app=ChatGPT title="Realistic Tank Shooter Demo(5) - TurboWa"\
+[ContextEventStream] size=9 window_s=547\
+[ProposalAttempt] id=DDE014 started app=com.openai.chat title=Realistic Tank Shooter Demo(5) - TurboWa\
+[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
+[ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
+[ContextEventStream] appended type=activeAppChanged app=ChatGPT title="ChatGPT"\
+[ContextEventStream] size=10 window_s=547\
+[ProposalAttempt] id=A8FC7A started app=com.openai.chat title=ChatGPT\
+[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
+[SelectionSource] focusedRole=AXTextArea extractionSource=none visitedCount=1 directLen=0 rangeLoc=0 rangeLen=0 valueLen=0 emittedLen=0 bundle=com.openai.chat\
+[ContextEventProducer] produced type=activeAppChanged app=ChatGPT title_hash=2135b53b\
+[WorkflowPipeline] event_recorded type=activeAppChanged\
+[ContextEventProducer] skipped reason=duplicate_event type=windowTitleChanged\
+[ProposalAttempt] id=DDE014 stored_visible=0 ui_visible=0 final_status=hidden\
+[ContextFeatures] len=6541 words=751 sentences=51 punct=0.0197 question=true code=true log=true lines=135 rep=0.340\
+[ContextEventProducer] produced type=activeAppChanged app=ChatGPT title_hash=db97fff0\
+[WorkflowPipeline] event_recorded type=activeAppChanged\
+[ProposalAttempt] id=A8FC7A stored_visible=0 ui_visible=0 final_status=hidden\
+[ContextEventStream] appended type=windowTitleChanged app=ChatGPT title="ChatGPT"\
+[ContextEventStream] size=11 window_s=547\
+[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
+[ContextEventProducer] produced type=windowTitleChanged app=ChatGPT title_hash=db97fff0\
+[WorkflowPipeline] event_recorded type=windowTitleChanged\
+[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[VisibleIntelligenceDebug] updated top=Top: pr:ambient_jarviFA54429C-FF3E-4244-8C01-0E891CAC969B \'b7 secondary \'b7 proposal generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[PublicWebSearch] provider=duckduckgo_html\
-[PublicWebResearchEnricher] search_results=count=11\
-[PublicWebResearchEnricher] fetching url=https://duckduckgo.com/y.js?ad_domain=ebay.ca&ad_provider=bingv7aa&ad_type=txad&click_metadata=4B2NhGDX51gniqRzRpFqLlu6KEjUUSW0qKjFRChY9lXInIWiLxOcdKUlToKtK1UQvuCK_p0gpnrORYcJjClYBQ8bgqUpfr4euhy1gIen1RxgLtMdbX92cwDJ2Q4CFP6wO9WfgYP2G2Bmx6AjHAyw5IrlfDUCtX5JxFhWZjRFNek.j3FcX8QFvFQyn4i%2DhXdzqA&rut=b39278338a074535e6d9e50a6b7fd0a46054a7fdb55c61132891f279c1271be6&u3=https%3A%2F%2Fwww.bing.com%2Faclick%3Fld%3De8UboP94eDTy7feaOzAzjTkTVUCUx_yCjzd6CNHYYcbHiyENLk_9vWo9A8PPKjM33CukhawzDtJ9Eoo3yjFCr%2DVXpa3vseRLBodfhgq3xRI73PNBNT1fvh2VM4HN1njqHkRLxsAra0YE1Zu6uxmocbxLi10cvo8FFTwSpOWCvzLbLT_oPbhVSWHUaTXmewvLwI1s6t7hjSZ94CJw3ZEL_1p8wfZoQ%26u%3DaHR0cHMlM2ElMmYlMmZ3d3cuZWJheS5jYSUyZnNjaCUyZmkuaHRtbCUzZl9ua3clM2RhbmtlciUyNTIwcG93ZXIlMjUyMGJhbmslMjUyMGNoYXJnZXIlMjZub3JvdmVyJTNkMSUyNm1rZXZ0JTNkMSUyNm1rcmlkJTNkNzA2LTE1NjU5OC05MDA4MTMtMiUyNm1rY2lkJTNkMiUyNm1rc2NpZCUzZDEwMiUyNmtleXdvcmQlM2RhbmtlciUyNTIwcG93ZXIlMjUyMGJhbmslMjUyMGNoYXJnZXIlMjZjcmxwJTNkXyUyNk1UX0lEJTNkJTI2Z2VvX2lkJTNkJTI2cmxzYXRhcmdldCUzZGt3ZC04MjczODczNzA3ODQwOCUzYWxvYy0zMiUyNmFkcG9zJTNkJTI2ZGV2aWNlJTNkYyUyNm1rdHlwZSUzZCUyNmxvYyUzZDUyNTQlMjZwb2klM2QlMjZhYmNJZCUzZCUyNmNtcGduJTNkMzkyMTE0OTMwJTI2c2l0ZWxuayUzZCUyNmFkZ3JvdXBpZCUzZDEzMjM4MTMwNDI4MTU2NDIlMjZuZXR3b3JrJTNkcyUyNm1hdGNodHlwZSUzZHAlMjZtc2Nsa2lkJTNkMjA2ZjBhZmUzZDIxMWEyOThkZTY2MGU0Njg2MWNkNzc%26rlid%3D206f0afe3d211a298de660e46861cd77&vqd=4-23413434185279190748446946643677125227&iurl=%7B1%7DIG%3D2295962EACC44343BEE80A887595A2E2%26CID%3D084AD6FA8DEA6A5408DFC1938CA66BEE%26ID%3DDevEx%2C5038.1\
-nw_endpoint_flow_failed_with_error [C10.1.1.1 40.89.244.232:443 in_progress channel-flow (satisfied (Path is satisfied), viable, interface: en0[802.11], ipv4, dns, uses wifi, LQM: good)] already failing, returning\
-nw_endpoint_flow_failed_with_error [C10.1.1.1 40.89.244.232:443 cancelled channel-flow ((null))] already failing, returning\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C10] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C10] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C10] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C10] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_connected_local_endpoint_block_invoke [C10] Client called nw_connection_copy_connected_local_endpoint on unconnected nw_connection\
-nw_connection_copy_connected_path_block_invoke [C10] Client called nw_connection_copy_connected_path on unconnected nw_connection\
-nw_connection_copy_connected_remote_endpoint_block_invoke [C10] Client called nw_connection_copy_connected_remote_endpoint on unconnected nw_connection\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C10] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_connection_copy_protocol_metadata_internal_block_invoke [C10] Client called nw_connection_copy_protocol_metadata_internal on unconnected nw_connection\
-nw_flow_add_write_request [C10 duckduckgo.com:443 failed parent-flow (satisfied (Path is satisfied), interface: en0[802.11], ipv4, dns, uses wifi, LQM: good)] cannot accept write requests\
-nw_write_request_report [C10] Send failed with error "Socket is not connected"\
-nw_connection_copy_metadata_block_invoke [C10] Client called nw_connection_copy_metadata on unconnected nw_connection\
-[PublicWebResearchEnricher] fetched url=https://duckduckgo.com/y.js?ad_domain=ebay.ca&ad_provider=bingv7aa&ad_type=txad&click_metadata=4B2NhGDX51gniqRzRpFqLlu6KEjUUSW0qKjFRChY9lXInIWiLxOcdKUlToKtK1UQvuCK_p0gpnrORYcJjClYBQ8bgqUpfr4euhy1gIen1RxgLtMdbX92cwDJ2Q4CFP6wO9WfgYP2G2Bmx6AjHAyw5IrlfDUCtX5JxFhWZjRFNek.j3FcX8QFvFQyn4i%2DhXdzqA&rut=b39278338a074535e6d9e50a6b7fd0a46054a7fdb55c61132891f279c1271be6&u3=https%3A%2F%2Fwww.bing.com%2Faclick%3Fld%3De8UboP94eDTy7feaOzAzjTkTVUCUx_yCjzd6CNHYYcbHiyENLk_9vWo9A8PPKjM33CukhawzDtJ9Eoo3yjFCr%2DVXpa3vseRLBodfhgq3xRI73PNBNT1fvh2VM4HN1njqHkRLxsAra0YE1Zu6uxmocbxLi10cvo8FFTwSpOWCvzLbLT_oPbhVSWHUaTXmewvLwI1s6t7hjSZ94CJw3ZEL_1p8wfZoQ%26u%3DaHR0cHMlM2ElMmYlMmZ3d3cuZWJheS5jYSUyZnNjaCUyZmkuaHRtbCUzZl9ua3clM2RhbmtlciUyNTIwcG93ZXIlMjUyMGJhbmslMjUyMGNoYXJnZXIlMjZub3JvdmVyJTNkMSUyNm1rZXZ0JTNkMSUyNm1rcmlkJTNkNzA2LTE1NjU5OC05MDA4MTMtMiUyNm1rY2lkJTNkMiUyNm1rc2NpZCUzZDEwMiUyNmtleXdvcmQlM2RhbmtlciUyNTIwcG93ZXIlMjUyMGJhbmslMjUyMGNoYXJnZXIlMjZjcmxwJTNkXyUyNk1UX0lEJTNkJTI2Z2VvX2lkJTNkJTI2cmxzYXRhcmdldCUzZGt3ZC04MjczODczNzA3ODQwOCUzYWxvYy0zMiUyNmFkcG9zJTNkJTI2ZGV2aWNlJTNkYyUyNm1rdHlwZSUzZCUyNmxvYyUzZDUyNTQlMjZwb2klM2QlMjZhYmNJZCUzZCUyNmNtcGduJTNkMzkyMTE0OTMwJTI2c2l0ZWxuayUzZCUyNmFkZ3JvdXBpZCUzZDEzMjM4MTMwNDI4MTU2NDIlMjZuZXR3b3JrJTNkcyUyNm1hdGNodHlwZSUzZHAlMjZtc2Nsa2lkJTNkMjA2ZjBhZmUzZDIxMWEyOThkZTY2MGU0Njg2MWNkNzc%26rlid%3D206f0afe3d211a298de660e46861cd77&vqd=4-23413434185279190748446946643677125227&iurl=%7B1%7DIG%3D2295962EACC44343BEE80A887595A2E2%26CID%3D084AD6FA8DEA6A5408DFC1938CA66BEE%26ID%3DDevEx%2C5038.1 status=success\
-[PublicWebResearchEnricher] fetching url=https://www.bestbuy.ca/en-ca/product/anker-power-bank-24-000-mah-3-port-portable-charger-with-140w-output-smart-digital-display/19192244\
-[SuggestionCard] accepted proposal primary=ambient_jarvis:D6C05C90-B9AB-4F7F-BCD0-33349E3170BB\
-[RedundancyMemory] event=accepted action=ambient_jarvis:D6C05C90-B9AB-4F7F-BCD0-33349E3170BB\
-[ProposalCooldown] recorded accept key=ambient_jarvis:D6C05C90-B9AB-4F7F-BCD0-33349E3170BB\
-[AmbientSuggestionSurface] accepted id=ambient_jarvis:D6C05C90-B9AB-4F7F-BCD0-33349E3170BB\
-[ProposalContext] hidden reason=no_context\
+[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=activeAppChanged\
+[ContextPipeline] redundancy_prune reason=active_app_change\
+[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
+[SessionTracking] continuity=0.18 confidence=0.25 workflow=unknown patterns=decayApplied,weakEvidenceDampen\
+[IntentSynthesis] suppressed reason=stale_context\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:53:22 +0000\
+[SourceEvent] sourceChanged(Contextual.SourceChange.activeAppChanged(bundleIdentifier: "org.mozilla.firefox", name: Optional("Firefox")))\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[VisibleIntelligenceDebug] updated top=Top: pr:ambient_jarviFA54429C-FF3E-4244-8C01-0E891CAC969B \'b7 secondary \'b7 proposal generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
-[ContextExecutionEngine] using_intent=compare_context goal="Compare the items or pages you've been looking at (anker or bank) based on screen context."\
-[ContextExecutionEngine] started workflow=shopping behavior=comparing\
-[ContextDebug] stage=ax event=collected source=axText reason=attempt\
-[AXContent] extracted app=Firefox nodes=82 textFragments=46 conf=0.67\
-[ContextDebug] stage=ax event=collected source=axText privacy=moderate confidence=0.67 meta=controls=4,fragments=46,nodes=82\
-[AXContent] skipped reason=depth_limit\
-[ContextDebug] stage=ax event=skipped source=axText reason=depth_limit\
-[BrowserContextExtractor] started app=Firefox pid=97091\
-[BrowserContextExtractor] current_url_found=yes source=ax_webarea_axurl\
-[BrowserContextExtractor] tab_titles=[Dexter, Inbox (4) - duncan.w.yu@gmail.com - Gmail, Amazon.ca: Anker: Anker Prime, Anker 24,000 mAh Power Bank with 140W Output Smart Display, Anker Laptop Power Bank, 25,000mAh Portable Charger with Triple 100W USB-C Ports, Built-in Retractable Cables, Flight-Approved for Travel, iPhone 17/16 Series, MacBook, Samsung, and More : Amazon.ca: Electronics, first project as a reformed man - TurboWarp]\
-[PublicPageContextExtractor] skipped reason=sensitive_or_private_url\
-[PublicPageContextExtractor] skipped reason=no_public_url_available\
-[WebContextEnricher] skipped reason=low_precision_for_product_context\
-[WorkingMemory] recent_entities=[Anker 24,000 mAh Power Bank with 140W Output Smart Display]\
-[WorkingMemory] comparison_candidates=[Anker 24,000 mAh Power Bank with 140W Output Smart Display]\
-[WorkingMemory] entities=1 concepts=3 comparisons=1\
-[WorkingMemory] summary="comparing anker amazon prime"\
-[ContextEvidence] quality=title_only\
-[ModelManager] status=ready backend=ollama active_router=qwen2.5:0.5b active_planner=phi4-mini\
-[LocalAIConcurrency] started purpose=ambient_intent_inference active_requests=1\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=ambient_intent_inference inputBytes=1034\
-[LocalModelConfig] model=qwen2.5:0.5b temp=0.2 mode=instruct\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=ambient_intent_inference outputBytes=183\
-[LocalAIConcurrency] completed purpose=ambient_intent_inference active_requests=0\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[ContextExecutionEngine] stage1_intent=understand_compare source=model confidence=0.95\
-[ModelManager] check_cached status=ready\
-[LocalAIConcurrency] started purpose=goal_inference active_requests=1\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=goal_inference inputBytes=755\
-[LocalModelConfig] model=qwen2.5:0.5b temp=0.1 mode=instruct\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=goal_inference outputBytes=289\
-[LocalAIConcurrency] completed purpose=goal_inference active_requests=0\
-[GoalInferenceEngine] inferred goal=find_answer confidence=0.9\
-[ContextEvidence] attempting_public_web_research=yes\
-[PublicWebResearchEnricher] fetched url=https://www.bestbuy.ca/en-ca/product/anker-power-bank-24-000-mah-3-port-portable-charger-with-140w-output-smart-digital-display/19192244 status=success\
-[PublicWebResearchEnricher] fetching url=https://www.anker.com/ca/products/a1289\
-[PublicWebResearchEnricher] started intent=understand_compare workflow=shopping\
-[PublicWebResearchEnricher] query="Anker 24,000 mAh Power Bank with 140W Output Smart Display"\
-[PublicWebResearchEnricher] fetched url=https://www.anker.com/ca/products/a1289 status=success\
-[PublicWebResearchEnricher] extracted facts=9 sources=3\
-[PublicWebResearchEnricher] completed quality=public_web_research\
-[ContextEvidence] quality=public_web_research\
-[JudgmentLayer] relationship=insufficientEvidence\
-[JudgmentLayer] comparison_validity=notApplicable\
-[JudgmentLayer] decision_type=unclear\
-[JudgmentLayer] rationale=entities=1 | avg_jaccard=0.00 | shared_concepts=000,140w,anker,display | dimensions=chargeCapacity,power\
-[JudgmentLayer] confidence=0.60\
-[JudgmentLayer] rejected_comparison reason=incompatible_units\
-[ContextExecutionEngine] judgment_injected=yes\
-[LocalAIConcurrency] started purpose=ambient_context_execution active_requests=1\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=ambient_context_execution inputBytes=4250\
-[LocalModelConfig] model=qwen2.5:0.5b temp=0.1 mode=instruct\
-[PublicWebSearch] provider=duckduckgo_html\
-[PublicWebResearchEnricher] search_results=count=10\
-[PublicWebResearchEnricher] fetching url=https://www.bestbuy.ca/en-ca/product/anker-power-bank-24-000-mah-3-port-portable-charger-with-140w-output-smart-digital-display/19192244\
-[PublicWebResearchEnricher] fetched url=https://www.bestbuy.ca/en-ca/product/anker-power-bank-24-000-mah-3-port-portable-charger-with-140w-output-smart-digital-display/19192244 status=success\
-[PublicWebResearchEnricher] fetching url=https://www.anker.com/ca/products/a1289\
-[PublicWebResearchEnricher] fetched url=https://www.anker.com/ca/products/a1289 status=success\
-[PublicWebResearchEnricher] fetching url=https://www.amazon.ca/Anker-PowerCore-Portable-Charger-Compatible/dp/B09VPHVT2Z\
-[PublicWebResearchEnricher] fetched url=https://www.amazon.ca/Anker-PowerCore-Portable-Charger-Compatible/dp/B09VPHVT2Z status=success\
-[PublicWebResearchEnricher] extracted facts=9 sources=3\
-[PublicWebResearchEnricher] completed quality=public_web_research\
-[ContextEvidence] quality=public_web_research\
-[JudgmentLayer] relationship=insufficientEvidence\
-[JudgmentLayer] comparison_validity=notApplicable\
-[JudgmentLayer] decision_type=unclear\
-[JudgmentLayer] rationale=entities=1 | avg_jaccard=0.00 | shared_concepts=000,140w,anker,display | dimensions=chargeCapacity,power\
-[JudgmentLayer] confidence=0.60\
-[JudgmentLayer] rejected_comparison reason=incompatible_units\
-[ContextExecutionEngine] judgment_injected=yes\
-[ModelManager] check_cached status=ready\
-[LocalAIConcurrency] started purpose=ambient_context_execution active_requests=2\
-[LocalAI] generate_started model=qwen2.5:0.5b purpose=ambient_context_execution inputBytes=4391\
-[LocalModelConfig] model=qwen2.5:0.5b temp=0.1 mode=instruct\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=ambient_context_execution outputBytes=714\
-[LocalAIConcurrency] completed purpose=ambient_context_execution active_requests=1\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[ContextExecutionEngine] grounded_facts=count=9\
-[ContextExecutionEngine] completed observed=0 inferred=2 unknown=0 web=9 source=model\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
-[LocalAI] generate_done model=qwen2.5:0.5b purpose=ambient_context_execution outputBytes=909\
-[LocalAIConcurrency] completed purpose=ambient_context_execution active_requests=0\
-[ArtifactReasoning] comparison_reframed reason=entities_not_same_category\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[JarvisSuggestionValidation] accepted=yes reason=context_only\
-[ContextExecutionEngine] grounded_facts=count=9\
-[ContextExecutionEngine] completed observed=0 inferred=1 unknown=0 web=9 source=model\
-[SelectionSource] focusedRole=AXWebArea extractionSource=none visitedCount=80 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[ContextModel] app=Firefox bundle=org.mozilla.firefox windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=windowTitleChanged\
+[IntentSynthesis] suppressed reason=stale_context\
+[GeneratedProposal] activation_skipped phase=skipped_before_situational_synthesis detail=no_trigger_packet last=windowTitleChanged\
+[SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "org.mozilla.firefox", appName: Optional("Firefox"), title: Optional("ChatGPT")))\
+[ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
+[ProposalAttempt] id=AC2889 started app=org.mozilla.firefox title=ChatGPT\
+[ContextEventStream] appended type=activeAppChanged app=Firefox title="ChatGPT"\
+[ContextEventStream] size=12 window_s=547\
+[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
+[ContextEventStream] appended type=activeAppChanged app=Firefox title="ChatGPT"\
+[ContextEventStream] size=13 window_s=547\
+[SelectionSource] focusedRole=AXGroup extractionSource=none visitedCount=60 directLen=0 rangeLoc=nil rangeLen=nil valueLen=nil emittedLen=0 bundle=org.mozilla.firefox\
+[ContextEventProducer] produced type=activeAppChanged app=Firefox title_hash=db97fff0\
+[WorkflowPipeline] event_recorded type=activeAppChanged\
+[ContextEventProducer] skipped reason=duplicate_event type=windowTitleChanged\
+[ProposalAttempt] id=AC2889 stored_visible=0 ui_visible=0 final_status=hidden\
+[ContextEventProducer] produced type=activeAppChanged app=Firefox title_hash=db97fff0\
+[WorkflowPipeline] event_recorded type=activeAppChanged\
+[ContextEventProducer] skipped reason=duplicate_event type=windowTitleChanged\
+[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
+[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
+[ActiveContextRefresh] suppressed reason=workflow_not_actionable\
 [ContextAwarenessUI] hidden reason=no_context\
 [RichContextDebugUI] hidden reason=no_context\
 [AssistanceCategory] summary top=none detail=\
@@ -937,45 +677,42 @@ nw_connection_copy_metadata_block_invoke [C10] Client called nw_connection_copy_
 [VisibleGeneratedAction] hidden reason=no_items\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[RichAssistanceRank] ranked count=0 primary=nil reason=none\
-[VisibleIntelligenceDebug] updated top=none generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
+[RichAssistanceRank] ranked count=1 primary=pr:ambient_jarvis:FE78D3A2-2185-45CA-B23B-5C3587628186 reason=static_base_relevance\
+[VisibleIntelligenceDebug] updated top=Top: pr:ambient_jarviFE78D3A2-2185-45CA-B23B-5C3587628186 \'b7 secondary \'b7 proposal generated=none workflow=Workflow: unknown \'b7 conf=medium \'b7 continuity=weak \'b7 stale \'b7 ranking_touch=n\
 [WorkflowContinuityUI] hidden reason=no_fused_packet\
-[ContextModel] app=Xcode bundle=com.apple.dt.Xcode windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=activeAppChanged\
+[ContextModel] app=Xcode bundle=com.apple.dt.Xcode windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=activeAppChanged\
 [ContextPipeline] redundancy_prune reason=active_app_change\
-[WorkflowInference] inferred workflow=unknown confidence=0.62 signals=no_fused_packet\
-[SessionTracking] continuity=0.12 confidence=0.21 workflow=unknown patterns=bundleLoop,decayApplied,weakEvidenceDampen\
 [IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:11:16 +0000\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:53:24 +0000\
 [SourceEvent] sourceChanged(Contextual.SourceChange.activeAppChanged(bundleIdentifier: "com.apple.dt.Xcode", name: Optional("Xcode")))\
 [InlineAssistance] suppressed reason=no_context\
 [InlineAssistance] skipped reason=no_context\
-[ContextModel] app=Xcode bundle=com.apple.dt.Xcode windowTitle=true clipboard=(available:true length:14206) selection=(available:false length:0) lastTrigger=windowTitleChanged\
+[ContextModel] app=Xcode bundle=com.apple.dt.Xcode windowTitle=true clipboard=(available:true length:6541) selection=(available:false length:0) lastTrigger=windowTitleChanged\
 [IntentSynthesis] suppressed reason=stale_context\
-[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=14206 selectionLength=0 createdAt=2026-05-30 03:11:17 +0000\
+[TriggerPacket] type=context_metadata_eligible reason=App/window metadata changed; situational proposal path (no fused packet required). actions=[] clipboardLength=6541 selectionLength=0 createdAt=2026-06-02 00:53:24 +0000\
 [SourceEvent] sourceChanged(Contextual.SourceChange.windowTitleChanged(bundleIdentifier: "com.apple.dt.Xcode", appName: Optional("Xcode"), title: Optional("Contextual \'97 AppDelegate.swift")))\
 [ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
-[ContextEventStream] appended type=activeAppChanged app=Xcode title="Anker 24,000 mAh Power Bank with 140W Ou"\
-[ContextEventStream] size=14 window_s=122\
-[ProposalAttempt] id=4F7232 started app=com.apple.dt.Xcode title=Anker 24,000 mAh Power Bank with 140W Ou\
+[ContextEventStream] appended type=activeAppChanged app=Xcode title="ChatGPT"\
+[ContextEventStream] size=14 window_s=549\
+[ProposalAttempt] id=63EE1A started app=com.apple.dt.Xcode title=ChatGPT\
 [ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
 [ReasoningEngine] decision surface=true primary=none confidence=0.52 reason=dynamic_only_context_metadata\
+[ProposalAttempt] id=7A66A4 started app=com.apple.dt.Xcode title=Contextual \'97 AppDelegate.swift\
 [ContextEventStream] appended type=activeAppChanged app=Xcode title="Contextual \'97 AppDelegate.swift"\
-[ContextEventStream] size=15 window_s=122\
-[ProposalAttempt] id=37B4A6 started app=com.apple.dt.Xcode title=Contextual \'97 AppDelegate.swift\
 [ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available\
-[ContextEventProducer] produced type=activeAppChanged app=Xcode title_hash=2b22236c\
+[ContextEventStream] size=15 window_s=549\
+[SelectionSource] focusedRole=AXTextArea extractionSource=none visitedCount=1 directLen=0 rangeLoc=9223372036854775807 rangeLen=0 valueLen=60810 emittedLen=0 bundle=com.apple.dt.Xcode\
+[ContextEventProducer] produced type=activeAppChanged app=Xcode title_hash=db97fff0\
 [WorkflowPipeline] event_recorded type=activeAppChanged\
 [ContextEventProducer] skipped reason=duplicate_event type=windowTitleChanged\
-[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[ProposalAttempt] id=4F7232 stored_visible=0 ui_visible=0 final_status=hidden\
-[ContextFeatures] len=14206 words=1664 sentences=143 punct=0.0175 question=true code=true log=true lines=204 rep=0.250\
+[ProposalAttempt] id=63EE1A stored_visible=0 ui_visible=0 final_status=hidden\
 [ContextEventProducer] produced type=activeAppChanged app=Xcode title_hash=20884de1\
 [WorkflowPipeline] event_recorded type=activeAppChanged\
-[ProposalAttempt] id=37B4A6 stored_visible=0 ui_visible=0 final_status=hidden\
+[ProposalAttempt] id=7A66A4 stored_visible=0 ui_visible=0 final_status=hidden\
 [ContextEventStream] appended type=windowTitleChanged app=Xcode title="Contextual \'97 AppDelegate.swift"\
-[ContextEventStream] size=16 window_s=122\
+[ContextEventStream] size=16 window_s=549\
+[WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
 [ContextEventProducer] produced type=windowTitleChanged app=Xcode title_hash=20884de1\
 [WorkflowPipeline] event_recorded type=windowTitleChanged\
 [WorkflowPipeline] tick_scheduled delay_ms=2500 reason=meaningful_event\
-[SelectionSource] focusedRole=AXTextArea extractionSource=none visitedCount=1 directLen=0 rangeLoc=9223372036854775807 rangeLen=0 valueLen=84780 emittedLen=0 bundle=com.apple.dt.Xcode\
-[SelectionSource] focusedRole=AXTextArea extractionSource=none visitedCount=1 directLen=0 rangeLoc=9223372036854775807 rangeLen=0 valueLen=84965 emittedLen=0 bundle=com.apple.dt.Xcode}
+[SelectionSource] focusedRole=AXTextArea extractionSource=none visitedCount=1 directLen=0 rangeLoc=9223372036854775807 rangeLen=0 valueLen=63902 emittedLen=0 bundle=com.apple.dt.Xcode}

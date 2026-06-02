@@ -242,6 +242,136 @@ public struct AmbientJarvisSuggestionSelfTest: Sendable {
         // Cleanup
         UserDefaults.standard.removeObject(forKey: "contextual.day1BehaviorValidationMode")
         
+        // Phase 20I Tests
+        
+        // Test 7: compartment_trust_bypasses_workflow_trust
+        let lowTrustWF = WorkflowState(
+            workflowType: .studying,
+            confidence: 0.10, // Very low
+            evidence: [],
+            uncertainty: "low",
+            startedAt: now,
+            lastUpdatedAt: now,
+            stabilityScore: 0.1,
+            dominantApps: [],
+            repeatedTerms: [],
+            recentTransitions: [],
+            suggestedIntentHints: [],
+            sourcePacketHash: "abc"
+        )
+        let strongComp = TaskCompartment(
+            workflow: .studying,
+            label: "CISC 121",
+            dominantTerms: ["python", "loops", "recursion"],
+            entities: ["001_intro.pdf", "002_loops.pdf", "003_recursion.pdf"],
+            browserTabs: ["tab1", "tab2", "tab3", "tab4", "tab5"],
+            confidence: 0.90
+        )
+        let sTrust = await JarvisSuggestionGenerator.generate(
+            workflowState: lowTrustWF,
+            behavioralRecord: makeBehavior(.learning),
+            packet: packet,
+            recentTitles: ["CISC 121 Loops"],
+            repeatedTerms: ["python"],
+            activeCompartment: strongComp
+        )
+        if sTrust != nil {
+            print("[AmbientJarvisSuggestionSelfTest] pass case=compartment_trust_bypasses_workflow_trust")
+        } else {
+            print("[AmbientJarvisSuggestionSelfTest] fail case=compartment_trust_bypasses_workflow_trust")
+            failures.append("compartment_trust_bypasses_workflow_trust")
+        }
+        
+        // Test 8: payload_preserves_candidates
+        let memoryWithCandidates = WorkingMemorySnapshot(
+            currentEntity: "Anker Prime 200W",
+            recentEntities: ["Anker Prime 200W", "Anker PowerCore 24K", "Baseus 65W", "Ugreen 100W"],
+            repeatedConcepts: ["anker", "powerbank"],
+            inferredActivity: "comparing",
+            comparisonCandidates: ["Anker Prime 200W", "Anker PowerCore 24K", "Baseus 65W", "Ugreen 100W"],
+            relatedFocusEntities: ["Anker PowerCore 24K", "Baseus 65W"]
+        )
+        let sPayload = await JarvisSuggestionGenerator.generate(
+            workflowState: workflowState,
+            behavioralRecord: behavioralRecord,
+            packet: packet,
+            recentTitles: ["Anker Prime 200W"],
+            repeatedTerms: ["anker"],
+            memory: memoryWithCandidates,
+            activeCompartment: strongComp
+        )
+        if let s = sPayload, let p = s.contextPayload, p.comparisonCandidates.count >= 4 {
+            print("[AmbientJarvisSuggestionSelfTest] pass case=payload_preserves_candidates")
+        } else {
+            print("[AmbientJarvisSuggestionSelfTest] fail case=payload_preserves_candidates")
+            failures.append("payload_preserves_candidates")
+        }
+        
+        // Test 9: capability_selection_logic
+        let studyTitleOnly = CapabilitySelector.select(
+            compartment: strongComp,
+            workingMemory: WorkingMemorySnapshot(currentEntity: "Calc 1", recentEntities: ["Calc 1"], repeatedConcepts: [], inferredActivity: "learning", comparisonCandidates: []),
+            evidenceQuality: "title_only",
+            currentApp: "Safari",
+            behavior: .learning,
+            userInitiated: false,
+            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+        )
+        if studyTitleOnly.primary.id == "create_review_plan" {
+             print("[AmbientJarvisSuggestionSelfTest] pass case=capability_selector_study_plan")
+        } else {
+             print("[AmbientJarvisSuggestionSelfTest] fail case=capability_selector_study_plan")
+             failures.append("capability_selector_study_plan")
+        }
+
+        let studyDeep = CapabilitySelector.select(
+            compartment: strongComp,
+            workingMemory: memoryWithCandidates,
+            evidenceQuality: "ax_content",
+            currentApp: "Safari",
+            behavior: .learning,
+            userInitiated: false,
+            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+        )
+        if studyDeep.primary.id == "generate_quiz" {
+             print("[AmbientJarvisSuggestionSelfTest] pass case=capability_selector_quiz")
+        } else {
+             print("[AmbientJarvisSuggestionSelfTest] fail case=capability_selector_quiz")
+             failures.append("capability_selector_quiz")
+        }
+        
+        let debugCap = CapabilitySelector.select(
+            compartment: nil,
+            workingMemory: WorkingMemorySnapshot(currentEntity: "main.py", recentEntities: ["main.py"], repeatedConcepts: ["error", "index"], inferredActivity: "debugging", comparisonCandidates: []),
+            evidenceQuality: "title_only",
+            currentApp: "Cursor",
+            behavior: .debugging,
+            userInitiated: false,
+            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+        )
+        if debugCap.primary.id == "diagnose_error" {
+             print("[AmbientJarvisSuggestionSelfTest] pass case=capability_selector_diagnostic")
+        } else {
+             print("[AmbientJarvisSuggestionSelfTest] fail case=capability_selector_diagnostic")
+             failures.append("capability_selector_diagnostic")
+        }
+
+        let writeCap = CapabilitySelector.select(
+            compartment: nil,
+            workingMemory: WorkingMemorySnapshot(currentEntity: "essay.docx", recentEntities: ["essay.docx"], repeatedConcepts: [], inferredActivity: "writing", comparisonCandidates: []),
+            evidenceQuality: "selection",
+            currentApp: "TextEdit",
+            behavior: .writing,
+            userInitiated: false,
+            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+        )
+        if writeCap.primary.id == "improve_text" {
+             print("[AmbientJarvisSuggestionSelfTest] pass case=capability_selector_improve")
+        } else {
+             print("[AmbientJarvisSuggestionSelfTest] fail case=capability_selector_improve")
+             failures.append("capability_selector_improve")
+        }
+
         let ok = failures.isEmpty
         print("[AmbientJarvisSuggestionSelfTest] completed ok=\(ok)")
         return ok
