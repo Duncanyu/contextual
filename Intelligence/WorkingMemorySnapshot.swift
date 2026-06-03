@@ -9,6 +9,9 @@ public struct WorkingMemorySnapshot: Sendable, Codable, Equatable {
 	public let staleEntities: [String]
 	public let relatedFocusEntities: [String]
 	public let backgroundEntities: [String]
+	public let currentFocusTerms: [String]
+	public let relatedTerms: [String]
+	public let backgroundTerms: [String]
     
     // Phase 20I: Trust Metrics
     public var workingMemoryTrust: Double {
@@ -26,7 +29,10 @@ public struct WorkingMemorySnapshot: Sendable, Codable, Equatable {
         comparisonCandidates: [String],
 		staleEntities: [String] = [],
 		relatedFocusEntities: [String] = [],
-		backgroundEntities: [String] = []
+		backgroundEntities: [String] = [],
+		currentFocusTerms: [String] = [],
+		relatedTerms: [String] = [],
+		backgroundTerms: [String] = []
     ) {
         self.currentEntity = currentEntity
         self.recentEntities = recentEntities
@@ -36,5 +42,8 @@ public struct WorkingMemorySnapshot: Sendable, Codable, Equatable {
 		self.staleEntities = staleEntities
 		self.relatedFocusEntities = relatedFocusEntities
 		self.backgroundEntities = backgroundEntities
+		self.currentFocusTerms = currentFocusTerms
+		self.relatedTerms = relatedTerms
+		self.backgroundTerms = backgroundTerms
     }
 }

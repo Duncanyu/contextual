@@ -241,6 +241,10 @@ final class AppState: ObservableObject {
 
 	/// Most recent canonical snapshot, updated at every pipeline trigger.
 	/// Used exclusively by the hook sandbox debug button — not consumed by any production path.
+	public static var lastAssistantInitiatedAppLaunch: String? = nil
+	public static var lastAssistantInitiatedAction: String? = nil
+	public static var lastAssistantInitiatedAt: Date? = nil
+
 	@Published private(set) var latestCanonicalSnapshot: CanonicalGeneratedExecutionContextSnapshot?
 
 	/// True while the hook sandbox chain is executing (gates button).
@@ -320,7 +324,7 @@ final class AppState: ObservableObject {
 				title: suggestion.title,
 				sourceCaption: "Jarvis Suggestion (Preview-Only)",
 				primaryActionId: "ambient_jarvis:\(suggestion.id)",
-				secondaryActionIds: [],
+				secondaryActionIds: suggestion.actionCard?.secondaryAction != nil ? ["ambient_jarvis:secondary:\(suggestion.id)"] : [],
 				confidence: suggestion.confidence,
 				reason: "ambient_context_only"
 			)
@@ -442,10 +446,89 @@ final class AppState: ObservableObject {
 			print("[AmbientSuggestionSurface] accepted id=\(id)")
 			Task {
 				if let suggestion = self.activeAmbientJarvisSuggestion {
-					// Phase 18C: route ambient acceptance through the generic
-					// ContextExecutionEngine. No workflow-specific action; the
-					// same engine produces Observed / Inferred / Unknown for
-					// every workflow.
+					let environmentActionIds: Set<String> = [
+						"play_focus_media",
+						"pause_media",
+						"open_relevant_app",
+						"launch_recent_workspace",
+						"open_related_app_set",
+						"start_focus_timer",
+						// Phase 26.1 — Friction-reduction capabilities route through executor, not text generation
+						"collect_references",
+						"pin_reference_tabs",
+						"restore_workspace",
+						"arrange_side_by_side",
+						"resume_focus_media",
+						"extract_and_organize",
+						"precompute_answer",
+					]
+					let isSecondary = id.contains(":secondary:")
+					let isAuxiliary = id.contains(":auxiliary:")
+					let isEnvIntent = suggestion.intent.hasPrefix("environment:")
+					
+					// A card is an environment card if its primary action is a known environment ID,
+					// or if it explicitly specifies local_action execution with system_action output.
+					let isEnvCard = suggestion.actionCard.map { card in
+						environmentActionIds.contains(card.primaryAction.id) ||
+						(card.primaryAction.executionMode == .local_action && card.primaryAction.outputType == "system_action")
+					} ?? false
+
+					if (isEnvIntent || isEnvCard) && !isSecondary && !isAuxiliary {
+						print("[ActionClickRouter] route=environment_executor")
+						print("[ActionClickRouter] skipped_context_execution=yes")
+
+						let actionTypeStr = suggestion.actionCard?.primaryAction.id ?? suggestion.intent.replacingOccurrences(of: "environment:", with: "")
+
+						let executionMode = suggestion.actionCard?.primaryAction.executionMode ?? .local_action
+						let type = EnvironmentActionType(rawValue: actionTypeStr) ?? .playFocusMedia
+						let action = EnvironmentAction(
+							type: type,
+							title: suggestion.title,
+							reasoning: suggestion.intentGoal,
+							executionMode: executionMode,
+							requiresConfirmation: suggestion.actionCard?.primaryAction.requiresConfirmation ?? true,
+							apps: suggestion.actionCard?.primaryAction.inputRequirements ?? [],
+							capabilityId: actionTypeStr
+						)
+
+						let status = await EnvironmentActionExecutor.previewOrExecute(action)
+						print("[EnvironmentActionExecution] completed status=\(status.rawValue)")
+
+						if executionMode == .preview_only {
+							let previewText = suggestion.actionCard?.previewPayload.render() ?? "Preview for workspace action"
+							await MainActor.run {
+								self.latestActionResult = previewText
+								self.latestActionTimestamp = Date()
+								self.latestActionId = id
+							}
+						} else {
+							// For actual execution (local_action), we clear any previous result text.
+							await MainActor.run {
+								self.latestActionResult = nil
+								self.latestActionTimestamp = Date()
+								self.latestActionId = id
+							}
+						}
+						return
+					}
+
+					// Special case: copy_result_to_clipboard auxiliary click
+					if isAuxiliary && suggestion.actionCard?.auxiliaryAction?.id == "copy_result_to_clipboard" {
+						print("[ActionClickRouter] route=capability_executor reason=auxiliary_copy")
+						let resultText = self.latestActionResult ?? ""
+						let _ = await CapabilityExecutor.shared.execute(
+							capability: suggestion.actionCard!.auxiliaryAction!,
+							context: ["text": resultText]
+						)
+						return
+					}
+
+					// Otherwise, route through ContextExecutionEngine:
+					// This handles cognitive-only suggestions AND secondary clicks for hybrid suggestions.
+					if isSecondary {
+						print("[ActionClickRouter] route=context_execution reason=secondary_click_on_hybrid")
+					}
+					
 					let snapshot = self.latestCanonicalSnapshot
 					let result = await ContextExecutionEngine.execute(
 						suggestion: suggestion,

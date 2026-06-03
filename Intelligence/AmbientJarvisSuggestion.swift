@@ -18,6 +18,7 @@ public enum AmbientSuggestionKind: String, Sendable, Codable {
 
 public enum AmbientExecutionMode: String, Sendable, Codable {
     case context_only_preview = "context_only_preview"
+    case local_action = "local_action"
     case unavailable = "unavailable"
     case blocked_requires_control = "blocked_requires_control"
 }

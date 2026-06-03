@@ -352,3 +352,19 @@ Every phase should make the next phase easier, not harder.
 Bundled `MicroDecisionClassifier.mlmodel` is produced by `Scripts/build_micro_classifier.py` (Python venv with `scikit-learn==1.5.1` + `coremltools`). Feature layout is duplicated in `Intelligence/MicroDecisionFeatureEncoder.swift`. Xcode compiles the `.mlmodel` to `.mlmodelc` in the app bundle.
 
 T12.10 — Phase 12 tuning pass: thresholds and gates in `IntelligenceProposalSelector`, `IntelligenceBudgetManager`, `IntelligenceDecisionCache`, micro skip length, redundancy/floating cooldowns; no architecture change. Follow-up: classifier + `ContextClassifier` + relevance keys for notes/prose; content-stamped proposal cooldown; quiet Ollama tag probes. **Final blockers:** OCR async must not override `lastSourceTrigger` when selection dominates; notes/article rewrite guard + phi3 guard; TES `proposalGateAllows` + effective input; floating lifecycle 12m prune + channel reset; serve-spawn tags settle delay.
+
+## Phase 23 — Generated Actions Architecture
+
+Replace capability-driven ambient proposals with context-generated actions. `OpportunityEngine` now emits `GeneratedActionProposal` values, validates specificity and confidence, composes them into existing `ExecutionPrimitive` plans, and passes generated titles through to Jarvis. Capability selector paths are deprecated for production proposal generation; primitive composition remains bounded and read-only.
+
+## Phase 24 — Problem-Driven Generated Actions
+
+Move proposal generation from deterministic workflow/action mappings to a problem-first generated path: infer `ProblemSignal` from local context, ask the planner model for concrete candidate actions, validate out generic/capability-shaped labels, compose accepted actions into existing primitives, and surface the generated title through Jarvis. Deterministic generated actions remain only as an explicit fallback when no validated planner candidate is available.
+
+## Phase 24.1 — Deterministic Fallback Leakage Fix
+
+Suppress instead of falling back when the planner returns no usable candidates. Add generated proposal quality filtering for duplicated/generic titles, low-confidence website/document/code/product context gates before planner execution, workflow actionability diagnostics, and planner success counters so dogfood sessions can verify accepted, rejected, and suppressed planner outputs.
+
+## Phase 25 — Environment Actions
+
+Add an environment action route after generated actions so Jarvis can choose cognitive output, local/preview environment actions, hybrid actions, or silence. Environment actions cover focus media, Reduce Interruptions previews, workspace app-set memory, and passive-watching suppression with explicit logs and honest unavailable status for unwired system controls.

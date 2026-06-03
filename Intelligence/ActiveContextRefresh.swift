@@ -27,7 +27,13 @@ public actor ActiveContextRefresh {
         }
         public let action: Action
         public let reason: String
-        public init(action: Action, reason: String) { self.action = action; self.reason = reason }
+		public let cheapEnvironmentAllowed: Bool
+
+		public init(action: Action, reason: String, cheapEnvironmentAllowed: Bool = false) {
+			self.action = action
+			self.reason = reason
+			self.cheapEnvironmentAllowed = cheapEnvironmentAllowed
+		}
     }
 
     // MARK: - Adaptive thresholds (tunable, but logged when changed)
@@ -78,6 +84,25 @@ public actor ActiveContextRefresh {
         // suppression gates when structural context (compartment/memory) is
         // already strong enough, even if the temporal model hasn't stabilised.
         let determinerActionable = determinerSignal?.actionable == true
+		// Phase 25.2 — Task D: Cheap environment allowed if determiner says actionable
+		// or if we have high compartment trust (simulated here by stable active context).
+			let cheapEnvAllowed = determinerActionable
+				|| (activityState?.isActive == true && compartmentDwellSeconds >= 20)
+				|| (activityState?.isActive == true && (activityState?.dwellSeconds ?? 0) >= 20)
+
+		let actionabilityScore: Double = {
+			var score = determinerActionable ? (determinerSignal?.confidence ?? 0.0) : 0.0
+			if workflow != .unknown && workflow != .idle { score = max(score, 0.55) }
+			if activityState?.isActive == true && compartmentDwellSeconds >= 120 { score = max(score, 0.70) }
+			return score
+		}()
+		let actionabilityReason: String = {
+			if determinerActionable { return "determiner_signal" }
+			if activityState?.isActive == true && compartmentDwellSeconds >= 120 { return "stable_active_context" }
+			if workflow != .unknown && workflow != .idle { return "workflow_known" }
+			return "workflow_not_actionable"
+		}()
+		print("[WorkflowActionability] workflow=\(workflow.rawValue) score=\(String(format: "%.2f", actionabilityScore)) reason=\(actionabilityReason)")
 
         // Phase 21.4 — Task E: Dwell-based refresh trigger.
         // An actively engaged user in a stable compartment (dwell ≥ 2 min)
@@ -93,7 +118,7 @@ public actor ActiveContextRefresh {
             }()
             if !withinCooldown {
                 print("[ActiveContextRefresh] scheduled reason=stable_active_context dwell_s=\(String(format: "%.0f", compartmentDwellSeconds))")
-                return Decision(action: .refresh, reason: "stable_active_context")
+                return Decision(action: .refresh, reason: "stable_active_context", cheapEnvironmentAllowed: true)
             }
         }
 
@@ -105,6 +130,11 @@ public actor ActiveContextRefresh {
                 print("[ActiveContextRefresh] allowed reason=determiner_signal_sufficient workflow=\(workflow.rawValue)")
                 // Fall through — do not suppress.
             } else {
+					if cheapEnvAllowed {
+						print("[ActiveContextRefresh] cheap_lanes_allowed=yes reason=unknown_but_context_trusted")
+						print("[ActiveContextRefresh] heavy_skipped=yes reason=workflow_unknown")
+						return Decision(action: .skip, reason: "workflow_not_actionable", cheapEnvironmentAllowed: true)
+					}
                 return Decision(action: .suppress, reason: "workflow_not_actionable")
             }
         }
@@ -112,12 +142,21 @@ public actor ActiveContextRefresh {
             if determinerActionable {
                 // Already logged above; fall through.
             } else {
+				if cheapEnvAllowed {
+					print("[ActiveContextRefresh] cheap_environment_allowed=yes reason=determiner_or_compartment_trust")
+					return Decision(action: .skip, reason: "behavior_not_actionable", cheapEnvironmentAllowed: true)
+				}
                 return Decision(action: .suppress, reason: "behavior_not_actionable")
             }
         }
 
         // Model busy / backpressure — coalesce.
         if modelBusy {
+			if cheapEnvAllowed {
+				print("[ActiveContextRefresh] cheap_environment_allowed=yes reason=determiner_or_compartment_trust")
+				print("[ActiveContextRefresh] skipped_heavy=yes reason=budget")
+				return Decision(action: .skip, reason: "low_budget", cheapEnvironmentAllowed: true)
+			}
             return Decision(action: .skip, reason: "low_budget")
         }
 
@@ -134,11 +173,17 @@ public actor ActiveContextRefresh {
         // The actual refresh signal: weak evidence + stable for ≥ 20s, OR
         // strong evidence + stable for ≥ 45s.
         if evidenceQuality == "title_only" && lastMeaningfulEventAge >= weakEvidenceStaleSeconds {
-            return Decision(action: .refresh, reason: "weak_evidence_stable_page")
+            return Decision(action: .refresh, reason: "weak_evidence_stable_page", cheapEnvironmentAllowed: true)
         }
         if lastMeaningfulEventAge >= strongEvidenceStaleSeconds {
-            return Decision(action: .refresh, reason: "long_stable_page")
+            return Decision(action: .refresh, reason: "long_stable_page", cheapEnvironmentAllowed: true)
         }
+
+		if cheapEnvAllowed {
+			print("[ActiveContextRefresh] cheap_environment_allowed=yes reason=determiner_or_compartment_trust")
+			print("[ActiveContextRefresh] environment_eval=yes")
+			return Decision(action: .skip, reason: "no_meaningful_context", cheapEnvironmentAllowed: true)
+		}
 
         return Decision(action: .skip, reason: "no_meaningful_context")
     }
@@ -194,7 +239,11 @@ public actor ActiveContextRefresh {
         )
         switch d.action {
         case .suppress: print("[ActiveContextRefresh] suppressed reason=\(d.reason)")
-        case .skip:     print("[ActiveContextRefresh] skipped reason=\(d.reason)")
+        case .skip:
+			print("[ActiveContextRefresh] skipped reason=\(d.reason)")
+			if d.cheapEnvironmentAllowed {
+				lastRefreshAt = now
+			}
         case .refresh:
             print("[ActiveContextRefresh] scheduled reason=\(d.reason)")
             lastRefreshAt = now

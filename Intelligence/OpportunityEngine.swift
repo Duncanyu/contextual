@@ -3,8 +3,6 @@ import Foundation
 // MARK: - Need
 
 /// The intermediate layer between observed activity and generated opportunity.
-/// Rather than mapping domain → capability directly, the engine infers what the
-/// user likely *needs* from all available signals, then maps need → capabilities.
 public enum Need: String, Sendable, Equatable, CaseIterable, Codable {
     case recall          // test/practice what was just studied
     case organization    // structure information into a useful form
@@ -17,29 +15,54 @@ public enum Need: String, Sendable, Equatable, CaseIterable, Codable {
     case summarization   // condense material into a digest
     case drafting        // write or respond to something
     case architecture    // design the structure of a system/project
-    case nextSteps       // safe general fallback when need is unclear
+    case nextSteps       // last-resort fallback — only when nothing else qualifies
 }
 
 // MARK: - Opportunity
 
 /// Phase 22 — A structured action opportunity produced by OpportunityEngine.
-/// Every title must pass OpportunityValidator (action verb required).
 public struct Opportunity: Sendable, Equatable, Codable {
     public let id: String
-    public let title: String               // action-verb phrase, never observation
-    public let capabilityId: String        // primary capability
-    public let confidence: Double          // 0.0 – 1.0
-    public let reason: String             // internal rationale string
-    public let requiredEvidence: String   // "title_only" | "browser_tabs" | "ax_content" | "selection"
-    public let actionability: Double      // 0.0 – 1.0: can execute now?
+    public let title: String
+    public let capabilityId: String
+    public let confidence: Double
+    public let reason: String
+    public let requiredEvidence: String
+    public let actionability: Double
     public let inferredNeed: Need
     public let requiresConfirmation: Bool
     public let auxiliaryCapabilityIds: [String]
+	let generatedAction: GeneratedActionProposal?
+
+	init(
+		id: String,
+		title: String,
+		capabilityId: String,
+		confidence: Double,
+		reason: String,
+		requiredEvidence: String,
+		actionability: Double,
+		inferredNeed: Need,
+		requiresConfirmation: Bool,
+		auxiliaryCapabilityIds: [String],
+		generatedAction: GeneratedActionProposal? = nil
+	) {
+		self.id = id
+		self.title = title
+		self.capabilityId = capabilityId
+		self.confidence = confidence
+		self.reason = reason
+		self.requiredEvidence = requiredEvidence
+		self.actionability = actionability
+		self.inferredNeed = inferredNeed
+		self.requiresConfirmation = requiresConfirmation
+		self.auxiliaryCapabilityIds = auxiliaryCapabilityIds
+		self.generatedAction = generatedAction
+	}
 }
 
 // MARK: - OpportunityValidator
 
-/// Rejects proposal titles that merely describe activity rather than offering action.
 public enum OpportunityValidator {
 
     private static let observationalPrefixes: [String] = [
@@ -53,10 +76,13 @@ public enum OpportunityValidator {
         "create", "generate", "explain", "compare", "organize", "draft",
         "open", "play", "start", "summarize", "extract", "diagnose",
         "improve", "rewrite", "plan", "check", "find", "make", "build",
-        "analyze", "review", "synthesize", "help", "show", "identify"
+        "analyze", "review", "synthesize", "help", "show", "identify",
+        "suggest", "debug",
+        // Phase 26 — friction-reduction verbs
+        "put", "pin", "reopen", "restore", "resume", "collect", "arrange",
+        "pre-load", "copy",
     ]
 
-    /// Returns true if title is acceptable (action verb present, not observation-only).
     public static func validate(_ title: String) -> Bool {
         let lower = title.lowercased()
 
@@ -80,448 +106,648 @@ public enum OpportunityValidator {
     }
 }
 
+// MARK: - CandidateLifecycleAudit
+
+final class CandidateLifecycleAudit {
+
+	struct Record {
+		let candidate: String
+		let bucket: String
+		var generated: Bool
+		var rejected: Bool
+		var selected: Bool
+		var reason: String
+		var score: Double?
+	}
+
+	private var records: [String: Record] = [:]
+	private var order: [String] = []
+	private let label: String
+	private var domain: String = "unknown"
+	private var workflow: String = "unknown"
+	private var evidenceQuality: String = "unknown"
+	private var selectedCandidate: String?
+	private var selectedLane: String?
+	private var visible: Bool = true
+
+	init(label: String) {
+		self.label = label
+	}
+
+	func updateContext(domain: String, workflow: String, evidenceQuality: String) {
+		self.domain = domain
+		self.workflow = workflow
+		self.evidenceQuality = evidenceQuality
+	}
+
+	func setVisibility(_ visible: Bool) {
+		self.visible = visible
+	}
+
+	func noteGenerated(candidate: String, bucket: String, score: Double? = nil, reason: String = "generated") {
+		upsert(candidate: candidate, bucket: bucket) {
+			$0.generated = true
+			if let s = score { $0.score = s }
+			if $0.reason.isEmpty || $0.reason == "not_generated" {
+				$0.reason = reason
+			}
+		}
+	}
+
+	func noteNotGenerated(candidate: String, bucket: String, reason: String) {
+		upsert(candidate: candidate, bucket: bucket) {
+			$0.generated = false
+			$0.rejected = false
+			$0.selected = false
+			$0.reason = reason
+		}
+	}
+
+	func noteRejected(candidate: String, bucket: String, score: Double? = nil, reason: String) {
+		upsert(candidate: candidate, bucket: bucket) {
+			$0.generated = true
+			$0.rejected = true
+			$0.selected = false
+			$0.reason = reason
+			if let s = score { $0.score = s }
+		}
+	}
+
+	func noteSelected(candidate: String, bucket: String, score: Double? = nil) {
+		self.selectedCandidate = candidate
+		self.selectedLane = bucket
+		upsert(candidate: candidate, bucket: bucket) {
+			$0.generated = true
+			$0.rejected = false
+			$0.selected = true
+			$0.reason = "selected"
+			if let s = score { $0.score = s }
+		}
+	}
+
+	func closeSelection(selectedCandidate: String?) {
+		let loserReason = selectedCandidate.map { "lost_to_\($0)" } ?? "survived_unselected"
+		for key in order {
+			guard var record = records[key] else { continue }
+			guard record.generated, !record.rejected, !record.selected else { continue }
+			record.reason = loserReason
+			records[key] = record
+		}
+	}
+
+	func emit() {
+		for key in order {
+			guard let record = records[key] else { continue }
+			print("\n[CandidateLifecycle]")
+			print("candidate=\(record.candidate)")
+			print("lane=\(record.bucket)")
+			print("generated=\(record.generated ? "yes" : "no")")
+			if record.generated {
+				print("rejected=\(record.rejected ? "yes" : "no")")
+				print("selected=\(record.selected ? "yes" : "no")")
+				if let s = record.score {
+					print("score=\(String(format: "%.3f", s))")
+				}
+			}
+			print("reason=\(record.reason)")
+		}
+
+		let generated = records.values.filter(\.generated).count
+		let rejected = records.values.filter(\.rejected).count
+		let survived = records.values.filter { $0.generated && !$0.rejected }.count
+		
+		print("\n[TickAudit]")
+		print("grounding_domain=\(domain)")
+		print("workflow=\(workflow)")
+		print("evidence_quality=\(evidenceQuality)")
+		print("generated=\(generated)")
+		print("rejected=\(rejected)")
+		print("survived=\(survived)")
+		print("selected_candidate=\(selectedCandidate ?? "none")")
+		print("selected_lane=\(selectedLane ?? "none")")
+		print("visible=\(visible ? "yes" : "no")")
+
+		let breakdown = bucketBreakdownSummary()
+		if !breakdown.isEmpty {
+			print("\nBreakdown:\n\(breakdown)")
+		}
+	}
+
+	private func bucketBreakdownSummary() -> String {
+		var bucketStates: [String: String] = [:]
+		func priority(for state: String) -> Int {
+			if state == "selected" { return 4 }
+			if state.hasPrefix("rejected_") { return 3 }
+			if state == "generated" { return 2 }
+			return 1
+		}
+
+		for key in order {
+			guard let record = records[key] else { continue }
+			let state: String
+			if record.selected {
+				state = "selected"
+			} else if record.rejected {
+				state = "rejected_\(record.reason)"
+			} else if !record.generated && !record.reason.isEmpty && record.reason != "not_generated" {
+				// Phase 28: Treat specific "not generated" reasons as rejections in the breakdown
+				state = "rejected_\(record.reason)"
+			} else if record.generated {
+				state = "generated"
+			} else {
+				state = "not_generated"
+			}
+
+			let existing = bucketStates[record.bucket]
+			if existing == nil || priority(for: state) >= priority(for: existing!) {
+				bucketStates[record.bucket] = state
+			}
+		}
+
+		return bucketStates.keys.sorted().compactMap { bucket in
+			guard let state = bucketStates[bucket] else { return nil }
+			return "\(bucket)=\(state)"
+		}.joined(separator: "\n")
+	}
+
+	private func upsert(candidate: String, bucket: String, mutate: (inout Record) -> Void) {
+		if records[candidate] == nil {
+			records[candidate] = Record(
+				candidate: candidate,
+				bucket: bucket,
+				generated: false,
+				rejected: false,
+				selected: false,
+				reason: ""
+			)
+			order.append(candidate)
+		}
+		guard var record = records[candidate] else { return }
+		mutate(&record)
+		records[candidate] = record
+	}
+}
+
 // MARK: - OpportunityEngine
 
-/// Phase 22 — Converts ambient signals into ranked action opportunities.
+/// Phase 22.2 — Converts ambient signals into ranked, novelty-aware action opportunities.
 ///
 /// Pipeline:
-///   signals → need inference → opportunity generation → validation → ranked list
+///   SemanticPriorityResolver → situation → OpportunityReasoner → validation
+///   → OpportunityNoveltyTracker (mark shown) → ranked list
 ///
 /// Design constraints:
 /// - Zero model calls. Fully deterministic.
-/// - Need inference uses domain + mode + evidence signals — NOT direct domain→capability map.
-/// - Title generation is entity-aware and action-verb-first.
-/// - All titles must pass OpportunityValidator before being returned.
+/// - create_next_steps is capped at score 0.25 — only surfaces if nothing specific qualifies.
+/// - All titles must pass OpportunityValidator.
+/// - Novelty tracker prevents repeating the same action on every refresh.
 public enum OpportunityEngine {
 
     // MARK: - Public entry point
 
-    /// Evaluates all available signals and returns a ranked list of opportunities.
-    /// The first element is the highest-confidence actionable opportunity.
-    public static func evaluate(
+    /// Evaluates all available signals and returns a ranked, novelty-aware opportunity list.
+    ///
+    /// - Parameters:
+    ///   - entityGrounding: Classification from EntityGroundingLayer (nil = legacy path).
+    ///   - semanticState: Priority-resolved domain/mode/entityType from SemanticPriorityResolver.
+    ///   - entityKey: Cache key for the novelty tracker. Defaults to memory.currentEntity.
+    static func evaluate(
         determinerSignal: DeterminerSignal,
         activityState: ActivityState?,
         compartment: TaskCompartment?,
         memory: WorkingMemorySnapshot,
-        evidenceQuality: String
-    ) -> [Opportunity] {
+        evidenceQuality: String,
+        entityGrounding: EntityGrounding? = nil,
+        semanticState: SemanticPriorityResolver.SemanticState? = nil,
+        entityKey: String? = nil,
+        frictionSignals: [FrictionSignal] = [],
+        mediaState: EnvironmentMediaState? = nil,
+        appCategory: AppContextAnalyzer.Category? = nil,
+        groundingResult: SemanticGroundingResult? = nil
+    ) async -> [Opportunity] {
+		let lifecycleAudit = CandidateLifecycleAudit(label: "opportunity_engine")
+		var selectedLifecycleCandidate: String?
+		let funnelAudit = ProposalFunnelAudit()
+		defer {
+			lifecycleAudit.closeSelection(selectedCandidate: selectedLifecycleCandidate)
+			lifecycleAudit.emit()
+		}
 
-        let domain = determinerSignal.inferredDomain
-        let mode   = determinerSignal.inferredMode
+        // Canonical domain/mode/type — SemanticPriorityResolver wins over raw determiner
+        let domain = semanticState?.domain ?? determinerSignal.inferredDomain
+        let mode   = semanticState?.mode   ?? determinerSignal.inferredMode
+        let resolvedEntityType = semanticState?.entityType
+            ?? entityGrounding?.entityType
+            ?? .unknown
+
+		lifecycleAudit.updateContext(
+			domain: domain.rawValue,
+			workflow: (compartment?.workflow ?? .unknown).rawValue,
+			evidenceQuality: evidenceQuality
+		)
 
         let entityLabel = memory.currentEntity.isEmpty
             ? (compartment?.label ?? "")
             : memory.currentEntity
 
-        print("[OpportunityEngine] evaluated=yes domain=\(domain.rawValue) mode=\(mode.rawValue)")
+        // ── Entertainment / no-propose gate ──────────────────────────────────
+        if let grounding = entityGrounding {
+            print("[OpportunityEngine] grounding_type=\(grounding.entityType.rawValue)"
+                + " grounding_confidence=\(String(format: "%.2f", grounding.confidence))"
+                + " grounding_should_propose=\(grounding.shouldPropose)")
 
-        // Step 1 — Infer needs from signals (not direct mapping)
-        let needs = inferNeeds(
-            domain: domain,
-            mode: mode,
-            memory: memory,
-            compartment: compartment,
-            activityState: activityState,
-            evidenceQuality: evidenceQuality
-        )
+            if grounding.isEntertainment {
+				lifecycleAudit.setVisibility(false)
+				noteAllNotGenerated(lifecycleAudit, reason: "entertainment")
+                print("[EntertainmentPolicy] suppressed entity_type=\(grounding.entityType.rawValue)"
+                    + " entity=\"\(entityLabel.prefix(60))\"")
+                print("[OpportunityEngine] suppressed reason=entertainment"
+                    + " entity_type=\(grounding.entityType.rawValue)")
+                print("[OpportunityEngine] top_opportunity=none")
+                funnelAudit.emit()
+                return []
+            }
 
-        let needNames = needs.prefix(3).map { "\($0.0.rawValue):\(String(format: "%.2f", $0.1))" }.joined(separator: ",")
-        print("[OpportunityEngine] inferred_needs=[\(needNames)]")
-
-        // Step 2 — Generate opportunities from needs
-        var candidates: [Opportunity] = []
-        for (need, needConfidence) in needs {
-            let opps = opportunitiesForNeed(
-                need: need,
-                needConfidence: needConfidence,
-                domain: domain,
-                mode: mode,
-                entity: entityLabel,
-                evidenceQuality: evidenceQuality,
-                memory: memory
-            )
-            candidates.append(contentsOf: opps)
+            if !grounding.shouldPropose {
+				lifecycleAudit.setVisibility(false)
+				noteAllNotGenerated(lifecycleAudit, reason: "grounding_no_propose")
+                print("[OpportunityEngine] suppressed reason=grounding_no_propose"
+                    + " entity_type=\(grounding.entityType.rawValue)")
+                print("[OpportunityEngine] top_opportunity=none")
+                funnelAudit.emit()
+                return []
+            }
         }
 
-        // Step 3 — Validate and de-duplicate (keep highest confidence per capId)
-        var seen = Set<String>()
-        var validated: [Opportunity] = []
-        for opp in candidates.sorted(by: { $0.confidence > $1.confidence }) {
-            guard !seen.contains(opp.capabilityId) else { continue }
-            guard OpportunityValidator.validate(opp.title) else { continue }
-            seen.insert(opp.capabilityId)
-            validated.append(opp)
-        }
+		// Phase 28: Seed all mandatory lanes to ensure they appear in TickAudit
+		seedMandatoryLanes(lifecycleAudit)
 
-        // If nothing survived validation, produce a safe fallback
-        if validated.isEmpty {
-            let fallback = makeFallback(entity: entityLabel, evidenceQuality: evidenceQuality)
-            validated = [fallback]
-        }
-
-        // Log top opportunity
-        if let top = validated.first {
-            print("[OpportunityEngine] top_opportunity capability=\(top.capabilityId) confidence=\(String(format: "%.2f", top.confidence))")
-            print("[OpportunityEngine] top_title=\"\(top.title)\"")
-        }
-
-        return validated
-    }
-
-    // MARK: - Need inference
-
-    /// Infers what the user likely needs from activity signals.
-    /// This is NOT a direct domain→capability map. Domain sets context;
-    /// concrete evidence signals (errors, multiple sources, comparison
-    /// candidates, writing mode) refine the need.
-    private static func inferNeeds(
-        domain: DeterminerSignal.Domain,
-        mode: DeterminerSignal.Mode,
-        memory: WorkingMemorySnapshot,
-        compartment: TaskCompartment?,
-        activityState: ActivityState?,
-        evidenceQuality: String
-    ) -> [(Need, Double)] {
-
-        var needs: [(Need, Double)] = []
+        print("[OpportunityEngine] evaluated=yes domain=\(domain.rawValue)"
+            + " mode=\(mode.rawValue)"
+            + " entity_type=\(resolvedEntityType.rawValue)")
 
         let concepts = Set(memory.repeatedConcepts.map { $0.lowercased() })
+        let errorTerms: Set<String> = ["error","exception","crash","failed","bug",
+                                        "issue","broken","stack","trace","warning","undefined"]
+        let resolvedKey = entityKey ?? entityLabel
 
-        // Evidence-driven signal: error terms always surface debugging need regardless of domain
-        let errorTerms: Set<String> = ["error", "exception", "crash", "failed", "bug",
-                                       "issue", "broken", "stack", "trace", "warning", "undefined"]
-        let hasErrors = !concepts.intersection(errorTerms).isEmpty
-        if hasErrors {
-            needs.append((.debugging, 0.90))
+        // ── Phase 26.2: ActionPortfolioEngine — evaluate all lanes ────────
+        // No single lane monopolizes. Music, friction, workspace, research,
+        // cognitive are all evaluated and ranked by composite score.
+        let portfolioCandidates = await ActionPortfolioEngine.evaluate(
+            frictionSignals: frictionSignals,
+            mediaState: mediaState ?? EnvironmentMediaState(isMusicPlaying: false, visualMediaKind: .none, source: "default", detectionAvailable: false),
+            semanticState: semanticState,
+            entityGrounding: entityGrounding,
+            compartment: compartment,
+            memory: memory,
+            evidenceQuality: evidenceQuality,
+            entityKey: resolvedKey,
+            appCategory: appCategory,
+            groundingResult: groundingResult,
+			lifecycleAudit: lifecycleAudit,
+            funnelAudit: funnelAudit
+        )
+
+        // If the portfolio has a winner, convert it to an Opportunity and return.
+        // The portfolio winner is already ranked by score = usefulness * executability * confidence * novelty.
+        if let winner = portfolioCandidates.first {
+            let portfolioOpp = Opportunity(
+                id: "opp:portfolio:\(winner.capabilityId):\(UUID().uuidString.prefix(6))",
+                title: winner.title,
+                capabilityId: winner.capabilityId,
+                confidence: min(0.95, winner.confidence),
+                reason: winner.reason,
+                requiredEvidence: winner.requiredEvidence,
+                actionability: winner.executability,
+                inferredNeed: .planning,
+                requiresConfirmation: winner.requiresConfirmation,
+                auxiliaryCapabilityIds: [],
+                generatedAction: winner.generatedAction
+            )
+
+            print("[OpportunityEngine] portfolio_winner"
+                + " lane=\(winner.lane.rawValue)"
+                + " capability=\(winner.capabilityId)"
+                + " score=\(String(format: "%.3f", winner.score))")
+            print("[OpportunityEngine] top_opportunity capability=\(winner.capabilityId)"
+                + " confidence=\(String(format: "%.2f", portfolioOpp.confidence))"
+                + " need=\(winner.lane.rawValue)")
+            print("[OpportunityEngine] top_title=\"\(winner.title.prefix(60))\"")
+			let winnerLifecycleName = lifecycleName(for: winner.capabilityId, fallbackTitle: winner.title)
+			selectedLifecycleCandidate = winnerLifecycleName
+
+            OpportunityNoveltyTracker.shared.markShown(
+                capabilityId: winner.capabilityId,
+                entityKey: resolvedKey
+            )
+
+            // If the portfolio winner is from an executable lane (music/friction/workspace),
+            // skip the GeneratedActionGenerator pipeline entirely.
+            let executableLanes: Set<PortfolioCandidate.Lane> = [.music, .friction, .workspace]
+            if executableLanes.contains(winner.lane) {
+				lifecycleAudit.noteSelected(
+					candidate: winnerLifecycleName,
+					bucket: lifecycleBucket(for: winner),
+					score: winner.score
+				)
+				lifecycleAudit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: "deterministic_portfolio_winner")
+                print("[OpportunityBudget] deterministic=yes opportunities_count=1")
+                funnelAudit.emit()
+                return [portfolioOpp]
+            }
         }
 
-        // Evidence-driven: multiple comparison candidates → comparison need
-        let hasComparisons = memory.comparisonCandidates.count >= 2
-        if hasComparisons {
-            needs.append((.comparison, 0.88))
+        let input = GeneratedActionInput(
+            currentEntity: entityLabel,
+            relatedEntities: memory.relatedFocusEntities + memory.comparisonCandidates,
+            activeTerms: memory.repeatedConcepts,
+            activeCompartmentLabel: compartment?.label,
+            activeCompartmentWorkflow: compartment?.workflow,
+            evidenceQuality: evidenceQuality,
+            activeApplication: "",
+            domain: domain,
+            mode: mode,
+            entityType: resolvedEntityType,
+            hasErrorTerms: !concepts.intersection(errorTerms).isEmpty,
+            hasMultipleSources: memory.relatedFocusEntities.count >= 2
+                              || evidenceQuality == "browser_context",
+            hasComparisonCandidates: memory.comparisonCandidates.count >= 2,
+            confidenceSeed: max(
+                semanticState?.entityConfidence ?? 0,
+                entityGrounding?.confidence ?? 0,
+                memory.workingMemoryTrust
+            )
+        )
+
+        let generatedActions = GeneratedActionGenerator.generate(input: input)
+        var validated: [Opportunity] = []
+		if generatedActions.isEmpty {
+			lifecycleAudit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: "generator_returned_empty")
+		}
+
+        let hasRealContent = evidenceQuality != "title_only"
+        for action in generatedActions {
+			let candidateName = lifecycleName(forGeneratedTitle: action.title)
+			lifecycleAudit.noteGenerated(candidate: candidateName, bucket: "generated_action", score: action.confidence)
+            let validation = ActionValidator.validate(action)
+            guard validation.accepted else {
+				lifecycleAudit.noteRejected(
+					candidate: candidateName,
+					bucket: "generated_action",
+					score: action.confidence,
+					reason: validation.rejectedReason ?? "validation_rejected"
+				)
+				continue
+			}
+            guard let composition = PrimitiveComposer.compose(action) else {
+				lifecycleAudit.noteRejected(
+					candidate: candidateName, 
+					bucket: "generated_action", 
+					score: action.confidence,
+					reason: "primitive_composition_failed"
+				)
+                print("[OpportunityEngine] suppressed reason=primitive_composition_failed")
+                continue
+            }
+            let composed = composition.action
+
+            // Phase 26.2 — ProposalQualityFilter: reject keyword-list reviews, generic title reviews, title-only checklists
+            let capId = composition.intentType.rawValue
+			let quality = ProposalQualityFilter.acceptanceResult(
+                title: composed.title,
+                capabilityId: capId,
+                evidenceQuality: evidenceQuality,
+                hasRealContent: hasRealContent
+            )
+            guard quality.accepted else {
+				lifecycleAudit.noteRejected(
+					candidate: candidateName,
+					bucket: "generated_action",
+					score: composed.confidence,
+					reason: quality.reason ?? "proposal_quality_rejected"
+				)
+				continue
+			}
+
+            let need = need(for: composed, intent: composition.intentType)
+            validated.append(Opportunity(
+                id: "opp:generated:\(composed.id)",
+                title: composed.title,
+                capabilityId: "generated_action",
+                confidence: composed.confidence,
+                reason: composed.reasoning,
+                requiredEvidence: evidenceQuality,
+                actionability: min(0.95, composition.confidence),
+                inferredNeed: need,
+                requiresConfirmation: false,
+                auxiliaryCapabilityIds: [],
+                generatedAction: composed
+            ))
         }
 
-        // Evidence-driven: multiple sources open → synthesis need
-        let hasMultipleSources = memory.relatedFocusEntities.count >= 2
-            || evidenceQuality == "browser_tabs"
-        if hasMultipleSources && !hasComparisons {
-            needs.append((.synthesis, 0.82))
-        }
+        // Phase 28.2: Compare portfolio cognitive/research winner against best generated action.
+        // Don't unconditionally prefer portfolio — let the higher score win.
+        if let winner = portfolioCandidates.first,
+           (winner.lane == .cognitive || winner.lane == .research) {
 
-        // Evidence-driven: writing mode → drafting need
-        if mode == .writing || mode == .communicating {
-            needs.append((.drafting, 0.85))
-        }
+            let bestGenerated = validated.first
+            let portfolioScore = winner.score
+            let generatedScore = bestGenerated?.confidence ?? 0
 
-        // Domain sets the remaining contextual needs (secondary to evidence signals above)
-        switch domain {
-        case .studying:
-            switch mode {
-            case .reading, .learning, .browsing, .unknown:
-                needs.append((.recall, 0.85))
-                needs.append((.organization, 0.70))
-                needs.append((.explanation, 0.55))
-            case .writing:
-                needs.append((.organization, 0.80))
-            default:
-                needs.append((.recall, 0.75))
-                needs.append((.organization, 0.60))
-            }
-
-        case .coding:
-            if !hasErrors {   // debugging already added above if errors present
-                if mode == .building {
-                    needs.append((.testing, 0.80))
-                    needs.append((.architecture, 0.65))
-                    needs.append((.planning, 0.60))
-                } else if mode == .debugging {
-                    needs.append((.debugging, 0.85))
-                    needs.append((.planning, 0.55))
-                } else {
-                    needs.append((.planning, 0.75))
-                    needs.append((.testing, 0.60))
-                }
-            }
-
-        case .creative_coding:
-            if !hasErrors {
-                // Game/project building primarily needs testing and planning
-                needs.append((.testing, 0.88))
-                needs.append((.planning, 0.65))
-                needs.append((.architecture, 0.50))
-            }
-
-        case .shopping:
-            if !hasComparisons {
-                needs.append((.comparison, 0.85))
-            }
-            needs.append((.summarization, 0.65))
-
-        case .researching:
-            if !hasMultipleSources {
-                needs.append((.synthesis, 0.80))
-            }
-            needs.append((.summarization, 0.72))
-            needs.append((.organization, 0.55))
-
-        case .communicating:
-            if mode != .writing && mode != .communicating {  // not already added
-                needs.append((.drafting, 0.82))
-            }
-            needs.append((.organization, 0.60))
-
-        case .gaming:
-            // Passive gaming: planning/next steps; not much cognitive need
-            needs.append((.nextSteps, 0.55))
-
-        case .unknown, .browsing, .working:
-            let isActive = activityState?.isActive == true
-            needs.append((.nextSteps, isActive ? 0.65 : 0.40))
-            if isActive { needs.append((.planning, 0.50)) }
-
-        case .watching:
-            // Minimal interruption; don't suggest much
-            break
-        }
-
-        return needs.sorted { $0.1 > $1.1 }
-    }
-
-    // MARK: - Opportunity generation per need
-
-    private static func opportunitiesForNeed(
-        need: Need,
-        needConfidence: Double,
-        domain: DeterminerSignal.Domain,
-        mode: DeterminerSignal.Mode,
-        entity: String,
-        evidenceQuality: String,
-        memory: WorkingMemorySnapshot
-    ) -> [Opportunity] {
-
-        switch need {
-
-        case .recall:
-            return [
-                make(capId: "generate_quiz",
-                     need: .recall, entity: entity,
-                     confidence: needConfidence * 0.92,
-                     evidence: "ax_content",
-                     actionability: evidenceQuality == "ax_content" ? 0.9 : 0.6,
-                     aux: ["create_review_plan"]),
-                make(capId: "create_review_plan",
-                     need: .recall, entity: entity,
-                     confidence: needConfidence * 0.80,
-                     evidence: "title_only",
-                     actionability: 0.85,
-                     aux: ["generate_quiz"])
-            ]
-
-        case .organization:
-            return [
-                make(capId: "create_study_outline",
-                     need: .organization, entity: entity,
-                     confidence: needConfidence * 0.85,
-                     evidence: "title_only",
-                     actionability: 0.85,
-                     aux: ["create_checklist"]),
-                make(capId: "create_checklist",
-                     need: .organization, entity: entity,
-                     confidence: needConfidence * 0.72,
-                     evidence: "title_only",
-                     actionability: 0.85)
-            ]
-
-        case .debugging:
-            return [
-                make(capId: "diagnose_error",
-                     need: .debugging, entity: entity,
-                     confidence: needConfidence * 0.92,
-                     evidence: "title_only",
-                     actionability: 0.90,
-                     aux: ["debug_performance"]),
-                make(capId: "debug_performance",
-                     need: .debugging, entity: entity,
-                     confidence: needConfidence * 0.78,
-                     evidence: "title_only",
-                     actionability: 0.80)
-            ]
-
-        case .testing:
-            if domain == .creative_coding {
-                return [
-                    make(capId: "generate_test_checklist",
-                         need: .testing, entity: entity,
-                         confidence: needConfidence * 0.92,
-                         evidence: "title_only",
-                         actionability: 0.90,
-                         aux: ["create_game_design_checklist", "explain_how_to_make_faster"]),
-                    make(capId: "create_game_design_checklist",
-                         need: .testing, entity: entity,
-                         confidence: needConfidence * 0.80,
-                         evidence: "title_only",
-                         actionability: 0.88)
-                ]
+            print("[SelectionAudit]")
+            print("portfolio_winner=\(winner.capabilityId) score=\(String(format: "%.3f", portfolioScore))")
+            if let gen = bestGenerated {
+                print("generated_action=\(gen.title.prefix(60)) score=\(String(format: "%.3f", generatedScore))")
             } else {
-                return [
-                    make(capId: "create_checklist",
-                         need: .testing, entity: entity,
-                         confidence: needConfidence * 0.85,
-                         evidence: "title_only",
-                         actionability: 0.85)
-                ]
+                print("generated_action=none score=0.000")
             }
 
-        case .planning:
-            return [
-                make(capId: "create_next_steps",
-                     need: .planning, entity: entity,
-                     confidence: needConfidence * 0.85,
-                     evidence: "title_only",
-                     actionability: 0.85)
-            ]
+            if generatedScore > portfolioScore, let gen = bestGenerated {
+                // Generated action wins
+                print("winner=generated_action")
+                let topName = lifecycleName(forGeneratedTitle: gen.title)
+                selectedLifecycleCandidate = topName
+                lifecycleAudit.noteSelected(candidate: topName, bucket: "generated_action", score: gen.confidence)
 
-        case .comparison:
-            return [
-                make(capId: "compare_options",
-                     need: .comparison, entity: entity,
-                     confidence: needConfidence * 0.92,
-                     evidence: "browser_tabs",
-                     actionability: evidenceQuality == "browser_tabs" ? 0.90 : 0.65,
-                     aux: ["decision_matrix"]),
-                make(capId: "decision_matrix",
-                     need: .comparison, entity: entity,
-                     confidence: needConfidence * 0.78,
-                     evidence: "browser_tabs",
-                     actionability: 0.75)
-            ]
+                let winnerName = lifecycleName(for: winner.capabilityId, fallbackTitle: winner.title)
+                lifecycleAudit.noteGenerated(candidate: winnerName, bucket: lifecycleBucket(for: winner), score: winner.score, reason: "lost_to_generated_action")
 
-        case .synthesis:
-            return [
-                make(capId: "synthesize_sources",
-                     need: .synthesis, entity: entity,
-                     confidence: needConfidence * 0.90,
-                     evidence: "browser_tabs",
-                     actionability: evidenceQuality == "browser_tabs" ? 0.88 : 0.60,
-                     aux: ["create_next_steps"]),
-                make(capId: "summarize_reference",
-                     need: .synthesis, entity: entity,
-                     confidence: needConfidence * 0.74,
-                     evidence: "title_only",
-                     actionability: 0.80)
-            ]
-
-        case .summarization:
-            return [
-                make(capId: "summarize_context",
-                     need: .summarization, entity: entity,
-                     confidence: needConfidence * 0.85,
-                     evidence: "title_only",
-                     actionability: 0.85)
-            ]
-
-        case .drafting:
-            return [
-                make(capId: "draft_reply",
-                     need: .drafting, entity: entity,
-                     confidence: needConfidence * 0.88,
-                     evidence: "title_only",
-                     actionability: 0.70,   // confirmation required
-                     requiresConfirmation: true,
-                     aux: ["extract_action_items"]),
-                make(capId: "extract_action_items",
-                     need: .drafting, entity: entity,
-                     confidence: needConfidence * 0.72,
-                     evidence: "title_only",
-                     actionability: 0.80)
-            ]
-
-        case .architecture:
-            return [
-                make(capId: "create_next_steps",
-                     need: .architecture, entity: entity,
-                     confidence: needConfidence * 0.75,
-                     evidence: "title_only",
-                     actionability: 0.80)
-            ]
-
-        case .explanation:
-            return [
-                make(capId: "explain_context",
-                     need: .explanation, entity: entity,
-                     confidence: needConfidence * 0.82,
-                     evidence: "title_only",
-                     actionability: 0.85)
-            ]
-
-        case .nextSteps:
-            return [
-                make(capId: "create_next_steps",
-                     need: .nextSteps, entity: entity,
-                     confidence: needConfidence * 0.82,
-                     evidence: "title_only",
-                     actionability: 0.85)
-            ]
+                // Fall through to the generated action return path below
+            } else {
+                // Portfolio cognitive winner still wins
+                print("winner=\(winner.capabilityId)")
+                let portfolioOpp = Opportunity(
+                    id: "opp:portfolio:\(winner.capabilityId):\(UUID().uuidString.prefix(6))",
+                    title: winner.title,
+                    capabilityId: winner.capabilityId,
+                    confidence: min(0.95, winner.confidence),
+                    reason: winner.reason,
+                    requiredEvidence: winner.requiredEvidence,
+                    actionability: winner.executability,
+                    inferredNeed: .planning,
+                    requiresConfirmation: winner.requiresConfirmation,
+                    auxiliaryCapabilityIds: [],
+                    generatedAction: winner.generatedAction
+                )
+                print("[OpportunityEngine] portfolio_cognitive_winner capability=\(winner.capabilityId)")
+                OpportunityNoveltyTracker.shared.markShown(
+                    capabilityId: winner.capabilityId,
+                    entityKey: resolvedKey
+                )
+                let winnerName = lifecycleName(for: winner.capabilityId, fallbackTitle: winner.title)
+                selectedLifecycleCandidate = winnerName
+                lifecycleAudit.noteSelected(
+                    candidate: winnerName,
+                    bucket: lifecycleBucket(for: winner),
+                    score: winner.score
+                )
+                print("[OpportunityBudget] deterministic=yes opportunities_count=1")
+                funnelAudit.emit()
+                return [portfolioOpp]
+            }
         }
+
+        if validated.isEmpty {
+			lifecycleAudit.setVisibility(false)
+			lifecycleAudit.noteRejected(candidate: "generated_action", bucket: "generated_action", reason: "no_validated_generated_action")
+            print("[OpportunityEngine] suppressed reason=no_generated_action")
+            print("[OpportunityEngine] top_opportunity=none")
+            funnelAudit.emit()
+            return []
+        }
+
+        // ── Log and mark shown ────────────────────────────────────────────────
+        if let top = validated.first {
+			let topCandidateName = lifecycleName(forGeneratedTitle: top.title)
+			selectedLifecycleCandidate = topCandidateName
+			lifecycleAudit.noteSelected(
+				candidate: topCandidateName, 
+				bucket: "generated_action",
+				score: top.confidence
+			)
+            print("[OpportunityEngine] top_opportunity action=generated_action"
+                + " confidence=\(String(format: "%.2f", top.confidence))"
+                + " need=\(top.inferredNeed.rawValue)")
+            print("[OpportunityEngine] top_title=\"\(top.title)\"")
+            OpportunityNoveltyTracker.shared.markShown(
+                capabilityId: top.generatedAction?.id ?? top.title,
+                entityKey: resolvedKey
+            )
+        }
+
+        print("[OpportunityBudget] deterministic=yes opportunities_count=\(validated.count)")
+        funnelAudit.emit()
+        return validated
     }
 
     // MARK: - Title builder (action-verb first, entity-aware)
 
     /// Produces an action-verb-first title for the given capability.
-    /// All titles here are pre-validated to contain action verbs.
     static func title(forCapabilityId capId: String, entity: String) -> String {
         let short = String(entity.prefix(38)).trimmingCharacters(in: .whitespaces)
         let e = short.isEmpty ? nil : short
 
         switch capId {
+        // Study
         case "generate_quiz":
-            return e.map { "Generate practice questions from these \($0) notes" }
-                   ?? "Generate practice questions from these notes"
+            return e.map { "Generate practice questions for \($0)" }
+                   ?? "Generate practice questions for this material"
         case "create_review_plan":
             return e.map { "Create a review plan for \($0)" }
                    ?? "Create a review plan for this material"
         case "create_study_outline":
             return e.map { "Create a study outline for \($0)" }
                    ?? "Create a study outline for this material"
+        case "create_flashcards":
+            return e.map { "Create flashcards for \($0)" }
+                   ?? "Create flashcards for this topic"
+        case "extract_key_terms":
+            return "Extract the key terms and definitions here"
+        case "make_study_schedule":
+            return e.map { "Create a study schedule for \($0)" }
+                   ?? "Create a study schedule for this material"
+        case "explain_topic":
+            return e.map { "Explain the key concepts in \($0)" }
+                   ?? "Explain the key concepts here"
+        // Game / creative code
         case "generate_test_checklist":
             return e.map { "Create a testing checklist for \($0)" }
                    ?? "Create a testing checklist for this project"
         case "create_game_design_checklist":
             return e.map { "Create a game design checklist for \($0)" }
                    ?? "Create a game design checklist"
+        case "create_controls_polish_checklist":
+            return "Create a controls and polish checklist"
+        case "create_asset_sound_checklist":
+            return "Create an asset and sound review checklist"
+        case "create_bug_reproduction_plan":
+            return "Create a bug reproduction plan"
+        case "suggest_next_feature":
+            return e.map { "Suggest the next feature to build in \($0)" }
+                   ?? "Suggest the next feature to build"
+        // Code
         case "diagnose_error":
             return "Diagnose the current error"
         case "debug_performance":
             return e.map { "Find performance issues in \($0)" }
                    ?? "Find performance issues in this project"
-        case "improve_project":
-            return e.map { "Improve \($0)" }
-                   ?? "Improve this project"
-        case "explain_how_to_make_faster":
-            return "Explain how to make this faster"
+        case "explain_code_context":
+            return e.map { "Explain the code structure of \($0)" }
+                   ?? "Explain the code structure here"
+        case "suggest_refactor_plan":
+            return "Suggest a refactoring plan for the current code"
+        // Research
+        case "synthesize_sources":
+            return "Synthesize the sources you've opened into notes"
+        case "extract_open_questions":
+            return "Extract the open questions from this research"
+        case "create_research_outline":
+            return "Create a research outline from what you've read"
+        case "summarize_reference":
+            return e.map { "Summarize \($0)" }
+                   ?? "Summarize this reference"
+        // Shopping
         case "compare_options":
             return "Compare the options you're viewing"
         case "decision_matrix":
             return "Build a decision matrix for this comparison"
-        case "synthesize_sources":
-            return "Synthesize the sources you've opened into notes"
-        case "summarize_reference":
-            return e.map { "Summarize \($0)" }
-                   ?? "Summarize this reference"
         case "summarize_context":
             return "Summarize the current context"
+        // Communication
         case "draft_reply":
             return "Draft a reply to this message"
         case "extract_action_items":
             return "Extract action items from this thread"
-        case "create_checklist":
-            return e.map { "Create a checklist for \($0)" }
-                   ?? "Create a checklist for this session"
+        // Fallback (capped, rare)
         case "create_next_steps":
             return e.map { "Create next steps for \($0)" }
                    ?? "Create next steps for the current task"
+        // Legacy / misc
+        case "create_checklist":
+            return e.map { "Create a checklist for \($0)" }
+                   ?? "Create a checklist for this session"
+        case "improve_project":
+            return e.map { "Improve \($0)" }
+                   ?? "Improve this project"
         case "explain_context":
             return "Explain the key concepts here"
+        // Phase 26 — friction-reduction capabilities
+        case "restore_workspace":
+            return e.map { "Open your usual \($0) setup?" }
+                   ?? "Restore your usual workspace?"
+        case "arrange_side_by_side":
+            return "Put the apps you keep switching between side by side?"
+        case "pin_reference_tabs":
+            return "Collect the tabs you keep switching between?"
+        case "collect_references":
+            return "Collect the references you keep looking up?"
+        case "resume_focus_media":
+            return "Resume the playlist you usually use here?"
+        case "extract_and_organize":
+            return "Extract the content you keep copying between apps?"
+        case "precompute_answer":
+            return "Pre-load the answer you keep asking for?"
         default:
             return "Help with the current task"
         }
@@ -549,22 +775,99 @@ public enum OpportunityEngine {
             actionability: actionability,
             inferredNeed: need,
             requiresConfirmation: requiresConfirmation,
-            auxiliaryCapabilityIds: aux
+            auxiliaryCapabilityIds: aux,
+			generatedAction: nil
         )
     }
 
     private static func makeFallback(entity: String, evidenceQuality: String) -> Opportunity {
-        Opportunity(
+        print("[OpportunityEngine] fallback=create_next_steps reason=legacy_no_grounding")
+        return Opportunity(
             id: "opp:nextSteps:create_next_steps:fallback",
             title: title(forCapabilityId: "create_next_steps", entity: entity),
             capabilityId: "create_next_steps",
-            confidence: 0.40,
-            reason: "safe_fallback",
+            confidence: 0.35,
+            reason: "safe_fallback_no_grounding",
             requiredEvidence: "title_only",
-            actionability: 0.80,
+            actionability: 0.75,
             inferredNeed: .nextSteps,
             requiresConfirmation: false,
-            auxiliaryCapabilityIds: []
+            auxiliaryCapabilityIds: [],
+			generatedAction: nil
         )
     }
+
+	private static func need(for action: GeneratedActionProposal, intent: IntentType) -> Need {
+		switch intent {
+		case .compare: return .comparison
+		case .extract: return .organization
+		case .explain: return action.workflow == .debugging ? .debugging : .explanation
+		case .organize, .structure: return .organization
+		case .synthesize: return .synthesis
+		case .summarize: return .summarization
+		case .answer: return action.workflow == .studying ? .recall : .explanation
+		default:
+			switch action.workflow {
+			case .debugging: return .debugging
+			case .studying: return .recall
+			case .research: return .synthesis
+			case .comparing: return .comparison
+			default: return .planning
+			}
+		}
+	}
+
+	private static func lifecycleName(for capabilityId: String, fallbackTitle: String) -> String {
+		// Phase 28.2: Preserve actual capabilityId — never remap identities.
+		// synthesize_sources stays synthesize_sources, not collect_references.
+		// collect_references only appears when FrictionOpportunityReasoner explicitly emits it.
+		let trimmed = capabilityId.trimmingCharacters(in: .whitespacesAndNewlines)
+		if !trimmed.isEmpty {
+			print("[CandidateIdentity] portfolio_capability=\(trimmed) lifecycle_candidate=\(trimmed) ok=yes")
+			return trimmed
+		}
+		let fallback = lifecycleName(forGeneratedTitle: fallbackTitle)
+		print("[CandidateIdentity] portfolio_capability=(empty) lifecycle_candidate=\(fallback) ok=fallback")
+		return fallback
+	}
+
+	private static func lifecycleName(forGeneratedTitle title: String) -> String {
+		let normalized = title
+			.lowercased()
+			.components(separatedBy: CharacterSet.alphanumerics.inverted)
+			.filter { !$0.isEmpty }
+			.joined(separator: "_")
+		return normalized.isEmpty ? "generated_action" : normalized
+	}
+
+	private static func lifecycleBucket(for candidate: PortfolioCandidate) -> String {
+		switch candidate.lane {
+		case .music: return "music"
+		case .workspace: return "workspace"
+		case .friction: return "friction"
+		case .research: return "research"
+		case .cognitive: return "coding"
+		case .comfort: return "comfort"
+		}
+	}
+
+	// Phase 28.2: Use actual capabilityIds as lifecycle names — no aliases.
+	// collect_references only appears when friction lane actually emits it.
+	private static func seedMandatoryLanes(_ audit: CandidateLifecycleAudit) {
+		audit.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "not_generated")
+		audit.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: "not_generated")
+		audit.noteNotGenerated(candidate: "synthesize_sources", bucket: "research", reason: "not_generated")
+		audit.noteNotGenerated(candidate: "compare_options", bucket: "comparison", reason: "not_generated")
+		audit.noteNotGenerated(candidate: "review_architecture", bucket: "coding", reason: "not_generated")
+		audit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: "not_generated")
+	}
+
+	private static func noteAllNotGenerated(_ audit: CandidateLifecycleAudit, reason: String) {
+		audit.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: reason)
+		audit.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: reason)
+		audit.noteNotGenerated(candidate: "synthesize_sources", bucket: "research", reason: reason)
+		audit.noteNotGenerated(candidate: "compare_options", bucket: "comparison", reason: reason)
+		audit.noteNotGenerated(candidate: "review_architecture", bucket: "coding", reason: reason)
+		audit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: reason)
+	}
 }

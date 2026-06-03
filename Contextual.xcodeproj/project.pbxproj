@@ -24,6 +24,29 @@
 		F5B001C100000000000001B1 /* OpportunityEngineSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */; };
 		F5C001D100000000000001C1 /* OpportunityExecutionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */; };
 		F5D001E100000000000001D1 /* CompartmentTransitionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */; };
+		AA2200010000000000000100 /* EntityGroundingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2200020000000000000100 /* EntityGroundingLayer.swift */; };
+		AA2200030000000000000100 /* AppContextAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2200040000000000000100 /* AppContextAnalyzer.swift */; };
+		AA2200050000000000000100 /* EntityGroundingSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2200060000000000000100 /* EntityGroundingSelfTest.swift */; };
+		AA2200070000000000000100 /* ContextSourcePrioritySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2200080000000000000100 /* ContextSourcePrioritySelfTest.swift */; };
+		AA2200090000000000000100 /* EntertainmentPolicySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA22000A0000000000000100 /* EntertainmentPolicySelfTest.swift */; };
+		AA22000B0000000000000100 /* AppContextSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA22000C0000000000000100 /* AppContextSelfTest.swift */; };
+		AA2300010000000000000100 /* EntityLookupLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300020000000000000100 /* EntityLookupLayer.swift */; };
+		AA2300030000000000000100 /* OpportunityReasoner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300040000000000000100 /* OpportunityReasoner.swift */; };
+		AA2300050000000000000100 /* OpportunityNoveltyTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300060000000000000100 /* OpportunityNoveltyTracker.swift */; };
+		AA2300070000000000000100 /* SemanticPriorityResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300080000000000000100 /* SemanticPriorityResolver.swift */; };
+		AA2300090000000000000100 /* EntityLookupSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23000A0000000000000100 /* EntityLookupSelfTest.swift */; };
+		AA23000B0000000000000100 /* OpportunityReasonerSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23000C0000000000000100 /* OpportunityReasonerSelfTest.swift */; };
+		AA23000D0000000000000100 /* OpportunityNoveltySelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23000E0000000000000100 /* OpportunityNoveltySelfTest.swift */; };
+		AA23000F0000000000000100 /* FrictionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300100000000000000100 /* FrictionEngine.swift */; };
+		AA2300110000000000000100 /* WorkspacePatternTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300120000000000000100 /* WorkspacePatternTracker.swift */; };
+		AA2300130000000000000100 /* FrictionOpportunityReasoner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300140000000000000100 /* FrictionOpportunityReasoner.swift */; };
+		AA2300150000000000000100 /* FrictionEngineSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300160000000000000100 /* FrictionEngineSelfTest.swift */; };
+		AA2300170000000000000100 /* ActionPortfolioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300180000000000000100 /* ActionPortfolioEngine.swift */; };
+		AA2300190000000000000100 /* ProposalQualityFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23001A0000000000000100 /* ProposalQualityFilter.swift */; };
+		AA2600010000000000000100 /* SemanticGroundingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2600020000000000000100 /* SemanticGroundingEngine.swift */; };
+		AA2633000000000000000100 /* CheapAlwaysOnPortfolio.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2633010000000000000100 /* CheapAlwaysOnPortfolio.swift */; };
+		AA2633020000000000000100 /* CheapAlwaysOnPortfolioSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2633030000000000000100 /* CheapAlwaysOnPortfolioSelfTest.swift */; };
+
 		AA0001030000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030000000000000003 /* AppState.swift */; };
 		AA0001040000000000000004 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040000000000000004 /* MenuBarController.swift */; };
 		AA0001050000000000000005 /* AssistantPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050000000000000005 /* AssistantPanelView.swift */; };
@@ -127,6 +150,7 @@
 		AA000171000000000000008F /* TypingActivitySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002730000000000000090 /* TypingActivitySource.swift */; };
 		AA0001720000000000000091 /* PointerActivityContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002740000000000000092 /* PointerActivityContext.swift */; };
 		AA0001730000000000000093 /* PointerActivitySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002750000000000000094 /* PointerActivitySource.swift */; };
+		B250BB000000000000000101 /* MediaStateSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = B250BB000000000000000102 /* MediaStateSource.swift */; };
 		AA0001740000000000000095 /* FusedContextPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002760000000000000096 /* FusedContextPacket.swift */; };
 		AA0001750000000000000097 /* ContextFusionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002770000000000000098 /* ContextFusionEngine.swift */; };
 		AA0001760000000000000099 /* ContextFreshnessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000278000000000000009A /* ContextFreshnessPolicy.swift */; };
@@ -225,6 +249,10 @@
 		AA0001EE0000000000000115 /* GeneratedExecutionProposalActivator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E70000000000000115 /* GeneratedExecutionProposalActivator.swift */; };
 		AA0001EF0000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E80000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift */; };
 		AA0001FE0000000000000117 /* DynamicGeneratedProposalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003E90000000000000117 /* DynamicGeneratedProposalModels.swift */; };
+		B230AA000000000000000101 /* GeneratedActionArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230AA000000000000000102 /* GeneratedActionArchitecture.swift */; };
+		B240AA000000000000000101 /* ProblemInference.swift in Sources */ = {isa = PBXBuildFile; fileRef = B240AA000000000000000102 /* ProblemInference.swift */; };
+		B240AA000000000000000103 /* ActionCandidateGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B240AA000000000000000104 /* ActionCandidateGenerator.swift */; };
+		B250AA000000000000000101 /* EnvironmentActionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B250AA000000000000000102 /* EnvironmentActionEngine.swift */; };
 		AA0001FF0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EA0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift */; };
 		AA0002000000000000000119 /* DynamicGeneratedProposalParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EB0000000000000119 /* DynamicGeneratedProposalParser.swift */; };
 		AA000201000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003EC000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift */; };
@@ -466,6 +494,29 @@
 		F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityEngineSelfTest.swift; sourceTree = "<group>"; };
 		F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityExecutionSelfTest.swift; sourceTree = "<group>"; };
 		F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompartmentTransitionSelfTest.swift; sourceTree = "<group>"; };
+		AA2200020000000000000100 /* EntityGroundingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntityGroundingLayer.swift; sourceTree = "<group>"; };
+		AA2200040000000000000100 /* AppContextAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextAnalyzer.swift; sourceTree = "<group>"; };
+		AA2200060000000000000100 /* EntityGroundingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntityGroundingSelfTest.swift; sourceTree = "<group>"; };
+		AA2200080000000000000100 /* ContextSourcePrioritySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextSourcePrioritySelfTest.swift; sourceTree = "<group>"; };
+		AA22000A0000000000000100 /* EntertainmentPolicySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntertainmentPolicySelfTest.swift; sourceTree = "<group>"; };
+		AA22000C0000000000000100 /* AppContextSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextSelfTest.swift; sourceTree = "<group>"; };
+		AA2300020000000000000100 /* EntityLookupLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntityLookupLayer.swift; sourceTree = "<group>"; };
+		AA2300040000000000000100 /* OpportunityReasoner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityReasoner.swift; sourceTree = "<group>"; };
+		AA2300060000000000000100 /* OpportunityNoveltyTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityNoveltyTracker.swift; sourceTree = "<group>"; };
+		AA2300080000000000000100 /* SemanticPriorityResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticPriorityResolver.swift; sourceTree = "<group>"; };
+		AA23000A0000000000000100 /* EntityLookupSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntityLookupSelfTest.swift; sourceTree = "<group>"; };
+		AA23000C0000000000000100 /* OpportunityReasonerSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityReasonerSelfTest.swift; sourceTree = "<group>"; };
+		AA23000E0000000000000100 /* OpportunityNoveltySelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityNoveltySelfTest.swift; sourceTree = "<group>"; };
+		AA2300100000000000000100 /* FrictionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrictionEngine.swift; sourceTree = "<group>"; };
+		AA2600020000000000000100 /* SemanticGroundingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticGroundingEngine.swift; sourceTree = "<group>"; };
+		AA2300120000000000000100 /* WorkspacePatternTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePatternTracker.swift; sourceTree = "<group>"; };
+		AA2300140000000000000100 /* FrictionOpportunityReasoner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrictionOpportunityReasoner.swift; sourceTree = "<group>"; };
+		AA2300160000000000000100 /* FrictionEngineSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrictionEngineSelfTest.swift; sourceTree = "<group>"; };
+		AA2300180000000000000100 /* ActionPortfolioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionPortfolioEngine.swift; sourceTree = "<group>"; };
+		AA23001A0000000000000100 /* ProposalQualityFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalQualityFilter.swift; sourceTree = "<group>"; };
+		AA2633010000000000000100 /* CheapAlwaysOnPortfolio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheapAlwaysOnPortfolio.swift; sourceTree = "<group>"; };
+		AA2633030000000000000100 /* CheapAlwaysOnPortfolioSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheapAlwaysOnPortfolioSelfTest.swift; sourceTree = "<group>"; };
+
 		AA0002030000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		AA0002400000000000000037 /* FloatingSuggestionWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSuggestionWindowController.swift; sourceTree = "<group>"; };
@@ -481,6 +532,7 @@
 		AA0002090000000000000013 /* SourceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceManager.swift; sourceTree = "<group>"; };
 		AA00020A0000000000000014 /* WindowTitleSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowTitleSource.swift; sourceTree = "<group>"; };
 		AA00020B0000000000000015 /* ClipboardSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardSource.swift; sourceTree = "<group>"; };
+		B250BB000000000000000102 /* MediaStateSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaStateSource.swift; sourceTree = "<group>"; };
 		AA00020C0000000000000016 /* SelectionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionSource.swift; sourceTree = "<group>"; };
 		AA00020D0000000000000017 /* ContextModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextModel.swift; sourceTree = "<group>"; };
 		AA00020E0000000000000018 /* ContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBuilder.swift; sourceTree = "<group>"; };
@@ -669,6 +721,10 @@
 		AA0003E70000000000000115 /* GeneratedExecutionProposalActivator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionProposalActivator.swift; sourceTree = "<group>"; };
 		AA0003E80000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedExecutionProposalActivatorSelfTest.swift; sourceTree = "<group>"; };
 		AA0003E90000000000000117 /* DynamicGeneratedProposalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalModels.swift; sourceTree = "<group>"; };
+		B230AA000000000000000102 /* GeneratedActionArchitecture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedActionArchitecture.swift; sourceTree = "<group>"; };
+		B240AA000000000000000102 /* ProblemInference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemInference.swift; sourceTree = "<group>"; };
+		B240AA000000000000000104 /* ActionCandidateGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionCandidateGenerator.swift; sourceTree = "<group>"; };
+		B250AA000000000000000102 /* EnvironmentActionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentActionEngine.swift; sourceTree = "<group>"; };
 		AA0003EA0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalPromptBuilder.swift; sourceTree = "<group>"; };
 		AA0003EB0000000000000119 /* DynamicGeneratedProposalParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalParser.swift; sourceTree = "<group>"; };
 		AA0003EC000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicGeneratedProposalCandidateMapper.swift; sourceTree = "<group>"; };
@@ -948,6 +1004,7 @@
 				AA000271000000000000008C /* AXWindowContentSource.swift */,
 				AA0002730000000000000090 /* TypingActivitySource.swift */,
 				AA0002750000000000000094 /* PointerActivitySource.swift */,
+				B250BB000000000000000102 /* MediaStateSource.swift */,
 			);
 			path = SystemSources;
 			sourceTree = "<group>";
@@ -1088,6 +1145,10 @@
 				AA0003E70000000000000115 /* GeneratedExecutionProposalActivator.swift */,
 				AA0003E80000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift */,
 				AA0003E90000000000000117 /* DynamicGeneratedProposalModels.swift */,
+				B230AA000000000000000102 /* GeneratedActionArchitecture.swift */,
+				B240AA000000000000000102 /* ProblemInference.swift */,
+				B240AA000000000000000104 /* ActionCandidateGenerator.swift */,
+				B250AA000000000000000102 /* EnvironmentActionEngine.swift */,
 				AA0003EA0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift */,
 				AA0003EB0000000000000119 /* DynamicGeneratedProposalParser.swift */,
 				AA0003EC000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift */,
@@ -1228,6 +1289,29 @@
 				F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */,
 				F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */,
 				F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */,
+				AA2200020000000000000100 /* EntityGroundingLayer.swift */,
+				AA2200040000000000000100 /* AppContextAnalyzer.swift */,
+				AA2200060000000000000100 /* EntityGroundingSelfTest.swift */,
+				AA2200080000000000000100 /* ContextSourcePrioritySelfTest.swift */,
+				AA22000A0000000000000100 /* EntertainmentPolicySelfTest.swift */,
+				AA22000C0000000000000100 /* AppContextSelfTest.swift */,
+				AA2300020000000000000100 /* EntityLookupLayer.swift */,
+				AA2300040000000000000100 /* OpportunityReasoner.swift */,
+				AA2300060000000000000100 /* OpportunityNoveltyTracker.swift */,
+				AA2300080000000000000100 /* SemanticPriorityResolver.swift */,
+				AA23000A0000000000000100 /* EntityLookupSelfTest.swift */,
+				AA23000C0000000000000100 /* OpportunityReasonerSelfTest.swift */,
+				AA23000E0000000000000100 /* OpportunityNoveltySelfTest.swift */,
+				AA2300100000000000000100 /* FrictionEngine.swift */,
+				AA2300120000000000000100 /* WorkspacePatternTracker.swift */,
+				AA2300140000000000000100 /* FrictionOpportunityReasoner.swift */,
+				AA2300160000000000000100 /* FrictionEngineSelfTest.swift */,
+				AA2300180000000000000100 /* ActionPortfolioEngine.swift */,
+				AA23001A0000000000000100 /* ProposalQualityFilter.swift */,
+				AA2600020000000000000100 /* SemanticGroundingEngine.swift */,
+				AA2633010000000000000100 /* CheapAlwaysOnPortfolio.swift */,
+				AA2633030000000000000100 /* CheapAlwaysOnPortfolioSelfTest.swift */,
+
 				AA00A1B2C3D4E5F607182B21 /* BehavioralContextPacket.swift */,
 				AA00A1B2C3D4E5F607182B23 /* BehavioralInferenceEngine.swift */,
 				AA00A1B2C3D4E5F607182B25 /* BehavioralStabilizer.swift */,
@@ -1529,6 +1613,7 @@
 				AA000171000000000000008F /* TypingActivitySource.swift in Sources */,
 				AA0001720000000000000091 /* PointerActivityContext.swift in Sources */,
 				AA0001730000000000000093 /* PointerActivitySource.swift in Sources */,
+				B250BB000000000000000101 /* MediaStateSource.swift in Sources */,
 				AA0001740000000000000095 /* FusedContextPacket.swift in Sources */,
 				AA0001750000000000000097 /* ContextFusionEngine.swift in Sources */,
 				AA0001760000000000000099 /* ContextFreshnessPolicy.swift in Sources */,
@@ -1623,6 +1708,10 @@
 				AA0001EE0000000000000115 /* GeneratedExecutionProposalActivator.swift in Sources */,
 				AA0001EF0000000000000116 /* GeneratedExecutionProposalActivatorSelfTest.swift in Sources */,
 				AA0001FE0000000000000117 /* DynamicGeneratedProposalModels.swift in Sources */,
+				B230AA000000000000000101 /* GeneratedActionArchitecture.swift in Sources */,
+				B240AA000000000000000101 /* ProblemInference.swift in Sources */,
+				B240AA000000000000000103 /* ActionCandidateGenerator.swift in Sources */,
+				B250AA000000000000000101 /* EnvironmentActionEngine.swift in Sources */,
 				AA0001FF0000000000000118 /* DynamicGeneratedProposalPromptBuilder.swift in Sources */,
 				AA0002000000000000000119 /* DynamicGeneratedProposalParser.swift in Sources */,
 				AA000201000000000000011A /* DynamicGeneratedProposalCandidateMapper.swift in Sources */,
@@ -1761,6 +1850,29 @@
 				F5B001C100000000000001B1 /* OpportunityEngineSelfTest.swift in Sources */,
 				F5C001D100000000000001C1 /* OpportunityExecutionSelfTest.swift in Sources */,
 				F5D001E100000000000001D1 /* CompartmentTransitionSelfTest.swift in Sources */,
+				AA2200010000000000000100 /* EntityGroundingLayer.swift in Sources */,
+				AA2200030000000000000100 /* AppContextAnalyzer.swift in Sources */,
+				AA2200050000000000000100 /* EntityGroundingSelfTest.swift in Sources */,
+				AA2200070000000000000100 /* ContextSourcePrioritySelfTest.swift in Sources */,
+				AA2200090000000000000100 /* EntertainmentPolicySelfTest.swift in Sources */,
+				AA22000B0000000000000100 /* AppContextSelfTest.swift in Sources */,
+				AA2300010000000000000100 /* EntityLookupLayer.swift in Sources */,
+				AA2300030000000000000100 /* OpportunityReasoner.swift in Sources */,
+				AA2300050000000000000100 /* OpportunityNoveltyTracker.swift in Sources */,
+				AA2300070000000000000100 /* SemanticPriorityResolver.swift in Sources */,
+				AA2300090000000000000100 /* EntityLookupSelfTest.swift in Sources */,
+				AA23000B0000000000000100 /* OpportunityReasonerSelfTest.swift in Sources */,
+				AA23000D0000000000000100 /* OpportunityNoveltySelfTest.swift in Sources */,
+				AA23000F0000000000000100 /* FrictionEngine.swift in Sources */,
+				AA2300110000000000000100 /* WorkspacePatternTracker.swift in Sources */,
+				AA2300130000000000000100 /* FrictionOpportunityReasoner.swift in Sources */,
+				AA2300150000000000000100 /* FrictionEngineSelfTest.swift in Sources */,
+				AA2300170000000000000100 /* ActionPortfolioEngine.swift in Sources */,
+				AA2300190000000000000100 /* ProposalQualityFilter.swift in Sources */,
+				AA2600010000000000000100 /* SemanticGroundingEngine.swift in Sources */,
+				AA2633000000000000000100 /* CheapAlwaysOnPortfolio.swift in Sources */,
+				AA2633020000000000000100 /* CheapAlwaysOnPortfolioSelfTest.swift in Sources */,
+
 				AA00B1C2D3E4E5F607182B20 /* BehavioralContextPacket.swift in Sources */,
 				AA00B1C2D3E4E5F607182B22 /* BehavioralInferenceEngine.swift in Sources */,
 				AA00B1C2D3E4E5F607182B24 /* BehavioralStabilizer.swift in Sources */,

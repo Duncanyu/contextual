@@ -27,7 +27,13 @@ public struct JarvisSuggestionGenerator: Sendable {
         hasErrorTerms: Bool = false,
         activeCompartment: TaskCompartment? = nil,
         determinerSignal: DeterminerSignal? = nil,
-        topOpportunity: Opportunity? = nil      // Phase 22: OpportunityEngine output
+		semanticDomain: DeterminerSignal.Domain? = nil,
+		semanticMode: DeterminerSignal.Mode? = nil,
+        semanticEntityType: EntityGrounding.EntityType? = nil,
+        semanticEntityConfidence: Double? = nil,
+        mediaStateOverride: EnvironmentMediaState? = nil,
+        topOpportunity: Opportunity? = nil,      // Phase 22: OpportunityEngine output
+        entityGrounding: EntityGrounding? = nil   // Phase 26.4
     ) async -> AmbientJarvisSuggestion? {
         let cycleId = UUID().uuidString
         PerformanceBudgetManager.shared.beginAmbientCycle(id: cycleId)
@@ -35,6 +41,18 @@ public struct JarvisSuggestionGenerator: Sendable {
         let workflow = workflowState.workflowType
         let behavior = behavioralRecord.state
         print("[JarvisSuggestionGenerator] started workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) force_show=\(forceShow)")
+
+        let isEntertainment = (semanticEntityType == .tv_show || semanticEntityType == .youtube_video || semanticEntityType == .streaming_site)
+            || (entityGrounding?.isEntertainment == true)
+            || semanticDomain == .watching
+            || determinerSignal?.inferredDomain == .watching
+        let groundingPropose = entityGrounding?.shouldPropose ?? true
+
+        if !groundingPropose || isEntertainment {
+            print("[JarvisSuppression] reason=entity_grounding_should_not_propose")
+            print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=entity_grounding_should_not_propose")
+            return nil
+        }
 
         // Phase 20D.5 — no more workflow whitelist. Workflows are only
         // suppressed when they are structurally meaningless for ambient
@@ -132,24 +150,61 @@ public struct JarvisSuggestionGenerator: Sendable {
 
         let evidenceQuality: String = {
             if hasSelection { return "selection" }
-            if hasAXContent { return "ax_content" }
+            if hasAXContent || !packet.ocrHints.isEmpty { return "ax_content" }
             if !effectiveMemory.relatedFocusEntities.isEmpty { return "browser_tabs" }
             return "title_only"
         }()
 
-        let selection = CapabilitySelector.select(
-            compartment: activeCompartment,
-            workingMemory: effectiveMemory,
-            evidenceQuality: evidenceQuality,
-            currentApp: packet.currentApp,
-            behavior: behavior,
-            userInitiated: forceShow,
-            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values),
-            determinerSignal: determinerSignal
-        )
-        let actionIntent = selection.primary
-        
-        let aiConfStr = String(format: "%.2f", 0.90) // Intent confidence is now more stable in Phase 21
+        // Phase 26.1 — Bypass CapabilitySelector entirely when friction opportunity is set.
+        // Friction capabilities are authoritative: they come from FrictionEngine detection
+        // and must not be replaced by summarize_reference/create_next_steps.
+        // Phase 26.2 — System/friction/music capabilities bypass CapabilitySelector
+        let systemCapabilityIds: Set<String> = [
+            "collect_references", "pin_reference_tabs", "restore_workspace",
+            "arrange_side_by_side", "resume_focus_media", "extract_and_organize",
+            "precompute_answer",
+            "play_focus_media", "pause_media", "open_relevant_app",
+            "launch_recent_workspace",
+        ]
+        let isFrictionOpportunity = topOpportunity.map { systemCapabilityIds.contains($0.capabilityId) } ?? false
+
+        let selection: SelectedCapability?
+        let actionIntent: CognitiveCapability
+
+        if isFrictionOpportunity, let opp = topOpportunity {
+            let registry = CognitiveCapabilityRegistry.shared
+            actionIntent = registry.get(opp.capabilityId) ?? CognitiveCapability(
+                id: opp.capabilityId, label: opp.title,
+                inputRequirements: [], outputType: "system_action",
+                evidenceThreshold: "none", riskLevel: .light_action,
+                requiresConfirmation: opp.requiresConfirmation,
+                executionMode: .local_action
+            )
+            selection = nil
+            print("[CapabilitySelector] bypassed reason=system_or_friction_opportunity_authoritative capability=\(opp.capabilityId)")
+        } else {
+            let sel = CapabilitySelector.select(
+                compartment: activeCompartment,
+                workingMemory: effectiveMemory,
+                evidenceQuality: evidenceQuality,
+                currentApp: packet.currentApp,
+                behavior: behavior,
+                userInitiated: forceShow,
+                availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values),
+                determinerSignal: determinerSignal,
+                entityGrounding: entityGrounding,
+                topOpportunity: topOpportunity
+            )
+            guard let selectionResult = sel else {
+                print("[JarvisSuppression] reason=no_safe_opportunity")
+                print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=no_safe_opportunity")
+                return nil
+            }
+            selection = selectionResult
+            actionIntent = selectionResult.primary
+        }
+
+        let aiConfStr = String(format: "%.2f", 0.90)
         print("[ActionIntent] inferred intent=\(actionIntent.id) workflow=\(workflow.rawValue) confidence=\(aiConfStr)")
         print("[ActionIntent] evidence_required=\(actionIntent.inputRequirements.joined(separator: ","))")
 		print("[ActionIntent] target_entity=\"\(effectiveMemory.currentEntity.prefix(120))\"")
@@ -318,15 +373,32 @@ public struct JarvisSuggestionGenerator: Sendable {
         let cardKind: AmbientSuggestionKind
 
         if let opp = topOpportunity {
-            primaryAction   = registry.get(opp.capabilityId) ?? actionIntent
+            // Phase 28.2: When opportunity provides capabilityId, ActionCard primary MUST match.
+            // If registry doesn't have it, create one from the opportunity — never fall back to
+            // CapabilitySelector's choice, which can corrupt identity (e.g. review_architecture → diagnose_error).
+            if let registered = registry.get(opp.capabilityId) {
+                primaryAction = registered
+            } else {
+                primaryAction = CognitiveCapability(
+                    id: opp.capabilityId,
+                    label: opp.title,
+                    inputRequirements: [],
+                    outputType: opp.generatedAction != nil ? "generated_action" : "system_action",
+                    evidenceThreshold: opp.requiredEvidence,
+                    riskLevel: .light_action,
+                    requiresConfirmation: opp.requiresConfirmation,
+                    executionMode: .preview_only
+                )
+            }
+            print("[ActionCardIdentity] title_capability=\(opp.capabilityId) primary=\(primaryAction.id) ok=\(opp.capabilityId == primaryAction.id ? "yes" : "MISMATCH")")
             secondaryAction = opp.auxiliaryCapabilityIds.first.flatMap { registry.get($0) }
             auxiliaryAction = opp.auxiliaryCapabilityIds.dropFirst().first.flatMap { registry.get($0) }
             cardKind = opp.capabilityId.contains("play_") || opp.capabilityId.contains("timer")
                 ? .comfort_action : .cognitive_action
         } else {
             primaryAction   = actionIntent
-            secondaryAction = selection.secondary
-            auxiliaryAction = selection.auxiliary
+            secondaryAction = selection?.secondary
+            auxiliaryAction = selection?.auxiliary
             cardKind = forceShow ? .user_initiated : .cognitive_action
         }
 
@@ -491,4 +563,10 @@ private final class ManagedCache<K: Hashable, V>: @unchecked Sendable {
         defer { lock.unlock() }
         store[key] = Entry(value: value, expiry: Date().addingTimeInterval(ttl))
     }
+}
+
+extension JarvisSuggestionGenerator {
+	static func logGeneratedActionSource(_ action: GeneratedActionProposal) {
+		print("[JarvisSuggestionGenerator] source=generated_action title=\"\(action.title)\" id=\(action.id) primitives=[\(action.primitives.map(\.rawValue).joined(separator: ","))]")
+	}
 }

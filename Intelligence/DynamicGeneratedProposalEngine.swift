@@ -477,19 +477,20 @@ actor DynamicGeneratedProposalEngine {
 				recentTitles: recentTitles,
 				referenceTime: referenceTime
 			) {
+				let synthesisSource = composed.proposal.usefulnessHint == "generated_action" ? "generated_action" : "hook_composer"
 				print(
-					"[DynamicActionSynthesis] source=hook_composer synthesized title=\(composed.contract.title) confidence=\(String(format: "%.2f", composed.contract.confidence)) why_now=\(composed.contract.whyNow)"
+					"[DynamicActionSynthesis] source=\(synthesisSource) synthesized title=\(composed.contract.title) confidence=\(String(format: "%.2f", composed.contract.confidence)) why_now=\(composed.contract.whyNow)"
 				)
 				logMetadata(
 					event: "dynamic_action_synthesis",
-					value: "hook_composer",
+					value: synthesisSource,
 					extra: "title=\(composed.contract.title) conf=\(String(format: "%.2f", composed.contract.confidence)) why_now=\(composed.contract.whyNow)"
 				)
 				return DynamicGeneratedProposalResult(
 					status: .synthesized,
 					shouldChimeIn: true,
-					reason: "hook_composer",
-					workflowAssessment: "hook_composer",
+					reason: synthesisSource,
+					workflowAssessment: synthesisSource,
 					proposalConfidence: composed.contract.confidence,
 					requiresVisualContext: composed.contract.requiredContext.contains(.screenCapture) || composed.contract.requiredContext.contains(.fusedVisual),
 					proposals: [composed.proposal],
@@ -498,7 +499,7 @@ actor DynamicGeneratedProposalEngine {
 					createdAt: referenceTime,
 					contextSnapshot: effectiveSnapshot,
 					libraryRecords: [],
-					hookContracts: [composed.contract]
+					hookContracts: synthesisSource == "hook_composer" ? [composed.contract] : []
 				)
 			}
 
@@ -539,12 +540,13 @@ actor DynamicGeneratedProposalEngine {
 						referenceTime: referenceTime
 					   )
 					{
-						print("[DynamicActionSynthesis] source=hook_composer_retry synthesized title=\(retryComposed.contract.title) confidence=\(String(format: "%.2f", retryComposed.contract.confidence)) why_now=\(retryComposed.contract.whyNow)")
+						let retrySource = retryComposed.proposal.usefulnessHint == "generated_action" ? "generated_action_retry" : "hook_composer_retry"
+						print("[DynamicActionSynthesis] source=\(retrySource) synthesized title=\(retryComposed.contract.title) confidence=\(String(format: "%.2f", retryComposed.contract.confidence)) why_now=\(retryComposed.contract.whyNow)")
 						return DynamicGeneratedProposalResult(
 							status: .synthesized,
 							shouldChimeIn: true,
-							reason: "hook_composer_retry",
-							workflowAssessment: "hook_composer_retry",
+							reason: retrySource,
+							workflowAssessment: retrySource,
 							proposalConfidence: retryComposed.contract.confidence,
 							requiresVisualContext: retryComposed.contract.requiredContext.contains(.screenCapture) || retryComposed.contract.requiredContext.contains(.fusedVisual),
 							proposals: [retryComposed.proposal],
@@ -553,7 +555,7 @@ actor DynamicGeneratedProposalEngine {
 							createdAt: referenceTime,
 							contextSnapshot: retrySnapshot,
 							libraryRecords: [],
-							hookContracts: [retryComposed.contract]
+							hookContracts: retrySource == "hook_composer_retry" ? [retryComposed.contract] : []
 						)
 					}
 				}

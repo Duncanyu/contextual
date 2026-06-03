@@ -282,7 +282,8 @@ public enum WorkflowInferenceModel {
     public static func infer(
         packet: CompressedTemporalPacket,
         backend: WorkflowInferenceBackend,
-        applyProvenanceGuard: Bool = true
+        applyProvenanceGuard: Bool = true,
+		groundingTypeHint: EntityGrounding.EntityType? = nil
     ) async -> AmbientWorkflowInferenceResult {
         let rawOpt = await backend.infer(packet: packet)
         
@@ -312,7 +313,12 @@ public enum WorkflowInferenceModel {
                 // right as the user switches to a new topic cluster.
                 print("[WorkflowFallback] blocked reason=stale_epoch_conflict old_workflow=shopping")
                 raw = .empty
-            } else if appIsBrowser && transitions >= 2 && distinctTitles >= 2 && repeatedTopicTerms >= 2 {
+            } else if let hint = groundingTypeHint, hint == .code_project || hint == .course_material {
+				// Phase 25.3 — Task E: Block shopping fallback if current grounding strongly
+				// contradicts shopping (e.g. clearly a code project).
+				print("[WorkflowFallback] blocked reason=current_grounding_conflict hint=\(hint.rawValue)")
+				raw = .empty
+			} else if appIsBrowser && transitions >= 2 && distinctTitles >= 2 && repeatedTopicTerms >= 2 {
                 print("[WorkflowFallback] applied workflow=shopping reason=evidence_pattern matched_entities=\(distinctTitles) matched_sources=\(matchedSources.joined(separator: ","))")
                 raw = AmbientWorkflowInferenceResult(
                     workflow: "shopping",

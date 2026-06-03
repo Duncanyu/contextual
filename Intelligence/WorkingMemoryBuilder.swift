@@ -227,6 +227,19 @@ public enum WorkingMemoryBuilder {
             let bg = allCompartments.filter { $0.id != active.id }.map { $0.label }
             print("[WorkingMemory] background_compartments=[\(bg.joined(separator: ", "))]")
         }
+
+        func simpleTokenize(_ s: String) -> [String] {
+            s.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count >= 3 && $0.count <= 24 && Int($0) == nil }
+        }
+        let currentFocusTerms = Array(Set(simpleTokenize(currentEntity))).sorted()
+        let relatedTerms = Array(Set(relatedFocusEntities.flatMap { simpleTokenize($0) })).sorted()
+        let backgroundTerms = Array(Set(backgroundEntities.flatMap { simpleTokenize($0) })).sorted()
+
+        print("[WorkingMemory] current_focus_terms=\(currentFocusTerms.joined(separator: ","))")
+        print("[WorkingMemory] related_terms=\(relatedTerms.joined(separator: ","))")
+        print("[WorkingMemory] background_terms=\(backgroundTerms.joined(separator: ","))")
         
         let snapshot = WorkingMemorySnapshot(
             currentEntity: currentEntity,
@@ -236,7 +249,10 @@ public enum WorkingMemoryBuilder {
             comparisonCandidates: comparisonCandidates,
             staleEntities: staleEntities,
             relatedFocusEntities: relatedFocusEntities,
-            backgroundEntities: backgroundEntities
+            backgroundEntities: backgroundEntities,
+            currentFocusTerms: currentFocusTerms,
+            relatedTerms: relatedTerms,
+            backgroundTerms: backgroundTerms
         )
         
         print("[WorkingMemory] recent_entities=[\(recentEntities.joined(separator: ", "))]")

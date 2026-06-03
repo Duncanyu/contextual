@@ -121,6 +121,16 @@ enum ContextEventProducerSelfTest {
         check("selected_text_restricted", selEvent.privacyLevel == .restricted)
         check("selected_text_no_content_hint", selEvent.textHints.isEmpty)
         check("selected_text_intensity_clamped", selEvent.activityIntensity >= 0 && selEvent.activityIntensity <= 1)
+        let selectionBuffer = TemporalContextBuffer.build(from: events, now: now.addingTimeInterval(15))
+        let selectionPacket = TemporalContextCompressor.compress(buffer: selectionBuffer)
+        check("selected_text_packet_metadata",
+            selectionPacket.selectionHints.contains("selected_text_available=true"))
+        check("selected_text_evidence_quality",
+            ContextEventProducer.evidenceQuality(
+                hasSelection: ContextEventProducer.hasRecentSelectionEvidence(in: selectionPacket),
+                hasOCRHints: false,
+                hasBrowserContext: false
+            ) == "selection")
 
         // Length bucket helper — direct unit check on the static helper.
         check("length_bucket_short", ContextEventProducer.lengthBucket(15) == "0-20")
@@ -208,6 +218,28 @@ extension ContextEventProducer {
         let titleHints = titleTopicHints("Calculus II - Derivatives and Integrals.pdf")
         check("title_hints_lowercase", titleHints.allSatisfy { $0 == $0.lowercased() })
         check("title_hints_capped", titleHints.count <= 4)
+
+        let selectionPacket = CompressedTemporalPacket(
+            currentApp: "Preview",
+            recentApps: ["Preview"],
+            recentTitles: ["Calculus.pdf"],
+            topicTerms: [],
+            activityPattern: "steady",
+            idlePattern: "active",
+            typingPattern: "none",
+            pointerPattern: "active",
+            ocrHints: [],
+            selectionHints: ["selected_text_available=true", "selection_events=1"],
+            clipboardMetadata: "none",
+            recentUserAccepts: [],
+            recentUserIgnores: [],
+            spanSeconds: 30,
+            eventCount: 1,
+            contextShiftDetected: false
+        )
+        check("selection_evidence_detected", hasRecentSelectionEvidence(in: selectionPacket))
+        check("evidence_quality_prefers_selection",
+            evidenceQuality(hasSelection: true, hasOCRHints: true, hasBrowserContext: true) == "selection")
     }
 }
 

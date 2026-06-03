@@ -2,11 +2,12 @@ import Foundation
 
 /// Deterministic planning pipeline:
 /// - Input: `TaskInferenceResult` (goal + capability categories; no hook ids).
-/// - Retrieves hooks by category.
-/// - Plans a bounded executable hook chain.
+/// - Generates a context-specific action.
+/// - Validates specificity and execution feasibility.
+/// - Composes the action from existing execution primitives.
 /// - Emits `DynamicGeneratedActionContract` + `ValidatedDynamicGeneratedProposal`.
 ///
-/// No large model calls. No hardcoded user behavior labels. Hooks are the building blocks.
+/// No large model calls. No hardcoded user behavior labels. No capability selection.
 enum TaskInferencePlanningPipeline {
 
 	struct PlanningOutput: Sendable, Equatable {
@@ -51,281 +52,71 @@ enum TaskInferencePlanningPipeline {
 			return nil
 		}
 
-		// Force all proposals to use composeIntentFirst (Agentic Pivot)
-		return await composeIntentFirst(
+		let actionInput = generatedActionInput(
 			inference: inference,
 			snapshot: snapshot,
-			situational: situational,
-			cats: cats,
+			situational: situational
+		)
+		guard let generated = await GeneratedActionPipeline.firstAction(
+			input: actionInput,
 			referenceTime: referenceTime
-		)
-
-		// --- Legacy fixed hook-chain path below ---
-		// Evaluated before hook retrieval so we don't waste model budget on low-value chains.
-		let utility = ProposalUtilityScorer.evaluate(
-			goal: inference.possibleUserGoal,
-			cats: cats,
-			snapshot: snapshot,
-			situational: situational
-		)
-		if utility.shouldReject {
-			print("[HookCompositionPipeline] skipped reason=low_utility score=\(String(format: "%.2f", utility.score))")
-			return nil
-		}
-
-		// 1) Retrieve hooks by category (not a global top-k list).
-		async let retrievedAsync: [HookCapabilityDefinition] = HookCategoryRetriever.retrieveAsync(
-			needCats: cats,
-			snapshot: snapshot,
-			situational: situational,
-			registry: registry
-		)
-		async let safetyAsync: HookPlanningSafetyEvaluation = HookPlanningSafetyChecker.evaluateAsync(
-			needCats: cats,
-			snapshot: snapshot,
-			situational: situational
-		)
-
-		let retrieved = await retrievedAsync
-		let safety = await safetyAsync
-		if safety.shouldAbort {
-			print("[HookPlanner] skipped reason=\(safety.abortReason ?? "safety_abort")")
-			return nil
-		}
-		if retrieved.isEmpty {
-			print("[HookValidation] result=fail reason=no_hooks_available")
-			print("[HookCompositionPipeline] skipped reason=no_valid_hooks")
-			return nil
-		}
-
-		// 2) Multi-pass hook script discovery (Parts C + D + E).
-		guard let planHookIds = await HookScriptDiscovery.buildChain(
-			goal: inference.possibleUserGoal,
-			candidates: retrieved,
-			snapshot: snapshot,
-			situational: situational
 		) else {
-			print("[HookValidation] result=fail reason=no_script_plan")
-			print("[HookCompositionPipeline] skipped reason=no_script_plan")
-			return nil
-		}
-		print("[HookPlanLLM] parsed chain=[\(planHookIds.joined(separator: ","))]")
-
-		let initialInputs = HookChainIOValidator.initialInputs(from: snapshot)
-		let validationResult = HookChainIOValidator.validate(
-			hookIds: planHookIds,
-			initialAvailableInputs: initialInputs,
-			registry: registry
-		)
-		var finalHookIds = planHookIds
-		if !validationResult.isValid {
-			let failedHook = validationResult.failedHookId ?? "unknown"
-			let missing = validationResult.missingInputs.map(\.rawValue).sorted().joined(separator: ",")
-			print("[HookValidation] result=fail reason=io_contract_failed hook=\(failedHook) missing=[\(missing)]")
-			
-			if let repaired = HookChainRepairEngine.repair(originalHookIds: planHookIds, initialAvailableInputs: initialInputs, registry: registry) {
-				finalHookIds = repaired
-				print("[HookValidation] result=pass reason=io_contract_satisfied")
-			} else {
-				print("[HookCompositionPipeline] skipped reason=io_contract_failed")
-				return nil
-			}
-		} else {
-			print("[HookValidation] result=pass reason=io_contract_satisfied")
-		}
-
-		let usedHooks = finalHookIds.compactMap { registry.definition(for: $0) }
-
-		guard !finalHookIds.isEmpty else {
-			print("[HookValidation] result=fail reason=no_hooks_available")
-			print("[HookCompositionPipeline] skipped reason=no_valid_hooks")
+			print("[HookCompositionPipeline] skipped reason=no_generated_action")
 			return nil
 		}
 
-		// Fail quietly when the only hooks are anchors (observe_current_context + present_result).
-		let nonAnchorHooks = finalHookIds.filter {
-			$0 != "observe_current_context" && $0 != "present_result"
-		}
-		guard !nonAnchorHooks.isEmpty else {
-			print("[HookPlanner] skipped reason=no_capability_hooks_resolved cats=[\(cats.joined(separator: ","))]")
+		let validation = ActionCandidateValidator.validate(generated)
+		guard validation.accepted else {
+			print("[HookCompositionPipeline] skipped reason=action_validation_failed")
 			return nil
 		}
 
-		let workflow = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
-		let primitives = HookCapabilityRegistry.primitives(from: usedHooks)
-		let intent = inferIntent(from: primitives)
-
-		let title = synthesizeTitle(goal: inference.possibleUserGoal, workflow: workflow, intent: intent)
-		guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-			print("[HookCompositionPipeline] skipped reason=no_contextual_title")
+		guard let composition = PrimitiveComposer.compose(generated) else {
+			print("[HookCompositionPipeline] skipped reason=primitive_composition_failed")
 			return nil
 		}
-		let question = synthesizeQuestion(goal: inference.possibleUserGoal, title: title)
+		print("[PrimitiveComposition] primitives=\(composition.primitives.map(\.rawValue).joined(separator: ",")) confidence=\(String(format: "%.2f", composition.confidence))")
 
-		let requiredContext = minimizedRequiredContext(
-			from: usedHooks,
-			snapshot: snapshot,
-			situational: situational
-		)
-
-		let fp = TaskInferenceEngine.fingerprint(snapshot: snapshot, situational: situational, recentTitles: recentTitles)
-		let catSig = cats.joined(separator: ",")
-		let catHash = abs(catSig.hashValue)
-
-		// Blend utility score into contract confidence.
-		// Boosted proposals get a small lift; accepted proposals use raw confidence.
-		// This flows into rank scoring and the chime-in float decision.
-		let blendedConfidence: Double = {
-			switch utility.decision {
-			case .boost:  return min(1.0, inference.confidence + utility.score * 0.12)
-			case .accept: return inference.confidence
-			case .reject: return inference.confidence  // shouldn't reach here
-			}
-		}()
-
-		let contract = DynamicGeneratedActionContract(
-			id: "hook:\(fp)|c\(catHash)",
-			title: title,
-			userFacingQuestion: question,
+		let action = composition.action
+		let generatedFingerprint = TaskInferenceEngine.fingerprint(snapshot: snapshot, situational: situational, recentTitles: recentTitles)
+		let primitiveHash = abs(action.primitiveSignature.hashValue)
+		let generatedContract = DynamicGeneratedActionContract(
+			id: "\(action.id)|p\(primitiveHash)|fp\(abs(generatedFingerprint.hashValue))",
+			title: action.title,
+			userFacingQuestion: synthesizeQuestion(goal: inference.possibleUserGoal, title: action.title),
 			inferredUserGoal: inference.possibleUserGoal,
 			situationSummary: String(situational.situationalSummary.prefix(160)),
-			whyNow: inference.whyNow.isEmpty ? "inferred" : inference.whyNow,
-			hookPlanIds: finalHookIds,
-			requiredContext: requiredContext,
-			confidence: blendedConfidence,
+			whyNow: action.reasoning,
+			hookPlanIds: [],
+			requiredContext: action.requiredContext,
+			confidence: composition.confidence,
 			createdAt: referenceTime,
-			expiresAt: referenceTime.addingTimeInterval(max(30, min(180, inference.expirySeconds))),
-			cacheEligibility: blendedConfidence >= 0.66,
-			cacheKey: fp
+			expiresAt: action.expiresAt,
+			cacheEligibility: composition.confidence >= 0.66,
+			cacheKey: generatedFingerprint
 		)
 
-		let chain = finalHookIds.joined(separator: ",")
-		print("[HookRetriever] cats=[\(cats.joined(separator: ","))] retrieved=\(retrieved.count) implemented=\(usedHooks.count)")
-		print("[HookPlanner] chain=\(chain) missingCats=none")
-
-		// [GeneratedActionContract] — final contract summary.
-		let executableFlag = finalHookIds.count >= 2 && !usedHooks.isEmpty
-		print("[GeneratedActionContract] executable=\(executableFlag ? "yes" : "no") source=llm_hook_plan title=\"\(contract.title)\" hooks=[\(chain)] confidence=\(String(format: "%.2f", contract.confidence))")
-		print("[HookComposer] synthesized title=\(contract.title) hooks=\(finalHookIds.count)")
-
-		let agenticPlan = AgenticRuntimeBridge.derivePlan(from: contract, workflow: workflow.rawValue)
-
-		let proposal = ValidatedDynamicGeneratedProposal(
-			id: contract.id,
-			title: contract.title,
-			description: contract.userFacingQuestion,
-			workflowType: workflow,
-			intentType: intent,
-			expectedOutcome: contract.inferredUserGoal,
-			requiredContextTypes: contract.requiredContext,
-			suggestedPrimitives: primitives,
-			interruptionCost: interruptionCost(workflow: workflow, confidence: contract.confidence),
-			confidence: contract.confidence,
-			usefulnessHint: "hook_composer_model",
-			agenticPlan: agenticPlan
+		let generatedWorkflow = action.workflow
+		let generatedProposal = ValidatedDynamicGeneratedProposal(
+			id: generatedContract.id,
+			title: action.title,
+			description: action.description.isEmpty ? generatedContract.userFacingQuestion : action.description,
+			workflowType: generatedWorkflow,
+			intentType: composition.intentType,
+			expectedOutcome: generatedContract.inferredUserGoal,
+			requiredContextTypes: generatedContract.requiredContext,
+			suggestedPrimitives: composition.primitives,
+			interruptionCost: interruptionCost(workflow: generatedWorkflow, confidence: generatedContract.confidence),
+			confidence: generatedContract.confidence,
+			usefulnessHint: "generated_action",
+			agenticPlan: nil
 		)
 
-		return PlanningOutput(contract: contract, proposal: proposal, agenticPlan: agenticPlan)
-	}
+		print("[GeneratedActionContract] executable=yes source=primitive_composer title=\"\(generatedContract.title)\" primitives=[\(composition.primitives.map(\.rawValue).joined(separator: ","))] confidence=\(String(format: "%.2f", generatedContract.confidence))")
+		print("[ProposalReasoning] selected_title=\"\(generatedContract.title)\" reasoning=\"\(generatedContract.whyNow)\"")
+		print("[HookCompositionPipeline] bypassed reason=generated_action_primitive_composition")
+		return PlanningOutput(contract: generatedContract, proposal: generatedProposal, agenticPlan: nil)
 
-	// MARK: - Intent-First Planning (Agentic Pivot)
-
-	private static func composeIntentFirst(
-		inference: TaskInferenceResult,
-		snapshot: CanonicalGeneratedExecutionContextSnapshot,
-		situational: SituationalContextSnapshot,
-		cats: [String],
-		referenceTime: Date
-	) async -> PlanningOutput? {
-		let workflow = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
-		let intent = mapIntent(from: situational.inferredIntent)
-		
-		let title = synthesizeTitle(goal: inference.possibleUserGoal, workflow: workflow, intent: intent)
-		guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-			print("[HookCompositionPipeline] skipped reason=no_contextual_title")
-			return nil
-		}
-		let question = synthesizeQuestion(goal: inference.possibleUserGoal, title: title)
-		
-		// Use anchors as a base plan. The runtime will expand this.
-		let baseHooks = ["observe_current_context", "present_result"]
-		
-		let fp = TaskInferenceEngine.fingerprint(snapshot: snapshot, situational: situational, recentTitles: [])
-		let catSig = cats.joined(separator: ",")
-		let catHash = abs(catSig.hashValue)
-
-		let requiredContext = mapRequiredContext(from: cats)
-
-		let contract = DynamicGeneratedActionContract(
-			id: "agentic:\(fp)|c\(catHash)",
-			title: title,
-			userFacingQuestion: question,
-			inferredUserGoal: inference.possibleUserGoal,
-			situationSummary: String(situational.situationalSummary.prefix(160)),
-			whyNow: inference.whyNow.isEmpty ? "inferred" : inference.whyNow,
-			hookPlanIds: baseHooks,
-			requiredContext: requiredContext,
-			confidence: inference.confidence,
-			createdAt: referenceTime,
-			expiresAt: referenceTime.addingTimeInterval(max(30, min(180, inference.expirySeconds))),
-			cacheEligibility: inference.confidence >= 0.60,
-			cacheKey: fp
-		)
-
-		print("[AgenticComposition] goal=\"\(contract.inferredUserGoal)\" confidence=\(String(format: "%.2f", contract.confidence))")
-
-		let agenticPlan = AgenticRuntimeBridge.derivePlan(from: contract, workflow: workflow.rawValue)
-
-		let proposal = ValidatedDynamicGeneratedProposal(
-			id: contract.id,
-			title: contract.title,
-			description: contract.userFacingQuestion,
-			workflowType: workflow,
-			intentType: intent,
-			expectedOutcome: contract.inferredUserGoal,
-			requiredContextTypes: contract.requiredContext,
-			suggestedPrimitives: [], // Primitive selection moves to runtime (agentic path)
-			interruptionCost: 0.35,
-			confidence: contract.confidence,
-			// Prefix "hook_composer" so the mapper and activator treat this
-			// like a hook-composer proposal (lenient context check, hookComposer source).
-			// The suffix "_agentic" distinguishes it from legacy fixed-chain proposals.
-			usefulnessHint: "hook_composer_agentic",
-			agenticPlan: agenticPlan
-		)
-
-		return PlanningOutput(contract: contract, proposal: proposal, agenticPlan: agenticPlan)
-	}
-
-	private static func mapIntent(from synth: SynthesizedIntentType?) -> IntentType {
-		guard let synth else { return .unknown }
-		switch synth {
-		case .summarizeCurrentArticle, .summarizeCodeChange: return .summarize
-		case .explainLikelyError, .explainApiResponse, .explainScreenContext: return .explain
-		case .extractActionItems: return .extract
-		case .turnNotesIntoChecklist: return .structure
-		case .compareSelectedSnippets: return .compare
-		case .identifyPossibleBugSource: return .explain
-		case .draftReply: return .unknown
-		case .reviewSelectedText: return .classify
-		case .unknown: return .unknown
-		}
-	}
-
-	private static func mapRequiredContext(from cats: [String]) -> [ContextRequirementType] {
-		var reqs: Set<ContextRequirementType> = []
-		for cat in cats {
-			switch cat {
-			case "context": reqs.insert(.textSnippet)
-			case "extract": reqs.insert(.textSnippet)
-			case "reason":  reqs.insert(.textSnippet)
-			case "compare": reqs.insert(.textSnippet)
-			case "debug":   reqs.insert(.screenCapture)
-			case "study":   reqs.insert(.textSnippet)
-			default: break
-			}
-		}
-		return Array(reqs).sorted(by: { $0.rawValue < $1.rawValue })
 	}
 
 	// MARK: - Helpers
@@ -338,6 +129,68 @@ enum TaskInferencePlanningPipeline {
 			.filter { seen.insert($0).inserted }
 			.prefix(8)
 			.map { $0 }
+	}
+
+	private static func generatedActionInput(
+		inference: TaskInferenceResult,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot
+	) -> GeneratedActionInput {
+		let terms = (inference.possibleUserGoal + " " + snapshot.windowTitle + " " + situational.situationalSummary)
+			.components(separatedBy: CharacterSet.alphanumerics.inverted)
+			.filter { $0.count >= 3 }
+		let related = [
+			snapshot.selectedText,
+			snapshot.contextSummary,
+			snapshot.clipboardText
+		].compactMap { $0 }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+		let workflow = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
+		return GeneratedActionInput(
+			currentEntity: snapshot.windowTitle.isEmpty ? situational.windowTitle : snapshot.windowTitle,
+			relatedEntities: Array(related.prefix(4)),
+			activeTerms: terms,
+			activeCompartmentLabel: nil,
+			activeCompartmentWorkflow: nil,
+			evidenceQuality: snapshot.availableContextTypes.contains(.multiSource) ? "browser_tabs" : "title_only",
+			activeApplication: snapshot.activeApp,
+			domain: domain(from: workflow),
+			mode: mode(from: workflow),
+			entityType: .unknown,
+			hasErrorTerms: inference.neededCapabilityCategories.map { $0.lowercased() }.contains("debug")
+				|| terms.contains { isErrorTerm($0) },
+			hasMultipleSources: snapshot.availableContextTypes.contains(.multiSource) || related.count >= 2,
+			hasComparisonCandidates: inference.neededCapabilityCategories.map { $0.lowercased() }.contains("compare"),
+			confidenceSeed: inference.confidence
+		)
+	}
+
+	private static func domain(from workflow: WorkflowType) -> DeterminerSignal.Domain {
+		switch workflow {
+		case .debugging, .editing: return .coding
+		case .studying: return .studying
+		case .research: return .researching
+		case .comparing: return .shopping
+		case .writing: return .communicating
+		case .browsing, .reviewing, .organizing, .unknown: return .unknown
+		}
+	}
+
+	private static func mode(from workflow: WorkflowType) -> DeterminerSignal.Mode {
+		switch workflow {
+		case .debugging: return .debugging
+		case .editing: return .building
+		case .studying: return .reading
+		case .research: return .reading
+		case .comparing: return .comparing
+		case .writing: return .writing
+		case .browsing: return .browsing
+		case .reviewing, .organizing, .unknown: return .unknown
+		}
+	}
+
+	private static func isErrorTerm(_ term: String) -> Bool {
+		let lower = term.lowercased()
+		return lower.contains("error") || lower.contains("bug") || lower.contains("crash") || lower.contains("fail")
 	}
 
 	private static func hasActionIntent(_ lower: String) -> Bool {

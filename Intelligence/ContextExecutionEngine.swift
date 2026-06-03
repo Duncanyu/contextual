@@ -407,8 +407,6 @@ enum ContextExecutionEngine {
                     ) {
                         var web = envelope.web.entries.map { "[\($0.source)] \($0.title): \($0.extract)" }
                         web.append(contentsOf: envelope.webResearchFacts.map { "[\($0.method)] \($0.sourceTitle): \($0.label) = \($0.value)" })
-                        let pageMeta = renderPublicPageMetadata(envelope.page)
-                        let productFacts = renderProductFacts(envelope.page)
                         // Phase 20D — if the judgment is invalid we override
                         // the artifact type even when the model produced one.
                         // Section content stays the model's; the rendered
@@ -422,26 +420,25 @@ enum ContextExecutionEngine {
                             return parsed.artifact
                         }()
                         
-                        let selection = CapabilitySelector.select(
-                            compartment: activeComp,
-                            workingMemory: envelope.memory,
-                            evidenceQuality: evidenceQuality,
-                            currentApp: envelope.packet.currentApp,
-                            behavior: envelope.behavior.state,
-                            userInitiated: requestedIntent != nil,
-                            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+                        let generatedAction = GeneratedActionCapabilityAdapter.actionFromArtifact(
+                            title: finalArtifact.title,
+                            description: finalArtifact.subtitle,
+                            artifactType: finalArtifact.type,
+                            confidence: intent.confidence,
+                            evidenceQuality: evidenceQuality
                         )
+                        let primaryAction = GeneratedActionCapabilityAdapter.capability(from: generatedAction)
                         
                         let card = ActionCard(
                             title: finalArtifact.title,
                             explanation: finalArtifact.subtitle,
-                            primaryAction: selection.primary,
-                            secondaryAction: selection.secondary,
-                            auxiliaryAction: selection.auxiliary,
+                            primaryAction: primaryAction,
+                            secondaryAction: nil,
+                            auxiliaryAction: nil,
                             previewPayload: finalArtifact,
                             evidenceNote: "Based on \(evidenceQuality) evidence",
                             confidence: intent.confidence,
-                            confirmationState: selection.primary.requiresConfirmation ? "required" : "none"
+                            confirmationState: primaryAction.requiresConfirmation ? "required" : "none"
                         )
 
                         return ContextExecutionResult(
@@ -520,8 +517,6 @@ enum ContextExecutionEngine {
         }
         webContext.append(contentsOf: envelope.webResearchFacts.map { "[\($0.method)] \($0.sourceTitle): \($0.label) = \($0.value)" })
 
-		let pageMeta = renderPublicPageMetadata(envelope.page)
-		let productFacts = renderProductFacts(envelope.page)
 		let quality = evidenceQuality
 
         // 3. Inferred — HEAVILY hedged. Generic across workflows.
@@ -574,7 +569,7 @@ enum ContextExecutionEngine {
         var subtitle = "Observation of recent activity."
         var artifactType = intent.intent   // overridden to canonical type below
         var sections: [ArtifactSection] = []
-        var primaryCards: [ArtifactCard] = []
+        let primaryCards: [ArtifactCard] = []
         var tableRows: [[String]]? = nil
         var nextActions: [String] = []
         var missingInfo = unknown
@@ -838,26 +833,25 @@ enum ContextExecutionEngine {
             finalNextQuestion = "It looks like these items may serve different needs — what are you actually trying to accomplish here?"
         }
 
-        let selection = CapabilitySelector.select(
-            compartment: activeComp,
-            workingMemory: envelope.memory,
-            evidenceQuality: evidenceQuality,
-            currentApp: envelope.packet.currentApp,
-            behavior: envelope.behavior.state,
-            userInitiated: requestedIntent != nil,
-            availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
+        let generatedAction = GeneratedActionCapabilityAdapter.actionFromArtifact(
+            title: artifact.title,
+            description: artifact.subtitle,
+            artifactType: artifact.type,
+            confidence: envelope.judgment.confidence,
+            evidenceQuality: evidenceQuality
         )
+        let primaryAction = GeneratedActionCapabilityAdapter.capability(from: generatedAction)
         
         let card = ActionCard(
             title: artifact.title,
             explanation: artifact.subtitle,
-            primaryAction: selection.primary,
-            secondaryAction: selection.secondary,
-            auxiliaryAction: selection.auxiliary,
+            primaryAction: primaryAction,
+            secondaryAction: nil,
+            auxiliaryAction: nil,
             previewPayload: artifact,
             evidenceNote: "Fallback based on \(evidenceQuality) evidence",
             confidence: envelope.judgment.confidence,
-            confirmationState: selection.primary.requiresConfirmation ? "required" : "none"
+            confirmationState: primaryAction.requiresConfirmation ? "required" : "none"
         )
 
         return ContextExecutionResult(

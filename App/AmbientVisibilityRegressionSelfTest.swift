@@ -178,7 +178,7 @@ enum AmbientVisibilityRegressionSelfTest {
 				userInitiated: false,
 				availableCapabilities: caps
 			)
-			check("no_compare_options_for_\(tab.label)", sel.primary.id != "compare_options")
+			check("no_compare_options_for_\(tab.label)", sel?.primary.id != "compare_options")
 		}
 
 		// ──────────────────────────────────────────────────────────────────

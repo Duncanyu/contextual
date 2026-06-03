@@ -40,7 +40,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("studying_browser_tabs_synthesis", r1.primary.id == "synthesize_sources")
+        check("studying_browser_tabs_synthesis", r1?.primary.id == "synthesize_sources")
 
         // 2. Studying + title only -> create_review_plan
         let r2 = CapabilitySelector.select(
@@ -52,7 +52,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("studying_title_only_plan", r2.primary.id == "create_review_plan")
+        check("studying_title_only_plan", r2?.primary.id == "create_review_plan")
 
         // 2b. Studying + AX content -> generate_quiz
         let r2b = CapabilitySelector.select(
@@ -64,7 +64,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("studying_ax_content_quiz", r2b.primary.id == "generate_quiz")
+        check("studying_ax_content_quiz", r2b?.primary.id == "generate_quiz")
 
         // 2c. Studying + selection -> explain_context
         let r2c = CapabilitySelector.select(
@@ -76,7 +76,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("studying_selection_explain", r2c.primary.id == "explain_context")
+        check("studying_selection_explain", r2c?.primary.id == "explain_context")
 
         // 3. Debugging → diagnose_error
         let r3 = CapabilitySelector.select(
@@ -88,7 +88,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("debugging_diagnoses_error", r3.primary.id == "diagnose_error")
+        check("debugging_diagnoses_error", r3?.primary.id == "diagnose_error")
 
         // 4. Error terms in any workflow → diagnose_error
         let memError = WorkingMemorySnapshot(
@@ -110,7 +110,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("error_terms_force_diagnostic", r4.primary.id == "diagnose_error")
+        check("error_terms_force_diagnostic", r4?.primary.id == "diagnose_error")
 
         // 5. Writing + selection → improve_text
         let r5 = CapabilitySelector.select(
@@ -122,7 +122,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("writing_with_selection_improves_draft", r5.primary.id == "improve_text")
+        check("writing_with_selection_improves_draft", r5?.primary.id == "improve_text")
 
         // 6. Writing without selection → create_outline
         let r6 = CapabilitySelector.select(
@@ -134,7 +134,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("writing_no_selection_outline", r6.primary.id == "create_outline")
+        check("writing_no_selection_outline", r6?.primary.id == "create_outline")
 
         // 7. Shopping → compare_options
         let r7 = CapabilitySelector.select(
@@ -146,7 +146,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("shopping_compare_options", r7.primary.id == "compare_options")
+        check("shopping_compare_options", r7?.primary.id == "compare_options")
 
         // 8. General Research → summarize_context
         let r8 = CapabilitySelector.select(
@@ -158,7 +158,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("research_summarize", r8.primary.id == "summarize_context")
+        check("research_summarize", r8?.primary.id == "summarize_context")
 
         // 9. General Research + multi → synthesize_sources
         let r9 = CapabilitySelector.select(
@@ -170,7 +170,7 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("research_multi_synthesize", r9.primary.id == "synthesize_sources")
+        check("research_multi_synthesize", r9?.primary.id == "synthesize_sources")
 
         // 10. Generic fallback
         let r10 = CapabilitySelector.select(
@@ -182,11 +182,10 @@ public enum ActionIntentSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        check("fallback_suggest_next_step", r10.primary.id == "summarize_context") // summarize_context is the new fallback primary
+        check("fallback_suggest_next_step", r10?.primary.id == "summarize_context") // summarize_context is the new fallback primary
 
-        // 11. All selected intents are read-only or light actions.
         let intents = [r1, r2, r2b, r2c, r3, r4, r5, r6, r7, r8, r9, r10]
-        let allSafe = intents.allSatisfy { $0.primary.riskLevel == .read_only || $0.primary.riskLevel == .light_action }
+        let allSafe = intents.allSatisfy { $0?.primary.riskLevel == .read_only || $0?.primary.riskLevel == .light_action }
         check("all_capabilities_safe", allSafe)
 
         let ok = failures.isEmpty

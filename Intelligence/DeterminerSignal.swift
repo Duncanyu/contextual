@@ -68,7 +68,8 @@ public struct DeterminerSignal: Sendable, Equatable {
         hasSelectedURL: Bool = false,
         activeTerms: [String] = [],
         currentEntity: String = "",
-        activityState: ActivityState? = nil
+        activityState: ActivityState? = nil,
+        grounding: SemanticGroundingResult? = nil
     ) -> DeterminerSignal {
 
         // ── 0. Resolve entity and compartment trust before any term collection ──
@@ -178,6 +179,29 @@ public struct DeterminerSignal: Sendable, Equatable {
         // (e.g., a TV show → no creative_coding vocabulary in current focus).
         print("[DomainClassifier] scoring_source=current_focus_only focus_term_count=\(domainScoringTerms.count) all_term_count=\(allTerms.count)")
         var domain = inferDomain(terms: domainScoringTerms)
+        if let g = grounding {
+            if let gd = Domain(rawValue: g.domain.lowercased()) {
+                domain = gd
+            } else {
+                let lowerDomain = g.domain.lowercased()
+                if lowerDomain.contains("coding") {
+                    domain = .coding
+                } else if lowerDomain.contains("watching") || lowerDomain.contains("entertainment") {
+                    domain = .watching
+                } else if lowerDomain.contains("gaming") {
+                    domain = .gaming
+                } else if lowerDomain.contains("studying") {
+                    domain = .studying
+                } else if lowerDomain.contains("shopping") {
+                    domain = .shopping
+                } else if lowerDomain.contains("researching") {
+                    domain = .researching
+                } else if lowerDomain.contains("browsing") {
+                    domain = .browsing
+                }
+            }
+            print("[DeterminerSignal] domain_source=semantic_grounding")
+        }
 
         // Phase 21.4 / Phase 22 — Best-effort domain when unknown + user is active.
         // If the term scorer returned .unknown but the user is clearly active and a

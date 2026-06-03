@@ -351,13 +351,30 @@ public final class CognitiveCapabilityRegistry: Sendable {
         let localList = [
             CognitiveCapability(id: "play_focus_media", label: "Play focus media", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "pause_media", label: "Pause media", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
+            CognitiveCapability(id: "suggest_focus_playlist", label: "Suggest focus playlist", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .preview_only),
+            CognitiveCapability(id: "enable_reduce_interruptions", label: "Enable Reduce Interruptions", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "launch_recent_workspace", label: "Launch recent workspace", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .preview_only),
+            CognitiveCapability(id: "open_related_app_set", label: "Open related app set", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .preview_only),
             CognitiveCapability(id: "open_relevant_app", label: "Open relevant app", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "start_focus_timer", label: "Start focus timer", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "copy_result_to_clipboard", label: "Copy to clipboard", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action)
         ]
         
         for c in localList { caps[c.id] = c }
-        
+
+        // Phase 26.1 — Friction-reduction capabilities (environment actions, not text generation)
+        let frictionList = [
+            CognitiveCapability(id: "collect_references", label: "Collect references", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: false, executionMode: .local_action),
+            CognitiveCapability(id: "pin_reference_tabs", label: "Collect repeated tabs", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "restore_workspace", label: "Restore workspace", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "arrange_side_by_side", label: "Arrange side by side", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "resume_focus_media", label: "Resume focus media", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "extract_and_organize", label: "Extract and organize", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: false, executionMode: .local_action),
+            CognitiveCapability(id: "precompute_answer", label: "Pre-load answer", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .read_only, requiresConfirmation: false, executionMode: .preview_only),
+        ]
+
+        for c in frictionList { caps[c.id] = c }
+
         self.capabilities = caps
         
         print("[CapabilityRegistry] loaded count=\(caps.count)")
@@ -389,9 +406,28 @@ public enum CapabilitySelector {
         behavior: BehavioralState,
         userInitiated: Bool,
         availableCapabilities: [CognitiveCapability],
-        determinerSignal: DeterminerSignal? = nil
-    ) -> SelectedCapability {
+        determinerSignal: DeterminerSignal? = nil,
+        entityGrounding: EntityGrounding? = nil,
+        topOpportunity: Opportunity? = nil
+    ) -> SelectedCapability? {
         print("[CapabilitySelector] evidence_quality=\(evidenceQuality)")
+
+        // Phase 26.4 — Disable CapabilitySelector fallback when:
+        // - no topOpportunity exists
+        // - and any safety block matches: grounding shouldNotPropose, title_only/browser_tabs quality, watching/entertainment, unknown workflow/domain
+        let domainRaw = determinerSignal?.inferredDomain.rawValue ?? "unknown"
+        let isWatchingOrEntertainment = domainRaw == "watching" || domainRaw == "entertainment" || entityGrounding?.isEntertainment == true
+        let isWorkflowUnknown = compartment?.workflow == .unknown || compartment?.workflow == .idle || determinerSignal?.inferredDomain == .unknown
+        let isTitleOrTabs = evidenceQuality == "title_only" || evidenceQuality == "browser_tabs"
+        let groundingShouldNotPropose = entityGrounding?.shouldPropose == false
+
+        if topOpportunity == nil && !userInitiated {
+            if groundingShouldNotPropose || isTitleOrTabs || isWatchingOrEntertainment || isWorkflowUnknown {
+                print("[CapabilitySelector] skipped reason=no_safe_opportunity")
+                print("[JarvisSuppression] reason=no_safe_opportunity")
+                return nil
+            }
+        }
 
         let registry = CognitiveCapabilityRegistry.shared
 
@@ -569,10 +605,12 @@ import Foundation
 import AppKit
 
 public enum CapabilityExecutionStatus: String, Codable, Sendable {
+    case previewGenerated = "preview_generated"
     case success = "success"
     case unavailable = "unavailable"
     case cancelled = "cancelled"
     case blocked = "blocked"
+	case openedSearch = "opened_search"
 }
 
 @MainActor
@@ -583,16 +621,28 @@ public final class CapabilityExecutor {
     
     public func execute(capability: CognitiveCapability, context: [String: Any]) async -> CapabilityExecutionStatus {
         print("[CapabilityExecution] started id=\(capability.id)")
+        print("[CapabilityExecution] mode=\(capability.executionMode.rawValue) id=\(capability.id)")
         
         if capability.requiresConfirmation {
-            // In a real app, this would trigger a UI prompt.
-            // For now, we assume confirmed if user accepted the suggestion.
-            print("[CapabilityExecution] confirmation_required=yes")
+            if context["confirmation_satisfied"] as? Bool == true {
+                print("[CapabilityExecution] confirmation_satisfied=yes source=user_click")
+            } else {
+                // In a real app, this would trigger a UI prompt.
+                print("[CapabilityExecution] confirmation_required=yes")
+            }
         } else {
             print("[CapabilityExecution] confirmation_required=no")
         }
         
         switch capability.id {
+        case "suggest_focus_playlist", "open_related_app_set":
+            print("[CapabilityExecution] status=preview_generated id=\(capability.id)")
+            print("[CapabilityExecution] completed status=success id=\(capability.id) reason=preview_only")
+            return .previewGenerated
+
+        case "enable_reduce_interruptions":
+            return enableReduceInterruptions(context: context)
+
         case "copy_result_to_clipboard":
             return copyToClipboard(context: context)
             
@@ -600,18 +650,46 @@ public final class CapabilityExecutor {
             return startFocusTimer(context: context)
             
         case "play_focus_media":
-            return await playFocusMedia()
+            return await playFocusMedia(context: context)
+
+        case "launch_recent_workspace":
+            return launchRecentWorkspace(context: context)
             
         case "pause_media":
             return await pauseMedia()
             
         case "open_relevant_app":
             return openRelevantApp(context: context)
-            
+
+        // Phase 26.1 — Friction-reduction executors
+        case "collect_references":
+            return collectReferences(context: context)
+
+        case "pin_reference_tabs":
+            return pinReferenceTabs(context: context)
+
+        case "restore_workspace":
+            return restoreWorkspace(context: context)
+
+        case "arrange_side_by_side":
+            return restoreWorkspace(context: context)  // same open-apps logic
+
+        case "resume_focus_media":
+            return await playFocusMedia(context: context)
+
+        case "extract_and_organize":
+            return collectReferences(context: context)  // same collect logic
+
+        case "precompute_answer":
+            print("[CapabilityExecution] status=preview_generated id=precompute_answer")
+            print("[CapabilityExecution] completed status=success id=precompute_answer reason=preview_only")
+            return .previewGenerated
+
         default:
             if capability.executionMode == .preview_only {
-                print("[CapabilityExecution] completed status=success (preview_only)")
-                return .success
+                print("[CapabilityExecution] status=preview_generated id=\(capability.id)")
+                print("[CapabilityExecution] completed status=success id=\(capability.id) reason=preview_only")
+                return .previewGenerated
             }
             print("[CapabilityExecution] blocked reason=capability_unavailable")
             return .unavailable
@@ -635,32 +713,76 @@ public final class CapabilityExecutor {
         print("[CapabilityExecution] completed status=unavailable id=start_focus_timer reason=no_timer_service_wired")
         return .unavailable
     }
-    
-    private func playFocusMedia() async -> CapabilityExecutionStatus {
-        let script = "tell application \"Music\" to play"
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if error == nil {
-                print("[CapabilityExecution] completed status=success id=play_focus_media")
-                return .success
-            }
-        }
-        print("[CapabilityExecution] completed status=unavailable id=play_focus_media")
+
+    private func enableReduceInterruptions(context: [String: Any]) -> CapabilityExecutionStatus {
+        // Phase 25.6 — Task D: Honesty.
+        // If we can't toggle Focus mode, we MUST return unavailable or preview_only.
+        print("[FocusAction] mode=toggle_system_focus status=unavailable reason=no_focus_service_wired")
+        print("[CapabilityExecution] completed status=unavailable id=enable_reduce_interruptions reason=no_focus_service_wired")
         return .unavailable
     }
     
-    private func pauseMedia() async -> CapabilityExecutionStatus {
-        let script = "tell application \"Music\" to pause"
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if error == nil {
-                print("[CapabilityExecution] completed status=success id=pause_media")
-                return .success
+    private func playFocusMedia(context: [String: Any]) async -> CapabilityExecutionStatus {
+        let intent = context["musicIntent"] as? MusicIntent
+        let (success, status, reason, actualName) = await MusicExecutor.play(intent: intent)
+        if success {
+            print("[CapabilityExecution] completed status=success id=play_focus_media reason=\(reason)")
+			if let name = actualName {
+				let comp = context["compartment"] as? TaskCompartment
+				let workflow = context["workflow"] as? AmbientWorkflowType ?? .unknown
+				PlaylistMemory.shared.record(name: name, compartment: comp, workflow: workflow)
+			}
+            return .success
+        }
+        print("[CapabilityExecution] completed status=\(status.rawValue) id=play_focus_media reason=\(reason)")
+        return status
+    }
+    
+    private func launchRecentWorkspace(context: [String: Any]) -> CapabilityExecutionStatus {
+        guard let apps = context["apps"] as? [String], !apps.isEmpty else {
+            print("[WorkspaceAction] blocked reason=no_apps")
+            print("[WorkspaceActionExecution] status=blocked")
+            return .blocked
+        }
+        
+        print("[WorkspaceAction] mode=open_apps")
+        print("[WorkspaceAction] apps_to_open=\(apps.joined(separator: ","))")
+        
+        var opened: [String] = []
+        var skipped: [String] = []
+        
+        for app in apps {
+            if NSWorkspace.shared.launchApplication(app) {
+                opened.append(app)
+            } else {
+                skipped.append(app)
             }
         }
-        print("[CapabilityExecution] completed status=unavailable id=pause_media")
+        
+        print("[WorkspaceActionExecution] opened_apps=\(opened.joined(separator: ","))")
+        if !skipped.isEmpty {
+            print("[WorkspaceActionExecution] skipped_apps=\(skipped.joined(separator: ","))")
+        }
+        
+        if opened.isEmpty {
+            print("[WorkspaceActionExecution] status=unavailable")
+            print("[CapabilityExecution] completed status=unavailable id=launch_recent_workspace reason=failed_to_open_any_apps")
+            return .unavailable
+        }
+        
+        let statusStr = skipped.isEmpty ? "success" : "partial"
+        print("[WorkspaceActionExecution] status=\(statusStr)")
+        print("[CapabilityExecution] completed status=success id=launch_recent_workspace reason=opened_workspace_apps")
+        return .success
+    }
+    
+    private func pauseMedia() async -> CapabilityExecutionStatus {
+        let (success, reason) = await MusicExecutor.pause()
+        if success {
+            print("[CapabilityExecution] completed status=success id=pause_media reason=\(reason)")
+            return .success
+        }
+        print("[CapabilityExecution] completed status=unavailable id=pause_media reason=\(reason)")
         return .unavailable
     }
     
@@ -668,13 +790,186 @@ public final class CapabilityExecutor {
         guard let appName = context["appName"] as? String else {
              return .blocked
         }
-        
+
         // Use modern API if possible, fallback to launchApplication for simplicity in this prototype
         if NSWorkspace.shared.launchApplication(appName) {
             print("[CapabilityExecution] completed status=success id=open_relevant_app")
             return .success
         }
         return .unavailable
+    }
+
+    // MARK: - Phase 26.1 — Friction action executors
+
+    /// Collect current tab titles + URLs, format as markdown, copy to clipboard.
+    private func collectReferences(context: [String: Any]) -> CapabilityExecutionStatus {
+        let tabTitles = context["tabTitles"] as? [String] ?? []
+        let tabURLs = context["tabURLs"] as? [String] ?? []
+        let entity = context["entity"] as? String ?? ""
+        let repeatedConcepts = context["repeatedConcepts"] as? [String] ?? []
+
+        var lines: [String] = []
+        if !entity.isEmpty {
+            lines.append("# References: \(entity)")
+        } else {
+            lines.append("# Collected References")
+        }
+        lines.append("")
+
+        // Pair titles with URLs where available
+        let count = max(tabTitles.count, tabURLs.count)
+        if count == 0 && repeatedConcepts.isEmpty {
+            print("[ReferenceCollector] collected count=0")
+            print("[CapabilityExecution] completed status=unavailable id=collect_references reason=no_references_found")
+            return .unavailable
+        }
+
+        for i in 0..<count {
+            let title = i < tabTitles.count ? tabTitles[i] : "Untitled"
+            let url = i < tabURLs.count ? tabURLs[i] : nil
+            if let url = url, !url.isEmpty {
+                lines.append("- [\(title)](\(url))")
+            } else {
+                lines.append("- \(title)")
+            }
+        }
+
+        if !repeatedConcepts.isEmpty {
+            lines.append("")
+            lines.append("## Related concepts")
+            for concept in repeatedConcepts.prefix(8) {
+                lines.append("- \(concept)")
+            }
+        }
+
+        let markdown = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(markdown, forType: .string)
+
+        print("[ReferenceCollector] collected count=\(count)")
+        print("[ReferenceCollector] copied_to_clipboard=yes")
+        print("[CapabilityExecution] completed status=success id=collect_references")
+        return .success
+    }
+
+    /// Pin reference tabs — not wired to browser pinning yet.
+    /// Falls back to collecting repeated tab info to clipboard.
+    private func pinReferenceTabs(context: [String: Any]) -> CapabilityExecutionStatus {
+        // Browser tab pinning requires AppleScript or accessibility — not wired yet.
+        print("[TabActionExecution] action=pin_reference_tabs status=unavailable reason=browser_pin_not_wired")
+
+        // Fallback: collect the tabs the user keeps switching between
+        let tabTitles = context["tabTitles"] as? [String] ?? []
+        let tabURLs = context["tabURLs"] as? [String] ?? []
+        if tabTitles.isEmpty && tabURLs.isEmpty {
+            print("[CapabilityExecution] completed status=unavailable id=pin_reference_tabs reason=no_tab_data")
+            return .unavailable
+        }
+
+        // Collect to clipboard as fallback
+        return collectReferences(context: context)
+    }
+
+    /// Restore workspace / arrange side by side — open missing apps.
+    /// Filters out system apps that shouldn't be launched.
+    private func restoreWorkspace(context: [String: Any]) -> CapabilityExecutionStatus {
+        guard let rawApps = context["apps"] as? [String], !rawApps.isEmpty else {
+            print("[WorkspaceAction] blocked reason=no_apps")
+            print("[WorkspaceActionExecution] status=blocked")
+            return .blocked
+        }
+
+        // Phase 26.1 — Filter system apps before launching
+        let apps = rawApps.filter { !WorkspaceAppFilter.isSystemApp($0) }
+        guard !apps.isEmpty else {
+            print("[WorkspaceAction] blocked reason=only_system_apps_in_list")
+            print("[WorkspaceActionExecution] status=blocked filtered_system_apps=\(rawApps.joined(separator: ","))")
+            return .blocked
+        }
+
+        print("[WorkspaceAction] mode=open_apps")
+        print("[WorkspaceAction] apps_to_open=\(apps.joined(separator: ","))")
+
+        var opened: [String] = []
+        var skipped: [String] = []
+
+        for app in apps {
+            if NSWorkspace.shared.launchApplication(app) {
+                opened.append(app)
+            } else {
+                skipped.append(app)
+            }
+        }
+
+        print("[WorkspaceActionExecution] opened_apps=\(opened.joined(separator: ","))")
+        if !skipped.isEmpty {
+            print("[WorkspaceActionExecution] skipped_apps=\(skipped.joined(separator: ","))")
+        }
+
+        if opened.isEmpty {
+            print("[WorkspaceActionExecution] status=unavailable")
+            print("[CapabilityExecution] completed status=unavailable id=restore_workspace reason=failed_to_open_any_apps")
+            return .unavailable
+        }
+
+        let statusStr = skipped.isEmpty ? "success" : "partial"
+        print("[WorkspaceActionExecution] status=\(statusStr)")
+        print("[CapabilityExecution] completed status=success id=restore_workspace reason=opened_workspace_apps")
+        return .success
+    }
+}
+
+// MARK: - Phase 26.1 — System app filter
+
+/// Filters system apps, notification daemons, and assistant-internal processes
+/// from workspace patterns and launch lists.
+enum WorkspaceAppFilter {
+
+    /// Apps that should never be learned as part of a workspace pattern
+    /// or offered for launch by friction actions.
+    private static let systemAppNames: Set<String> = [
+        "usernotificationcenter",
+        "notification center",
+        "loginwindow",
+        "systemuiserver",
+        "dock",
+        "finder",             // always running, not a workspace app
+        "spotlight",
+        "screencaptureui",
+        "securityagent",
+        "universalcontrol",
+        "coreservicesuiagent",
+        "airplayuiagent",
+        "talagent",
+        "storeuid",
+        "assistantclient",    // Siri
+        "control center",
+        "music",              // background media — handled separately
+        "spotify",            // background media — handled separately
+        "contextual",         // the assistant itself
+    ]
+
+    /// Bundle ID prefixes that indicate system/internal processes.
+    private static let systemBundlePrefixes: [String] = [
+        "com.apple.notificationcenterui",
+        "com.apple.loginwindow",
+        "com.apple.systemuiserver",
+        "com.apple.dock",
+        "com.apple.finder",
+        "com.apple.controlcenter",
+        "com.apple.Spotlight",
+    ]
+
+    static func isSystemApp(_ appName: String) -> Bool {
+        let lower = appName.lowercased()
+            .replacingOccurrences(of: ".app", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        return systemAppNames.contains(lower)
+    }
+
+    static func isSystemBundle(_ bundleID: String) -> Bool {
+        let lower = bundleID.lowercased()
+        return systemBundlePrefixes.contains { lower.hasPrefix($0.lowercased()) }
     }
 }
 

@@ -104,7 +104,15 @@ public actor WorkflowIntelligenceCoordinator {
             clipboardLength: clipboardLength
         )
 
-        let inferredRaw = await WorkflowInferenceModel.infer(packet: packet, backend: backend, applyProvenanceGuard: false)
+        let groundingHint: EntityGrounding.EntityType = {
+            let app = packet.currentApp.lowercased()
+            if ["xcode", "vscode", "visual studio code", "iterm", "terminal", "sublime text", "intellij"].contains(app) { return .code_project }
+            let combined = (packet.recentTitles + packet.topicTerms).joined(separator: " ").lowercased()
+            if combined.contains("scratch") || combined.contains("turbowarp") || combined.contains("github") || combined.contains("stackoverflow") { return .code_project }
+            return .unknown
+        }()
+
+        let inferredRaw = await WorkflowInferenceModel.infer(packet: packet, backend: backend, applyProvenanceGuard: false, groundingTypeHint: groundingHint)
 
         // B.1.5: evidence post-mortem. Show which packet sources contained
         // terms aligned with the picked workflow, and which sources contained

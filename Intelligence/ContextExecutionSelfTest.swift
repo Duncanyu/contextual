@@ -225,10 +225,10 @@ public enum CapabilitySelectorSelfTest {
             evidenceQuality: "title_only",
             currentApp: "Safari",
             behavior: .learning,
-            userInitiated: false,
+            userInitiated: true,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        if s1.primary.id != "create_review_plan" {
+        if s1?.primary.id != "create_review_plan" {
              print("[CapabilitySelectorSelfTest] fail: expected create_review_plan for study title-only")
              return false
         }
@@ -243,7 +243,7 @@ public enum CapabilitySelectorSelfTest {
             userInitiated: false,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        if s2.primary.id != "generate_quiz" {
+        if s2?.primary.id != "generate_quiz" {
              print("[CapabilitySelectorSelfTest] fail: expected generate_quiz for study ax_content")
              return false
         }
@@ -255,16 +255,16 @@ public enum CapabilitySelectorSelfTest {
             evidenceQuality: "title_only",
             currentApp: "Cursor",
             behavior: .debugging,
-            userInitiated: false,
+            userInitiated: true,
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
-        if s3.primary.id != "diagnose_error" {
+        if s3?.primary.id != "diagnose_error" {
              print("[CapabilitySelectorSelfTest] fail: expected diagnose_error for debugging")
              return false
         }
         
         // 4. Auxiliary media offer
-        if s1.auxiliary?.id != "play_focus_media" {
+        if s1?.auxiliary?.id != "play_focus_media" {
              print("[CapabilitySelectorSelfTest] fail: expected play_focus_media auxiliary for studying")
              return false
         }
@@ -278,31 +278,101 @@ public enum CapabilitySelectorSelfTest {
 public enum CapabilityExecutionSelfTest {
     public static func run() async -> Bool {
         print("[CapabilityExecutionSelfTest] starting")
+        var failures: [String] = []
         let executor = CapabilityExecutor.shared
         let registry = CognitiveCapabilityRegistry.shared
-        
-        // 1. Copy to clipboard
+
+        func check(_ name: String, _ ok: Bool) {
+            if ok { print("[CapabilityExecutionSelfTest] pass case=\(name)") }
+            else  { print("[CapabilityExecutionSelfTest] fail case=\(name)"); failures.append(name) }
+        }
+
+        // ── Case 1: Copy to clipboard ─────────────────────────────────────────
         let copyCap = registry.get("copy_result_to_clipboard")!
         let status1 = await executor.execute(capability: copyCap, context: ["text": "Hello Phase 21"])
-        if status1 != .success {
-            print("[CapabilityExecutionSelfTest] fail: copy_result_to_clipboard failed")
-            return false
-        }
-        
-        // 2. Play media (might return unavailable if Music not configured, but should not crash)
+        check("copy_result_to_clipboard_success", status1 == .success)
+
+        // ── Case 2: Play media (may be unavailable but must not crash) ─────────
         let playCap = registry.get("play_focus_media")!
         let status2 = await executor.execute(capability: playCap, context: [:])
         print("[CapabilityExecutionSelfTest] play_focus_media status=\(status2.rawValue)")
-        
-        // 3. Preview only
+        check("play_focus_media_not_blocked", status2 != .blocked)
+
+        // ── Case 3: preview_only capability → .success ────────────────────────
         let previewCap = registry.get("summarize_context")!
         let status3 = await executor.execute(capability: previewCap, context: [:])
-        if status3 != .success {
-             print("[CapabilityExecutionSelfTest] fail: preview_only capability should return success")
-             return false
+        check("preview_only_returns_success", status3 == .success)
+
+        // ── Phase 22.2 Case 4: start_focus_timer → .unavailable (honest) ──────
+        let timerCap = registry.get("start_focus_timer")!
+        let status4 = await executor.execute(capability: timerCap, context: [:])
+        check("start_focus_timer_unavailable", status4 == .unavailable)
+        check("start_focus_timer_not_fake_success", status4 != .success)
+
+        // ── Phase 22.2 Case 5: copy without text → .blocked ───────────────────
+        let status5 = await executor.execute(capability: copyCap, context: [:])
+        check("copy_without_text_blocked", status5 == .blocked)
+
+        // ── Phase 22.2 Case 6: unknown local_action cap → .unavailable ─────────
+        let unknownCap = CognitiveCapability(
+            id: "completely_unknown_future_cap",
+            label: "Unknown future capability",
+            inputRequirements: [],
+            outputType: "unknown",
+            evidenceThreshold: "title_only",
+            executionMode: .local_action
+        )
+        let status6 = await executor.execute(capability: unknownCap, context: [:])
+        check("unknown_local_action_unavailable", status6 == .unavailable)
+        check("unknown_local_action_not_success", status6 != .success)
+
+        // ── Phase 22.2 Case 7: All 27 capability IDs have non-generic titles ──
+        var missingTitles: [String] = []
+        for capId in OpportunityReasoner.allCapabilityIds {
+            let t = OpportunityEngine.title(forCapabilityId: capId, entity: "Test Entity")
+            if t.isEmpty || t == "Help with the current task" {
+                missingTitles.append(capId)
+            }
         }
-        
-        print("[CapabilityExecutionSelfTest] completed ok=true")
-        return true
+        check("all_capabilities_have_specific_titles", missingTitles.isEmpty)
+
+        // ── Phase 22.2 Case 8: All 27 titles pass OpportunityValidator ─────────
+        var failingValidation: [String] = []
+        for capId in OpportunityReasoner.allCapabilityIds {
+            let t = OpportunityEngine.title(forCapabilityId: capId, entity: "Test Entity")
+            if !OpportunityValidator.validate(t) {
+                failingValidation.append(capId)
+            }
+        }
+        check("all_capability_titles_pass_validator", failingValidation.isEmpty)
+
+        // ── Phase 22.2 Case 9: draft_reply opportunity has requiresConfirmation ─
+        let tracker = OpportunityNoveltyTracker()
+        let emailSit = OpportunityReasoner.Situation(
+            entityType: .email_thread,
+            entityConfidence: 0.85,
+            domain: .communicating,
+            mode: .unknown,
+            evidenceQuality: "title_only",
+            hasErrorTerms: false,
+            hasMultipleSources: false,
+            hasComparisonCandidates: false,
+            isActivelyEditing: false,
+            compartmentDwellSeconds: 60,
+            entityKey: "test_email_confirmation"
+        )
+        let emailCandidates = OpportunityReasoner.reason(situation: emailSit, noveltyTracker: tracker)
+        check("email_surfaces_draft_reply",
+              emailCandidates.contains { $0.capabilityId == "draft_reply" })
+
+        // ── Phase 22.2 Case 10: empty entity → fallback title still valid ──────
+        let noEntityTitle = OpportunityEngine.title(forCapabilityId: "generate_quiz", entity: "")
+        check("empty_entity_title_uses_fallback",
+              noEntityTitle.lowercased().contains("material") || noEntityTitle.lowercased().contains("this"))
+        check("empty_entity_title_passes_validator", OpportunityValidator.validate(noEntityTitle))
+
+        let ok = failures.isEmpty
+        print("[CapabilityExecutionSelfTest] completed ok=\(ok) failures=\(failures.count)")
+        return ok
     }
 }

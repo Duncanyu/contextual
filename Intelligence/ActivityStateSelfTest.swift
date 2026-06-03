@@ -154,7 +154,7 @@ enum ActivityStateSelfTest {
             determinerSignal: ds11
         )
         check("capability_active_unknown_routes_to_next_steps",
-              selection11.primary.id == "create_next_steps")
+              selection11?.primary.id == "create_next_steps")
 
         // ── Case 12: ActiveContextRefresh schedules for settled dwell + active ──
         let decision12 = ActiveContextRefresh.decide(

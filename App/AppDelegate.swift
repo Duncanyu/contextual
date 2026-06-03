@@ -300,9 +300,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 		// Phase 22 — OpportunityEngine: need inference, action-verb titles, observation rejection.
 		if env["CONTEXTUAL_RUN_OPPORTUNITY_ENGINE_SELFTEST"] == "1" {
-			let ok = OpportunityEngineSelfTest.run()
-			print("[OpportunityEngineSelfTest] env selftest ok=\(ok)")
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			Task {
+				let ok = await OpportunityEngineSelfTest.run()
+				print("[OpportunityEngineSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
 		}
 		// Phase 22 — OpportunityExecution: click path → artifact generation → honest capability reporting.
 		if env["CONTEXTUAL_RUN_OPPORTUNITY_EXECUTION_SELFTEST"] == "1" {
@@ -339,6 +341,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			Task {
 				let ok = await BehaviorInferenceSelfTest.run()
 				print("[BehaviorInferenceSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_PHASE_25_9_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase25_9SelfTest.run()
+				print("[Phase25_9SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_PHASE_26_4_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase26_4SelfTest.run()
+				print("[Phase26_4SelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 		}
@@ -3947,6 +3963,93 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			return true
 		}
 
+		if env["CONTEXTUAL_RUN_PHASE23_GENERATED_ACTION_SELFTEST"] == "1" {
+			let ok = GeneratedActionSelfTest.run()
+			print("[GeneratedActionSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PASSIVE_PLAYLIST_SELFTEST"] == "1" {
+			let ok = PassivePlaylistObserverSelfTest.run()
+			print("[PassivePlaylistObserverSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_ACTION_VALIDATION_SELFTEST"] == "1" {
+			let ok = ActionValidationSelfTest.run()
+			print("[ActionValidationSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PRIMITIVE_COMPOSER_SELFTEST"] == "1" {
+			let ok = PrimitiveComposerSelfTest.run()
+			print("[PrimitiveComposerSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PROBLEM_INFERENCE_SELFTEST"] == "1" {
+			let ok = ProblemInferenceSelfTest.run()
+			print("[ProblemInferenceSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_ACTION_CANDIDATE_GENERATOR_SELFTEST"] == "1" {
+			Task {
+				let ok = await ActionCandidateGeneratorSelfTest.run()
+				print("[ActionCandidateGeneratorSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_ACTION_VALIDATION_V24_SELFTEST"] == "1" {
+			let ok = ActionValidationSelfTestV24.run()
+			print("[ActionValidationSelfTestV24] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_ENVIRONMENT_ACTION_SELFTEST"] == "1" {
+			Task {
+				let ok = await EnvironmentActionSelfTest.run()
+				print("[EnvironmentActionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_MEDIA_SUITABILITY_SELFTEST"] == "1" {
+			Task {
+				let ok = await MediaSuitabilitySelfTest.run()
+				print("[MediaSuitabilitySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_WORKSPACE_MEMORY_SELFTEST"] == "1" {
+			Task {
+				let ok = await WorkspaceMemorySelfTest.run()
+				print("[WorkspaceMemorySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_ACTION_ROUTER_SELFTEST"] == "1" {
+			Task {
+				let ok = await ActionRouterSelfTest.run()
+				print("[ActionRouterSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
 		// Generated action safety policy self-test (synthetic metadata-only).
 		// Run with `CONTEXTUAL_RUN_GENERATED_ACTION_SAFETY_SELFTEST=1`.
 		if env["CONTEXTUAL_RUN_GENERATED_ACTION_SAFETY_SELFTEST"] == "1" {
@@ -4633,6 +4736,100 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			let ok = ArchitecturalRegressionSelfTest.run()
 			print("[ArchitecturalRegressionSelfTest] env selftest ok=\(ok)")
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 22.1 — Run with `CONTEXTUAL_RUN_ENTITY_GROUNDING_SELFTEST=1` to validate entity grounding.
+		if env["CONTEXTUAL_RUN_ENTITY_GROUNDING_SELFTEST"] == "1" {
+			let ok = EntityGroundingSelfTest.run()
+			print("[EntityGroundingSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 22.1 — Run with `CONTEXTUAL_RUN_APP_CONTEXT_SELFTEST=1` to validate app context analysis.
+		if env["CONTEXTUAL_RUN_APP_CONTEXT_SELFTEST"] == "1" {
+			let ok = AppContextSelfTest.run()
+			print("[AppContextSelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 22.1 — Run with `CONTEXTUAL_RUN_CONTEXT_SOURCE_PRIORITY_SELFTEST=1` to validate source priority.
+		if env["CONTEXTUAL_RUN_CONTEXT_SOURCE_PRIORITY_SELFTEST"] == "1" {
+			let ok = ContextSourcePrioritySelfTest.run()
+			print("[ContextSourcePrioritySelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			return true
+		}
+
+		// Phase 22.1 — Run with `CONTEXTUAL_RUN_ENTERTAINMENT_POLICY_SELFTEST=1` to validate entertainment suppression.
+		if env["CONTEXTUAL_RUN_ENTERTAINMENT_POLICY_SELFTEST"] == "1" {
+			Task {
+				let ok = await EntertainmentPolicySelfTest.run()
+				print("[EntertainmentPolicySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 22.1 — Run with `CONTEXTUAL_RUN_COMPARTMENT_TRANSITION_SELFTEST=1` to validate compartment transitions.
+		if env["CONTEXTUAL_RUN_COMPARTMENT_TRANSITION_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await CompartmentTransitionSelfTest.run()
+				print("[CompartmentTransitionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 22.2 — Run with `CONTEXTUAL_RUN_ENTITY_LOOKUP_SELFTEST=1` to validate OG metadata parsing and safety guards.
+		if env["CONTEXTUAL_RUN_ENTITY_LOOKUP_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = EntityLookupSelfTest.run()
+				print("[EntityLookupSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 22.2 — Run with `CONTEXTUAL_RUN_OPPORTUNITY_REASONER_SELFTEST=1` to validate dynamic capability scoring.
+		if env["CONTEXTUAL_RUN_OPPORTUNITY_REASONER_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = OpportunityReasonerSelfTest.run()
+				print("[OpportunityReasonerSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 22.2 — Run with `CONTEXTUAL_RUN_OPPORTUNITY_NOVELTY_SELFTEST=1` to validate novelty tracking and diversity.
+		if env["CONTEXTUAL_RUN_OPPORTUNITY_NOVELTY_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = OpportunityNoveltySelfTest.run()
+				print("[OpportunityNoveltySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 26/26.1 — Run with `CONTEXTUAL_RUN_FRICTION_SELFTEST=1` to validate friction detection, workspace patterns, and friction action execution.
+		if env["CONTEXTUAL_RUN_FRICTION_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await FrictionEngineSelfTest.run()
+				print("[FrictionEngineSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 26.3 — Run with `CONTEXTUAL_RUN_CHEAP_ALWAYS_ON_PORTFOLIO_SELFTEST=1` to validate cheap always-on surfacing.
+		if env["CONTEXTUAL_RUN_CHEAP_ALWAYS_ON_PORTFOLIO_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await CheapAlwaysOnPortfolioSelfTest.run()
+				print("[CheapAlwaysOnPortfolioSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
 			return true
 		}
 

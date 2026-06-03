@@ -118,7 +118,7 @@ enum DomainClassifierSelfTest {
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values),
             determinerSignal: gmailDS
         )
-        check("gmail_invoice_not_compare_options", sel6.primary.id != "compare_options")
+        check("gmail_invoice_not_compare_options", sel6?.primary.id != "compare_options")
 
         // ── Case 7: New Tab + empty terms → suppressed ────────────────────────
         let blankMem = WorkingMemorySnapshot(
@@ -199,17 +199,17 @@ enum DomainClassifierSelfTest {
             determinerSignal: codingDS
         )
         let artifact10 = ArtifactResult(
-            type: sel10.primary.outputType,
-            title: sel10.primary.label,
+            type: sel10?.primary.outputType ?? "text",
+            title: sel10?.primary.label ?? "Cognitive Suggestion",
             subtitle: "context-only preview",
             confidence: 0.80
         )
         let card10 = ActionCard(
-            title: sel10.primary.label,
+            title: sel10?.primary.label ?? "Cognitive Suggestion",
             explanation: "Coding context action",
-            primaryAction: sel10.primary,
-            secondaryAction: sel10.secondary,
-            auxiliaryAction: sel10.auxiliary,
+            primaryAction: sel10?.primary ?? registry.get("copy_result_to_clipboard")!,
+            secondaryAction: sel10?.secondary,
+            auxiliaryAction: sel10?.auxiliary,
             previewPayload: artifact10,
             evidenceNote: "title_only",
             confidence: 0.80

@@ -48,48 +48,6 @@
 			<key>uniqueIdentifier</key>
 			<string>6063CD15-E722-46CC-9646-3BE1D171CF92</string>
 		</dict>
-		<key>82577EC5-2ED2-48F3-B09E-3BB20E84E199</key>
-		<dict>
-			<key>className</key>
-			<string>IDECommandLineBuildLog</string>
-			<key>documentTypeString</key>
-			<string>&lt;nil&gt;</string>
-			<key>domainType</key>
-			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
-			<key>fileName</key>
-			<string>82577EC5-2ED2-48F3-B09E-3BB20E84E199.xcactivitylog</string>
-			<key>hasPrimaryLog</key>
-			<true/>
-			<key>primaryObservable</key>
-			<dict>
-				<key>highLevelStatus</key>
-				<string>W</string>
-				<key>totalNumberOfAnalyzerIssues</key>
-				<integer>0</integer>
-				<key>totalNumberOfErrors</key>
-				<integer>0</integer>
-				<key>totalNumberOfTestFailures</key>
-				<integer>0</integer>
-				<key>totalNumberOfWarnings</key>
-				<integer>94</integer>
-			</dict>
-			<key>schemeIdentifier-containerName</key>
-			<string>Contextual project</string>
-			<key>schemeIdentifier-schemeName</key>
-			<string>Contextual</string>
-			<key>schemeIdentifier-sharedScheme</key>
-			<integer>1</integer>
-			<key>signature</key>
-			<string>Building project Contextual with scheme Contextual and configuration Debug</string>
-			<key>timeStartedRecording</key>
-			<real>801786494.28621399</real>
-			<key>timeStoppedRecording</key>
-			<real>801786567.78394604</real>
-			<key>title</key>
-			<string>Building project Contextual with scheme Contextual and configuration Debug</string>
-			<key>uniqueIdentifier</key>
-			<string>82577EC5-2ED2-48F3-B09E-3BB20E84E199</string>
-		</dict>
 	</dict>
 </dict>
 </plist>

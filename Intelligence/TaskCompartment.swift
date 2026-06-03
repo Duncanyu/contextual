@@ -96,17 +96,26 @@ public final class TaskCompartmentTracker {
     
     public private(set) var compartments: [TaskCompartment] = []
     public private(set) var activeCompartmentId: UUID? = nil
+    private var transientActiveCompartment: TaskCompartment? = nil
     
     private init() {}
     
     public func reset() {
         compartments.removeAll()
         activeCompartmentId = nil
+        transientActiveCompartment = nil
     }
     
     public func setCompartments(_ comps: [TaskCompartment], activeId: UUID?) {
         self.compartments = comps
         self.activeCompartmentId = activeId
+        if let activeId = activeId, !comps.contains(where: { $0.id == activeId }) {
+            if self.transientActiveCompartment?.id != activeId {
+                self.transientActiveCompartment = nil
+            }
+        } else {
+            self.transientActiveCompartment = nil
+        }
     }
     
     private func isTermSupported(
@@ -160,24 +169,50 @@ public final class TaskCompartmentTracker {
         
         return false
     }
-
+    
     @discardableResult
     public func ingestUpdate(
         workflow: AmbientWorkflowType,
         behavior: BehavioralState,
         title: String,
         tabs: [String],
-        topicTerms: [String]
+        topicTerms: [String],
+        grounding: SemanticGroundingResult? = nil
     ) -> TaskCompartment {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let incomingTerms = Set(topicTerms.map { $0.lowercased() })
         let cleanTitleTokens = Self.extractCleanTokens(from: cleanTitle)
         let combinedTerms = cleanTitleTokens.union(incomingTerms)
         
-        let bestWorkflow = workflow == .unknown ? (behavior == .unknown ? .browsing : AmbientWorkflowType(rawString: behavior.rawValue)) : workflow
+        let bestWorkflow: AmbientWorkflowType
+        if let g = grounding {
+            let d = g.domain.lowercased()
+            if d.contains("coding") {
+                bestWorkflow = .coding
+            } else if d.contains("watching") || d.contains("entertainment") {
+                bestWorkflow = .watching
+            } else if d.contains("gaming") {
+                bestWorkflow = .gaming
+            } else if d.contains("studying") {
+                bestWorkflow = .studying
+            } else if d.contains("shopping") {
+                bestWorkflow = .shopping
+            } else if d.contains("researching") {
+                bestWorkflow = .researching
+            } else if d.contains("browsing") {
+                bestWorkflow = .browsing
+            } else if d.contains("design") || d.contains("creative") {
+                bestWorkflow = .designing
+            } else {
+                bestWorkflow = AmbientWorkflowType(rawString: g.domain)
+            }
+            print("[TaskCompartment] grounding_domain=\(bestWorkflow.rawValue) source=semantic_grounding")
+        } else {
+            bestWorkflow = workflow == .unknown ? (behavior == .unknown ? .browsing : AmbientWorkflowType(rawString: behavior.rawValue)) : workflow
+        }
         
         // Find best match among existing compartments
-        let matched = findBestCompartment(workflow: bestWorkflow, title: cleanTitle, tabs: tabs, cleanTokens: combinedTerms)
+        let matched = findBestCompartment(workflow: bestWorkflow, title: cleanTitle, tabs: tabs, cleanTokens: combinedTerms, grounding: grounding)
         
         // Build accepted/rejected terms
         let epochTerms = Set(ContextEpochTracker.shared.currentEpoch().terms.map { $0.lowercased() })
@@ -215,6 +250,8 @@ public final class TaskCompartmentTracker {
             // Save it
             if let idx = compartments.firstIndex(where: { $0.id == existing.id }) {
                 compartments[idx] = updated
+            } else {
+                transientActiveCompartment = updated
             }
             
             active = updated
@@ -235,12 +272,24 @@ public final class TaskCompartmentTracker {
                 entities: cleanTitle.isEmpty ? [] : [cleanTitle],
                 browserTabs: Set(tabs)
             )
-            compartments.append(newComp)
-            active = newComp
             
-            print("[TaskCompartment] created id=\(newComp.id) workflow=\(bestWorkflow.rawValue) label=\"\(label)\"")
-            
-            triggerActivation(active: newComp)
+            let isYouTube = cleanTitle.lowercased().contains("youtube") || tabs.contains { $0.lowercased().contains("youtube") }
+            let isDurable = grounding?.shouldCreateDurableCompartment ?? !isYouTube
+            print("[TaskCompartment] durable=\(isDurable ? "yes" : "no") reason=semantic_grounding")
+            if !isDurable {
+                print("[TaskCompartment] transient=yes reason=media_surface")
+                let appName = isYouTube ? "YouTube" : (cleanTitle.isEmpty ? "YouTube" : cleanTitle)
+                print("[TaskCompartment] not_durable app=\(appName) reason=media_surface")
+                transientActiveCompartment = newComp
+                active = newComp
+                triggerActivation(active: newComp)
+            } else {
+                transientActiveCompartment = nil
+                compartments.append(newComp)
+                active = newComp
+                print("[TaskCompartment] created id=\(newComp.id) workflow=\(bestWorkflow.rawValue) label=\"\(label)\"")
+                triggerActivation(active: newComp)
+            }
         }
         
         // Required candidate print
@@ -251,6 +300,9 @@ public final class TaskCompartmentTracker {
     }
     
     public func getActiveCompartment() -> TaskCompartment? {
+        if let tac = transientActiveCompartment, tac.id == activeCompartmentId {
+            return tac
+        }
         return compartments.first { $0.id == activeCompartmentId }
     }
     
@@ -262,13 +314,22 @@ public final class TaskCompartmentTracker {
                 let prev = compartments[prevIdx]
                 print("[TaskCompartment] deactivated id=\(prev.id) reason=focus_shift")
                 print("[TaskCompartment] deactivated label=\"\(prev.label)\"")
+            } else if let tac = transientActiveCompartment, tac.id == prevId {
+                print("[TaskCompartment] deactivated id=\(tac.id) reason=focus_shift")
+                print("[TaskCompartment] deactivated label=\"\(tac.label)\"")
             }
         }
         activeCompartmentId = active.id
         // Phase 21.4 — Record first activation time for dwell tracking.
-        if let idx = compartments.firstIndex(where: { $0.id == active.id }),
-           compartments[idx].firstActivatedAt == nil {
-            compartments[idx].firstActivatedAt = Date()
+        if let idx = compartments.firstIndex(where: { $0.id == active.id }) {
+            if compartments[idx].firstActivatedAt == nil {
+                compartments[idx].firstActivatedAt = Date()
+            }
+        } else if var tac = transientActiveCompartment, tac.id == active.id {
+            if tac.firstActivatedAt == nil {
+                tac.firstActivatedAt = Date()
+                transientActiveCompartment = tac
+            }
         }
         print("[TaskCompartment] activated id=\(active.id) reason=current_focus_match")
         print("[TaskCompartment] activated label=\"\(active.label)\"")
@@ -284,30 +345,39 @@ public final class TaskCompartmentTracker {
         }
     }
     
-    // Phase 22 — Source-aware compartment matching.
-    //
-    // The key insight is that `cleanTokens` passed from ingestUpdate() is a union
-    // of BOTH current-window-title tokens AND temporal-packet terms.  Temporal
-    // packet terms accumulate over a sliding window and can be many seconds stale
-    // after a context switch (e.g., Scratch → Dexter).  Treating all of them at
-    // 3.0x weight means a Scratch compartment with 7 matching stale terms scores
-    // 21+ against a threshold of 1.2 — the compartment never releases even though
-    // the user is now watching a TV show.
-    //
-    // Fix:
-    //   • Recompute title tokens and tab tokens inside this function (high signal).
-    //   • Anything in cleanTokens NOT in title/tabs = packet-only (stale risk, 0.1x).
-    //   • Recency bonus capped at 0.25 (was 1.0) — can't carry a stale match.
-    //   • Domain-mismatch penalty when comp has zero title/tab overlap.
-    //   • Expanded workflow-family incompatibility check.
-    //   • Threshold raised 1.2 → 1.5.
-    //   • Per-candidate observability logs for every evaluation.
-    private func findBestCompartment(
+    // MARK: - Testing Support
+    
+    internal func resetForTests() {
+        compartments = []
+        activeCompartmentId = nil
+    }
+    
+    internal func registerForTesting(_ comp: TaskCompartment) {
+        compartments.append(comp)
+    }
+
+    internal func findBestCompartment(
         workflow: AmbientWorkflowType,
         title: String,
         tabs: [String],
-        cleanTokens: Set<String>
+        cleanTokens: Set<String>,
+        grounding: SemanticGroundingResult? = nil
     ) -> TaskCompartment? {
+        if let g = grounding, g.source == "parent_compartment_inheritance", let activeId = activeCompartmentId {
+            if let active = compartments.first(where: { $0.id == activeId }) {
+                print("[TaskCompartment] supporting_app=yes reason=semantic_grounding_inheritance parent=\"\(active.label)\"")
+                return active
+            }
+        }
+
+        // Support transient compartment re-matching
+        if let tac = transientActiveCompartment, tac.id == activeCompartmentId {
+            let isYouTube = title.lowercased().contains("youtube") || tabs.contains { $0.lowercased().contains("youtube") }
+            if isYouTube {
+                return tac
+            }
+        }
+
         var bestMatch: TaskCompartment? = nil
         var bestScore = 0.0
 
@@ -333,6 +403,15 @@ public final class TaskCompartmentTracker {
             let titleOverlap  = comp.dominantTerms.intersection(titleTokens)
             let tabOverlap    = comp.dominantTerms.intersection(tabTokens)
             let packetOverlap = comp.dominantTerms.intersection(packetOnlyTokens)
+
+            // Phase 25.3 — Fix C: Current focus dominance.
+            // If the current window/tab title has tokens but NONE of them match this
+            // compartment, we reject it immediately, even if background tabs overlap.
+            // This prevents "Dexter" from being matched into "Advanced Scratch".
+            if !titleTokens.isEmpty && titleOverlap.isEmpty {
+                print("[CompartmentMatch] rejected id=\(comp.id) label=\"\(comp.label)\" reason=current_focus_mismatch title_tokens=\(titleTokens.count)")
+                continue
+            }
 
             let overlapScore = Double(titleOverlap.count)  * 3.0
                              + Double(tabOverlap.count)    * 1.0

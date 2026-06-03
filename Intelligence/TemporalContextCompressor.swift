@@ -114,11 +114,15 @@ public enum TemporalContextCompressor {
 
         // Selection / clipboard: METADATA only.
         let selectionHints: [String] = {
-            // Selection metadata is exposed by the producer as activityIntensity
-            // on selectedTextChanged events; the buffer does not retain it
-            // individually. We summarize at the window level instead.
-            if medium.titleTransitions == 0 { return [] }
-            return ["recent_title_changes=\(medium.titleTransitions)"]
+            var hints: [String] = []
+            if mediumSelections > 0 {
+                hints.append("selected_text_available=true")
+                hints.append("selection_events=\(mediumSelections)")
+            }
+            if medium.titleTransitions > 0 {
+                hints.append("recent_title_changes=\(medium.titleTransitions)")
+            }
+            return hints
         }()
 
         let clipboardMeta: String = {

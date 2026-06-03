@@ -25,7 +25,11 @@ public enum TaskCompartmentSelfTest {
         testShoppingComparisonCandidatesMultiProduct()
         await testShoppingSuggestionTitleReflectsMultiProduct()
         await testContextExecutionConsumesComparisonCandidates()
-        
+
+        // Phase 27.4 — grounding propagation tests
+        testDesignToolGroundingMapsToCodingWorkflow()
+        testPiskelGroundingNotUnknown()
+
         print("[TaskCompartmentSelfTest] completed ok=true failures=0")
         print("[TaskCompartmentSelfTest] env selftest ok=true")
     }
@@ -357,7 +361,7 @@ public enum TaskCompartmentSelfTest {
             availableCapabilities: Array(CognitiveCapabilityRegistry.shared.capabilities.values)
         )
         
-        assert(actionIntent.primary.id != "compare_options", "Intent should not be compare_options when active compartment is studying")
+        assert(actionIntent?.primary.id != "compare_options", "Intent should not be compare_options when active compartment is studying")
         print("[TaskCompartmentSelfTest] pass case=action_intent_on_cisc_is_not_compare_options")
     }
 
@@ -417,7 +421,19 @@ public enum TaskCompartmentSelfTest {
             packet: packet,
             recentTitles: ["CISC 121 Loops"],
             repeatedTerms: ["python"],
-            activeCompartment: updated
+            activeCompartment: updated,
+            topOpportunity: Opportunity(
+                id: "opp:mock_study",
+                title: "Create a review plan for CISC 121",
+                capabilityId: "create_review_plan",
+                confidence: 0.90,
+                reason: "mock",
+                requiredEvidence: "title_only",
+                actionability: 0.85,
+                inferredNeed: .planning,
+                requiresConfirmation: false,
+                auxiliaryCapabilityIds: []
+            )
         )
         
         assert(suggestion != nil, "Suggestion should be generated due to high compartment trust even with low workflow trust")
@@ -823,6 +839,64 @@ public enum TaskCompartmentSelfTest {
         print("[TaskCompartmentSelfTest] pass case=context_execution_consumes_comparison_candidates")
     }
     
+    // Phase 27.4 — design_tool_grounding_maps_to_coding_workflow
+    private static func testDesignToolGroundingMapsToCodingWorkflow() {
+        TaskCompartmentTracker.shared.reset()
+        let grounding = SemanticGroundingResult(
+            entityName: "Piskel",
+            entityKind: "design_tool",
+            domain: "designing",
+            activity: "pixel art",
+            confidence: 0.85,
+            source: "heuristic",
+            sourceCategory: "app_metadata",
+            shouldCreateDurableCompartment: true,
+            shouldPropose: true,
+            allowedLanes: ["cognitive", "music"],
+            forbiddenLanes: [],
+            rationale: "design tool grounding"
+        )
+        let comp = TaskCompartmentTracker.shared.ingestUpdate(
+            workflow: .unknown,
+            behavior: .coding,
+            title: "Piskel - Scorch marks",
+            tabs: [],
+            topicTerms: ["piskel", "scorch"],
+            grounding: grounding
+        )
+        assert(comp.workflow == .designing, "designing domain should map to designing workflow, got \(comp.workflow.rawValue)")
+        print("[TaskCompartmentSelfTest] pass case=design_tool_grounding_maps_to_designing_workflow")
+    }
+
+    // Phase 27.4 — piskel_grounding_not_unknown_in_task_compartment
+    private static func testPiskelGroundingNotUnknown() {
+        TaskCompartmentTracker.shared.reset()
+        let grounding = SemanticGroundingResult(
+            entityName: "Piskel",
+            entityKind: "design_tool",
+            domain: "designing",
+            activity: "pixel art",
+            confidence: 0.82,
+            source: "heuristic",
+            sourceCategory: "app_metadata",
+            shouldCreateDurableCompartment: true,
+            shouldPropose: true,
+            allowedLanes: ["cognitive"],
+            forbiddenLanes: [],
+            rationale: "piskel grounding"
+        )
+        let comp = TaskCompartmentTracker.shared.ingestUpdate(
+            workflow: .unknown,
+            behavior: .unknown,
+            title: "Piskel - New Piskel",
+            tabs: [],
+            topicTerms: ["piskel"],
+            grounding: grounding
+        )
+        assert(comp.workflow == .designing, "Piskel grounding should produce designing workflow, got \(comp.workflow.rawValue)")
+        print("[TaskCompartmentSelfTest] pass case=piskel_grounding_not_unknown_in_task_compartment")
+    }
+
     private static func assert(_ condition: Bool, _ msg: String) {
         if !condition {
             fatalError("[TaskCompartmentSelfTest] Failure: \(msg)")

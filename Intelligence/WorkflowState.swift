@@ -23,6 +23,7 @@ public enum AmbientWorkflowType: String, Sendable, Codable, CaseIterable, Equata
     case shopping
     case comparing
     case browsing
+    case designing
     case meeting
 
     /// Construct from a raw model string, falling back to `.unknown` on any mismatch.
