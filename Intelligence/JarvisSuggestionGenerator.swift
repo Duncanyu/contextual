@@ -161,10 +161,11 @@ public struct JarvisSuggestionGenerator: Sendable {
         // Phase 26.2 — System/friction/music capabilities bypass CapabilitySelector
         let systemCapabilityIds: Set<String> = [
             "collect_references", "pin_reference_tabs", "restore_workspace",
-            "arrange_side_by_side", "resume_focus_media", "extract_and_organize",
+            "arrange_side_by_side", "switch_to_paired_app", "restore_research_tabs",
+            "split_research_setup", "resume_focus_media", "extract_and_organize",
             "precompute_answer",
             "play_focus_media", "pause_media", "open_relevant_app",
-            "launch_recent_workspace",
+            "launch_recent_workspace", "open_related_app_set", "enable_reduce_interruptions",
         ]
         let isFrictionOpportunity = topOpportunity.map { systemCapabilityIds.contains($0.capabilityId) } ?? false
 
@@ -341,8 +342,32 @@ public struct JarvisSuggestionGenerator: Sendable {
 
         let subtitle = "Context-only — preview based on your recent activity."
 
-        // Safety check.
-        guard JarvisSuggestionValidator.validate(title: generatedTitle, subtitle: subtitle) else {
+        // Phase 35.4 — Title rewrite for friction/system actions.
+        // Clean underscored filenames before quality filter.
+        let frictionCapabilities: Set<String> = [
+            "arrange_side_by_side", "split_research_setup", "restore_workspace",
+            "switch_to_paired_app", "open_paired_app", "restore_research_tabs",
+            "copy_current_url", "copy_all_related_links", "collect_references",
+            "pin_reference_tabs", "play_focus_media", "enable_reduce_interruptions"
+        ]
+        let capId = topOpportunity?.capabilityId ?? actionIntent.id
+        let isFrictionOrSystem = frictionCapabilities.contains(capId)
+        if isFrictionOrSystem {
+            generatedTitle = SuggestionTitleRewriter.rewrite(title: generatedTitle, capabilityId: capId)
+        }
+
+        // Safety check — friction titles exempt from snake_case rejection.
+        let validatorResult: Bool
+        if isFrictionOrSystem {
+            // Skip full JarvisSuggestionValidator for friction — only check for actual prompt leaks
+            validatorResult = !ProposalQualityFilter.hasPromptLeakOrCapabilityId(generatedTitle, isFrictionAction: true)
+            if !validatorResult {
+                print("[ProposalQualityFilter] rejected reason=prompt_leak_in_friction_title")
+            }
+        } else {
+            validatorResult = JarvisSuggestionValidator.validate(title: generatedTitle, subtitle: subtitle)
+        }
+        guard validatorResult else {
             print("[JarvisSuppression] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) reason=control_language_in_wording")
             print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=none judgment=none artifact=none decision=suppressed reason=control_language_in_wording")
             return nil
@@ -353,6 +378,7 @@ public struct JarvisSuggestionGenerator: Sendable {
         let intent = topOpportunity?.capabilityId ?? actionIntent.id
         let intentGoal = "Bounded cognitive action (\(intent)) over recent \(workflow.rawValue) context. Output type: \(actionIntent.outputType)."
 
+        let payloadEvidenceLevel = EvidenceQualityModel.level(from: evidenceQuality)
         let payload = SuggestionContextPayload(
             taskCompartmentSnapshot: activeCompartment,
             workingMemorySnapshot: effectiveMemory,
@@ -360,7 +386,10 @@ public struct JarvisSuggestionGenerator: Sendable {
             relatedFocusEntities: effectiveMemory.relatedFocusEntities,
             activeTerms: promptTerms,
             evidenceQuality: evidenceQuality,
+            evidenceLevel: payloadEvidenceLevel.rawValue,
             browserTabs: activeCompartment?.browserTabs.sorted() ?? [],
+            browserContextType: nil,
+            browserContentAvailable: payloadEvidenceLevel.rank >= ProgressiveEvidenceLevel.visible_content.rank,
             actionIntent: intent
         )
 
@@ -377,12 +406,12 @@ public struct JarvisSuggestionGenerator: Sendable {
             // If registry doesn't have it, create one from the opportunity — never fall back to
             // CapabilitySelector's choice, which can corrupt identity (e.g. review_architecture → diagnose_error).
             if let registered = registry.get(opp.capabilityId) {
-                primaryAction = registered
+                primaryAction = hydratedCapability(registered, inputRequirements: opp.involvedApps)
             } else {
                 primaryAction = CognitiveCapability(
                     id: opp.capabilityId,
                     label: opp.title,
-                    inputRequirements: [],
+                    inputRequirements: opp.involvedApps,
                     outputType: opp.generatedAction != nil ? "generated_action" : "system_action",
                     evidenceThreshold: opp.requiredEvidence,
                     riskLevel: .light_action,
@@ -450,6 +479,24 @@ public struct JarvisSuggestionGenerator: Sendable {
         print("[JarvisPipeline] workflow=\(workflow.rawValue) behavior=\(behavior.rawValue) intent=\(intent) action_intent=\(actionIntent.id) judgment=upstream artifact=\(actionIntent.outputType) decision=shown reason=evidence_sufficient")
         return suggestion
     }
+}
+
+private func hydratedCapability(
+    _ capability: CognitiveCapability,
+    inputRequirements: [String]
+) -> CognitiveCapability {
+    guard !inputRequirements.isEmpty else { return capability }
+    return CognitiveCapability(
+        id: capability.id,
+        label: capability.label,
+        inputRequirements: inputRequirements,
+        outputType: capability.outputType,
+        evidenceThreshold: capability.evidenceThreshold,
+        privacyLevel: capability.privacyLevel,
+        riskLevel: capability.riskLevel,
+        requiresConfirmation: capability.requiresConfirmation,
+        executionMode: capability.executionMode
+    )
 }
 
 final class PerformanceBudgetManager: @unchecked Sendable {

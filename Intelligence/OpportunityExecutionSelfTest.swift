@@ -197,7 +197,71 @@ enum OpportunityExecutionSelfTest {
         check("focus_timer_unavailable", timerStatus == .unavailable)
         check("focus_timer_not_fake_success", timerStatus != .success)
 
-        // ── Case 8: copy_result_to_clipboard returns .success when text provided ──
+        // ── Case 8: Rental compare stays conservative with title-only evidence ──
+        print("[OpportunityExecutionSelfTest] case=rental_compare_title_only")
+        let rentalCompareOpp = opp(capId: "compare_rental_options", need: .comparison, entity: "Room for rent near campus")
+        let rentalCompareSugg = suggestion(
+            intent: "compare_rental_options",
+            entity: "Room for rent near campus",
+            terms: ["rent", "rental", "landlord", "lease", "listing"],
+            opportunity: rentalCompareOpp
+        )
+        let rentalCompareResult = await ContextExecutionEngine.execute(suggestion: rentalCompareSugg, snapshot: nil)
+        let rentalCompareArtifact = rentalCompareResult.cognitiveArtifact
+        check("rental_compare_artifact_type", rentalCompareArtifact.type == "table")
+        check("rental_compare_has_readiness_section",
+              rentalCompareArtifact.sections.contains { $0.header.contains("Readiness") })
+        check("rental_compare_title_only_conservative",
+              rentalCompareArtifact.subtitle.lowercased().contains("titles") || rentalCompareArtifact.subtitle.lowercased().contains("visible/current context"))
+        check("rental_compare_missing_info_mentions_rent",
+              rentalCompareArtifact.missingInfo.contains { $0.lowercased().contains("rent") || $0.lowercased().contains("lease") })
+
+        // ── Case 9: Draft listing ad executes deterministic builder ───────
+        print("[OpportunityExecutionSelfTest] case=draft_listing_ad")
+        let listingDraftOpp = opp(capId: "draft_listing_ad", need: .drafting, entity: "Student room listing")
+        let listingDraftSugg = suggestion(
+            intent: "draft_listing_ad",
+            entity: "Student room listing",
+            terms: ["listing", "room", "rent", "sublet"],
+            opportunity: listingDraftOpp
+        )
+        let listingDraftResult = await ContextExecutionEngine.execute(suggestion: listingDraftSugg, snapshot: nil)
+        let listingDraftArtifact = listingDraftResult.cognitiveArtifact
+        check("listing_draft_artifact_type", listingDraftArtifact.type == "draft")
+        check("listing_draft_has_structure_section",
+              listingDraftArtifact.sections.contains { $0.header.contains("Draft Ad Structure") })
+
+        // ── Case 10: Listing checklist executes deterministic builder ─────
+        print("[OpportunityExecutionSelfTest] case=create_listing_checklist")
+        let listingChecklistOpp = opp(capId: "create_listing_checklist", need: .planning, entity: "Basement apartment ad")
+        let listingChecklistSugg = suggestion(
+            intent: "create_listing_checklist",
+            entity: "Basement apartment ad",
+            terms: ["listing", "rent", "apartment", "utilities"],
+            opportunity: listingChecklistOpp
+        )
+        let listingChecklistResult = await ContextExecutionEngine.execute(suggestion: listingChecklistSugg, snapshot: nil)
+        let listingChecklistArtifact = listingChecklistResult.cognitiveArtifact
+        check("listing_checklist_artifact_type", listingChecklistArtifact.type == "checklist")
+        check("listing_checklist_has_before_posting",
+              listingChecklistArtifact.sections.contains { $0.header.contains("Before Posting") })
+
+        // ── Case 11: Landlord questions execute deterministic builder ─────
+        print("[OpportunityExecutionSelfTest] case=landlord_questions")
+        let landlordQuestionOpp = opp(capId: "create_questions_to_ask_landlord", need: .drafting, entity: "Lease discussion")
+        let landlordQuestionSugg = suggestion(
+            intent: "create_questions_to_ask_landlord",
+            entity: "Lease discussion",
+            terms: ["landlord", "lease", "rent", "tenant"],
+            opportunity: landlordQuestionOpp
+        )
+        let landlordQuestionResult = await ContextExecutionEngine.execute(suggestion: landlordQuestionSugg, snapshot: nil)
+        let landlordQuestionArtifact = landlordQuestionResult.cognitiveArtifact
+        check("landlord_questions_artifact_type", landlordQuestionArtifact.type == "draft")
+        check("landlord_questions_has_questions_section",
+              landlordQuestionArtifact.sections.contains { $0.header == "Questions" })
+
+        // ── Case 12: copy_result_to_clipboard returns .success when text provided ──
         print("[OpportunityExecutionSelfTest] case=clipboard_copy")
         let clipCap = CognitiveCapabilityRegistry.shared.get("copy_result_to_clipboard")!
         let clipStatus = await CapabilityExecutor.shared.execute(
@@ -206,7 +270,7 @@ enum OpportunityExecutionSelfTest {
         )
         check("clipboard_copy_success", clipStatus == .success)
 
-        // ── Case 9: Opportunity stored on suggestion carries through ─────
+        // ── Case 13: Opportunity stored on suggestion carries through ─────
         let opp9 = opp(capId: "generate_test_checklist", need: .testing, entity: "Mario Clone")
         let sugg9 = suggestion(
             intent: "generate_test_checklist",
@@ -220,7 +284,7 @@ enum OpportunityExecutionSelfTest {
         check("suggestion_intent_matches_opportunity",
               sugg9.intent == "generate_test_checklist")
 
-        // ── Case 10: Opportunity title passes OpportunityValidator ───────
+        // ── Case 14: Opportunity title passes OpportunityValidator ───────
         for capId in ["generate_test_checklist", "generate_quiz", "diagnose_error", "draft_reply",
                       "synthesize_sources", "create_review_plan", "compare_options", "create_next_steps"] {
             let t = OpportunityEngine.title(forCapabilityId: capId, entity: "Test Entity")

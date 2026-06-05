@@ -123,33 +123,37 @@ enum GeneratedActionGenerator {
 		let entity = cleanEntity(input.currentEntity, fallback: input.activeCompartmentLabel)
 		let workflow = workflowType(from: input)
 		let focus = focusTerms(terms, entity: entity, related: input.relatedEntities)
+		let titles = candidateTitles(input: input, workflow: workflow, focus: focus, entity: entity)
 
-		guard let title = title(input: input, workflow: workflow, focus: focus, entity: entity) else {
+		guard !titles.isEmpty else {
 			print("[GeneratedAction] skipped reason=no_specific_action")
 			return []
 		}
-
 		let reason = reasoning(input: input, workflow: workflow, focus: focus, entity: entity)
 		let description = description(input: input, workflow: workflow, focus: focus)
 		let required = requiredContext(input: input, workflow: workflow)
-		let confidence = confidence(input: input, workflow: workflow, focusCount: focus.count)
-		let id = stableId(title: title, workflow: workflow, entity: entity)
-
-		let action = GeneratedActionProposal(
-			id: id,
-			title: title,
-			description: description,
-			reasoning: reason,
-			confidence: confidence,
-			workflow: workflow,
-			requiredContext: required,
-			createdAt: referenceTime
-		)
-
-		print("[GeneratedAction] title=\(action.title)")
-		print("[GeneratedAction] confidence=\(String(format: "%.2f", action.confidence))")
-		print("[GeneratedAction] reasoning=\(action.reasoning)")
-		return [action]
+		let baseConfidence = confidence(input: input, workflow: workflow, focusCount: focus.count)
+		let actions = titles.enumerated().map { index, title in
+			GeneratedActionProposal(
+				id: stableId(title: title, workflow: workflow, entity: entity),
+				title: title,
+				description: description,
+				reasoning: reason,
+				confidence: max(0.46, baseConfidence - Double(index) * 0.03),
+				workflow: workflow,
+				requiredContext: required,
+				createdAt: referenceTime
+			)
+		}
+		if isRentalResearchContext(input: input, focus: focus, entity: entity) {
+			print("[TextSuggestionFamily] domain=rental_research candidates=\(actions.map(\.id).joined(separator: ",")) selected=\(actions.first?.id ?? "none")")
+		}
+		for action in actions {
+			print("[GeneratedAction] title=\(action.title)")
+			print("[GeneratedAction] confidence=\(String(format: "%.2f", action.confidence))")
+			print("[GeneratedAction] reasoning=\(action.reasoning)")
+		}
+		return actions
 	}
 
 	static func generate(
@@ -185,75 +189,111 @@ enum GeneratedActionGenerator {
 		return action
 	}
 
-	private static func title(
+	private static func candidateTitles(
 		input: GeneratedActionInput,
 		workflow: WorkflowType,
 		focus: [String],
 		entity: String
-	) -> String? {
+	) -> [String] {
 		let termSet = Set(focus)
 		let entityLower = entity.lowercased()
 		let appLower = input.activeApplication.lowercased()
 
 		if input.hasErrorTerms || input.mode == .debugging || workflow == .debugging {
 			if termSet.contains("collision") || termSet.contains("movement") || entityLower.contains("playermovement") {
-				return "Investigate movement collision failure"
+				return ["Investigate movement collision failure"]
 			}
 			if let errorFocus = firstUseful(focus) {
-				return "Investigate \(errorFocus) failure"
+				return ["Investigate \(errorFocus) failure"]
 			}
-			return nil
+			return []
 		}
 
 		if isGameContext(entityLower: entityLower, appLower: appLower, terms: termSet) {
 			let phrase = gameFocusPhrase(focus: focus)
-			return "Review \(phrase) before testing"
+			return ["Review \(phrase) before testing"]
 		}
 
 		if isCodingContext(input: input, workflow: workflow) {
-			return codingTitle(input: input, focus: focus, entity: entity)
+			return codingTitle(input: input, focus: focus, entity: entity).map { [$0] } ?? []
 		}
 
 		if input.domain == .studying || workflow == .studying || input.entityType == .course_material {
 			let subject = studyFocusPhrase(focus: focus, entity: entity)
-			return "Create \(subject) practice questions"
+			return ["Create \(subject) practice questions"]
+		}
+
+		if isRentalResearchContext(input: input, focus: focus, entity: entity) {
+			return rentalTitles(input: input, focus: focus, entity: entity)
 		}
 
 		if input.hasComparisonCandidates || input.mode == .comparing || workflow == .comparing {
 			if termSet.contains("retrieval") || entityLower.contains("retrieval") {
-				return "Compare authors' conclusions on retrieval quality"
+				return ["Compare authors' conclusions on retrieval quality"]
 			}
 			let candidates = input.relatedEntities.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 			if candidates.count >= 2 {
-				return "Compare \(short(candidates[0], max: 28)) and \(short(candidates[1], max: 28))"
+				return ["Compare \(short(candidates[0], max: 28)) and \(short(candidates[1], max: 28))"]
 			}
 			if let topic = firstUseful(focus) {
-				return "Compare the \(topic) tradeoffs"
+				return ["Compare the \(topic) tradeoffs"]
 			}
-			return nil
+			return []
 		}
 
 		if input.domain == .researching || workflow == .research {
 			if termSet.contains("retrieval") {
-				return "Compare authors' conclusions on retrieval quality"
+				return ["Compare authors' conclusions on retrieval quality"]
 			}
 			if let topic = firstUseful(focus) {
-				return "Synthesize findings about \(topic)"
+				return ["Synthesize findings about \(topic)", "Summarize what matters about \(topic)"]
 			}
-			return nil
+			return []
 		}
 
 		if input.mode == .writing || workflow == .writing {
 			if let topic = firstUseful(focus) {
-				return "Organize notes about \(topic)"
+				return ["Organize notes about \(topic)"]
 			}
-			return nil
+			return []
 		}
 
-		if let topic = firstUseful(focus), !entity.isEmpty {
-			return "Review \(topic) in \(short(entity, max: 42))"
+		// Phase 28.3: The old "Review <term> in <entity>" fallback produced garbage like
+		// "Review kingstonontario in Room for Rent??" — a rephrased title, not a useful action.
+		// Suppress this template entirely. Only specific operation titles survive.
+		return []
+	}
+
+	private static func rentalTitles(
+		input: GeneratedActionInput,
+		focus: [String],
+		entity: String
+	) -> [String] {
+		let all = Set(focus + normalizedTerms(input.relatedEntities) + normalizedTerms([entity]))
+		var titles: [String] = []
+		titles.append("Compare the rental advice from these posts?")
+		if all.contains("listing") || all.contains("room") || all.contains("sublet") || all.contains("lease") {
+			titles.append("Draft a checklist for your rental ad?")
+			titles.append("List missing details for the room posting?")
 		}
-		return nil
+		if all.contains("rent") || all.contains("price") || all.contains("pricing") || all.contains("utilities") {
+			titles.append("Extract pricing guidance from these threads?")
+		}
+		if all.contains("landlord") || all.contains("tenant") || all.contains("advice") {
+			titles.append("Create questions to ask the landlord?")
+		}
+		titles.append("Summarize what renters say about this search?")
+		return Array(NSOrderedSet(array: titles)) as? [String] ?? titles
+	}
+
+	private static func isRentalResearchContext(
+		input: GeneratedActionInput,
+		focus: [String],
+		entity: String
+	) -> Bool {
+		let markers: Set<String> = ["rent", "rental", "room", "rooms", "lease", "landlord", "tenant", "listing", "housing", "apartment", "sublet", "roommate", "utilities", "deposit"]
+		let all = Set(focus + normalizedTerms(input.relatedEntities) + normalizedTerms([entity]))
+		return !all.intersection(markers).isEmpty
 	}
 
 	private static func description(
@@ -284,13 +324,17 @@ enum GeneratedActionGenerator {
 		return parts.joined(separator: " ")
 	}
 
+	// Phase 28.3: Generated action confidence reflects actual quality, not template inflation.
+	// Old max was 0.92 which PrimitiveComposer boosted to 0.95 — this let garbage "Review X in Y"
+	// beat portfolio candidates with real scores of 0.360. Cap at 0.72 so generated actions must
+	// genuinely be better to win.
 	private static func confidence(input: GeneratedActionInput, workflow: WorkflowType, focusCount: Int) -> Double {
-		var value = max(input.confidenceSeed, 0.48)
-		if workflow != .unknown { value += 0.10 }
-		if focusCount >= 2 { value += 0.08 }
-		if input.evidenceQuality == "ax_content" || input.evidenceQuality == "browser_context" || input.evidenceQuality == "browser_tabs" || input.evidenceQuality == "editor_context" { value += 0.06 }
+		var value = max(input.confidenceSeed, 0.38)
+		if workflow != .unknown { value += 0.08 }
+		if focusCount >= 2 { value += 0.06 }
+		if input.evidenceQuality == "ax_content" || input.evidenceQuality == "browser_context" || input.evidenceQuality == "browser_tabs" || input.evidenceQuality == "editor_context" { value += 0.05 }
 		if input.hasErrorTerms || input.hasComparisonCandidates { value += 0.06 }
-		return min(0.92, value)
+		return min(0.72, value)
 	}
 
 	private static func requiredContext(input: GeneratedActionInput, workflow: WorkflowType) -> [ContextRequirementType] {

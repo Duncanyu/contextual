@@ -298,6 +298,68 @@ final class AppState: ObservableObject {
 
 	@Published var activeAmbientJarvisSuggestion: AmbientJarvisSuggestion?
 	private var lastAmbientJarvisTargetEntity: String = ""
+	var lastAmbientJarvisShownAt: Date? = nil
+	private var loggedFeedbackEvents: [String: String] = [:]
+
+	func recordSuggestionFeedback(id: String, event: String) {
+		let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
+		if let oldEvent = loggedFeedbackEvents[normalizedId] {
+			if oldEvent == "accepted" {
+				print("[SuggestionFeedback] suppressed_duplicate_event id=\(normalizedId) old=\(oldEvent) new=\(event)")
+				return
+			}
+			if event == "accepted" {
+				loggedFeedbackEvents[normalizedId] = event
+				print("[SuggestionFeedback] id=\(normalizedId) final_event=\(event)")
+				return
+			}
+			print("[SuggestionFeedback] suppressed_duplicate_event id=\(normalizedId) old=\(oldEvent) new=\(event)")
+			return
+		}
+		loggedFeedbackEvents[normalizedId] = event
+		print("[SuggestionFeedback] id=\(normalizedId) final_event=\(event)")
+	}
+
+	func wasSuggestionFeedbackLogged(id: String, event: String) -> Bool {
+		let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
+		return loggedFeedbackEvents[normalizedId] == event
+	}
+
+	private func durableContext(for suggestion: AmbientJarvisSuggestion?) -> DurableMemoryContext? {
+		guard let suggestion else { return nil }
+		return DurableMemoryContext.build(
+			workflow: suggestion.workflow,
+			compartment: suggestion.contextPayload?.taskCompartmentSnapshot?.label,
+			app: debugContext.activeAppName,
+			activity: "active",
+			browserType: suggestion.contextPayload?.browserContextType
+		)
+	}
+
+	func ambientCapabilityId(for suggestion: AmbientJarvisSuggestion, actionId: String? = nil) -> String {
+		if let actionId, actionId.contains(":secondary:"), let secondary = suggestion.actionCard?.secondaryAction?.id {
+			return secondary
+		}
+		if let actionId, actionId.contains(":auxiliary:"), let auxiliary = suggestion.actionCard?.auxiliaryAction?.id {
+			return auxiliary
+		}
+		if let cap = suggestion.topOpportunity?.capabilityId, !cap.isEmpty {
+			return cap
+		}
+		if let primary = suggestion.actionCard?.primaryAction.id, !primary.isEmpty {
+			return primary
+		}
+		return suggestion.intent.replacingOccurrences(of: "environment:", with: "")
+	}
+
+	private func restoreCooldownKey(for suggestion: AmbientJarvisSuggestion) -> String? {
+		let capabilityId = ambientCapabilityId(for: suggestion)
+		guard capabilityId == "restore_workspace" else { return nil }
+		let apps = suggestion.topOpportunity?.involvedApps ?? []
+		let urls = suggestion.topOpportunity?.involvedURLs ?? []
+		let compartment = suggestion.contextPayload?.taskCompartmentSnapshot?.label
+		return DurableMemory.restoreCooldownKey(apps: apps, urls: urls, compartment: compartment)
+	}
 
 	func invalidateAmbientJarvisSuggestion(reason: String, oldEntity: String, newEntity: String) {
 		guard activeAmbientJarvisSuggestion != nil else { return }
@@ -310,6 +372,18 @@ final class AppState: ObservableObject {
 	}
 	
 	func publishAmbientJarvisSuggestion(_ suggestion: AmbientJarvisSuggestion?) {
+		if let previous = activeAmbientJarvisSuggestion,
+		   previous.id != suggestion?.id {
+			recordSuggestionFeedback(id: previous.id, event: "ignored")
+			if let context = durableContext(for: previous) {
+				let capabilityId = ambientCapabilityId(for: previous)
+				DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: .ignored, context: context)
+				if let restoreKey = restoreCooldownKey(for: previous) {
+					DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: .ignored)
+				}
+				DurableMemory.shared.recordScheduleObservation(context: context, accepted: false, activityState: "active")
+			}
+		}
 		self.activeAmbientJarvisSuggestion = suggestion
 		if let suggestion = suggestion {
 			print("[AmbientSuggestionSurface] visible=yes kind=\(suggestion.kind.rawValue)")
@@ -444,8 +518,14 @@ final class AppState: ObservableObject {
 	func invokeAction(id: String) {
 		if id.hasPrefix("ambient_jarvis:") {
 			print("[AmbientSuggestionSurface] accepted id=\(id)")
+			recordSuggestionFeedback(id: id, event: "accepted")
 			Task {
 				if let suggestion = self.activeAmbientJarvisSuggestion {
+					if let context = self.durableContext(for: suggestion) {
+						let capabilityId = self.ambientCapabilityId(for: suggestion, actionId: id)
+						DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: .accepted, context: context)
+						DurableMemory.shared.recordScheduleObservation(context: context, accepted: true, activityState: "active")
+					}
 					let environmentActionIds: Set<String> = [
 						"play_focus_media",
 						"pause_media",
@@ -456,8 +536,14 @@ final class AppState: ObservableObject {
 						// Phase 26.1 — Friction-reduction capabilities route through executor, not text generation
 						"collect_references",
 						"pin_reference_tabs",
+						"restore_research_tabs",
 						"restore_workspace",
 						"arrange_side_by_side",
+						"switch_to_paired_app",
+						"split_research_setup",
+						"copy_current_url",
+						"remember_workspace",
+						"open_current_task_panel",
 						"resume_focus_media",
 						"extract_and_organize",
 						"precompute_answer",
@@ -481,17 +567,57 @@ final class AppState: ObservableObject {
 
 						let executionMode = suggestion.actionCard?.primaryAction.executionMode ?? .local_action
 						let type = EnvironmentActionType(rawValue: actionTypeStr) ?? .playFocusMedia
+						// Phase 28.3: Carry MusicIntent from the opportunity through click routing.
+						// Without this, "Resume your music?" clicks lose the intent and fall to search.
+						let clickMusicIntent = suggestion.topOpportunity?.musicIntent
+						let actionApps = suggestion.topOpportunity?.involvedApps
+							.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? []
+						let fallbackApps = suggestion.actionCard?.primaryAction.inputRequirements ?? []
+						let supplementalContext: [String: Any] = [
+							"tabTitles": suggestion.topOpportunity?.browserTabTitles ?? suggestion.contextPayload?.browserTabs ?? [],
+							"tabURLs": suggestion.topOpportunity?.involvedURLs ?? [],
+							"url": suggestion.topOpportunity?.involvedURLs.first as Any,
+							"title": suggestion.topOpportunity?.browserTabTitles.first as Any,
+							"currentEntity": suggestion.targetEntity,
+							"workflow": suggestion.workflow,
+							"behavior": suggestion.behavior,
+							"activeTerms": suggestion.contextPayload?.activeTerms ?? [],
+							"comparisonCandidates": suggestion.contextPayload?.comparisonCandidates ?? [],
+							"relatedEntities": suggestion.contextPayload?.relatedFocusEntities ?? [],
+							"suggestionTitle": suggestion.title
+						]
 						let action = EnvironmentAction(
 							type: type,
 							title: suggestion.title,
 							reasoning: suggestion.intentGoal,
 							executionMode: executionMode,
 							requiresConfirmation: suggestion.actionCard?.primaryAction.requiresConfirmation ?? true,
-							apps: suggestion.actionCard?.primaryAction.inputRequirements ?? [],
-							capabilityId: actionTypeStr
+							apps: actionApps.isEmpty ? fallbackApps : actionApps,
+							capabilityId: actionTypeStr,
+							musicIntent: clickMusicIntent,
+							compartment: suggestion.contextPayload?.taskCompartmentSnapshot,
+							workflow: AmbientWorkflowType(rawValue: suggestion.workflow)
 						)
 
-						let status = await EnvironmentActionExecutor.previewOrExecute(action)
+						// Phase 31 — Check action readiness before execution
+						let _ = LocalActionReadiness.check(
+							capabilityId: actionTypeStr,
+							involvedApps: action.apps,
+							involvedURLs: suggestion.topOpportunity?.involvedURLs ?? [],
+							browserTabTitles: suggestion.topOpportunity?.browserTabTitles ?? suggestion.contextPayload?.browserTabs ?? []
+						)
+
+						// Phase 33 — Payload handoff audit
+						let _ = PayloadHandoffAudit.verify(
+							proposalId: suggestion.topOpportunity?.id ?? suggestion.id,
+							capabilityId: actionTypeStr,
+							generatedTargets: suggestion.topOpportunity?.involvedApps ?? [],
+							clickedTargets: action.apps,
+							generatedURLs: suggestion.topOpportunity?.involvedURLs ?? [],
+							clickedURLs: (supplementalContext["tabURLs"] as? [String]) ?? []
+						)
+
+						let status = await EnvironmentActionExecutor.previewOrExecute(action, supplementalContext: supplementalContext)
 						print("[EnvironmentActionExecution] completed status=\(status.rawValue)")
 
 						if executionMode == .preview_only {
@@ -528,7 +654,47 @@ final class AppState: ObservableObject {
 					if isSecondary {
 						print("[ActionClickRouter] route=context_execution reason=secondary_click_on_hybrid")
 					}
-					
+
+					// Phase 31 — Context acquisition before execution
+					let capId = suggestion.topOpportunity?.capabilityId ?? suggestion.intent
+					let payload = suggestion.contextPayload
+					let acquisitionPlan = ContextAcquisitionPlanner.plan(
+						capabilityId: capId,
+						activeApp: payload?.workingMemorySnapshot.currentEntity ?? "",
+						bundleId: "",
+						hasAXText: false,
+						hasOCR: false,
+						hasVisualDescriptor: false,
+						hasBrowserTabs: !(payload?.browserTabs ?? []).isEmpty,
+						hasSelectedText: false,
+						hasClipboard: false,
+						groundedFactsCount: 0,
+						evidenceQuality: payload?.evidenceQuality ?? "title_only"
+					)
+					ContextAcquisitionPlanner.emit(acquisitionPlan)
+
+					// Phase 31 — Emit execution context snapshot
+					if let opp = suggestion.topOpportunity {
+						let execSnapshot = ExecutionContextSnapshot.build(
+							proposalId: opp.id,
+							capabilityId: opp.capabilityId,
+							activeApp: suggestion.contextPayload?.workingMemorySnapshot.currentEntity ?? "",
+							bundleId: "",
+							windowTitle: suggestion.targetEntity,
+							browserSelectedTitle: suggestion.contextPayload?.browserTabs.first,
+							browserSelectedURL: nil,
+							browserTabTitles: suggestion.contextPayload?.browserTabs ?? [],
+							compartment: suggestion.contextPayload?.taskCompartmentSnapshot,
+							evidenceQuality: suggestion.contextPayload?.evidenceQuality ?? "unknown",
+							hasOCR: false,
+							hasAXText: false,
+							hasSelectedText: false,
+							targetApps: opp.involvedApps,
+							targetURLs: opp.involvedURLs
+						)
+						execSnapshot.emit()
+					}
+
 					let snapshot = self.latestCanonicalSnapshot
 					let result = await ContextExecutionEngine.execute(
 						suggestion: suggestion,
@@ -635,9 +801,10 @@ final class AppState: ObservableObject {
 
 	func acceptCurrentProposal() {
 		guard let proposal = currentProposal else { return }
+		let id = proposal.primaryActionId
+		recordSuggestionFeedback(id: id, event: "accepted")
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		let redundancyKey = String(fnv1a64(text: suggestionKey), radix: 16)
-		let id = proposal.primaryActionId
 		print("[SuggestionCard] accepted proposal primary=\(id)")
 		lastAcceptedProposalActionId = id
 
@@ -998,6 +1165,15 @@ final class AppState: ObservableObject {
 
 	func dismissCurrentProposal() {
 		guard let proposal = currentProposal else { return }
+		if let suggestion = activeAmbientJarvisSuggestion,
+		   let context = durableContext(for: suggestion) {
+			let capabilityId = ambientCapabilityId(for: suggestion)
+			DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: .dismissed, context: context)
+			if let restoreKey = restoreCooldownKey(for: suggestion) {
+				DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: .dismissed)
+			}
+			DurableMemory.shared.recordScheduleObservation(context: context, accepted: false, activityState: "active")
+		}
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		let redundancyKey = String(fnv1a64(text: suggestionKey), radix: 16)
 		let id = proposal.primaryActionId
@@ -1077,8 +1253,12 @@ final class AppState: ObservableObject {
 	// MARK: - Floating suggestion controls
 
 	func showFloatingSuggestion(_ suggestion: SuggestionViewModel, lifecycle: ActiveFloatingLifecycleBinding) {
+		if let old = floatingSuggestion, isFloatingSuggestionVisible, old.primaryActionId != suggestion.primaryActionId {
+			print("[AmbientSuggestionReplacement] old=\(old.primaryActionId) new=\(suggestion.primaryActionId) reason=better_candidate")
+		}
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
+		lastAmbientJarvisShownAt = Date()
 
 		let logKey = floatingSuggestionLogKey(for: suggestion, context: debugContext)
 		print("[FloatingSuggestion] show key=\(logKey)")
@@ -1117,6 +1297,22 @@ final class AppState: ObservableObject {
 	func dismissFloatingSuggestion(reason: FloatingSuggestionDismissReason = .manual) {
 		let proposalSnapshot = floatingSuggestion
 		let ctx = debugContext
+
+		if reason != .accepted, let p = proposalSnapshot {
+			let feedbackEvent = (reason == .auto || reason == .panelOpen) ? "auto_dismissed" : "dismissed"
+			recordSuggestionFeedback(id: p.primaryActionId, event: feedbackEvent)
+		}
+
+		if let ambient = activeAmbientJarvisSuggestion,
+		   let context = durableContext(for: ambient),
+		   reason != .accepted {
+			let capabilityId = ambientCapabilityId(for: ambient)
+			let feedbackEvent: DurableMemoryActionEvent = (reason == .auto || reason == .panelOpen) ? .autoDismissed : .dismissed
+			DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: feedbackEvent, context: context)
+			if let restoreKey = restoreCooldownKey(for: ambient) {
+				DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: feedbackEvent)
+			}
+		}
 
 		if let bind = activeFloatingLifecycleBinding, reason != .accepted {
 			switch reason {
@@ -1157,11 +1353,11 @@ final class AppState: ObservableObject {
 		}
 	}
 
-	/// Primary action on floating card: hide float, open panel, preserve proposal/context, run action via existing execution path.
 	func acceptFloatingProposal() {
 		guard let proposal = floatingSuggestion else { return }
-		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		let id = proposal.primaryActionId
+		recordSuggestionFeedback(id: id, event: "accepted")
+		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		print("[FloatingSuggestion] accepted primary=\(id)")
 
 		if let bind = activeFloatingLifecycleBinding {

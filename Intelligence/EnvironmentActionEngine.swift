@@ -9,7 +9,16 @@ enum EnvironmentActionType: String, Sendable, Codable, Equatable, CaseIterable {
     case enableReduceInterruptions = "enable_reduce_interruptions"
     case launchRecentWorkspace = "launch_recent_workspace"
     case openRelatedAppSet = "open_related_app_set"
+    case switchToPairedApp = "switch_to_paired_app"
+    case arrangeSideBySide = "arrange_side_by_side"
+    case restoreWorkspace = "restore_workspace"
+    case restoreResearchTabs = "restore_research_tabs"
+    case splitResearchSetup = "split_research_setup"
     case startFocusTimer = "start_focus_timer"
+    case collectReferences = "collect_references"
+    case copyCurrentURL = "copy_current_url"
+    case rememberWorkspace = "remember_workspace"
+    case openCurrentTaskPanel = "open_current_task_panel"
     case copyResultToClipboard = "copy_result_to_clipboard"
     case suppressBecauseUserIsWatching = "suppress_because_user_is_watching"
 }
@@ -514,18 +523,31 @@ enum EnvironmentActionEngine {
             )
         }
 
-        // Phase 26.1 — Focus actions suppressed until a real Focus toggle exists.
-        // No "Open Focus settings" / "Turn on Reduce Interruptions" until wired.
-        if input.mediaState.visualMediaKind == .movieOrShow || input.behavior == .watching || input.workflow == .watching || input.domain == .watching {
-            print("[FocusAction] suppressed reason=no_focus_toggle_wired context=watching")
-        }
+        let focusShortcutAvailable = await CapabilityExecutor.shared.isFocusShortcutAvailable()
+        let shouldSuggestFocus =
+            input.mediaState.visualMediaKind == .movieOrShow
+            || input.behavior == .watching
+            || input.workflow == .watching
+            || input.domain == .watching
+            || MediaSuitability.isCompetitiveOrHearingSensitiveGaming(input)
+            || input.focusState.isDeepWork
 
-        if MediaSuitability.isCompetitiveOrHearingSensitiveGaming(input) {
-            print("[FocusAction] suppressed reason=no_focus_toggle_wired context=competitive_gaming")
-        }
-
-        if input.focusState.isDeepWork {
-            print("[FocusAction] suppressed reason=no_focus_toggle_wired context=deep_work")
+        if shouldSuggestFocus {
+            if focusShortcutAvailable {
+                let action = EnvironmentAction(
+                    type: .enableReduceInterruptions,
+                    title: "Enable Work Focus?",
+                    reasoning: "A local Focus shortcut is available and this context would benefit from reduced interruptions.",
+                    executionMode: .local_action,
+                    requiresConfirmation: true,
+                    compartment: input.taskCompartment,
+                    workflow: input.workflow
+                )
+                print("[FocusAction] suggested=yes method=shortcuts")
+                print("[CheapAmbientAction] selected=enable_reduce_interruptions")
+                return validated(action, input: input)
+            }
+            print("[FocusAction] suppressed reason=shortcut_missing")
         }
 
         let workspaceApps = WorkspaceMemory.shared.restoreCandidate(
@@ -558,19 +580,20 @@ enum EnvironmentActionEngine {
         }
 
         if workspaceApps.count >= 2 && learnedApps.count >= 2 {
-			let isPreview = true 
-			let title = workspaceTitle(workflow: input.workflow, compartment: input.taskCompartment, previewOnly: isPreview)
+			let title = workspaceApps.count == 2
+				? "Open \(workspaceApps[0]) and \(workspaceApps[1])?"
+				: workspaceTitle(workflow: input.workflow, compartment: input.taskCompartment, previewOnly: false)
             let action = EnvironmentAction(
                 type: .openRelatedAppSet,
                 title: title,
                 reasoning: "This compartment has a learned app set that is not fully present in the current context.",
-                executionMode: .preview_only,
+                executionMode: .local_action,
                 requiresConfirmation: true,
                 apps: workspaceApps,
 				compartment: input.taskCompartment,
 				workflow: input.workflow
             )
-			print("[WorkspaceAction] mode=preview_only")
+			print("[WorkspaceAction] mode=open_apps")
             print("[WorkspaceAction] suggested=yes apps=\(workspaceApps.joined(separator: ","))")
 			print("[CheapAmbientAction] selected=restore_workspace")
             return validated(action, input: input)
@@ -590,8 +613,7 @@ enum EnvironmentActionEngine {
 			
 			let actionType: MusicIntent.Action = {
 				if learnedPlaylist != nil { return .playPlaylist }
-				if canPlayDirectly { return .resume }
-				return .search
+				return .resume
 			}()
 
 			let intent = MusicIntent(
@@ -645,7 +667,8 @@ enum EnvironmentActionEngine {
         mood: MusicIntent.Mood,
         canPlayDirectly: Bool,
         learnedPlaylist: String?,
-        compartmentLabel: String?
+        compartmentLabel: String?,
+        firstLocalPlaylistName: String? = nil
     ) -> String {
         if let p = learnedPlaylist {
             if let label = compartmentLabel {
@@ -657,15 +680,10 @@ enum EnvironmentActionEngine {
         if canPlayDirectly {
             return "Resume your music?"
         }
-
-        let domainStr: String = {
-            if workflow == .studying || domain == .studying { return "study" }
-            if workflow == .researching || domain == .researching { return "research" }
-            if workflow == .coding || domain == .coding || domain == .creative_coding { return "coding" }
-            if workflow == .designing { return "creative" }
-            return "background"
-        }()
-        return "Search Apple Music for \(domainStr) music?"
+        if let name = firstLocalPlaylistName {
+            return "Play \(name)?"
+        }
+        return "Play a local playlist?"
     }
 
     private static func musicQuery(workflow: AmbientWorkflowType, domain: DeterminerSignal.Domain, mood: MusicIntent.Mood) -> String {
@@ -776,7 +794,7 @@ enum EnvironmentActionCapabilityAdapter {
 
 @MainActor
 enum EnvironmentActionExecutor {
-    static func previewOrExecute(_ action: EnvironmentAction) async -> CapabilityExecutionStatus {
+    static func previewOrExecute(_ action: EnvironmentAction, supplementalContext: [String: Any] = [:]) async -> CapabilityExecutionStatus {
         print("[EnvironmentActionExecution] started id=\(action.type.rawValue)")
         print("[CapabilityExecution] mode=\(action.executionMode.rawValue) id=\(action.type.rawValue)")
         if action.executionMode == .preview_only {
@@ -795,22 +813,29 @@ enum EnvironmentActionExecutor {
         AppState.lastAssistantInitiatedAction = action.type.rawValue
 		AppState.lastAssistantInitiatedAt = Date()
 
-        return await CapabilityExecutor.shared.execute(capability: capability, context: [
+        var context: [String: Any] = [
             "apps": action.apps,
             "confirmation_satisfied": true,
             "musicIntent": action.musicIntent as Any,
 			"compartment": action.compartment as Any,
 			"workflow": action.workflow as Any
-        ])
+        ]
+        for (key, value) in supplementalContext {
+            context[key] = value
+        }
+        return await CapabilityExecutor.shared.execute(capability: capability, context: context)
     }
 }
 
 // MARK: - Self-tests
 
+@MainActor
 enum EnvironmentActionSelfTest {
     static func run() async -> Bool {
         print("[EnvironmentActionSelfTest] starting")
         WorkspaceMemory.shared.resetForTests()
+        CapabilityExecutor.testHooks = .init()
+        defer { CapabilityExecutor.testHooks = .init() }
         var failures: [String] = []
         func check(_ name: String, _ condition: Bool) {
             if condition { print("[EnvironmentActionSelfTest] pass case=\(name)") }
@@ -827,6 +852,7 @@ enum EnvironmentActionSelfTest {
         let youtubeAction = await EnvironmentActionEngine.propose(youtube)
         check("youtube_suppresses_music", youtubeAction?.type == .suppressBecauseUserIsWatching)
 
+        CapabilityExecutor.testHooks.focusShortcutAvailable = { true }
         let movie = makeInput(workflow: .watching, behavior: .watching, domain: .watching, entityType: .tv_show, entity: "Movie Night Episode", media: EnvironmentMediaState(isMusicPlaying: false, visualMediaKind: .movieOrShow, source: "test"))
         let movieAction = await EnvironmentActionEngine.propose(movie)
         let movieRoute = ActionRouter.selectRoute(generatedAction: movie.generatedAction, environmentAction: movieAction)
@@ -836,8 +862,17 @@ enum EnvironmentActionSelfTest {
         let gameAction = await EnvironmentActionEngine.propose(game)
         check("competitive_game_dnd_no_music", gameAction?.type == .enableReduceInterruptions)
 
-        let focusUnavailable = await EnvironmentActionExecutor.previewOrExecute(EnvironmentAction(type: .enableReduceInterruptions, title: "Turn on Reduce Interruptions?", reasoning: "self-test", executionMode: .local_action, requiresConfirmation: true))
-        check("unavailable_focus_not_success", focusUnavailable == .unavailable)
+        CapabilityExecutor.testHooks.runFocusShortcut = {
+            CapabilityExecutor.LocalActionOutcome(status: .success, verificationStatus: "success", reason: "shortcut_ran")
+        }
+        let focusRuns = await EnvironmentActionExecutor.previewOrExecute(EnvironmentAction(type: .enableReduceInterruptions, title: "Turn on Reduce Interruptions?", reasoning: "self-test", executionMode: .local_action, requiresConfirmation: true))
+        check("focus_shortcut_runs_successfully", focusRuns == .success)
+
+        CapabilityExecutor.testHooks.focusShortcutAvailable = { false }
+        CapabilityExecutor.testHooks.runFocusShortcut = nil
+        let deepWorkInput = makeInput(workflow: .coding, behavior: .coding, domain: .coding, entityType: .code_project, terms: ["swift"], media: noMusic(), deepWork: true)
+        let hiddenFocusAction = await EnvironmentActionEngine.propose(deepWorkInput)
+        check("focus_action_hidden_when_shortcut_missing", hiddenFocusAction?.type != .enableReduceInterruptions)
 
         let timerUnavailable = await EnvironmentActionExecutor.previewOrExecute(EnvironmentAction(type: .startFocusTimer, title: "Start focus timer?", reasoning: "self-test", executionMode: .local_action, requiresConfirmation: true))
         check("unavailable_timer_not_success", timerUnavailable == .unavailable)
@@ -846,6 +881,31 @@ enum EnvironmentActionSelfTest {
         let noEnvAction = await EnvironmentActionEngine.propose(noEnv)
         let noEnvRoute = ActionRouter.selectRoute(generatedAction: noEnv.generatedAction, environmentAction: noEnvAction)
         check("cognitive_still_works_when_environment_not_useful", noEnvAction == nil && noEnvRoute.selectedRoute == .cognitive)
+
+        let noSearchMusic = await EnvironmentActionEngine.propose(coding)
+        check("music_intent_never_search", noSearchMusic?.musicIntent?.action != .search)
+
+        let fallbackPlan = MusicExecutor.executionPlanForTests(
+            intent: MusicIntent(taskDomain: "coding", mood: .focus, query: "coding focus", playlistName: nil, action: .resume),
+            localPlaylistMatchExists: false,
+            hasFirstLocalPlaylist: true
+        )
+        check("music_falls_back_to_first_local_playlist", fallbackPlan == "resume_then_first_local_playlist")
+
+        let requestedPlaylistPlan = MusicExecutor.executionPlanForTests(
+            intent: MusicIntent(taskDomain: "coding", mood: .focus, query: "coding focus", playlistName: "deep work", action: .playPlaylist),
+            localPlaylistMatchExists: false,
+            hasFirstLocalPlaylist: true
+        )
+        check("requested_playlist_never_becomes_search", requestedPlaylistPlan == "play_first_local_playlist")
+
+        CapabilityExecutor.testHooks.openAppPair = { apps in
+            CapabilityExecutor.LocalActionOutcome(status: apps.count >= 2 ? .success : .blocked, verificationStatus: apps.count >= 2 ? "success" : "failed", reason: apps.count >= 2 ? "opened_app_pair" : "no_apps")
+        }
+        let openPair = await EnvironmentActionExecutor.previewOrExecute(
+            EnvironmentAction(type: .openRelatedAppSet, title: "Open Preview and Firefox?", reasoning: "self-test", executionMode: .local_action, requiresConfirmation: true, apps: ["Preview", "Firefox"])
+        )
+        check("open_common_app_pair_launches_apps", openPair == .success)
 
         let ok = failures.isEmpty
         print("[EnvironmentActionSelfTest] completed ok=\(ok) failures=\(failures.count)")
@@ -981,101 +1041,68 @@ import Foundation
 import AppKit
 
 public enum MusicExecutor {
+    static func executionPlanForTests(
+        intent: MusicIntent?,
+        localPlaylistMatchExists: Bool,
+        hasFirstLocalPlaylist: Bool
+    ) -> String {
+        let action = intent?.action ?? .resume
+        switch action {
+        case .playPlaylist:
+            if localPlaylistMatchExists { return "play_requested_playlist" }
+            if hasFirstLocalPlaylist { return "play_first_local_playlist" }
+            return "unavailable"
+        case .resume:
+            if hasFirstLocalPlaylist { return "resume_then_first_local_playlist" }
+            return "resume_only"
+        case .search:
+            if localPlaylistMatchExists { return "play_requested_playlist" }
+            if hasFirstLocalPlaylist { return "play_first_local_playlist" }
+            return "unavailable"
+        }
+    }
+
     @MainActor
     public static func play(intent: MusicIntent? = nil) async -> (success: Bool, status: CapabilityExecutionStatus, reason: String, playlistName: String?) {
         print("[MusicExecutor] started")
-		let action = intent?.action ?? .search
+		let action = intent?.action ?? .resume
 		print("[MusicExecutor] action=\(action.rawValue)")
+        print("[MusicExecutor] fallback_search=no")
 
 		if action == .resume {
-			print("[MusicExecutor] fallback_search=no")
-			let resumeScript = """
-				tell application "Music"
-					play
-					return player state as string
-				end tell
-			"""
-			let (rSuccess, rOut, rErr, _) = await runAppleScript(resumeScript, backend: "music")
-			if rSuccess && rOut.lowercased().contains("playing") {
-				return (true, .success, "music_resumed", nil)
-			}
-			
-			// Try Spotify as fallback for resume
-			let spotifyResume = "tell application \"Spotify\" to play"
-			let (sSuccess, _, _, _) = await runAppleScript(spotifyResume, backend: "spotify")
-			if sSuccess {
-				return (true, .success, "spotify_resumed", nil)
-			}
-			return (false, .unavailable, "resume_failed (Music.app err: \(rErr))", nil)
+            if let resumed = await tryResumeAnyPlayer() {
+                return resumed
+            }
+            if let fallbackName = await firstLocalPlaylistName() {
+                print("[MusicExecutor] fallback_local_playlist=yes name=\"\(fallbackName)\"")
+                return await playLocalPlaylist(query: fallbackName, reason: "first_local_playlist_fallback")
+            }
+			return (false, .unavailable, "resume_failed_no_local_playlist", nil)
 		}
 
-        // Phase 28.2: Use intent query directly — no "focus instrumental" fallback.
-        // If no intent or query, the action should not have been surfaced as play/resume.
-        guard let query = intent?.playlistName ?? intent?.query else {
+        guard let requestedQuery = intent?.playlistName ?? intent?.query else {
+            if let fallbackName = await firstLocalPlaylistName() {
+                print("[MusicExecutor] fallback_local_playlist=yes name=\"\(fallbackName)\"")
+                return await playLocalPlaylist(query: fallbackName, reason: "first_local_playlist_fallback")
+            }
             print("[MusicExecutor] error=no_query_or_playlist_in_intent fallback_search=no")
             return (false, .unavailable, "no_query_in_intent", nil)
         }
+        let query = requestedQuery
         print("[MusicExecutor] intended_query=\"\(query)\"")
         if let p = intent?.playlistName { print("[MusicExecutor] playlist_name=\(p)") }
-        
-        // 1. Try local Music.app playlists
-        let musicScript = """
-            tell application "Music"
-                set found to false
-                set playlistName to ""
-                try
-                    set matches to (every playlist whose name contains "\(query)")
-                    if (count of matches) > 0 then
-                        set p to item 1 of matches
-                        set playlistName to name of p
-                        play p
-                        set found to true
-                    end if
-                end try
-                delay 1.0
-                return (player state as string) & "|" & playlistName
-            end tell
-        """
-        
-        let (_, mOut, mErr, _) = await runAppleScript(musicScript, backend: "music")
-        let components = mOut.components(separatedBy: "|")
-        let playerState = components.first ?? "unknown"
-        let foundName = components.count > 1 ? components[1] : ""
 
-        print("[MusicExecutor] actual_query=\"\(query)\"")
-        let localFound = !foundName.isEmpty && foundName != "Library"
-        print("[MusicExecutor] local_playlist_found=\(localFound ? "yes" : "no") name=\"\(foundName)\"")
-        
-        if playerState.lowercased().contains("playing") && localFound {
-            print("[MusicExecutor] player_state_after=\(playerState)")
-            print("[MusicExecutor] playlist_name=\(foundName)")
-            return (true, .success, "playlist_started", foundName)
-        }
-        
-        // 2. Fallback to Search
-        print("[MusicExecutor] local_playlist_found=no")
-        
-        // Determine provider (simplified for prototype)
-        let provider = "apple_music" // Default
-        print("[MusicExecutor] fallback=\(provider)_search")
-        
-        if provider == "apple_music" {
-            let searchURL = "music://music.apple.com/search?term=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-            if let url = URL(string: searchURL) {
-                NSWorkspace.shared.open(url)
-                print("[MusicExecutor] opened_search_url=\(searchURL)")
-                return (false, .openedSearch, "provider_search_opened", nil)
-            }
-        } else if provider == "spotify" {
-            let searchURL = "spotify:search:\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-            if let url = URL(string: searchURL) {
-                NSWorkspace.shared.open(url)
-                print("[MusicExecutor] opened_search_url=\(searchURL)")
-                return (false, .openedSearch, "provider_search_opened", nil)
-            }
+        let directPlay = await playLocalPlaylist(query: query, reason: "requested_playlist")
+        if directPlay.success {
+            return directPlay
         }
 
-        return (false, .unavailable, "no_playlist_or_player_not_playing (Music.app err: \(mErr))", nil)
+        if let fallbackName = await firstLocalPlaylistName() {
+            print("[MusicExecutor] fallback_local_playlist=yes name=\"\(fallbackName)\"")
+            return await playLocalPlaylist(query: fallbackName, reason: "first_local_playlist_fallback")
+        }
+
+        return (false, .unavailable, "no_playlist_or_player_not_playing", nil)
     }
 
 	@MainActor
@@ -1098,7 +1125,7 @@ public enum MusicExecutor {
 	}
     
     @MainActor
-    public static func pause() async -> (success: Bool, reason: String) {
+	public static func pause() async -> (success: Bool, reason: String) {
         print("[MusicExecutor] started")
         
         let musicScript = "tell application \"Music\" to pause"
@@ -1111,6 +1138,82 @@ public enum MusicExecutor {
             return (true, "music_paused")
         }
         return (false, "no_player_responded")
+	}
+
+    @MainActor
+    private static func tryResumeAnyPlayer() async -> (success: Bool, status: CapabilityExecutionStatus, reason: String, playlistName: String?)? {
+        let resumeScript = """
+            tell application "Music"
+                play
+                return player state as string
+            end tell
+        """
+        let (musicSuccess, musicOut, _, _) = await runAppleScript(resumeScript, backend: "music")
+        if musicSuccess && musicOut.lowercased().contains("playing") {
+            return (true, .success, "music_resumed", nil)
+        }
+
+        let spotifyResume = "tell application \"Spotify\" to playpause"
+        let (spotifySuccess, _, _, _) = await runAppleScript(spotifyResume, backend: "spotify")
+        if spotifySuccess {
+            return (true, .success, "spotify_resumed", nil)
+        }
+        return nil
+    }
+
+    @MainActor
+    private static func playLocalPlaylist(query: String, reason: String) async -> (success: Bool, status: CapabilityExecutionStatus, reason: String, playlistName: String?) {
+        let escaped = query.replacingOccurrences(of: "\"", with: "\\\"")
+        let musicScript = """
+            tell application "Music"
+                set playlistName to ""
+                try
+                    set matches to (every playlist whose name contains "\(escaped)")
+                    if (count of matches) > 0 then
+                        set p to item 1 of matches
+                        set playlistName to name of p
+                        play p
+                    end if
+                end try
+                delay 1.0
+                return (player state as string) & "|" & playlistName
+            end tell
+        """
+
+        let (_, output, _, _) = await runAppleScript(musicScript, backend: "music")
+        let components = output.components(separatedBy: "|")
+        let playerState = components.first ?? "unknown"
+        let foundName = components.count > 1 ? components[1] : ""
+
+        print("[MusicExecutor] actual_query=\"\(query)\"")
+        let localFound = !foundName.isEmpty && foundName != "Library"
+        print("[MusicExecutor] local_playlist_found=\(localFound ? "yes" : "no") name=\"\(foundName)\"")
+
+        if playerState.lowercased().contains("playing") && localFound {
+            print("[MusicExecutor] player_state_after=\(playerState)")
+            print("[MusicExecutor] playlist_name=\(foundName)")
+            return (true, .success, reason, foundName)
+        }
+        return (false, .unavailable, "playlist_not_found", nil)
+    }
+
+    @MainActor
+    private static func firstLocalPlaylistName() async -> String? {
+        let script = """
+            tell application "Music"
+                try
+                    set userPlaylists to (every user playlist whose special kind is none)
+                    if (count of userPlaylists) > 0 then
+                        return name of item 1 of userPlaylists
+                    end if
+                end try
+                return ""
+            end tell
+        """
+        let (success, stdout, _, _) = await runAppleScript(script, backend: "music")
+        let name = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard success, !name.isEmpty, name != "Library" else { return nil }
+        return name
     }
     
     private static func runAppleScript(_ script: String, backend: String) async -> (success: Bool, stdout: String, stderr: String, exitCode: Int32) {
@@ -1163,12 +1266,12 @@ public enum Phase25_9SelfTest {
 
         // 1. reduce_interruptions_unwired_does_not_claim_toggle
         print("[Phase25_9SelfTest] case=reduce_interruptions_honesty")
-        let codingInput = makeInput(workflow: .coding, behavior: .coding, domain: .coding, entityType: .code_project, terms: ["swift"], media: noMusic())
         // Simulate deep work
         let deepWorkInput = makeInput(workflow: .coding, behavior: .coding, domain: .coding, entityType: .code_project, terms: ["swift"], media: noMusic(), deepWork: true)
+        CapabilityExecutor.testHooks.focusShortcutAvailable = { false }
         let focusAction = await EnvironmentActionEngine.propose(deepWorkInput)
-        check("focus_title_honest", focusAction?.title.contains("Open Focus settings") == true)
-        check("focus_mode_preview", focusAction?.executionMode == .preview_only)
+        check("focus_hidden_when_shortcut_missing", focusAction?.type != .enableReduceInterruptions)
+        CapabilityExecutor.testHooks.focusShortcutAvailable = nil
 
         // 2 & 3. assistant_opened_music_ignored_by_compartment_tracker
         // (Verified by ContextEventProducer logic & logs)

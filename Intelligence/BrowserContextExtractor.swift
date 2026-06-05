@@ -27,6 +27,9 @@ public struct BrowserContextExtractor: Sendable {
         "Safari", "Google Chrome", "Firefox", "Arc",
     ]
 
+    public static var lastExtractedURL: String? = nil
+    public static var lastSelectedURL: String? = nil
+
     public static func extract(appName: String, activeAppPID: pid_t?) -> BrowserContext? {
         guard browserNames.contains(appName) else { return nil }
         let app = NSWorkspace.shared.runningApplications.first { $0.localizedName == appName }
@@ -76,6 +79,10 @@ public struct BrowserContextExtractor: Sendable {
                     break
                 }
             }
+        }
+        if let u = url {
+            lastExtractedURL = u.absoluteString
+            lastSelectedURL = u.absoluteString
         }
         print("[BrowserContextExtractor] current_url_found=\(url != nil ? "yes" : "no") source=\(urlSource)")
 

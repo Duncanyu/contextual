@@ -156,7 +156,10 @@ actor DynamicGeneratedProposalEngine {
 			return DynamicGeneratedProposalResult.quiet
 		}
 		if Day1BehaviorValidationMode.isEnabled {
-			print("[ProposalPipeline] disabled reason=day1_behavior_validation")
+			// Phase 35.4: Day1 blocks LLM proposals but not the whole pipeline.
+			// Deterministic panel/friction actions are surfaced via CheapAlwaysOnPortfolio,
+			// which runs independently. Only block the heavy planner path here.
+			print("[ProposalPipeline] disabled reason=day1_behavior_validation target=llm_planner")
 			return DynamicGeneratedProposalResult.quiet
 		}
 

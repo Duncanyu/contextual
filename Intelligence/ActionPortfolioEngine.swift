@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // MARK: - PortfolioCandidate
@@ -8,11 +9,18 @@ struct PortfolioCandidate: Sendable {
     enum Lane: String, Sendable, CaseIterable {
         case music
         case workspace
+        case metadata
         case friction
         case research
         case cognitive
         case comfort
     }
+
+	enum Family: String, Sendable, CaseIterable {
+		case text
+		case action
+		case friction
+	}
 
     let lane: Lane
     let title: String
@@ -29,6 +37,91 @@ struct PortfolioCandidate: Sendable {
     let frictionOpportunity: FrictionOpportunityReasoner.FrictionOpportunity?
     let musicIntent: MusicIntent?
     let generatedAction: GeneratedActionProposal?
+
+	var family: Family {
+		switch lane {
+		case .music, .workspace, .metadata, .comfort:
+			return .action
+		case .friction:
+			return .friction
+		case .research, .cognitive:
+			return .text
+		}
+	}
+
+	var hookChain: [String] {
+		switch capabilityId {
+		case "play_focus_media":
+			if musicIntent?.action == .playPlaylist {
+				return ["lookup_playlist_memory", "play_playlist", "verify_playing"]
+			}
+			if musicIntent?.action == .resume {
+				return ["detect_player", "resume_player", "verify_playing"]
+			}
+			return ["detect_player", "play_first_local_playlist", "verify_playing"]
+		case "restore_workspace":
+			return ["load_workspace_pattern", "open_missing_apps", "verify_workspace"]
+		case "arrange_side_by_side":
+			return ["detect_app_pair", "propose_layout", "move_windows", "verify_layout"]
+		case "switch_to_paired_app":
+			return ["detect_app_pair", "activate_target_app", "raise_target_window", "verify_focus"]
+		case "collect_references":
+			return ["gather_browser_context", "format_reference_list", "copy_to_clipboard"]
+		case "pin_reference_tabs":
+			return ["gather_repeated_tabs", "prepare_tab_list", "copy_to_clipboard"]
+		case "restore_research_tabs":
+			return ["load_workspace_pattern", "open_saved_urls", "verify_urls_opened"]
+		case "split_research_setup":
+			return ["load_workspace_pattern", "open_url_new_window", "move_windows", "verify_layout"]
+		case "resume_focus_media":
+			return ["detect_player", "resume_player", "verify_playing"]
+		case "compare_rental_options":
+			return ["browser_tabs_context", "extract_listing_details", "compare_table", "present_summary"]
+		case "draft_listing_ad":
+			return ["browser_context", "infer_listing_details", "draft_text", "present_editable_result"]
+		case "create_listing_checklist":
+			return ["browser_context", "extract_listing_fields", "generate_checklist", "present_editable_result"]
+		case "extract_pricing_guidance":
+			return ["browser_tabs_context", "extract_price_mentions", "summarize_pricing_guidance", "present_summary"]
+		case "identify_missing_listing_details":
+			return ["browser_context", "extract_listing_fields", "detect_missing_fields", "present_checklist"]
+		case "create_questions_to_ask_landlord":
+			return ["browser_context", "extract_listing_details", "draft_questions", "present_editable_result"]
+		case "compare_listing_platforms":
+			return ["browser_tabs_context", "extract_platform_differences", "compare_table", "present_summary"]
+		case "summarize_thread":
+			return ["browser_context", "extract_thread_points", "summarize_thread", "present_summary"]
+		case "synthesize_advice":
+			return ["browser_tabs_context", "extract_advice_points", "synthesize_advice", "present_summary"]
+		default:
+			if lane == .research || lane == .cognitive {
+				return ["gather_context", "generate_text", "present_artifact"]
+			}
+			return ["gather_context", "present_result"]
+		}
+	}
+
+	var expectedResult: String {
+		switch family {
+		case .text:
+			return "Produces a grounded artifact or comparison from the current context."
+		case .action:
+			return "Executes a concrete local action and verifies the result."
+		case .friction:
+			return "Reduces repeated switching or setup work in the current workflow."
+		}
+	}
+
+	var failureMode: String {
+		switch family {
+		case .text:
+			return "Insufficient structured context to produce a grounded artifact."
+		case .action:
+			return "Target app or local executor is unavailable."
+		case .friction:
+			return "Observed pattern is too weak or the environment action is not wired."
+		}
+	}
 
     /// Composite ranking score: executable, useful, confident, novel actions win.
     var score: Double {
@@ -78,7 +171,8 @@ enum ActionPortfolioEngine {
         entityKey: String,
         appCategory: AppContextAnalyzer.Category? = nil,
         groundingResult: SemanticGroundingResult? = nil,
-                lifecycleAudit: CandidateLifecycleAudit? = nil,
+        activityState: ActivityState? = nil,
+        lifecycleAudit: CandidateLifecycleAudit? = nil,
         funnelAudit: ProposalFunnelAudit? = nil
     ) async -> [PortfolioCandidate] {
         var candidates: [PortfolioCandidate] = []
@@ -126,6 +220,7 @@ enum ActionPortfolioEngine {
             let frictionCandidates = evaluateFrictionLane(
                 frictionSignals: frictionSignals,
                 memory: memory,
+                compartment: compartment,
                 entityKey: entityKey,
                 noveltyTracker: noveltyTracker,
 				lifecycleAudit: lifecycleAudit,
@@ -146,6 +241,7 @@ enum ActionPortfolioEngine {
                 memory: memory,
                 entityKey: entityKey,
                 noveltyTracker: noveltyTracker,
+                activityState: activityState,
 				lifecycleAudit: lifecycleAudit,
                 funnelAudit: funnelAudit
             ) {
@@ -154,6 +250,22 @@ enum ActionPortfolioEngine {
         } else {
 			lifecycleAudit?.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: "lane_forbidden_by_grounding")
             funnelAudit?.record(capabilityId: "restore_workspace", lane: "workspace", isSuppressed: true, reason: "lane_forbidden_by_grounding")
+        }
+
+        // Phase 35.4: Metadata lane is always evaluated — not gated by grounding lanes.
+        // Metadata-safe actions (copy_current_url, collect_references) are always panel-eligible
+        // if evidence exists. Grounding gates are for cognitive/entertainment domains, not metadata.
+        do {
+            let metadataCandidates = evaluateMetadataLane(
+                compartment: compartment,
+                memory: memory,
+                evidenceQuality: evidenceQuality,
+                entityKey: entityKey,
+                noveltyTracker: noveltyTracker,
+                lifecycleAudit: lifecycleAudit,
+                funnelAudit: funnelAudit
+            )
+            candidates.append(contentsOf: metadataCandidates)
         }
 
         // ── Cognitive / Research lane ────────────────────────────────────
@@ -190,12 +302,18 @@ enum ActionPortfolioEngine {
 			)
             print("[ActionPortfolio] candidate"
                 + " lane=\(c.lane.rawValue)"
+                + " family=\(c.family.rawValue)"
                 + " capability=\(c.capabilityId)"
                 + " score=\(String(format: "%.3f", c.score))"
                 + " usefulness=\(String(format: "%.2f", c.usefulness))"
                 + " executability=\(String(format: "%.2f", c.executability))"
                 + " confidence=\(String(format: "%.2f", c.confidence))"
                 + " novelty=\(String(format: "%.2f", c.novelty))")
+			print("[ActionHooks] candidate=\(c.capabilityId)"
+				+ " family=\(c.family.rawValue)"
+				+ " hook_chain=\(c.hookChain.joined(separator: "->"))"
+				+ " expected_result=\"\(c.expectedResult)\""
+				+ " failure_mode=\"\(c.failureMode)\"")
         }
 
         // ── Rank by composite score ─────────────────────────────────────
@@ -224,12 +342,37 @@ enum ActionPortfolioEngine {
             funnelAudit?.recordRanking(v.capabilityId, lane: v.lane.rawValue, survived: true, reason: "score_\(String(format: "%.3f", v.score))")
         }
 
-        if let selected = viable.first {
+		let panelCandidates = candidates.filter { $0.executionMode == .local_action }
+		for candidate in panelCandidates {
+			let panelReason: String = {
+				if candidate.lane == .metadata { return "metadata_safe_valid_payload" }
+				if candidate.score < qualityThreshold { return "below_floating_threshold_but_valid" }
+				return "valid_payload"
+			}()
+			print("[PanelCandidate] capability=\(candidate.capabilityId) lane=\(candidate.lane.rawValue) valid_payload=yes reason=\(panelReason)")
+		}
+
+		let familyWinners = familyWinners(from: viable)
+		for family in PortfolioCandidate.Family.allCases {
+			if let winner = familyWinners[family] {
+				print("[FamilyWinner] family=\(family.rawValue) candidate=\(winner.capabilityId) title=\"\(winner.title.prefix(60))\" score=\(String(format: "%.3f", winner.score))")
+			} else {
+				print("[FamilyWinner] family=\(family.rawValue) candidate=none")
+			}
+		}
+
+		let finalCandidates = orderedCandidatesForFinalSelection(viable: viable, familyWinners: familyWinners)
+
+        if let selected = finalCandidates.first {
             print("[ActionPortfolio] selected"
                 + " lane=\(selected.lane.rawValue)"
+                + " family=\(selected.family.rawValue)"
                 + " capability=\(selected.capabilityId)"
                 + " title=\"\(selected.title.prefix(60))\""
                 + " score=\(String(format: "%.3f", selected.score))")
+			print("[FinalSelection] winner=\(selected.capabilityId)"
+				+ " family=\(selected.family.rawValue)"
+				+ " reason=highest_family_winner_score")
             
             for v in viable {
                 if v.capabilityId == selected.capabilityId {
@@ -238,8 +381,11 @@ enum ActionPortfolioEngine {
                     funnelAudit?.recordSelection(v.capabilityId, lane: v.lane.rawValue, survived: false, reason: "lost_to_\(selected.capabilityId)")
                 }
             }
+			print("[ActionPortfolioResult] floating=\(selected.capabilityId) panel_count=\(panelCandidates.count) suppressed_count=\(suppressed.count)")
         } else {
             print("[ActionPortfolio] selected=none reason=no_viable_candidates")
+			print("[FinalSelection] winner=none reason=no_viable_candidates")
+			print("[ActionPortfolioResult] floating=none panel_count=\(panelCandidates.count) suppressed_count=\(suppressed.count)")
         }
 
         // ── Selection Audit ─────────────────────────────────────────────
@@ -264,7 +410,7 @@ enum ActionPortfolioEngine {
             + "\n"
             + "winner=\(winner)")
 
-        return viable
+        return finalCandidates
     }
 
     // MARK: - Music lane
@@ -379,8 +525,7 @@ enum ActionPortfolioEngine {
 
         let action: MusicIntent.Action = {
             if playlist != nil { return .playPlaylist }
-            if canPlayDirectly { return .resume }
-            return .search
+            return .resume
         }()
 
         // Phase 28.2: Search actions are low priority — user doesn't want Apple Music search opening.
@@ -397,6 +542,14 @@ enum ActionPortfolioEngine {
         print("[MusicIntent] selected_domain=\(domain.name)")
         print("[MusicTitle] title=\"\(title)\"")
         print("[MusicActionIdentity] title_action=\(action.rawValue) executor_action=\(action.rawValue) ok=yes")
+		switch action {
+		case .resume:
+			print("[MusicAction] action=resume executable=yes")
+		case .playPlaylist:
+			print("[MusicAction] action=play_known_playlist playlist=\(playlist ?? "unknown") executable=yes")
+		case .search:
+			print("[MusicAction] action=play_first_local_playlist executable=yes")
+		}
 
         print("[MusicAudit]\n"
             + "eligible=yes\n"
@@ -576,7 +729,7 @@ enum ActionPortfolioEngine {
         if canPlayDirectly {
             return "Resume your music?"
         }
-        return "Search Apple Music for \(domain.name) music?"
+        return "Play a local playlist?"
     }
 
     // MARK: - Friction lane
@@ -584,30 +737,42 @@ enum ActionPortfolioEngine {
     private static func evaluateFrictionLane(
         frictionSignals: [FrictionSignal],
         memory: WorkingMemorySnapshot,
+        compartment: TaskCompartment?,
         entityKey: String,
         noveltyTracker: OpportunityNoveltyTracker,
-		lifecycleAudit: CandidateLifecycleAudit? = nil,
+        lifecycleAudit: CandidateLifecycleAudit? = nil,
         funnelAudit: ProposalFunnelAudit? = nil
     ) -> [PortfolioCandidate] {
-        guard !frictionSignals.isEmpty else {
-			lifecycleAudit?.noteNotGenerated(candidate: "friction_lane", bucket: "friction", reason: "no_friction_signal")
-            for capId in ["collect_references", "pin_reference_tabs", "arrange_side_by_side", "resume_focus_media", "extract_and_organize", "precompute_answer"] {
-                funnelAudit?.record(capabilityId: capId, lane: "friction", isSuppressed: true, reason: "no_friction_signal")
-            }
-			return []
+		let workspaceHistory = WorkspacePatternTracker.shared.knownPatterns().count
+		let tabSwitchPattern = memory.comparisonCandidates.count
+		let appPairPattern = Set(memory.relatedFocusEntities.prefix(2)).count
+		var heuristicCandidates: [PortfolioCandidate] = []
+        if frictionSignals.isEmpty {
+			heuristicCandidates = heuristicFrictionCandidates(
+				memory: memory,
+				compartment: compartment,
+				entityKey: entityKey,
+				noveltyTracker: noveltyTracker
+			)
+			if heuristicCandidates.isEmpty {
+				lifecycleAudit?.noteNotGenerated(candidate: "friction_lane", bucket: "friction", reason: "no_friction_signal")
+				for capId in ["collect_references", "pin_reference_tabs", "arrange_side_by_side", "resume_focus_media", "extract_and_organize", "precompute_answer"] {
+					funnelAudit?.record(capabilityId: capId, lane: "friction", isSuppressed: true, reason: "no_friction_signal")
+				}
+				print("[FrictionSuggestionFamily] workspace_history=\(workspaceHistory) tab_switch_pattern=\(tabSwitchPattern) app_pair_pattern=\(appPairPattern) candidates=none selected=none")
+				return []
+			}
 		}
 
         let currentApps: Set<String> = Set([memory.currentEntity])
         let workspacePatterns = WorkspacePatternTracker.shared.knownPatterns()
-        let frictionOpps = FrictionOpportunityReasoner.reason(
-            frictionSignals: frictionSignals,
-            workspacePatterns: workspacePatterns,
-            currentApps: currentApps,
-            currentEntity: memory.currentEntity,
-            compartmentLabel: ""
-        )
-
-        let mapped = frictionOpps.map { opp -> PortfolioCandidate in
+		let explicitCandidates: [PortfolioCandidate] = FrictionOpportunityReasoner.reason(
+			frictionSignals: frictionSignals,
+			workspacePatterns: workspacePatterns,
+			currentApps: currentApps,
+			currentEntity: memory.currentEntity,
+			compartmentLabel: ""
+		).map { opp -> PortfolioCandidate in
             let novelty = noveltyTracker.noveltyScore(capabilityId: opp.capabilityId, entityKey: entityKey)
 
             // Friction usefulness scales with confidence
@@ -634,9 +799,13 @@ enum ActionPortfolioEngine {
                 generatedAction: nil
             )
         }
+		let mapped = explicitCandidates + heuristicCandidates
         for m in mapped {
             funnelAudit?.record(capabilityId: m.capabilityId, lane: "friction", isSuppressed: false, reason: "generated")
         }
+		let candidateList = mapped.map(\.capabilityId).joined(separator: ",")
+		let selectedId = mapped.sorted { $0.score > $1.score }.first?.capabilityId ?? "none"
+		print("[FrictionSuggestionFamily] workspace_history=\(workspaceHistory) tab_switch_pattern=\(tabSwitchPattern) app_pair_pattern=\(appPairPattern) candidates=\(candidateList.isEmpty ? "none" : candidateList) selected=\(selectedId)")
         return mapped
     }
 
@@ -647,27 +816,47 @@ enum ActionPortfolioEngine {
         memory: WorkingMemorySnapshot,
         entityKey: String,
         noveltyTracker: OpportunityNoveltyTracker,
+        activityState: ActivityState? = nil,
 		lifecycleAudit: CandidateLifecycleAudit? = nil,
         funnelAudit: ProposalFunnelAudit? = nil
     ) -> PortfolioCandidate? {
-        let patterns = WorkspacePatternTracker.shared.knownPatterns()
-        guard let pattern = patterns.first, pattern.frequency >= 2 else {
+        let inventory = WorkspaceRuntimeInventoryProvider.snapshot()
+        let currentApps: Set<String> = Set(inventory.runningApps.map(\.appName).filter { !$0.isEmpty })
+        guard let pattern = DurableMemory.shared.bestDurableWorkspacePattern(
+            workflow: compartment?.workflow.rawValue ?? "unknown",
+            compartment: compartment?.label,
+            currentApps: currentApps
+        ) else {
 			lifecycleAudit?.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: "insufficient_history")
+            print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=no_missing_durable_workspace")
             funnelAudit?.record(capabilityId: "restore_workspace", lane: "workspace", isSuppressed: true, reason: "insufficient_history")
 			return nil
 		}
-
-        let currentApps: Set<String> = Set([memory.currentEntity])
-        let missing = WorkspacePatternTracker.shared.missingApps(from: pattern, currentApps: currentApps)
-        guard !missing.isEmpty else {
-			lifecycleAudit?.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: "workspace_already_restored")
-            funnelAudit?.record(capabilityId: "restore_workspace", lane: "workspace", isSuppressed: true, reason: "workspace_already_restored")
+        let missing = DurableMemory.shared.missingCheck(pattern: pattern, currentApps: currentApps, currentURLs: inventory.currentURLs)
+        if activityState?.state == .typing {
+            lifecycleAudit?.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: "user_typing")
+            print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=user_typing")
+            funnelAudit?.record(capabilityId: "restore_workspace", lane: "workspace", isSuppressed: true, reason: "user_typing")
+            print("[WorkspaceRestoreGate] can_restore=no reason=user_typing")
+            return nil
+        }
+        if DurableMemory.shared.shouldSuppressRestoreSuggestion(restoreKey: missing.restoreKey) {
+            lifecycleAudit?.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: "recently_ignored")
+            print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=recently_ignored")
+            funnelAudit?.record(capabilityId: "restore_workspace", lane: "workspace", isSuppressed: true, reason: "recently_ignored")
+            return nil
+        }
+        guard missing.canRestore else {
+			lifecycleAudit?.noteNotGenerated(candidate: "restore_workspace", bucket: "workspace", reason: missing.reason == "items_present_backgrounded" ? "workspace_items_backgrounded" : "workspace_already_restored")
+            print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=workspace_items_present")
+            funnelAudit?.record(capabilityId: "restore_workspace", lane: "workspace", isSuppressed: true, reason: missing.reason)
 			return nil
 		}
 
-        let title = "Open your usual \(pattern.label) setup?"
+        let title = "Open your usual \(pattern.apps.prefix(3).map(\.appName).joined(separator: " + ")) setup?"
         let novelty = noveltyTracker.noveltyScore(capabilityId: "restore_workspace", entityKey: entityKey)
 
+        print("[ProposalFunnelAudit] generated capability=restore_workspace reason=missing_durable_items")
         funnelAudit?.record(capabilityId: "restore_workspace", lane: "workspace", isSuppressed: false, reason: "generated")
 
         return PortfolioCandidate(
@@ -675,18 +864,145 @@ enum ActionPortfolioEngine {
             title: title,
             capabilityId: "restore_workspace",
             executionMode: .local_action,
-            confidence: min(0.85, Double(pattern.frequency) * 0.15 + 0.30),
+            confidence: pattern.confidence,
             usefulness: 0.65,
             executability: 0.85,
             novelty: novelty,
-            reason: "Workspace pattern seen \(pattern.frequency)x, missing \(missing.count) app(s)",
-            requiredEvidence: "none",
+            reason: "Durable workspace pattern missing \(missing.missingApps.count + missing.missingURLs.count) required item(s)",
+            requiredEvidence: ProgressiveEvidenceLevel.metadata_rich.rawValue,
             requiresConfirmation: true,
-            involvedApps: missing,
+            involvedApps: missing.missingApps,
             frictionOpportunity: nil,
             musicIntent: nil,
             generatedAction: nil
         )
+    }
+
+    private static func evaluateMetadataLane(
+        compartment: TaskCompartment?,
+        memory: WorkingMemorySnapshot,
+        evidenceQuality: String,
+        entityKey: String,
+        noveltyTracker: OpportunityNoveltyTracker,
+        lifecycleAudit: CandidateLifecycleAudit? = nil,
+        funnelAudit: ProposalFunnelAudit? = nil
+    ) -> [PortfolioCandidate] {
+        let evidenceLevel = EvidenceQualityModel.level(from: evidenceQuality)
+        guard evidenceLevel.rank >= ProgressiveEvidenceLevel.metadata_rich.rank else {
+            for capabilityId in ["copy_current_url", "collect_references", "remember_workspace", "open_current_task_panel"] {
+                lifecycleAudit?.noteNotGenerated(candidate: capabilityId, bucket: "metadata", reason: "insufficient_context")
+                funnelAudit?.record(capabilityId: capabilityId, lane: "metadata", isSuppressed: true, reason: "insufficient_context")
+            }
+            return []
+        }
+
+        let frontmostApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        let browserContext = BrowserContextExtractor.extract(appName: frontmostApp, activeAppPID: nil)
+        let currentURL = browserContext?.selectedURL?.absoluteString ?? browserContext?.currentURL?.absoluteString
+        let tabTitles = browserContext?.recentTabTitles ?? compartment?.browserTabs.sorted() ?? []
+        let browserAssessment = BrowserContextStrategy.assess(
+            title: browserContext?.selectedTitle ?? memory.currentEntity,
+            url: currentURL.flatMap(URL.init(string:)),
+            tabTitles: tabTitles,
+            hasAXText: false,
+            hasOCR: false
+        )
+
+        var candidates: [PortfolioCandidate] = []
+        let currentApps = Set(WorkspaceRuntimeInventoryProvider.snapshot().runningApps.map(\.appName))
+        let hasDurablePattern = DurableMemory.shared.bestDurableWorkspacePattern(
+            workflow: compartment?.workflow.rawValue ?? "unknown",
+            compartment: compartment?.label,
+            currentApps: currentApps
+        ) != nil
+
+        func appendMetadataCandidate(
+            capabilityId: String,
+            title: String,
+            usefulness: Double,
+            reason: String,
+            requiresConfirmation: Bool = false
+        ) {
+            let eligibility = ActionRegistry.evaluate(
+                capabilityId: capabilityId,
+                currentEvidence: evidenceLevel,
+                hasURLs: currentURL != nil,
+                hasSelection: false
+            )
+            guard eligibility.eligible else {
+                lifecycleAudit?.noteNotGenerated(candidate: capabilityId, bucket: "metadata", reason: eligibility.reason)
+                funnelAudit?.record(capabilityId: capabilityId, lane: "metadata", isSuppressed: true, reason: eligibility.reason)
+                return
+            }
+            lifecycleAudit?.noteGenerated(candidate: capabilityId, bucket: "metadata", reason: "generated")
+            funnelAudit?.record(capabilityId: capabilityId, lane: "metadata", isSuppressed: false, reason: "generated")
+            candidates.append(PortfolioCandidate(
+                lane: .metadata,
+                title: title,
+                capabilityId: capabilityId,
+                executionMode: capabilityId == "open_current_task_panel" ? .local_action : .local_action,
+                confidence: 0.56,
+                usefulness: usefulness,
+                executability: 0.88,
+                novelty: noveltyTracker.noveltyScore(capabilityId: capabilityId, entityKey: entityKey),
+                reason: reason,
+                requiredEvidence: ProgressiveEvidenceLevel.metadata_rich.rawValue,
+                requiresConfirmation: requiresConfirmation,
+                involvedApps: [],
+                frictionOpportunity: nil,
+                musicIntent: nil,
+                generatedAction: nil
+            ))
+            print("[ActionPortfolio] candidate lane=metadata capability=\(capabilityId)")
+        }
+
+        if browserAssessment.safeActions.contains("copy_current_url"), let currentURL, !currentURL.isEmpty {
+            appendMetadataCandidate(
+                capabilityId: "copy_current_url",
+                title: "Copy this page link?",
+                usefulness: 0.30,
+                reason: "Current browser URL is available from metadata-safe context"
+            )
+        } else {
+            lifecycleAudit?.noteNotGenerated(candidate: "copy_current_url", bucket: "metadata", reason: "missing_current_url")
+        }
+
+        if browserAssessment.safeActions.contains("collect_references"), let currentURL, !currentURL.isEmpty {
+            appendMetadataCandidate(
+                capabilityId: "collect_references",
+                title: "Collect links from this context?",
+                usefulness: 0.26,
+                reason: "Metadata-rich browser context exposes at least one URL"
+            )
+        } else {
+            lifecycleAudit?.noteNotGenerated(candidate: "collect_references", bucket: "metadata", reason: "missing_url_context")
+        }
+
+        if browserAssessment.safeActions.contains("remember_workspace"), !hasDurablePattern {
+            appendMetadataCandidate(
+                capabilityId: "remember_workspace",
+                title: "Remember this workspace?",
+                usefulness: 0.20,
+                reason: "Current metadata-rich context is not yet durable"
+            )
+        } else {
+            lifecycleAudit?.noteNotGenerated(candidate: "remember_workspace", bucket: "metadata", reason: hasDurablePattern ? "already_durable" : "not_metadata_safe")
+        }
+
+        if browserAssessment.safeActions.contains("open_current_task_panel"), candidates.isEmpty {
+            appendMetadataCandidate(
+                capabilityId: "open_current_task_panel",
+                title: "Open the current task panel?",
+                usefulness: 0.16,
+                reason: "Trusted metadata context exists but no stronger direct metadata action is available"
+            )
+        } else if !browserAssessment.safeActions.contains("open_current_task_panel") {
+            lifecycleAudit?.noteNotGenerated(candidate: "open_current_task_panel", bucket: "metadata", reason: "not_metadata_safe")
+        } else {
+            lifecycleAudit?.noteNotGenerated(candidate: "open_current_task_panel", bucket: "metadata", reason: "stronger_metadata_action_exists")
+        }
+
+        return candidates
     }
 
     // MARK: - Cognitive / Research lane
@@ -704,12 +1020,13 @@ enum ActionPortfolioEngine {
         funnelAudit: ProposalFunnelAudit? = nil
     ) -> [PortfolioCandidate] {
         var results: [PortfolioCandidate] = []
+        let evidenceLevel = EvidenceQualityModel.level(from: evidenceQuality)
 
         let domain = semanticState?.domain ?? .unknown
         let entityType = entityGrounding?.entityType ?? semanticState?.entityType ?? .unknown
-        let hasRealContent = evidenceQuality != "title_only"
+        let hasRealContent = evidenceLevel.rank >= ProgressiveEvidenceLevel.visible_content.rank
         let isEditorContext = evidenceQuality == "editor_context"
-        let hasSources = memory.relatedFocusEntities.count >= 2 || evidenceQuality == "browser_context"
+        let hasSources = memory.relatedFocusEntities.count >= 2 || evidenceLevel.rank >= ProgressiveEvidenceLevel.metadata_rich.rank
         let hasComparison = memory.comparisonCandidates.count >= 2
         let entity = memory.currentEntity
 
@@ -721,7 +1038,7 @@ enum ActionPortfolioEngine {
         let isEntertainment = (entityGrounding?.isEntertainment == true)
             || (semanticState?.entityType == .tv_show || semanticState?.entityType == .youtube_video || semanticState?.entityType == .streaming_site)
         let isNewTab = memory.currentEntity.lowercased().contains("new tab") || memory.currentEntity.lowercased().contains("blank")
-        let hasRealEvidence = evidenceQuality == "selection" || evidenceQuality == "ax_content" || evidenceQuality == "ocr" || (evidenceQuality == "browser_context" && hasSources)
+        let hasRealEvidence = evidenceLevel.rank >= ProgressiveEvidenceLevel.visible_content.rank || isEditorContext
         let isErrorContext = hasErrors && (hasRealContent || isEditorContext)
 
         let isCoding = (domain == .coding || domain == .creative_coding)
@@ -752,7 +1069,7 @@ enum ActionPortfolioEngine {
         // Hard suppress for coding with only title_only (no editor_context upgrade)
         if isCoding && !hasRealEvidence && !isEditorContext && !hasComparison && !isErrorContext {
 			lifecycleAudit?.noteRejected(candidate: "review_architecture", bucket: "coding", reason: "title_only")
-            print("[CognitiveLane] suppressed reason=coding_title_only_too_weak")
+            print("[CognitiveLane] suppressed reason=evidence_level_requires_content evidence_level=\(evidenceLevel.rawValue)")
             for capId in allCognitiveCapIds {
                 funnelAudit?.record(capabilityId: capId, lane: "cognitive", isSuppressed: true, reason: "coding_title_only_too_weak")
             }
@@ -771,12 +1088,40 @@ enum ActionPortfolioEngine {
 
         if !hasRealEvidence && !isEditorContext && !isErrorContext {
 			lifecycleAudit?.noteRejected(candidate: "synthesize_sources", bucket: "research", reason: "title_only")
-            print("[CognitiveLane] suppressed reason=insufficient_evidence_title_only")
+            print("[CognitiveLane] suppressed reason=evidence_level_requires_content evidence_level=\(evidenceLevel.rawValue)")
             for capId in allCognitiveCapIds {
                 funnelAudit?.record(capabilityId: capId, lane: "cognitive", isSuppressed: true, reason: "insufficient_evidence_title_only")
             }
             return results
         }
+
+		let rentalCandidates = rentalResearchCandidates(
+			memory: memory,
+			evidenceQuality: evidenceQuality,
+			entityKey: entityKey,
+			noveltyTracker: noveltyTracker
+		)
+		if !rentalCandidates.isEmpty {
+			results.append(contentsOf: rentalCandidates)
+			for candidate in rentalCandidates {
+				funnelAudit?.record(capabilityId: candidate.capabilityId, lane: "research", isSuppressed: false, reason: "generated")
+			}
+			let candidateIds = rentalCandidates.map(\.capabilityId).joined(separator: ",")
+			let selectedId = rentalCandidates.sorted { $0.score > $1.score }.first?.capabilityId ?? "none"
+			print("[TextSuggestionFamily] domain=rental_research candidates=\(candidateIds) selected=\(selectedId)")
+		}
+
+        // Text action executability scales with evidence quality
+        let textExecutability: Double = {
+            switch evidenceLevel {
+            case .none, .metadata_only: return 0.28
+            case .metadata_rich: return 0.40
+            case .visible_content: return 0.60
+            case .selected_content: return 0.70
+            case .full_content: return 0.80
+            }
+        }()
+        print("[TextActionGrounding] grounded_facts_estimate=\(evidenceLevel.rank >= ProgressiveEvidenceLevel.visible_content.rank ? 1 : 0) priority=\(textExecutability < 0.50 ? "low" : "normal")")
 
         // Research: synthesize when multiple real sources
         // Phase 28.2: Entity-aware research titles — never use generic "collect references" wording
@@ -791,7 +1136,7 @@ enum ActionPortfolioEngine {
                 executionMode: .preview_only,
                 confidence: 0.75,
                 usefulness: 0.80,
-                executability: 0.60,
+                executability: textExecutability,
                 novelty: novelty,
                 reason: "Multiple sources open with real content",
                 requiredEvidence: evidenceQuality,
@@ -808,11 +1153,38 @@ enum ActionPortfolioEngine {
             funnelAudit?.record(capabilityId: "synthesize_sources", lane: "research", isSuppressed: true, reason: "no_sources")
         }
 
+        // Promote related/stale/tab entities to comparison candidates when they share terms
+        let compartmentTabs = (compartment?.browserTabs ?? []).filter {
+            $0 != memory.currentEntity && !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let staleWithSharedTerms = memory.staleEntities.filter { stale in
+            shareSignificantTerms(memory.currentEntity, [stale])
+        }
+        let allCompanions = (memory.relatedFocusEntities + compartmentTabs + staleWithSharedTerms)
+            .reduce(into: [String]()) { result, item in
+                let trimmed = item.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty && !result.contains(trimmed) && trimmed != memory.currentEntity {
+                    result.append(trimmed)
+                }
+            }
+        let effectiveHasComparison = hasComparison || (
+            allCompanions.count >= 1
+            && !memory.currentEntity.isEmpty
+            && shareSignificantTerms(memory.currentEntity, allCompanions)
+        )
+        let effectiveComparisonCandidates: [String] = {
+            if hasComparison { return memory.comparisonCandidates }
+            if effectiveHasComparison {
+                return ([memory.currentEntity] + allCompanions).filter { !$0.isEmpty }
+            }
+            return []
+        }()
+
         // Comparison: compare when multiple candidates
-        if hasComparison {
+        if effectiveHasComparison {
             let capId = "compare_options"
             let novelty = noveltyTracker.noveltyScore(capabilityId: capId, entityKey: entityKey)
-            let compareTitle = Self.comparisonTitle(candidates: memory.comparisonCandidates, entity: entity)
+            let compareTitle = Self.comparisonTitle(candidates: effectiveComparisonCandidates, entity: entity)
             results.append(PortfolioCandidate(
                 lane: .research,
                 title: compareTitle,
@@ -820,7 +1192,7 @@ enum ActionPortfolioEngine {
                 executionMode: .preview_only,
                 confidence: 0.75,
                 usefulness: 0.75,
-                executability: 0.60,
+                executability: textExecutability,
                 novelty: novelty,
                 reason: "Multiple comparison candidates detected",
                 requiredEvidence: evidenceQuality,
@@ -835,6 +1207,15 @@ enum ActionPortfolioEngine {
         } else {
 			lifecycleAudit?.noteNotGenerated(candidate: "compare_options", bucket: "research", reason: "insufficient_comparison_candidates")
             funnelAudit?.record(capabilityId: "compare_options", lane: "research", isSuppressed: true, reason: "insufficient_comparison_candidates")
+        }
+
+        func shareSignificantTerms(_ entity: String, _ related: [String]) -> Bool {
+            let entityTokens = Set(entity.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 })
+            for rel in related {
+                let relTokens = Set(rel.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 })
+                if entityTokens.intersection(relTokens).count >= 2 { return true }
+            }
+            return false
         }
 
         // Diagnose: error terms present
@@ -1038,6 +1419,7 @@ enum ActionPortfolioEngine {
 		switch candidate.lane {
 		case .music: return "music"
 		case .workspace: return "workspace"
+		case .metadata: return "metadata"
 		case .friction: return "friction"
 		case .research: return "research"
 		case .cognitive: return "coding"
@@ -1087,6 +1469,367 @@ enum ActionPortfolioEngine {
 		}
 		return "Compare the options you're viewing?"
 	}
+
+	private static func familyWinners(from viable: [PortfolioCandidate]) -> [PortfolioCandidate.Family: PortfolioCandidate] {
+		var winners: [PortfolioCandidate.Family: PortfolioCandidate] = [:]
+		for candidate in viable {
+			if let existing = winners[candidate.family] {
+				if candidate.score > existing.score {
+					winners[candidate.family] = candidate
+				}
+			} else {
+				winners[candidate.family] = candidate
+			}
+		}
+		return winners
+	}
+
+	private static func orderedCandidatesForFinalSelection(
+		viable: [PortfolioCandidate],
+		familyWinners: [PortfolioCandidate.Family: PortfolioCandidate]
+	) -> [PortfolioCandidate] {
+		let winners = familyWinners.values.sorted { $0.score > $1.score }
+		let winnerIds = Set(winners.map(\.capabilityId))
+		let remainder = viable.filter { !winnerIds.contains($0.capabilityId) }.sorted { $0.score > $1.score }
+		return winners + remainder
+	}
+
+	private static func heuristicFrictionCandidates(
+		memory: WorkingMemorySnapshot,
+		compartment: TaskCompartment?,
+		entityKey: String,
+		noveltyTracker: OpportunityNoveltyTracker
+	) -> [PortfolioCandidate] {
+		var candidates: [PortfolioCandidate] = []
+		let related = memory.relatedFocusEntities.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+		let hasComparisonTabs = memory.comparisonCandidates.count >= 2
+
+		// Source 1: explicit comparison tabs or many related entities
+		if hasComparisonTabs || related.count >= 3 {
+			let title = arrangeSideBySideTitle(
+				current: memory.currentEntity,
+				related: related,
+				comparison: memory.comparisonCandidates
+			)
+			candidates.append(PortfolioCandidate(
+				lane: .friction,
+				title: title,
+				capabilityId: "arrange_side_by_side",
+				executionMode: .local_action,
+				confidence: hasComparisonTabs ? 0.66 : 0.54,
+				usefulness: hasComparisonTabs ? 0.72 : 0.58,
+				executability: 0.84,
+				novelty: noveltyTracker.noveltyScore(capabilityId: "arrange_side_by_side", entityKey: entityKey),
+				reason: hasComparisonTabs ? "Multiple related tabs open" : "Several related sources open",
+				requiredEvidence: "browser_tabs",
+				requiresConfirmation: true,
+				involvedApps: [],
+				frictionOpportunity: nil,
+				musicIntent: nil,
+				generatedAction: nil
+			))
+			candidates.append(PortfolioCandidate(
+				lane: .friction,
+				title: "Put these research windows side by side?",
+				capabilityId: "split_research_setup",
+				executionMode: .local_action,
+				confidence: hasComparisonTabs ? 0.62 : 0.50,
+				usefulness: hasComparisonTabs ? 0.70 : 0.55,
+				executability: 0.82,
+				novelty: noveltyTracker.noveltyScore(capabilityId: "split_research_setup", entityKey: entityKey),
+				reason: hasComparisonTabs ? "Multiple related tabs should be split into parallel windows" : "Several related sources are open in the same browser session",
+				requiredEvidence: "browser_tabs",
+				requiresConfirmation: true,
+				involvedApps: [],
+				frictionOpportunity: nil,
+				musicIntent: nil,
+				generatedAction: nil
+			))
+		}
+
+		// Source 2: compartment browser tabs or recent entities suggest workspace friction
+		if candidates.isEmpty {
+			let browserTabs = compartment?.browserTabs ?? []
+			let staleEntities = memory.staleEntities
+			let otherTabs = browserTabs.filter { $0 != memory.currentEntity && !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+			let otherStale = staleEntities.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+			let hasMultiTab = otherTabs.count >= 1 && !memory.currentEntity.isEmpty
+			let hasStaleCompanion = !otherStale.isEmpty && !memory.currentEntity.isEmpty
+
+			if hasMultiTab || hasStaleCompanion {
+				let companionSources = otherTabs + otherStale
+				let title = arrangeSideBySideTitle(
+					current: memory.currentEntity,
+					related: companionSources,
+					comparison: memory.comparisonCandidates
+				)
+				candidates.append(PortfolioCandidate(
+					lane: .friction,
+					title: title,
+					capabilityId: "arrange_side_by_side",
+					executionMode: .local_action,
+					confidence: hasMultiTab ? 0.52 : 0.46,
+					usefulness: hasMultiTab ? 0.56 : 0.48,
+					executability: 0.84,
+					novelty: noveltyTracker.noveltyScore(capabilityId: "arrange_side_by_side", entityKey: entityKey),
+					reason: hasMultiTab ? "Multiple browser tabs in same compartment" : "Stale companion entity in same compartment",
+					requiredEvidence: "compartment_context",
+					requiresConfirmation: true,
+					involvedApps: [],
+					frictionOpportunity: nil,
+					musicIntent: nil,
+					generatedAction: nil
+				))
+			}
+		}
+
+		return candidates
+	}
+
+	private static let staleEntityTerms: Set<String> = [
+		"facebook", "file upload", "translate", "translator", "youtube",
+		"truth or drink", "netflix", "tiktok", "instagram", "twitter"
+	]
+
+	private static func isStaleEntity(_ entity: String) -> Bool {
+		let lower = entity.lowercased()
+		return staleEntityTerms.contains(where: { lower.contains($0) })
+	}
+
+	private static func arrangeSideBySideTitle(current: String, related: [String], comparison: [String]) -> String {
+		// Filter out stale/entertainment entities
+		let cleanRelated = related.filter { !isStaleEntity($0) }
+		let cleanComparison = comparison.filter { !isStaleEntity($0) }
+		let staleCount = (related.count - cleanRelated.count) + (comparison.count - cleanComparison.count)
+
+		// Try work pair first
+		let workPair = WorkPairMemory.shared.bestPair()
+		if let pair = workPair {
+			let a = String(pair.titleA.prefix(36)).trimmingCharacters(in: .whitespaces)
+			let b = String(pair.titleB.prefix(36)).trimmingCharacters(in: .whitespaces)
+			if !a.isEmpty && !b.isEmpty {
+				print("[SuggestionTitleContext] capability=arrange_side_by_side source=work_pair primary=\"\(a)\" secondary=\"\(b)\" excluded_stale=\(staleCount)")
+				return "Put \(a) beside \(b)?"
+			}
+		}
+
+		let shortCurrent = String(current.prefix(36)).trimmingCharacters(in: .whitespaces)
+		let secondEntity: String? = {
+			if cleanComparison.count >= 2 {
+				let other = cleanComparison.first { $0 != current }
+				return other.map { String($0.prefix(36)).trimmingCharacters(in: .whitespaces) }
+			}
+			if let first = cleanRelated.first {
+				return String(first.prefix(36)).trimmingCharacters(in: .whitespaces)
+			}
+			return nil
+		}()
+
+		let source = secondEntity != nil ? "working_memory" : "generic"
+		print("[SuggestionTitleContext] capability=arrange_side_by_side source=\(source) primary=\"\(shortCurrent)\" secondary=\"\(secondEntity ?? "none")\" excluded_stale=\(staleCount)")
+
+		if let second = secondEntity, !shortCurrent.isEmpty, !second.isEmpty {
+			return "Put \(shortCurrent) beside \(second)?"
+		}
+		if !shortCurrent.isEmpty {
+			return "Put \(shortCurrent) side by side with the other tab?"
+		}
+		return "Put the tabs you're switching between side by side?"
+	}
+
+	private static func rentalResearchCandidates(
+		memory: WorkingMemorySnapshot,
+		evidenceQuality: String,
+		entityKey: String,
+		noveltyTracker: OpportunityNoveltyTracker
+	) -> [PortfolioCandidate] {
+		let terms = normalizedResearchTerms(memory.currentEntity, memory.repeatedConcepts + memory.relatedFocusEntities + memory.comparisonCandidates)
+		let evidenceLevel = EvidenceQualityModel.level(from: evidenceQuality)
+		guard isRentalResearchContext(entity: memory.currentEntity, terms: terms),
+		      evidenceLevel.rank >= ProgressiveEvidenceLevel.metadata_rich.rank else {
+			return []
+		}
+
+		let hasPricing = containsAny(terms, ["rent", "price", "pricing", "utilities", "deposit", "budget", "cost"])
+		let hasListing = containsAny(terms, ["listing", "room", "sublet", "lease", "rental", "housing", "apartment", "roommate"])
+		let hasAdvice = containsAny(terms, ["reddit", "thread", "advice", "student", "students", "tips", "landlord", "posting"])
+		let hasPlatforms = containsAny(terms, ["facebook", "marketplace", "kijiji", "zillow", "craigslist", "platform"])
+
+		var candidates: [PortfolioCandidate] = []
+		if memory.comparisonCandidates.count >= 2 || hasListing {
+			candidates.append(textCandidate(
+				capabilityId: "compare_rental_options",
+				title: "Compare the rental posts you're viewing?",
+				confidence: 0.78,
+				usefulness: 0.84,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Multiple rental listings or advice sources detected",
+				evidenceQuality: evidenceQuality
+			))
+		}
+		if hasListing {
+			candidates.append(textCandidate(
+				capabilityId: "draft_listing_ad",
+				title: "Draft a rental listing from the details you have?",
+				confidence: 0.72,
+				usefulness: 0.76,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Listing details appear active in the current browser context",
+				evidenceQuality: evidenceQuality
+			))
+			candidates.append(textCandidate(
+				capabilityId: "create_listing_checklist",
+				title: "Draft a checklist for your rental ad?",
+				confidence: 0.74,
+				usefulness: 0.79,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Listing details suggest an ad-preparation workflow",
+				evidenceQuality: evidenceQuality
+			))
+			candidates.append(textCandidate(
+				capabilityId: "identify_missing_listing_details",
+				title: "List missing details for the room posting?",
+				confidence: 0.73,
+				usefulness: 0.81,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Listing-related context can be checked for omissions",
+				evidenceQuality: evidenceQuality
+			))
+		}
+		if hasPricing {
+			candidates.append(textCandidate(
+				capabilityId: "extract_pricing_guidance",
+				title: "Extract pricing guidance from these threads?",
+				confidence: 0.76,
+				usefulness: 0.80,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Price and rent evidence detected across current sources",
+				evidenceQuality: evidenceQuality
+			))
+		}
+		if hasAdvice {
+			candidates.append(textCandidate(
+				capabilityId: "create_questions_to_ask_landlord",
+				title: "Create questions to ask the landlord?",
+				confidence: 0.71,
+				usefulness: 0.74,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Advice-style discussion suggests follow-up questions",
+				evidenceQuality: evidenceQuality
+			))
+			candidates.append(textCandidate(
+				capabilityId: "summarize_thread",
+				title: "Summarize what these renters are saying?",
+				confidence: 0.67,
+				usefulness: 0.68,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Discussion-style context contains advice that can be summarized",
+				evidenceQuality: evidenceQuality
+			))
+			candidates.append(textCandidate(
+				capabilityId: "synthesize_advice",
+				title: "Compare the rental advice from these posts?",
+				confidence: 0.75,
+				usefulness: 0.78,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Multiple advice sources are open",
+				evidenceQuality: evidenceQuality
+			))
+		}
+		if hasPlatforms {
+			candidates.append(textCandidate(
+				capabilityId: "compare_listing_platforms",
+				title: "Compare listing platforms for this search?",
+				confidence: 0.70,
+				usefulness: 0.72,
+				noveltyTracker: noveltyTracker,
+				entityKey: entityKey,
+				reason: "Multiple listing platforms appear in the current context",
+				evidenceQuality: evidenceQuality
+			))
+		}
+
+		return candidates
+	}
+
+	private static func textCandidate(
+		capabilityId: String,
+		title: String,
+		confidence: Double,
+		usefulness: Double,
+		noveltyTracker: OpportunityNoveltyTracker,
+		entityKey: String,
+		reason: String,
+		evidenceQuality: String
+	) -> PortfolioCandidate {
+		let evidenceLevel = EvidenceQualityModel.level(from: evidenceQuality)
+		let entry = ActionRegistry.entry(for: capabilityId)
+		let eligibility = ActionRegistry.evaluate(
+			capabilityId: capabilityId,
+			currentEvidence: evidenceLevel,
+			hasURLs: evidenceLevel.rank >= ProgressiveEvidenceLevel.metadata_rich.rank,
+			hasSelection: evidenceLevel == .selected_content
+		)
+		if eligibility.eligible {
+			print("[CognitiveLane] allowed capability=\(capabilityId) evidence_level=\(evidenceLevel.rawValue) scope=\(entry.scope)")
+		} else {
+			print("[CognitiveLane] suppressed reason=evidence_level_requires_content evidence_level=\(evidenceLevel.rawValue)")
+		}
+		let adjustedExecutability: Double = {
+			guard eligibility.eligible else { return 0.0 }
+			switch evidenceLevel {
+			case .none, .metadata_only: return 0.30
+			case .metadata_rich: return 0.42
+			case .visible_content: return 0.62
+			case .selected_content: return 0.72
+			case .full_content: return 0.82
+			}
+		}()
+		return PortfolioCandidate(
+			lane: .research,
+			title: title,
+			capabilityId: capabilityId,
+			executionMode: .preview_only,
+			confidence: confidence,
+			usefulness: usefulness,
+			executability: adjustedExecutability,
+			novelty: noveltyTracker.noveltyScore(capabilityId: capabilityId, entityKey: entityKey),
+			reason: reason,
+			requiredEvidence: entry.requiredEvidence.rawValue,
+			requiresConfirmation: false,
+			involvedApps: [],
+			frictionOpportunity: nil,
+			musicIntent: nil,
+			generatedAction: nil
+		)
+	}
+
+	private static func normalizedResearchTerms(_ entity: String, _ terms: [String]) -> [String] {
+		([entity] + terms)
+			.flatMap { $0.components(separatedBy: CharacterSet.alphanumerics.inverted) }
+			.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+			.filter { $0.count >= 3 }
+	}
+
+	private static func isRentalResearchContext(entity: String, terms: [String]) -> Bool {
+		let haystack = normalizedResearchTerms(entity, terms)
+		let markers: Set<String> = ["rent", "rental", "room", "rooms", "lease", "landlord", "tenant", "listing", "housing", "apartment", "sublet", "roommate", "utilities", "deposit"]
+		return !Set(haystack).intersection(markers).isEmpty
+	}
+
+	private static func containsAny(_ terms: [String], _ matches: [String]) -> Bool {
+		let set = Set(terms)
+		return matches.contains { set.contains($0) }
+	}
 }
 
 // MARK: - ProposalFunnelAudit
@@ -1117,4 +1860,3 @@ public final class ProposalFunnelAudit: Sendable {
         // Currently each record method prints immediately.
     }
 }
-

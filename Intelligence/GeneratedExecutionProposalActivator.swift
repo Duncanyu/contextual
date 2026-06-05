@@ -36,24 +36,29 @@ enum GeneratedExecutionProposalActivator {
 		input: GeneratedExecutionProposalActivationInput
 	) -> GeneratedExecutionProposalActivationResult {
 		if Day1BehaviorValidationMode.isEnabled {
-			print("[ProposalRouting] blocked reason=day1_behavior_validation")
+			// Day1 gate blocks LLM-generated floating proposals but allows:
+			// - deterministic panel actions (friction, metadata-safe local actions)
+			// - SurfacePolicy-approved deterministic friction actions
+			print("[ProposalRouting] day1_gate_applied target=llm_floating allowed=no reason=day1_behavior_validation")
+			print("[ProposalRouting] day1_gate_applied target=panel allowed=yes reason=deterministic_panel_exempt")
+			print("[ProposalRouting] day1_gate_applied target=deterministic allowed=yes reason=friction_actions_exempt")
 			return GeneratedExecutionProposalActivationResult(
 				visibleProposals: [],
-				visibleStaticActionIds: [],
+				visibleStaticActionIds: input.staticActionIds,
 				suppressedGeneratedCount: input.generatedExecutionCandidates.count,
-				suppressedStaticCount: input.staticActionIds.count,
+				suppressedStaticCount: 0,
 				topSourceType: nil,
-				rankingSummary: "day1_behavior_validation",
+				rankingSummary: "day1_behavior_validation_panel_allowed",
 				timingDecision: GeneratedExecutionProposalTimingDecision(
 					outcome: .suppressAll,
 					reason: "day1_behavior_validation",
 					allowsFloatingGenerated: false,
-					allowsPanelGenerated: false
+					allowsPanelGenerated: true
 				),
 				warnings: [],
 				createdAt: input.referenceTime,
 				floatingGeneratedProposalId: nil,
-				isPolicySuppressed: true
+				isPolicySuppressed: false
 			)
 		}
 		let att = ProposalAttemptScope.currentId ?? "none"

@@ -119,7 +119,10 @@ public struct ContextExecutionSelfTest: Sendable {
             relatedFocusEntities: ["Related 1", "Related 2", "Related 3", "Related 4"],
             activeTerms: ["overridden"],
             evidenceQuality: "browser_tabs",
+            evidenceLevel: "metadata_rich",
             browserTabs: [],
+            browserContextType: nil,
+            browserContentAvailable: false,
             actionIntent: "synthesize_sources"
         )
         let suggestionWithPayload = AmbientJarvisSuggestion(
@@ -281,6 +284,8 @@ public enum CapabilityExecutionSelfTest {
         var failures: [String] = []
         let executor = CapabilityExecutor.shared
         let registry = CognitiveCapabilityRegistry.shared
+        CapabilityExecutor.testHooks = .init()
+        defer { CapabilityExecutor.testHooks = .init() }
 
         func check(_ name: String, _ ok: Bool) {
             if ok { print("[CapabilityExecutionSelfTest] pass case=\(name)") }
@@ -298,10 +303,10 @@ public enum CapabilityExecutionSelfTest {
         print("[CapabilityExecutionSelfTest] play_focus_media status=\(status2.rawValue)")
         check("play_focus_media_not_blocked", status2 != .blocked)
 
-        // ── Case 3: preview_only capability → .success ────────────────────────
+        // ── Case 3: preview_only capability → .previewGenerated ───────────────
         let previewCap = registry.get("summarize_context")!
         let status3 = await executor.execute(capability: previewCap, context: [:])
-        check("preview_only_returns_success", status3 == .success)
+        check("preview_only_returns_preview_generated", status3 == .previewGenerated)
 
         // ── Phase 22.2 Case 4: start_focus_timer → .unavailable (honest) ──────
         let timerCap = registry.get("start_focus_timer")!
@@ -370,6 +375,76 @@ public enum CapabilityExecutionSelfTest {
         check("empty_entity_title_uses_fallback",
               noEntityTitle.lowercased().contains("material") || noEntityTitle.lowercased().contains("this"))
         check("empty_entity_title_passes_validator", OpportunityValidator.validate(noEntityTitle))
+
+        // ── Phase 30 local-action execution cases ───────────────────────────────
+        CapabilityExecutor.testHooks.arrangeSideBySide = { apps, _ in
+            let ok = apps == ["Preview", "Firefox"]
+            return CapabilityExecutor.LocalActionOutcome(status: ok ? .success : .unavailable, verificationStatus: ok ? "success" : "failed", reason: ok ? "windows_arranged" : "bad_targets")
+        }
+        let arrangeCap = registry.get("arrange_side_by_side")!
+        let arrangeStatus = await executor.execute(capability: arrangeCap, context: ["apps": ["Preview", "Firefox"], "confirmation_satisfied": true])
+        check("arrange_side_by_side_moves_windows", arrangeStatus == .success)
+
+        CapabilityExecutor.testHooks.arrangeSideBySide = { _, _ in
+            CapabilityExecutor.LocalActionOutcome(status: .unavailable, verificationStatus: "failed", reason: "accessibility_permission_required")
+        }
+        let arrangeNoPermission = await executor.execute(capability: arrangeCap, context: ["apps": ["Preview", "Firefox"], "confirmation_satisfied": true])
+        check("arrange_side_by_side_requires_accessibility_permission", arrangeNoPermission != .success)
+
+        CapabilityExecutor.testHooks.switchToPairedApp = { apps in
+            CapabilityExecutor.LocalActionOutcome(status: apps.contains("Preview") ? .success : .unavailable, verificationStatus: apps.contains("Preview") ? "success" : "failed", reason: apps.contains("Preview") ? "target_focused" : "no_target")
+        }
+        let switchCap = registry.get("switch_to_paired_app")!
+        let switchStatus = await executor.execute(capability: switchCap, context: ["apps": ["Firefox", "Preview"], "confirmation_satisfied": true])
+        check("switch_to_paired_app_focuses_target_window", switchStatus == .success)
+
+        CapabilityExecutor.testHooks.restoreWorkspace = { apps, urls in
+            let ok = apps.contains("Preview") && apps.contains("Firefox") && urls.count == 2
+            return CapabilityExecutor.LocalActionOutcome(status: ok ? .success : .unavailable, verificationStatus: ok ? "success" : "failed", reason: ok ? "restored_workspace" : "restore_failed")
+        }
+        let restoreCap = registry.get("restore_workspace")!
+        let restoreStatus = await executor.execute(capability: restoreCap, context: [
+            "apps": ["Preview", "Firefox"],
+            "tabURLs": ["https://example.com/lease", "https://example.com/listing"],
+            "confirmation_satisfied": true
+        ])
+        check("restore_workspace_reopens_apps", restoreStatus == .success)
+        check("restore_workspace_reopens_urls", restoreStatus == .success)
+
+        CapabilityExecutor.testHooks.restoreResearchTabs = { urls in
+            CapabilityExecutor.LocalActionOutcome(status: urls.count == 3 ? .success : .unavailable, verificationStatus: urls.count == 3 ? "success" : "failed", reason: urls.count == 3 ? "opened_urls" : "no_urls")
+        }
+        let restoreTabsCap = registry.get("restore_research_tabs")!
+        let restoreTabsStatus = await executor.execute(capability: restoreTabsCap, context: [
+            "tabURLs": ["https://example.com/a", "https://example.com/b", "https://example.com/c"],
+            "confirmation_satisfied": true
+        ])
+        check("restore_research_tabs_opens_urls", restoreTabsStatus == .success)
+
+        CapabilityExecutor.testHooks.splitResearchSetup = { browser, urls in
+            let ok = browser == "Firefox" && urls.count == 2
+            return CapabilityExecutor.LocalActionOutcome(status: ok ? .success : .unavailable, verificationStatus: ok ? "success" : "failed", reason: ok ? "opened_split_window" : "split_failed")
+        }
+        let splitCap = registry.get("split_research_setup")!
+        let splitFirefoxStatus = await executor.execute(capability: splitCap, context: [
+            "tabURLs": ["https://example.com/lease", "https://example.com/listing"],
+            "tabTitles": ["Lease Draft", "Queen's Housing Rentals"],
+            "browserAppName": "Firefox",
+            "confirmation_satisfied": true
+        ])
+        check("split_research_setup_firefox_strategy", splitFirefoxStatus == .success)
+
+        CapabilityExecutor.testHooks.splitResearchSetup = { browser, urls in
+            let ok = browser == "Google Chrome" && urls.count == 2
+            return CapabilityExecutor.LocalActionOutcome(status: ok ? .success : .unavailable, verificationStatus: ok ? "success" : "failed", reason: ok ? "opened_split_window" : "split_failed")
+        }
+        let splitChromeStatus = await executor.execute(capability: splitCap, context: [
+            "tabURLs": ["https://example.com/lease", "https://example.com/listing"],
+            "tabTitles": ["Lease Draft", "Queen's Housing Rentals"],
+            "browserAppName": "Google Chrome",
+            "confirmation_satisfied": true
+        ])
+        check("split_research_setup_chrome_strategy", splitChromeStatus == .success)
 
         let ok = failures.isEmpty
         print("[CapabilityExecutionSelfTest] completed ok=\(ok) failures=\(failures.count)")

@@ -30,7 +30,10 @@ public struct SuggestionContextPayload: Sendable, Codable, Equatable {
     public let relatedFocusEntities: [String]
     public let activeTerms: [String]
     public let evidenceQuality: String
+    public let evidenceLevel: String
     public let browserTabs: [String]
+    public let browserContextType: String?
+    public let browserContentAvailable: Bool
     public let actionIntent: String
 }
 

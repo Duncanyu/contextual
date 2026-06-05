@@ -55,6 +55,7 @@ final class WorkspacePatternTracker {
     private var _sessionApps: [String: Set<String>] = [:]   // compartmentID → apps
     private var _sessionBundles: [String: [String: String]] = [:]  // compartmentID → app→bundle
     private var _sessionURLs: [String: Set<String>] = [:]   // compartmentID → URLs
+    private var _sessionTabTitles: [String: Set<String>] = [:] // compartmentID → tab titles
     private var _sessionConcepts: [String: [String]] = [:]  // compartmentID → concepts
 
     // Learned patterns (across sessions — currently in-memory, not persistent)
@@ -96,6 +97,17 @@ final class WorkspacePatternTracker {
         }
     }
 
+    /// Record a selected/current browser tab title observed in the compartment.
+    func recordTabTitle(_ title: String, compartmentID: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        queue.async { [self] in
+            var titles = _sessionTabTitles[compartmentID] ?? []
+            titles.insert(trimmed)
+            _sessionTabTitles[compartmentID] = titles
+        }
+    }
+
     /// Record concepts observed in the given compartment.
     func recordConcepts(_ concepts: [String], compartmentID: String) {
         queue.async { [self] in
@@ -118,7 +130,17 @@ final class WorkspacePatternTracker {
 
             let bundles = _sessionBundles[compartmentID] ?? [:]
             let urls = Array((_sessionURLs[compartmentID] ?? []).prefix(10))
+            let tabTitles = Array((_sessionTabTitles[compartmentID] ?? []).prefix(12))
             let concepts = topConcepts(_sessionConcepts[compartmentID] ?? [], limit: 5)
+            DurableMemory.shared.recordWorkspaceObservation(
+                workflow: compartmentID,
+                compartment: compartmentID,
+                apps: sortedApps,
+                bundleIDs: sortedApps.compactMap { bundles[$0] },
+                urls: urls,
+                tabTitles: tabTitles,
+                windowTitle: tabTitles.first
+            )
 
             if var existing = _patterns[patternID] {
                 // Update existing pattern
@@ -128,6 +150,8 @@ final class WorkspacePatternTracker {
                 // Merge URLs and concepts
                 let mergedURLs = Set(existing.urls + urls)
                 existing.urls = Array(mergedURLs.prefix(15))
+                let mergedTabTitles = Set(existing.tabTitles + tabTitles)
+                existing.tabTitles = Array(mergedTabTitles.prefix(20))
                 let mergedConcepts = Set(existing.dominantConcepts + concepts)
                 existing.dominantConcepts = Array(mergedConcepts.prefix(8))
                 _patterns[patternID] = existing
@@ -143,7 +167,7 @@ final class WorkspacePatternTracker {
                     apps: sortedApps,
                     bundleIDs: bundleIDs,
                     urls: urls,
-                    tabTitles: [],
+                    tabTitles: tabTitles,
                     frequency: 1,
                     lastUsed: now,
                     avgDwellMinutes: dwellMinutes,
@@ -227,6 +251,7 @@ final class WorkspacePatternTracker {
             _sessionApps = [:]
             _sessionBundles = [:]
             _sessionURLs = [:]
+            _sessionTabTitles = [:]
             _sessionConcepts = [:]
             _patterns = [:]
         }

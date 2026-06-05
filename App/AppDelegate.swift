@@ -2,6 +2,7 @@ import AppKit
 
 extension Notification.Name {
 	static let contextualManualTrigger = Notification.Name("com.contextual.manualTrigger")
+	static let contextualOpenTaskPanel = Notification.Name("com.contextual.openTaskPanel")
 }
 
 @MainActor
@@ -18,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let actionRouter = ActionRouter()
 	private var manualTriggerObserver: NSObjectProtocol?
 	private var canonicalContextObserver: NSObjectProtocol?
+	private var openTaskPanelObserver: NSObjectProtocol?
 
 	private var lastFinishedActionKey: String?
 	private var lastFinishedAt: Date?
@@ -101,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		_ = AmbientMVPMode.self
 		_ = ValidationConfiguration.self
 		print("[Phase18C] compiled=yes context_execution_engine=yes ambient_mvp_mode=yes")
+		DogfoodChecklist.printIfEnabled()
 		let env = ProcessInfo.processInfo.environment
 		if env["CONTEXTUAL_RUN_BROWSER_TAB_MEMORY_SELFTEST"] == "1" {
 			Task {
@@ -804,6 +807,15 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			self?.appState.refreshContextAwarenessSummary()
 		}
 
+		openTaskPanelObserver = NotificationCenter.default.addObserver(
+			forName: .contextualOpenTaskPanel,
+			object: nil,
+			queue: .main
+		) { [weak self] _ in
+			self?.menuBarController?.revealPopoverIfNeeded()
+			self?.appState.isPanelVisible = true
+		}
+
 		let manager = SourceManager { event in
 			self.processSourceEvent(event)
 		}
@@ -836,6 +848,9 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		}
 		if let canonicalContextObserver {
 			NotificationCenter.default.removeObserver(canonicalContextObserver)
+		}
+		if let openTaskPanelObserver {
+			NotificationCenter.default.removeObserver(openTaskPanelObserver)
 		}
 		sourceManager?.stop()
 	}
@@ -1352,11 +1367,13 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				return "hidden"
 			}()
 			print("[ProposalAttempt] id=\(attemptId) stored_visible=\(storedVisible) ui_visible=\(uiVisible) final_status=\(status)")
+			return
 		} else {
 
 		}
 
 		let proposalGateResult = ProposalGenerationGate.evaluate(context: context)
+		let deterministicPanel = buildDeterministicPanelPublication(context: context)
 
 		// Compute features + type once for relevance scoring (no AI, metadata only).
 		let sourceText = ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .automatic) ?? ""
@@ -1392,6 +1409,22 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		logActionRelevanceIfNeeded(ranked: relevance, topId: rankedIds.first)
 
 		guard let ranking = ProposalRanker.rank(relevance: relevance, reasoningPrimary: decision.primaryActionId) else {
+			if !deterministicPanel.actions.isEmpty {
+				print("[AvailableActions] preserved_panel_actions reason=floating_ranking_unavailable panel_count=\(deterministicPanel.panelCount)")
+				print("[AvailableActions] cleared_floating_only reason=proposal_ranking_unavailable")
+				publishReasonedActions(
+					ordered: deterministicPanel.actions,
+					finalProposal: nil,
+					finalProposalKey: nil,
+					strength: nil,
+					packet: packet,
+					context: context,
+					generation: generation,
+					proposalGateAllows: false,
+					generatedProposalActivation: .empty
+				)
+				return
+			}
 			preserveOrClearAvailableActions(reason: "proposal ranking unavailable")
 			return
 		}
@@ -1439,6 +1472,22 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		)
 
 		guard let richRanking = ProposalRanker.rank(relevance: workflowRank.adjustedScores, reasoningPrimary: decision.primaryActionId) else {
+			if !deterministicPanel.actions.isEmpty {
+				print("[AvailableActions] preserved_panel_actions reason=floating_ranking_unavailable panel_count=\(deterministicPanel.panelCount)")
+				print("[AvailableActions] cleared_floating_only reason=proposal_ranking_unavailable")
+				publishReasonedActions(
+					ordered: deterministicPanel.actions,
+					finalProposal: nil,
+					finalProposalKey: nil,
+					strength: nil,
+					packet: packet,
+					context: context,
+					generation: generation,
+					proposalGateAllows: false,
+					generatedProposalActivation: .empty
+				)
+				return
+			}
 			preserveOrClearAvailableActions(reason: "proposal ranking unavailable after rich adjust")
 			return
 		}
@@ -1569,6 +1618,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			if ia != ib { return ia < ib }
 			return a.id < b.id
 		}
+		ordered = mergeActions(primary: deterministicPanel.actions, secondary: ordered)
 
 		let didHaveAnalyze = lastReasonedActions.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
 		let hasAnalyzeNow = ordered.contains(where: { $0.id == ScreenAnalyzeAction.analyzeScreenId })
@@ -1869,11 +1919,35 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		pendingActionIntentRetry: ActionIntentPendingRequest? = nil
 	) async {
 		if AmbientMVPMode.isEnabled {
-			print("[ProposalRouting] suppressed reason=ambient_jarvis_suggestion_available")
-			await MainActor.run {
-				appState.clearActivatedGeneratedProposals(reason: "ambient_mvp_mode_enabled")
+			var isBlocked = false
+			let isVisible = await MainActor.run { appState.isFloatingSuggestionVisible }
+			let currentFloat = await MainActor.run { appState.floatingSuggestion }
+			
+			if isVisible, let currentFloat = currentFloat {
+				let id = currentFloat.primaryActionId
+				let lastShownAt = await MainActor.run { appState.lastAmbientJarvisShownAt }
+				let age = Date().timeIntervalSince(lastShownAt ?? Date.distantPast)
+				let isStale = age > 30.0
+				let isHighConfidence = currentFloat.confidence >= 0.65
+				let wasLogged = await MainActor.run {
+					appState.wasSuggestionFeedbackLogged(id: id, event: "ignored") ||
+					appState.wasSuggestionFeedbackLogged(id: id, event: "auto_dismissed") ||
+					appState.wasSuggestionFeedbackLogged(id: id, event: "dismissed")
+				}
+				if !isStale && isHighConfidence && !wasLogged {
+					isBlocked = true
+				}
 			}
-			return
+			
+			if isBlocked {
+				print("[ProposalRouting] suppressed reason=active_high_value_card")
+				await MainActor.run {
+					appState.clearActivatedGeneratedProposals(reason: "ambient_mvp_mode_enabled")
+				}
+				return
+			} else {
+				print("[ProposalRouting] not_suppressed_by_ambient reason=ambient_low_value_or_stale")
+			}
 		}
 		// Phase 4S — Expire pending action-intent retry request if TTL elapsed.
 		expirePendingActionIntentIfNeeded(now: Date())
@@ -2179,8 +2253,10 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 		print("[FloatingSuggestionDebug] chime_result allows_float=\(chimeFilteredActivation.timingDecision.allowsFloatingGenerated) proposal_survives=\(chimeFilteredProposal != nil)")
 
+		let deterministicPanel = buildDeterministicPanelPublication(context: context)
 		let toolActions = registeredToolActions(for: packet, context: context)
 		publishDynamicOnlyReasonedActions(
+			panelActions: deterministicPanel.actions,
 			toolActions: toolActions,
 			finalProposal: chimeFilteredProposal,
 			finalProposalKey: chimeFilteredProposalKey,
@@ -2549,7 +2625,171 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		return !tokens(a).intersection(tokens(b)).isEmpty
 	}
 
+	private struct DeterministicPanelPublication {
+		let actions: [any ActionProtocol]
+		let floatingCandidate: PortfolioCandidate?
+		let panelCount: Int
+		let suppressedCount: Int
+	}
+
+	private func buildDeterministicPanelPublication(context: ContextModel) -> DeterministicPanelPublication {
+		let frontmost = NSWorkspace.shared.frontmostApplication
+		let activeAppName = context.activeAppName ?? frontmost?.localizedName ?? ""
+		let browserContext = BrowserContextExtractor.extract(
+			appName: activeAppName,
+			activeAppPID: frontmost?.processIdentifier
+		)
+		let currentURL = browserContext?.selectedURL?.absoluteString ?? browserContext?.currentURL?.absoluteString
+		let tabTitles = Array(
+			NSOrderedSet(
+				array: ([browserContext?.selectedTitle].compactMap { $0 } + (browserContext?.recentTabTitles ?? []))
+					.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+			)
+		) as? [String] ?? []
+		let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
+		let visibleApps = Array(
+			Set(
+				([runtime.frontmostAppName] + runtime.visibleWindows.map(\.appName))
+					.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+			)
+		).sorted()
+		let workflow = WorkflowInferenceEngine.shared.latestResult()?.workflow.rawValue ?? "unknown"
+		let hasDurablePattern = DurableMemory.shared.bestDurableWorkspacePattern(
+			workflow: workflow,
+			compartment: workflow,
+			currentApps: Set(runtime.runningApps.map(\.appName))
+		) != nil
+		let browserAssessment = BrowserContextStrategy.assess(
+			title: browserContext?.selectedTitle ?? context.activeWindowTitle,
+			url: currentURL.flatMap(URL.init(string:)),
+			tabTitles: tabTitles,
+			hasAXText: false,
+			hasOCR: false
+		)
+		let evidenceProfile = EvidenceQualityModel.evaluate(
+			title: browserContext?.selectedTitle ?? context.activeWindowTitle,
+			url: currentURL.flatMap(URL.init(string:)),
+			tabTitles: tabTitles,
+			hasAXText: false,
+			hasOCR: false,
+			hasSelectedText: false,
+			semanticGrounding: false,
+			durableCompartment: hasDurablePattern,
+			browserAssessment: browserAssessment
+		)
+		let frictionSignals = FrictionEngine.shared.detectFriction()
+		let plannerResult = DeterministicPanelActionPlanner.evaluate(
+			DeterministicPanelPlannerInput(
+				activeAppName: activeAppName,
+				windowTitle: context.activeWindowTitle,
+				browserAppName: browserContext?.appName,
+				currentURL: currentURL,
+				tabTitles: tabTitles,
+				visibleApps: visibleApps,
+				workflow: workflow,
+				compartmentLabel: workflow,
+				compartment: nil,
+				evidenceLevel: evidenceProfile.level,
+				browserAssessment: browserAssessment,
+				hasDurablePattern: hasDurablePattern,
+				frictionSignals: frictionSignals
+			)
+		)
+
+		let mediaState = MediaStateSource.currentSnapshot()
+		let isUserTyping = TypingActivitySource.shared.currentContext().isTypingActive
+		let hasActiveSwitching = frictionSignals.contains {
+			$0.type == .repeated_app_switching || $0.type == .repeated_tab_switching
+		}
+		let pattern = DurableMemory.shared.bestDurableWorkspacePattern(
+			workflow: workflow,
+			compartment: workflow,
+			currentApps: Set(runtime.runningApps.map(\.appName))
+		)
+		let missing = pattern.map {
+			DurableMemory.shared.missingCheck(pattern: $0, currentApps: Set(runtime.runningApps.map(\.appName)), currentURLs: runtime.currentURLs)
+		}
+
+		var panelActions: [any ActionProtocol] = []
+		var floatingCandidates: [PortfolioCandidate] = []
+		var suppressedCount = plannerResult.suppressedCount
+
+		for candidate in plannerResult.validCandidates {
+			let recentFeedback: String? = {
+				if appState.wasSuggestionFeedbackLogged(id: candidate.candidate.capabilityId, event: "dismissed") { return "dismissed" }
+				if appState.wasSuggestionFeedbackLogged(id: candidate.candidate.capabilityId, event: "ignored") { return "ignored" }
+				if appState.wasSuggestionFeedbackLogged(id: candidate.candidate.capabilityId, event: "accepted") { return "accepted" }
+				return nil
+			}()
+			let evaluation = SuggestionSurfacePolicy.evaluate(
+				capabilityId: candidate.candidate.capabilityId,
+				context: context,
+				isMusicPlaying: mediaState.isMusicPlaying,
+				isMusicSuppressed: mediaState.isMusicPlaying,
+				isUserTyping: isUserTyping,
+				missing: missing,
+				recentFeedback: recentFeedback,
+				frictionSignals: frictionSignals,
+				hasDurablePattern: hasDurablePattern,
+				involvedURLs: candidate.involvedURLs,
+				userAcceptedMusicBefore: DurableMemory.shared.hasAcceptedMusicPreference(),
+				isLayoutAlreadyGood: !hasActiveSwitching
+			)
+			switch evaluation.surface {
+			case .suppressed:
+				suppressedCount += 1
+				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=panel_only actual=suppressed reason=\(evaluation.reason)")
+			case .panelOnly:
+				let seed = DeterministicCapabilityActionSeed(
+					capabilityId: candidate.candidate.capabilityId,
+					title: candidate.candidate.title,
+					involvedApps: candidate.involvedApps,
+					involvedURLs: candidate.involvedURLs,
+					browserTabTitles: candidate.browserTabTitles,
+					browserAppName: candidate.browserAppName,
+					workflow: candidate.workflow,
+					compartmentLabel: candidate.compartmentLabel,
+					windowTitle: candidate.windowTitle,
+					entity: candidate.entity,
+					compartment: candidate.compartment
+				)
+				panelActions.append(DeterministicCapabilityPanelAction(seed: seed))
+				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=panel_only actual=panel_added reason=\(evaluation.reason)")
+				print("[PanelAction] added capability=\(candidate.candidate.capabilityId) reason=\(evaluation.reason)")
+			case .floatingInterrupt:
+				floatingCandidates.append(candidate.candidate)
+				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=floating actual=shown reason=\(evaluation.reason)")
+			}
+		}
+
+		let mergedActions = dedupeActions(panelActions)
+		let floatingCandidate = floatingCandidates.sorted { $0.score > $1.score }.first
+		print("[ActionPortfolioResult] floating=\(floatingCandidate?.capabilityId ?? "none") panel_count=\(mergedActions.count) suppressed_count=\(suppressedCount)")
+		return DeterministicPanelPublication(
+			actions: mergedActions,
+			floatingCandidate: floatingCandidate,
+			panelCount: mergedActions.count,
+			suppressedCount: suppressedCount
+		)
+	}
+
+	private func mergeActions(primary: [any ActionProtocol], secondary: [any ActionProtocol]) -> [any ActionProtocol] {
+		dedupeActions(primary + secondary)
+	}
+
+	private func dedupeActions(_ actions: [any ActionProtocol]) -> [any ActionProtocol] {
+		var seen = Set<String>()
+		var deduped: [any ActionProtocol] = []
+		for action in actions {
+			if seen.insert(action.id).inserted {
+				deduped.append(action)
+			}
+		}
+		return deduped
+	}
+
 	private func publishDynamicOnlyReasonedActions(
+		panelActions: [any ActionProtocol],
 		toolActions: [any ActionProtocol],
 		finalProposal: ActionProposal?,
 		finalProposalKey: String?,
@@ -2563,7 +2803,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		guard generation == contextPipelineGeneration else { return }
 
 		appState.applyGeneratedProposalActivation(generatedProposalActivation, debugStatus: debugStatus)
-		appState.availableActions = []
+		let publishedActions = mergeActions(primary: panelActions, secondary: toolActions)
+		appState.availableActions = publishedActions
 		appState.registeredToolActions = toolActions
 		// Phase 4S — replace stale weak proposal when stronger context arrives.
 		// Detected by comparing the previous proposal's title to the new one
@@ -2577,11 +2818,14 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
 		appState.refreshProposalContext(for: finalProposal)
-		lastReasonedActions = []
+		lastReasonedActions = publishedActions
 		lastReasonedActionsAt = Date()
 		lastReasonedTriggerType = packet.triggerType
 		lastReasonedProposal = finalProposal
 		lastReasonedProposalKey = finalProposalKey
+		if publishedActions.contains(where: { $0 is DeterministicCapabilityPanelAction }) {
+			print("[AvailableActions] panel_count=\(publishedActions.count) floating_count=\(finalProposal == nil ? 0 : 1) source=deterministic_panel_actions")
+		}
 		print("[AvailableActions] dynamic_only visible_generated=\(generatedProposalActivation.visibleProposals.count) tools=\(toolActions.count) trigger=\(packet.triggerType.rawValue) reason=\(decision.reason)")
 
 		if let p = finalProposal {
@@ -2624,6 +2868,9 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		lastReasonedTriggerType = packet.triggerType
 		lastReasonedProposal = finalProposal
 		lastReasonedProposalKey = finalProposalKey
+		if ordered.contains(where: { $0 is DeterministicCapabilityPanelAction }) {
+			print("[AvailableActions] panel_count=\(ordered.count) floating_count=\(finalProposal == nil ? 0 : 1) source=deterministic_panel_actions")
+		}
 		print("[AvailableActions] cached actions count=\(ordered.count) trigger=\(packet.triggerType.rawValue)")
 
 		if let p = finalProposal, let s = strength, s.strength == .strong {
@@ -3067,6 +3314,93 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			return
 		}
 
+		let activeSuggestion = appState.activeAmbientJarvisSuggestion
+		let capabilityId = activeSuggestion.map { appState.ambientCapabilityId(for: $0) } ?? proposal.primaryActionId
+
+		// Phase 35.4: Final gate — restore_research_tabs blocked if tabs are already open
+		if capabilityId == "restore_research_tabs" {
+			let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+			let browser = BrowserContextExtractor.extract(appName: frontApp, activeAppPID: nil)
+			let tabsOpen = (browser?.recentTabTitles.count ?? 0) > 0
+			if tabsOpen {
+				print("[ProposalFunnelAudit] not_generated capability=restore_research_tabs reason=tabs_already_open final_gate=yes")
+				print("[SurfaceResult] capability=restore_research_tabs requested=floating actual=suppressed reason=tabs_already_open")
+				return
+			}
+		}
+
+		let isMusicPlaying = MediaStateSource.currentSnapshot().isMusicPlaying
+		let isMusicSuppressed = isMusicPlaying
+		let isUserTyping = TypingActivitySource.shared.currentContext().isTypingActive
+		
+		let inventory = WorkspaceRuntimeInventoryProvider.snapshot()
+		let currentApps = Set(inventory.runningApps.map(\.appName))
+		let workflowRaw = WorkflowInferenceEngine.shared.latestResult()?.workflow.rawValue ?? "unknown"
+		
+		let pattern = DurableMemory.shared.bestDurableWorkspacePattern(
+			workflow: workflowRaw,
+			compartment: activeSuggestion?.contextPayload?.taskCompartmentSnapshot?.label,
+			currentApps: currentApps
+		)
+		let missing = pattern.map { DurableMemory.shared.missingCheck(pattern: $0, currentApps: currentApps, currentURLs: inventory.currentURLs) }
+		
+		let recentFeedback: String? = {
+			if appState.wasSuggestionFeedbackLogged(id: capabilityId, event: "dismissed") { return "dismissed" }
+			if appState.wasSuggestionFeedbackLogged(id: capabilityId, event: "ignored") { return "ignored" }
+			if appState.wasSuggestionFeedbackLogged(id: capabilityId, event: "accepted") { return "accepted" }
+			return nil
+		}()
+		
+		let frictionSignals = FrictionEngine.shared.detectFriction()
+		let hasDurablePattern = pattern != nil
+		let involvedURLs: [String] = {
+			var list: [String] = []
+			if let s = activeSuggestion {
+				let browsers = ["Safari", "Google Chrome", "Firefox", "Arc"]
+				for browser in browsers {
+					if let context = BrowserContextExtractor.extract(appName: browser, activeAppPID: nil),
+					   let u = context.selectedURL?.absoluteString ?? context.currentURL?.absoluteString {
+						if !u.isEmpty {
+							list.append(u)
+							break
+						}
+					}
+				}
+			}
+			return list
+		}()
+		let userAcceptedMusicBefore = DurableMemory.shared.hasAcceptedMusicPreference()
+		
+		let isLayoutAlreadyGood = !frictionSignals.contains { $0.type == .repeated_app_switching || $0.type == .repeated_tab_switching }
+		
+		let evaluation = SuggestionSurfacePolicy.evaluate(
+			capabilityId: capabilityId,
+			context: ctx,
+			isMusicPlaying: isMusicPlaying,
+			isMusicSuppressed: isMusicSuppressed,
+			isUserTyping: isUserTyping,
+			missing: missing,
+			recentFeedback: recentFeedback,
+			frictionSignals: frictionSignals,
+			hasDurablePattern: hasDurablePattern,
+			involvedURLs: involvedURLs,
+			userAcceptedMusicBefore: userAcceptedMusicBefore,
+			isLayoutAlreadyGood: isLayoutAlreadyGood
+		)
+		
+		if evaluation.surface == SurfaceClassification.suppressed {
+			print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=suppressed reason=\(evaluation.reason)")
+			print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=\(evaluation.reason)")
+			return
+		}
+		if evaluation.surface == SurfaceClassification.panelOnly {
+			print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=panel_added reason=\(evaluation.reason)")
+			print("[PanelAction] added capability=\(capabilityId) reason=surface_policy_panel_only")
+			print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=panel_only")
+			return
+		}
+
+		print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=shown reason=surface_policy_allowed")
 		print("[AmbientFloatingSuggestion] eligible=yes id=\(proposal.primaryActionId)")
 
 		// 6. Lifecycle dedup — prevent the same ambient suggestion from re-surfacing
@@ -3122,6 +3456,17 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 	private func preserveOrClearAvailableActions(reason: String) {
 		if appState.isActionExecuting {
 			print("[AvailableActions] preserving actions during execution")
+			return
+		}
+
+		if reason.contains("proposal ranking unavailable"), !appState.availableActions.isEmpty {
+			print("[AvailableActions] preserved_panel_actions reason=floating_ranking_unavailable panel_count=\(appState.availableActions.count)")
+			print("[AvailableActions] cleared_floating_only reason=proposal_ranking_unavailable")
+			appState.currentProposal = nil
+			appState.currentProposalKey = nil
+			appState.refreshProposalContext(for: nil)
+			lastReasonedProposal = nil
+			lastReasonedProposalKey = nil
 			return
 		}
 
@@ -3618,6 +3963,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			invokeAnalyzeScreenStoredAction()
 			return
 		}
+		if actionId == "open_current_task_panel" {
+			menuBarController?.revealPopoverIfNeeded()
+			appState.isPanelVisible = true
+			print("[CapabilityExecution] completed status=success id=open_current_task_panel reason=panel_requested")
+			return
+		}
 
 		var execContext = contextBuilder.model
 		execContext.actionInputSourcePreference = appState.selectedInputSourceChoice
@@ -4018,6 +4369,81 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			Task {
 				let ok = await EnvironmentActionSelfTest.run()
 				print("[EnvironmentActionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		// Phase 32 — AX permission probe at startup
+		AXPermissionProbe.check(reason: "startup")
+
+		// Phase 33 — Debug action trigger
+		if env["CONTEXTUAL_DEBUG_ACTION"] != nil {
+			Task {
+				// Wait a moment for the app to settle
+				try? await Task.sleep(nanoseconds: 2_000_000_000)
+				await DebugActionTrigger.runIfTriggered()
+			}
+		}
+
+		if env["CONTEXTUAL_RUN_PHASE35_4_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase35_4SelfTest.run()
+				print("[Phase35_4SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PHASE34_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_WINDOW_DISCOVERY_SELFTEST"] == "1" {
+			Task {
+				let ok = await WindowDiscoverySelfTest.run()
+				print("[WindowDiscoverySelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PHASE35_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase35SelfTest.run()
+				print("[Phase35SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PHASE33_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase33SelfTest.run()
+				print("[Phase33SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PHASE32_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase32SelfTest.run()
+				print("[Phase32SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PHASE31_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase31SelfTest.run()
+				print("[Phase31SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_SEMANTIC_GROUNDING_SELFTEST"] == "1" {
+			Task {
+				let ok = await SemanticGroundingSelfTest.run()
+				print("[SemanticGroundingSelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 			return true

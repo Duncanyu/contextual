@@ -442,6 +442,389 @@ enum CheapAlwaysOnPortfolioSelfTest {
 			check("generated_action_can_beat_portfolio_winner", true) // structural test — audit doesn't crash and logic is sound
 		}
 
+		// ── Phase 29: rental_research_generates_more_than_summarize ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "Room for rent near campus",
+				recentEntities: ["Room for rent near campus", "Rental advice thread"],
+				repeatedConcepts: ["rent", "rental", "landlord", "listing", "price"],
+				inferredActivity: "researching",
+				comparisonCandidates: ["Listing A", "Listing B"],
+				relatedFocusEntities: ["Student housing thread", "Room listing tips", "Lease advice"]
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: nil,
+				memory: memory,
+				evidenceQuality: "browser_context",
+				entityKey: "rental-family",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let text = candidates.filter { $0.family == .text }
+			let ids = Set(text.map(\.capabilityId))
+			check("rental_research_generates_more_than_summarize",
+				  text.count >= 3 && ids.contains("compare_rental_options") && ids.contains("create_listing_checklist"))
+		}
+
+		// ── Phase 29: text_family_outputs_multiple_candidate_types ──
+		do {
+			let input = GeneratedActionInput(
+				currentEntity: "Student rental listing",
+				relatedEntities: ["Room listing advice", "Rent discussion", "Lease checklist"],
+				activeTerms: ["rent", "listing", "lease", "landlord", "price"],
+				activeCompartmentLabel: nil,
+				activeCompartmentWorkflow: .researching,
+				evidenceQuality: "browser_context",
+				activeApplication: "Firefox",
+				domain: .researching,
+				mode: .comparing,
+				entityType: .website,
+				hasErrorTerms: false,
+				hasMultipleSources: true,
+				hasComparisonCandidates: true,
+				confidenceSeed: 0.7
+			)
+			let actions = GeneratedActionGenerator.generate(input: input)
+			let titles = actions.map(\.title)
+			check("text_family_outputs_multiple_candidate_types",
+				  actions.count >= 3
+					&& titles.contains("Compare the rental advice from these posts?")
+					&& titles.contains("Draft a checklist for your rental ad?"))
+		}
+
+		// ── Phase 29: action_family_generates_resume_music_not_search_by_default ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "PlayerMovement.swift",
+				recentEntities: ["PlayerMovement.swift"],
+				repeatedConcepts: ["collision", "player", "velocity"],
+				inferredActivity: "coding",
+				comparisonCandidates: []
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: EnvironmentMediaState(isMusicPlaying: false, visualMediaKind: .none, source: "test", detectionAvailable: true),
+				semanticState: SemanticPriorityResolver.SemanticState(
+					domain: .coding,
+					mode: .building,
+					entityType: .code_project,
+					entityConfidence: 0.8,
+					winner: .compartment
+				),
+				entityGrounding: nil,
+				compartment: TaskCompartment(workflow: .coding, label: "Coding", dominantTerms: [], entities: [], browserTabs: [], confidence: 0.9),
+				memory: memory,
+				evidenceQuality: "editor_context",
+				entityKey: "music-default",
+				appCategory: .editor,
+				groundingResult: nil
+			)
+			let music = candidates.first { $0.capabilityId == "play_focus_media" }
+			check("action_family_generates_resume_music_not_search_by_default",
+				  music?.musicIntent?.action == .resume && music?.hookChain == ["detect_player", "resume_player", "verify_playing"])
+		}
+
+		// ── Phase 29: play_known_playlist_has_playlist_hook_chain ──
+		do {
+			resetSharedState()
+			PlaylistMemory.shared.record(name: "lofi beats", compartment: nil, workflow: .coding)
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "main.swift",
+				recentEntities: ["main.swift"],
+				repeatedConcepts: ["coding"],
+				inferredActivity: "coding",
+				comparisonCandidates: []
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: EnvironmentMediaState(isMusicPlaying: false, visualMediaKind: .none, source: "test", detectionAvailable: true),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: TaskCompartment(workflow: .coding, label: "Coding", dominantTerms: [], entities: [], browserTabs: [], confidence: 0.9),
+				memory: memory,
+				evidenceQuality: "editor_context",
+				entityKey: "playlist-hook",
+				appCategory: .editor,
+				groundingResult: nil
+			)
+			let music = candidates.first { $0.capabilityId == "play_focus_media" }
+			check("play_known_playlist_has_playlist_hook_chain",
+				  music?.musicIntent?.action == .playPlaylist
+					&& music?.hookChain == ["lookup_playlist_memory", "play_playlist", "verify_playing"])
+		}
+
+		// ── Phase 29: friction_family_generates_workspace_or_layout_candidates_when_patterns_exist ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "Rental listings",
+				recentEntities: ["Rental listings"],
+				repeatedConcepts: ["rent", "listing", "room"],
+				inferredActivity: "researching",
+				comparisonCandidates: ["Listing A", "Listing B"],
+				relatedFocusEntities: ["Thread 1", "Thread 2", "Thread 3"]
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: nil,
+				memory: memory,
+				evidenceQuality: "browser_context",
+				entityKey: "friction-layout",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			check("friction_family_generates_workspace_or_layout_candidates_when_patterns_exist",
+				  candidates.contains { $0.family == .friction && $0.capabilityId == "arrange_side_by_side" })
+		}
+
+		// ── Phase 29: family_winners_and_hook_metadata_present ──
+		do {
+			resetSharedState()
+			PlaylistMemory.shared.record(name: "deep work", compartment: nil, workflow: .coding)
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "Room for rent near campus",
+				recentEntities: ["Room for rent near campus"],
+				repeatedConcepts: ["rent", "listing", "landlord", "price"],
+				inferredActivity: "researching",
+				comparisonCandidates: ["Listing A", "Listing B"],
+				relatedFocusEntities: ["Advice thread", "Lease tips", "Roommate post"]
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: noMusic(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: TaskCompartment(workflow: .researching, label: "Rental search", dominantTerms: [], entities: [], browserTabs: [], confidence: 0.9),
+				memory: memory,
+				evidenceQuality: "browser_context",
+				entityKey: "family-winners",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let families = Set(candidates.prefix(3).map(\.family))
+			let hasHooks = candidates.contains { !$0.hookChain.isEmpty && !$0.expectedResult.isEmpty && !$0.failureMode.isEmpty }
+			check("family_winners_logged_for_text_action_friction",
+				  families.contains(.text) && families.contains(.action) && families.contains(.friction) && hasHooks)
+		}
+
+		// ── Dogfood scenario: Preview PDF + Firefox Google Docs → compare candidates ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs",
+				recentEntities: [
+					"182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs",
+					"_182_Montreal_Street_Accommodation_Agreement_Final_Version_EN.pdf"
+				],
+				repeatedConcepts: ["agreement", "montreal", "accommodation", "lease"],
+				inferredActivity: "researching",
+				comparisonCandidates: ["182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs"],
+				relatedFocusEntities: ["_182_Montreal_Street_Accommodation_Agreement_Final_Version_EN.pdf"]
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: SemanticPriorityResolver.SemanticState(
+					domain: .researching,
+					mode: .reading,
+					entityType: .document,
+					entityConfidence: 0.90,
+					winner: .entityGrounding
+				),
+				entityGrounding: nil,
+				compartment: TaskCompartment(workflow: .researching, label: "182 Montreal", dominantTerms: ["montreal", "agreement"], entities: [], browserTabs: [], confidence: 0.9),
+				memory: memory,
+				evidenceQuality: "browser_context",
+				entityKey: "dogfood-lease-compare",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let hasCompare = candidates.contains { $0.capabilityId == "compare_options" || $0.capabilityId == "compare_rental_options" }
+			let hasSynthesize = candidates.contains { $0.capabilityId == "synthesize_sources" }
+			check("dogfood_pdf_plus_gdocs_produces_compare_candidates", hasCompare || hasSynthesize)
+			let textCandidates = candidates.filter { $0.family == PortfolioCandidate.Family.text }
+			check("dogfood_pdf_plus_gdocs_not_only_synthesize",
+				  textCandidates.count >= 1)
+		}
+
+		// ── Dogfood scenario: arrange_side_by_side title names apps ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs",
+				recentEntities: [
+					"182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs",
+					"_182_Montreal_Street_Accommodation_Agreement_Final_Version_EN.pdf"
+				],
+				repeatedConcepts: ["agreement", "montreal"],
+				inferredActivity: "researching",
+				comparisonCandidates: [
+					"182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs",
+					"_182_Montreal_Street_Accommodation_Agreement_Final_Version_EN.pdf"
+				],
+				relatedFocusEntities: ["_182_Montreal_Street_Accommodation_Agreement_Final_Version_EN.pdf"]
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: nil,
+				memory: memory,
+				evidenceQuality: "browser_context",
+				entityKey: "dogfood-arrange",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let friction = candidates.first { $0.capabilityId == "arrange_side_by_side" }
+			let titleLower = friction?.title.lowercased() ?? ""
+			check("dogfood_arrange_title_names_apps",
+				  titleLower.contains("montreal") || titleLower.contains("182") || titleLower.contains("pdf") || titleLower.contains("beside"))
+		}
+
+		// ── Dogfood scenario: music resume vs playlist fallback title alignment ──
+		do {
+			resetSharedState()
+			// No playlist memory — should NOT say "Resume your music?" if canPlayDirectly is uncertain
+			let ctx = Fixture(workflow: .researching, appCategory: .browser, media: noMusic(), dwell: 30, currentEntity: "182 Montreal lease")
+			let candidates = CheapAlwaysOnPortfolio.evaluate(ctx.input(reason: "active_user", modelReady: false))
+			let music = candidates.first { $0.capabilityId == "play_focus_media" }
+			let musicTitle = music?.title ?? ""
+			let musicAction = music?.musicIntent?.action ?? .resume
+			// Title and action must be aligned: resume → "Resume", not resume → "Play X playlist"
+			let aligned = (musicAction == .resume && (musicTitle.contains("Resume") || musicTitle.contains("Play a local")))
+				|| (musicAction == .playPlaylist && musicTitle.contains("playlist"))
+			check("dogfood_music_title_action_alignment", aligned)
+		}
+
+		// ── P1: Friction from compartment browser tabs (no explicit friction signal) ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs",
+				recentEntities: ["182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs"],
+				repeatedConcepts: ["agreement", "montreal"],
+				inferredActivity: "researching",
+				comparisonCandidates: ["182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs"],
+				staleEntities: ["_182_Montreal_Street_Accommodation_Agreement_Final_Version_EN.pdf"],
+				relatedFocusEntities: []
+			)
+			let comp = TaskCompartment(
+				workflow: .researching,
+				label: "182 Montreal",
+				dominantTerms: ["montreal", "agreement"],
+				entities: [],
+				browserTabs: ["Queen's Housing Rentals", "182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs"],
+				confidence: 0.9
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: comp,
+				memory: memory,
+				evidenceQuality: "browser_context",
+				entityKey: "p1-friction-tabs",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let friction = candidates.first { $0.family == PortfolioCandidate.Family.friction }
+			check("p1_friction_from_compartment_tabs",
+				  friction != nil && friction?.capabilityId == "arrange_side_by_side")
+			let frictionTitle = friction?.title.lowercased() ?? ""
+			check("p3_friction_title_names_targets",
+				  frictionTitle.contains("montreal") || frictionTitle.contains("queen") || frictionTitle.contains("beside"))
+		}
+
+		// ── P4: Comparison from compartment tabs + stale entities ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs",
+				recentEntities: ["182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs"],
+				repeatedConcepts: ["agreement", "montreal", "lease"],
+				inferredActivity: "researching",
+				comparisonCandidates: ["182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs"],
+				staleEntities: ["_182_Montreal_Street_Accommodation_Agreement_Final_Version_EN.pdf"],
+				relatedFocusEntities: []
+			)
+			let comp = TaskCompartment(
+				workflow: .researching,
+				label: "182 Montreal",
+				dominantTerms: ["montreal", "agreement"],
+				entities: [],
+				browserTabs: ["Queen's Housing Rentals", "182 Montreal St - OCCUPANCY AGREEMENT - 2026 - Google Docs"],
+				confidence: 0.9
+			)
+			let candidates = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: comp,
+				memory: memory,
+				evidenceQuality: "browser_context",
+				entityKey: "p4-comparison-tabs",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let compare = candidates.first { $0.capabilityId == "compare_options" }
+			check("p4_comparison_from_stale_entities", compare != nil)
+		}
+
+		// ── P5: Text actions score lower with title_only evidence ──
+		do {
+			resetSharedState()
+			let memory = WorkingMemorySnapshot(
+				currentEntity: "Room for rent",
+				recentEntities: ["Room for rent"],
+				repeatedConcepts: ["rent", "landlord", "listing"],
+				inferredActivity: "researching",
+				comparisonCandidates: ["Room A", "Room B"],
+				relatedFocusEntities: ["Advice thread", "Lease tips"]
+			)
+			let titleOnly = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: nil,
+				memory: memory,
+				evidenceQuality: "title_only",
+				entityKey: "p5-title-only",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let browserCtx = await ActionPortfolioEngine.evaluate(
+				frictionSignals: [],
+				mediaState: musicPlaying(),
+				semanticState: nil,
+				entityGrounding: nil,
+				compartment: nil,
+				memory: memory,
+				evidenceQuality: "selection",
+				entityKey: "p5-selection",
+				appCategory: .browser,
+				groundingResult: nil
+			)
+			let titleText = titleOnly.first { $0.family == PortfolioCandidate.Family.text }
+			let selectionText = browserCtx.first { $0.family == PortfolioCandidate.Family.text }
+			check("p5_title_only_text_lower_executability",
+				  (titleText?.executability ?? 1.0) <= 0.40)
+			check("p5_selection_text_normal_executability",
+				  (selectionText?.executability ?? 0.0) >= 0.55)
+		}
+
 		let ok = failures.isEmpty
 		print("[CheapAlwaysOnPortfolioSelfTest] completed ok=\(ok) failures=\(failures.count)")
 		return ok

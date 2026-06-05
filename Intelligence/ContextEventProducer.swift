@@ -112,6 +112,12 @@ final class ContextEventProducer {
                 bundleID: snapshot.bundleIdentifier,
                 now: now
             )
+            // Phase 35 — Record for work pair memory (friction target selection)
+            WorkPairMemory.shared.recordSwitch(
+                app: snapshot.activeApp,
+                title: snapshot.windowTitle,
+                pid: NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
+            )
         }
 
         // 2. windowTitleChanged
@@ -311,7 +317,8 @@ final class ContextEventProducer {
 				candidatesCount: cheap.candidatesCount,
 				selected: cheap.selected,
 				surfaceResult: cheap.suggestion == nil ? "suppressed" : "shown",
-				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none"
+				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
+				panelCount: cheap.panelCount
 			)
             return
         }
@@ -344,7 +351,8 @@ final class ContextEventProducer {
 				candidatesCount: cheap.candidatesCount,
 				selected: cheap.selected,
 				surfaceResult: cheap.suggestion == nil ? "suppressed" : "shown",
-				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none"
+				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
+				panelCount: cheap.panelCount
 			)
             return
         }
@@ -371,7 +379,8 @@ final class ContextEventProducer {
 				candidatesCount: 0,
 				selected: nil,
 				surfaceResult: "suppressed",
-				suppressionReason: "model_backpressure"
+				suppressionReason: "model_backpressure",
+				panelCount: 0
 			)
             return
         }
@@ -619,6 +628,10 @@ final class ContextEventProducer {
 							WorkspacePatternTracker.shared.recordURL(
 								gurl.absoluteString, compartmentID: compID)
 						}
+						if let selectedTitle, !selectedTitle.isEmpty {
+							WorkspacePatternTracker.shared.recordTabTitle(
+								selectedTitle, compartmentID: compID)
+						}
 						// Consolidate workspace pattern when compartment is settled
 						if activeComp.dwellSeconds > 300 {
 							WorkspacePatternTracker.shared.consolidate(
@@ -743,7 +756,8 @@ final class ContextEventProducer {
 							candidatesCount: opportunities.count + cheapFallback.candidatesCount,
 							selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
 							surfaceResult: suggestion == nil ? "suppressed" : "shown",
-							suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none"
+							suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
+							panelCount: cheapFallback.panelCount
 						)
 						self.ensureActiveRefreshLoop()
                 }
@@ -991,6 +1005,10 @@ final class ContextEventProducer {
 						WorkspacePatternTracker.shared.recordURL(
 							gurl.absoluteString, compartmentID: compID)
 					}
+					if let selectedTitle, !selectedTitle.isEmpty {
+						WorkspacePatternTracker.shared.recordTabTitle(
+							selectedTitle, compartmentID: compID)
+					}
 					if activeComp.dwellSeconds > 300 {
 						WorkspacePatternTracker.shared.consolidate(
 							compartmentID: compID,
@@ -1087,7 +1105,8 @@ final class ContextEventProducer {
 						candidatesCount: refreshOpportunities.count + cheapFallback.candidatesCount,
 						selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
 						surfaceResult: suggestion == nil ? "suppressed" : "shown",
-						suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none"
+						suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
+						panelCount: cheapFallback.panelCount
 					)
 				}
 		}
@@ -1098,6 +1117,7 @@ final class ContextEventProducer {
 		let suggestion: AmbientJarvisSuggestion?
 		let candidatesCount: Int
 		let selected: String?
+		let panelCount: Int
 		let suppressionReason: String
 		let determinerActionable: Bool
 
@@ -1107,6 +1127,7 @@ final class ContextEventProducer {
 				suggestion: nil,
 				candidatesCount: 0,
 				selected: nil,
+				panelCount: 0,
 				suppressionReason: reason,
 				determinerActionable: false
 			)
@@ -1272,6 +1293,7 @@ final class ContextEventProducer {
 				suggestion: nil,
 				candidatesCount: 0,
 				selected: nil,
+				panelCount: 0,
 				suppressionReason: shouldRun.reason,
 				determinerActionable: determiner.actionable
 			)
@@ -1311,8 +1333,53 @@ final class ContextEventProducer {
 			compartment: activeComp,
 			workflow: activeComp.workflow
 		)
+		let browserAssessment = (groundingURL != nil || !tabTitles.isEmpty || selectedTitle != nil)
+			? BrowserContextStrategy.assess(
+				title: selectedTitle ?? self.lastObservedWindowTitle,
+				url: groundingURL,
+				tabTitles: tabTitles,
+				hasAXText: false,
+				hasOCR: false
+			)
+			: nil
+		let evidenceProfile = EvidenceQualityModel.evaluate(
+			title: selectedTitle ?? self.lastObservedWindowTitle,
+			url: groundingURL,
+			tabTitles: tabTitles,
+			hasAXText: false,
+			hasOCR: false,
+			hasSelectedText: false,
+			semanticGrounding: groundingResult.confidence >= 0.65,
+			durableCompartment: activeComp.compartmentTrust >= 0.70,
+			browserAssessment: browserAssessment
+		)
+		let _ = await ContextAcquisitionCoordinator.shared.acquire(.init(
+			reason: "ambient_tick",
+			desiredLevel: .metadataOnly,
+			activeApp: currentAppName,
+			bundleIdentifier: nil,
+			windowTitle: self.lastObservedWindowTitle ?? "",
+			browserContext: browser,
+			appCategory: appContext.category,
+			explicitUserInitiated: false,
+			allowExpensive: false,
+			currentEvidence: evidenceProfile.level
+		))
+		let workspaceWindows = WindowDiscovery.findCompartmentWindows(compartment: activeComp)
+		let observedApps = Array(Set(([currentAppName] + workspaceWindows.map(\.appName)).filter { !$0.isEmpty })).sorted()
+		let observedBundleIDs = Array(Set(([self.lastBundleID].compactMap { $0 } + workspaceWindows.map(\.bundleID)).filter { !$0.isEmpty })).sorted()
+		DurableMemory.shared.recordWorkspaceObservation(
+			workflow: workflow.workflowType.rawValue,
+			compartment: activeComp.label,
+			apps: observedApps,
+			bundleIDs: observedBundleIDs,
+			urls: groundingURL.map { [$0.absoluteString] } ?? [],
+			tabTitles: tabTitles,
+			windowTitle: self.lastObservedWindowTitle,
+			selectedTabTitle: selectedTitle
+		)
 		let entityKey = groundingURL?.absoluteString ?? memory.currentEntity
-		let candidates = CheapAlwaysOnPortfolio.evaluate(
+		let portfolioResult = CheapAlwaysOnPortfolio.evaluateDetailed(
 			CheapAlwaysOnPortfolioInput(
 				reason: shouldRun.reason,
 				workflow: workflow.workflowType,
@@ -1331,13 +1398,60 @@ final class ContextEventProducer {
 				groundingResult: groundingResult
 			)
 		)
-		guard let selected = candidates.first else {
+		let candidates = portfolioResult.allCandidates
+		// Phase 31 — Tick Reasoning Ledger
+		let (availCtx, missCtx) = TickReasoningLedger.contextInventory(
+			hasWindowTitle: !(self.lastObservedWindowTitle ?? "").isEmpty,
+			hasBrowserURL: groundingURL != nil,
+			hasBrowserTabs: !tabTitles.isEmpty,
+			hasAXText: false,
+			hasOCR: false,
+			hasVisualDescriptor: false,
+			hasSelectedText: false,
+			hasClipboard: compressor.clipboardMetadata != "none"
+		)
+		let tickFamilies = Set(candidates.map { $0.family.rawValue }).sorted()
+		let tickWinners = candidates.prefix(3).map { "\($0.family.rawValue):\($0.capabilityId)" }
+		TickReasoningLedger.emit(TickReasoningLedger.TickContext(
+			tickId: UUID().uuidString.prefix(6).description,
+			activeApp: currentAppName,
+			windowTitle: self.lastObservedWindowTitle ?? "",
+			browserTitle: selectedTitle,
+			browserURL: groundingURL?.absoluteString,
+			semanticDomain: groundingResult.domain,
+			workflow: workflow.workflowType.rawValue,
+			compartmentLabel: activeComp.label,
+			availableContext: availCtx,
+			missingContext: missCtx,
+			candidateFamilies: tickFamilies,
+			familyWinners: tickWinners,
+			selected: portfolioResult.floatingCandidate?.capabilityId,
+			reason: portfolioResult.floatingCandidate != nil ? "portfolio_winner" : (portfolioResult.panelCandidates.isEmpty ? "no_candidates" : "no_floating_candidate")
+		))
+
+		guard let selected = portfolioResult.floatingCandidate else {
+			let bestBlockedAction = evidenceProfile.level.rank < ProgressiveEvidenceLevel.visible_content.rank
+				? "summarize_visible_content"
+				: nil
+			let quietReason = evidenceProfile.level.rank < ProgressiveEvidenceLevel.metadata_rich.rank
+				? "evidence_is_metadata_only"
+				: (portfolioResult.panelCandidates.isEmpty ? "no_useful_action_exists" : "no_floating_action")
+			QuietDecisionLogger.emit(
+				shown: false,
+				reason: quietReason,
+				bestBlockedAction: bestBlockedAction,
+				missingContext: evidenceProfile.level.rank < ProgressiveEvidenceLevel.visible_content.rank ? "visible_content" : "none",
+				nextContextNeeded: bestBlockedAction == nil ? "none" : evidenceProfile.level.nextContextNeeded,
+				panelActionsAvailable: !portfolioResult.panelCandidates.isEmpty,
+				panelCount: portfolioResult.panelCandidates.count
+			)
 			return CheapPortfolioRun(
 				ran: true,
 				suggestion: nil,
-				candidatesCount: 0,
+				candidatesCount: candidates.count,
 				selected: nil,
-				suppressionReason: "no_candidates",
+				panelCount: portfolioResult.panelCandidates.count,
+				suppressionReason: portfolioResult.panelCandidates.isEmpty ? "no_candidates" : "no_floating_candidate",
 				determinerActionable: determiner.actionable
 			)
 		}
@@ -1350,6 +1464,7 @@ final class ContextEventProducer {
 				suggestion: nil,
 				candidatesCount: candidates.count,
 				selected: selected.capabilityId,
+				panelCount: portfolioResult.panelCandidates.count,
 				suppressionReason: "recent_suggestion_cooldown",
 				determinerActionable: determiner.actionable
 			)
@@ -1361,7 +1476,9 @@ final class ContextEventProducer {
 			workflow: workflow,
 			behavior: behavior,
 			memory: memory,
-			compartment: activeComp
+			compartment: activeComp,
+			evidenceProfile: evidenceProfile,
+			browserAssessment: browserAssessment
 		)
 		print("[JarvisPipeline] decision=shown reason=cheap_always_on")
 		return CheapPortfolioRun(
@@ -1369,6 +1486,7 @@ final class ContextEventProducer {
 			suggestion: suggestion,
 			candidatesCount: candidates.count,
 			selected: selected.capabilityId,
+			panelCount: portfolioResult.panelCandidates.count,
 			suppressionReason: "none",
 			determinerActionable: determiner.actionable
 		)
@@ -1379,19 +1497,38 @@ final class ContextEventProducer {
 		workflow: WorkflowState,
 		behavior: BehavioralStateRecord,
 		memory: WorkingMemorySnapshot,
-		compartment: TaskCompartment?
+		compartment: TaskCompartment?,
+		evidenceProfile: EvidenceProfile,
+		browserAssessment: BrowserContextAssessment?
 	) -> AmbientJarvisSuggestion {
 		let registry = CognitiveCapabilityRegistry.shared
-		let primary = registry.get(candidate.capabilityId) ?? CognitiveCapability(
-			id: candidate.capabilityId,
-			label: candidate.title,
-			inputRequirements: candidate.involvedApps,
-			outputType: "system_action",
-			evidenceThreshold: candidate.requiredEvidence,
-			riskLevel: .light_action,
-			requiresConfirmation: candidate.requiresConfirmation,
-			executionMode: candidate.executionMode
-		)
+		let primary: CognitiveCapability = {
+			if let registered = registry.get(candidate.capabilityId) {
+				guard !candidate.involvedApps.isEmpty else { return registered }
+				return CognitiveCapability(
+					id: registered.id,
+					label: registered.label,
+					inputRequirements: candidate.involvedApps,
+					outputType: registered.outputType,
+					evidenceThreshold: registered.evidenceThreshold,
+					privacyLevel: registered.privacyLevel,
+					riskLevel: registered.riskLevel,
+					requiresConfirmation: registered.requiresConfirmation,
+					executionMode: registered.executionMode
+				)
+			}
+			return CognitiveCapability(
+				id: candidate.capabilityId,
+				label: candidate.title,
+				inputRequirements: candidate.involvedApps,
+				outputType: "system_action",
+				evidenceThreshold: candidate.requiredEvidence,
+				riskLevel: .light_action,
+				requiresConfirmation: candidate.requiresConfirmation,
+				executionMode: candidate.executionMode
+			)
+		}()
+		let workspacePattern = WorkspacePatternTracker.shared.knownPatterns().first
 		let artifact = ArtifactResult(
 			type: primary.outputType,
 			title: candidate.title,
@@ -1419,6 +1556,9 @@ final class ContextEventProducer {
 			inferredNeed: .planning,
 			requiresConfirmation: candidate.requiresConfirmation,
 			auxiliaryCapabilityIds: [],
+			involvedApps: candidate.involvedApps,
+			involvedURLs: Array((workspacePattern?.urls ?? []).prefix(8)),
+			browserTabTitles: Array(Set((compartment?.browserTabs.sorted() ?? []) + (workspacePattern?.tabTitles ?? [])).prefix(10)),
 			generatedAction: nil
 		)
 		let executionMode: AmbientExecutionMode = {
@@ -1450,7 +1590,10 @@ final class ContextEventProducer {
 				relatedFocusEntities: memory.relatedFocusEntities,
 				activeTerms: memory.repeatedConcepts,
 				evidenceQuality: candidate.requiredEvidence,
+				evidenceLevel: evidenceProfile.level.rawValue,
 				browserTabs: compartment?.browserTabs.sorted() ?? [],
+				browserContextType: browserAssessment?.kind.rawValue,
+				browserContentAvailable: browserAssessment?.contentAvailable ?? evidenceProfile.contentAvailable,
 				actionIntent: candidate.capabilityId
 			),
 			actionCard: card,
@@ -1480,7 +1623,8 @@ final class ContextEventProducer {
 		candidatesCount: Int,
 		selected: String?,
 		surfaceResult: String,
-		suppressionReason: String
+		suppressionReason: String,
+		panelCount: Int
 	) {
 		SuggestionTickSummaryLog.log(
 			modelReady: modelReady,
@@ -1493,7 +1637,8 @@ final class ContextEventProducer {
 			candidatesCount: candidatesCount,
 			selected: selected,
 			surfaceResult: surfaceResult,
-			suppressionReason: suppressionReason
+			suppressionReason: suppressionReason,
+			panelCount: panelCount
 		)
 	}
 
@@ -1588,13 +1733,21 @@ final class ContextEventProducer {
 		groundingResult: SemanticGroundingResult? = nil,
 		compartment: TaskCompartment? = nil
 	) -> String {
-		if hasSelection { return "selection" }
-		if hasOCRHints { return "ocr" }
-		if hasBrowserContext { return "browser_context" }
 		if let quality = editorContextQuality(appCategory: appCategory, groundingResult: groundingResult, compartment: compartment) {
 			return quality
 		}
-		return "title_only"
+		let profile = EvidenceQualityModel.evaluate(
+			title: "metadata",
+			url: hasBrowserContext ? URL(string: "https://metadata.local") : nil,
+			tabTitles: hasBrowserContext ? ["metadata"] : [],
+			hasAXText: false,
+			hasOCR: hasOCRHints,
+			hasSelectedText: hasSelection,
+			semanticGrounding: groundingResult?.confidence ?? 0 >= 0.65,
+			durableCompartment: compartment?.compartmentTrust ?? 0 >= 0.70,
+			browserAssessment: nil
+		)
+		return profile.level.rawValue
 	}
 
 	private static func editorContextQuality(

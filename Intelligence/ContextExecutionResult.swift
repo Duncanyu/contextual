@@ -342,7 +342,16 @@ public final class CognitiveCapabilityRegistry: Sendable {
             CognitiveCapability(id: "create_next_steps", label: "Create next steps", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only"),
             // Phase 22 — OpportunityEngine capabilities
             CognitiveCapability(id: "create_study_outline", label: "Create study outline", inputRequirements: ["recent_titles"], outputType: "outline", evidenceThreshold: "title_only"),
-            CognitiveCapability(id: "generate_test_checklist", label: "Create testing checklist", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only")
+            CognitiveCapability(id: "generate_test_checklist", label: "Create testing checklist", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only"),
+            CognitiveCapability(id: "compare_rental_options", label: "Compare rental options", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "comparison_table", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "draft_listing_ad", label: "Draft listing ad", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "draft", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "create_listing_checklist", label: "Create listing checklist", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "checklist", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "extract_pricing_guidance", label: "Extract pricing guidance", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "summary", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "identify_missing_listing_details", label: "Identify missing listing details", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "checklist", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "create_questions_to_ask_landlord", label: "Create landlord questions", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "draft", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "compare_listing_platforms", label: "Compare listing platforms", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "comparison_table", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "summarize_thread", label: "Summarize thread", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "summary", evidenceThreshold: "browser_tabs"),
+            CognitiveCapability(id: "synthesize_advice", label: "Synthesize advice", inputRequirements: ["recent_titles", "browser_tabs"], outputType: "summary", evidenceThreshold: "browser_tabs")
         ]
 
         for c in cognitiveList { caps[c.id] = c }
@@ -353,11 +362,15 @@ public final class CognitiveCapabilityRegistry: Sendable {
             CognitiveCapability(id: "pause_media", label: "Pause media", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
             CognitiveCapability(id: "suggest_focus_playlist", label: "Suggest focus playlist", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .preview_only),
             CognitiveCapability(id: "enable_reduce_interruptions", label: "Enable Reduce Interruptions", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
-            CognitiveCapability(id: "launch_recent_workspace", label: "Launch recent workspace", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .preview_only),
-            CognitiveCapability(id: "open_related_app_set", label: "Open related app set", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .preview_only),
+            CognitiveCapability(id: "launch_recent_workspace", label: "Launch recent workspace", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "open_related_app_set", label: "Open related app set", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "open_relevant_app", label: "Open relevant app", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "start_focus_timer", label: "Start focus timer", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
-            CognitiveCapability(id: "copy_result_to_clipboard", label: "Copy to clipboard", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action)
+            CognitiveCapability(id: "copy_current_url", label: "Copy current URL", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
+            CognitiveCapability(id: "copy_all_related_links", label: "Copy all related links", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
+            CognitiveCapability(id: "copy_result_to_clipboard", label: "Copy to clipboard", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
+            CognitiveCapability(id: "remember_workspace", label: "Remember workspace", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
+            CognitiveCapability(id: "open_current_task_panel", label: "Open current task panel", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action)
         ]
         
         for c in localList { caps[c.id] = c }
@@ -366,8 +379,11 @@ public final class CognitiveCapabilityRegistry: Sendable {
         let frictionList = [
             CognitiveCapability(id: "collect_references", label: "Collect references", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: false, executionMode: .local_action),
             CognitiveCapability(id: "pin_reference_tabs", label: "Collect repeated tabs", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "restore_research_tabs", label: "Restore research tabs", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "restore_workspace", label: "Restore workspace", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "arrange_side_by_side", label: "Arrange side by side", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "switch_to_paired_app", label: "Switch to paired app", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "split_research_setup", label: "Split research setup", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "resume_focus_media", label: "Resume focus media", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
             CognitiveCapability(id: "extract_and_organize", label: "Extract and organize", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: false, executionMode: .local_action),
             CognitiveCapability(id: "precompute_answer", label: "Pre-load answer", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .read_only, requiresConfirmation: false, executionMode: .preview_only),
@@ -603,6 +619,7 @@ public enum CapabilitySelector {
 }
 import Foundation
 import AppKit
+import ApplicationServices
 
 public enum CapabilityExecutionStatus: String, Codable, Sendable {
     case previewGenerated = "preview_generated"
@@ -616,8 +633,35 @@ public enum CapabilityExecutionStatus: String, Codable, Sendable {
 @MainActor
 public final class CapabilityExecutor {
     public static let shared = CapabilityExecutor()
-    
+
+	struct LocalActionOutcome {
+		let status: CapabilityExecutionStatus
+		let verificationStatus: String
+		let reason: String
+	}
+
+	struct TestHooks {
+		var focusShortcutAvailable: (() -> Bool)?
+		var runFocusShortcut: (() -> LocalActionOutcome)?
+		var arrangeSideBySide: (([String], [String]) -> LocalActionOutcome)?
+		var switchToPairedApp: (([String]) -> LocalActionOutcome)?
+		var restoreWorkspace: (([String], [String]) -> LocalActionOutcome)?
+		var restoreResearchTabs: (([String]) -> LocalActionOutcome)?
+		var splitResearchSetup: ((String, [String]) -> LocalActionOutcome)?
+		var openAppPair: (([String]) -> LocalActionOutcome)?
+	}
+
+	static var testHooks = TestHooks()
+    private var cachedFocusShortcut: (name: String?, checkedAt: Date)?
+
     private init() {}
+
+    public func isFocusShortcutAvailable() async -> Bool {
+        if let override = Self.testHooks.focusShortcutAvailable {
+            return override()
+        }
+        return focusShortcut(named: "Contextual Focus On") != nil
+    }
     
     public func execute(capability: CognitiveCapability, context: [String: Any]) async -> CapabilityExecutionStatus {
         print("[CapabilityExecution] started id=\(capability.id)")
@@ -635,7 +679,7 @@ public final class CapabilityExecutor {
         }
         
         switch capability.id {
-        case "suggest_focus_playlist", "open_related_app_set":
+        case "suggest_focus_playlist":
             print("[CapabilityExecution] status=preview_generated id=\(capability.id)")
             print("[CapabilityExecution] completed status=success id=\(capability.id) reason=preview_only")
             return .previewGenerated
@@ -654,6 +698,9 @@ public final class CapabilityExecutor {
 
         case "launch_recent_workspace":
             return launchRecentWorkspace(context: context)
+
+        case "open_related_app_set":
+            return openCommonAppPair(context: context)
             
         case "pause_media":
             return await pauseMedia()
@@ -668,11 +715,20 @@ public final class CapabilityExecutor {
         case "pin_reference_tabs":
             return pinReferenceTabs(context: context)
 
+        case "restore_research_tabs":
+            return restoreResearchTabs(context: context)
+
         case "restore_workspace":
             return restoreWorkspace(context: context)
 
         case "arrange_side_by_side":
-            return restoreWorkspace(context: context)  // same open-apps logic
+            return arrangeSideBySide(context: context)
+
+        case "switch_to_paired_app":
+            return switchToPairedApp(context: context)
+
+        case "split_research_setup":
+            return splitResearchSetup(context: context)
 
         case "resume_focus_media":
             return await playFocusMedia(context: context)
@@ -684,6 +740,39 @@ public final class CapabilityExecutor {
             print("[CapabilityExecution] status=preview_generated id=precompute_answer")
             print("[CapabilityExecution] completed status=success id=precompute_answer reason=preview_only")
             return .previewGenerated
+
+        // Phase 31 — New local actions
+        case "open_paired_app":
+            let appName = context["appName"] as? String ?? (context["apps"] as? [String])?.first ?? ""
+            return Phase31LocalActions.openPairedApp(appName: appName, reason: "user_click")
+
+        case "switch_to_last_task_window":
+            let appName = context["appName"] as? String ?? (context["apps"] as? [String])?.first ?? ""
+            let titleHint = context["windowTitleHint"] as? String
+            return Phase31LocalActions.switchToLastTaskWindow(appName: appName, windowTitleSubstring: titleHint)
+
+        case "copy_current_url":
+            let url = context["url"] as? String
+                ?? (context["tabURLs"] as? [String])?.first
+                ?? currentBrowserContext()?.selectedURL?.absoluteString
+                ?? currentBrowserContext()?.currentURL?.absoluteString
+            let title = context["title"] as? String
+                ?? (context["tabTitles"] as? [String])?.first
+            return Phase31LocalActions.copyCurrentURL(url: url, title: title)
+
+        case "copy_all_related_links":
+            let urls = context["urls"] as? [String] ?? []
+            let titles = context["titles"] as? [String] ?? context["tabTitles"] as? [String] ?? []
+            return Phase31LocalActions.copyAllRelatedLinks(urls: urls, titles: titles)
+
+        case "open_focus_shortcut_setup":
+            return Phase31LocalActions.openFocusShortcutSetup()
+
+        case "remember_workspace":
+            return rememberWorkspace(context: context)
+
+        case "open_current_task_panel":
+            return openCurrentTaskPanel()
 
         default:
             if capability.executionMode == .preview_only {
@@ -698,12 +787,63 @@ public final class CapabilityExecutor {
     
     private func copyToClipboard(context: [String: Any]) -> CapabilityExecutionStatus {
         guard let text = context["text"] as? String else {
+            print("[ActionExecution] capability=copy_result_to_clipboard")
+            print("[ActionFailure] capability=copy_result_to_clipboard reason=missing_data")
+            print("[ActionVerification] capability=copy_result_to_clipboard status=failed")
             print("[CapabilityExecution] blocked reason=missing_data")
             return .blocked
         }
+        print("[ActionExecution] capability=copy_result_to_clipboard")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        let copied = NSPasteboard.general.string(forType: .string) == text
+        print("[ClipboardAction] status=\(copied ? "success" : "failed")")
+        print("[ActionVerification] capability=copy_result_to_clipboard status=\(copied ? "success" : "failed")")
         print("[CapabilityExecution] completed status=success id=copy_result_to_clipboard")
+        return copied ? .success : .blocked
+    }
+
+    private func rememberWorkspace(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=remember_workspace")
+        let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
+        let runtimeVisibleApps = Array(Set(runtime.visibleWindows.map(\.appName) + [runtime.frontmostAppName])).filter { !$0.isEmpty }
+        let apps = (context["apps"] as? [String] ?? runtimeVisibleApps)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let urls = (context["tabURLs"] as? [String] ?? [])
+        let tabTitles = (context["tabTitles"] as? [String] ?? runtime.browserTabTitles)
+        let workflow = (context["workflow"] as? String)
+            ?? (context["workflow"] as? AmbientWorkflowType)?.rawValue
+            ?? "unknown"
+        let compartment = (context["compartmentLabel"] as? String)
+            ?? (context["workflow"] as? String)
+            ?? (context["workflow"] as? AmbientWorkflowType)?.rawValue
+            ?? "none"
+        guard apps.count >= 2 || urls.count >= 1 || tabTitles.count >= 2 else {
+            print("[ActionFailure] capability=remember_workspace reason=insufficient_workspace_context")
+            print("[ActionVerification] capability=remember_workspace status=failed")
+            print("[CapabilityExecution] completed status=unavailable id=remember_workspace reason=insufficient_workspace_context")
+            return .unavailable
+        }
+        DurableMemory.shared.recordWorkspaceObservation(
+            workflow: workflow,
+            compartment: compartment,
+            apps: apps,
+            bundleIDs: runtime.runningApps.filter { apps.contains($0.appName) }.map(\.bundleID),
+            urls: urls,
+            tabTitles: tabTitles,
+            windowTitle: context["windowTitle"] as? String,
+            selectedTabTitle: tabTitles.first
+        )
+        print("[ActionVerification] capability=remember_workspace status=success")
+        print("[CapabilityExecution] completed status=success id=remember_workspace reason=workspace_recorded")
+        return .success
+    }
+
+    private func openCurrentTaskPanel() -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=open_current_task_panel")
+        NotificationCenter.default.post(name: .contextualOpenTaskPanel, object: nil)
+        print("[ActionVerification] capability=open_current_task_panel status=success")
+        print("[CapabilityExecution] completed status=success id=open_current_task_panel reason=panel_requested")
         return .success
     }
     
@@ -715,65 +855,72 @@ public final class CapabilityExecutor {
     }
 
     private func enableReduceInterruptions(context: [String: Any]) -> CapabilityExecutionStatus {
-        // Phase 25.6 — Task D: Honesty.
-        // If we can't toggle Focus mode, we MUST return unavailable or preview_only.
-        print("[FocusAction] mode=toggle_system_focus status=unavailable reason=no_focus_service_wired")
-        print("[CapabilityExecution] completed status=unavailable id=enable_reduce_interruptions reason=no_focus_service_wired")
-        return .unavailable
+        print("[ActionExecution] capability=enable_reduce_interruptions")
+        // Phase 32.1: Detect shortcut availability with structured log
+        let focusDetection = FocusShortcutDetector.detect()
+        LiveActionPath.emit(capability: "enable_reduce_interruptions", route: "environment", executor: "FocusShortcut", snapshotAge: 0, hasTargets: focusDetection.available, hasURLs: false, willExecute: focusDetection.available, reason: focusDetection.available ? "shortcut_found" : "shortcut_missing")
+        if let override = Self.testHooks.runFocusShortcut {
+            let outcome = override()
+            print("[FocusAction] method=shortcuts status=\(outcome.verificationStatus)")
+            if outcome.status != .success {
+                print("[ActionFailure] capability=enable_reduce_interruptions reason=\(outcome.reason)")
+            }
+            print("[ActionVerification] capability=enable_reduce_interruptions status=\(outcome.verificationStatus)")
+            print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=enable_reduce_interruptions reason=\(outcome.reason)")
+            return outcome.status
+        }
+
+        guard let shortcutName = focusShortcut(named: "Contextual Focus On") else {
+            print("[FocusAction] method=shortcuts status=unavailable reason=shortcut_missing")
+            print("[ActionFailure] capability=enable_reduce_interruptions reason=shortcut_missing")
+            print("[ActionVerification] capability=enable_reduce_interruptions status=failed")
+            print("[CapabilityExecution] completed status=unavailable id=enable_reduce_interruptions reason=shortcut_missing")
+            return .unavailable
+        }
+
+        let result = runProcess("/usr/bin/shortcuts", arguments: ["run", shortcutName])
+        let verification = result.success ? "success" : "failed"
+        print("[FocusAction] method=shortcuts status=\(verification)")
+        if !result.success {
+            print("[ActionFailure] capability=enable_reduce_interruptions reason=shortcut_run_failed")
+        }
+        print("[ActionVerification] capability=enable_reduce_interruptions status=\(verification)")
+        print("[CapabilityExecution] completed status=\(result.success ? CapabilityExecutionStatus.success.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=enable_reduce_interruptions reason=\(result.success ? "shortcut_ran" : "shortcut_run_failed")")
+        return result.success ? .success : .unavailable
     }
     
     private func playFocusMedia(context: [String: Any]) async -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=play_focus_media")
         let intent = context["musicIntent"] as? MusicIntent
         let (success, status, reason, actualName) = await MusicExecutor.play(intent: intent)
         if success {
+            print("[MusicAction] action=\((intent?.action ?? .resume).rawValue) status=success")
+            print("[ActionVerification] capability=play_focus_media status=success")
             print("[CapabilityExecution] completed status=success id=play_focus_media reason=\(reason)")
 			if let name = actualName {
 				let comp = context["compartment"] as? TaskCompartment
 				let workflow = context["workflow"] as? AmbientWorkflowType ?? .unknown
 				PlaylistMemory.shared.record(name: name, compartment: comp, workflow: workflow)
+				let durableContext = DurableMemoryContext.build(
+					workflow: workflow.rawValue,
+					compartment: comp?.label,
+					app: (context["apps"] as? [String])?.first ?? "music",
+					activity: "active",
+					browserType: nil
+				)
+				DurableMemory.shared.recordMusicPreference(playlist: name, context: durableContext, source: "accepted_action")
 			}
             return .success
         }
+        print("[MusicAction] action=\((intent?.action ?? .resume).rawValue) status=failed")
+        print("[ActionFailure] capability=play_focus_media reason=\(reason)")
+        print("[ActionVerification] capability=play_focus_media status=failed")
         print("[CapabilityExecution] completed status=\(status.rawValue) id=play_focus_media reason=\(reason)")
         return status
     }
     
     private func launchRecentWorkspace(context: [String: Any]) -> CapabilityExecutionStatus {
-        guard let apps = context["apps"] as? [String], !apps.isEmpty else {
-            print("[WorkspaceAction] blocked reason=no_apps")
-            print("[WorkspaceActionExecution] status=blocked")
-            return .blocked
-        }
-        
-        print("[WorkspaceAction] mode=open_apps")
-        print("[WorkspaceAction] apps_to_open=\(apps.joined(separator: ","))")
-        
-        var opened: [String] = []
-        var skipped: [String] = []
-        
-        for app in apps {
-            if NSWorkspace.shared.launchApplication(app) {
-                opened.append(app)
-            } else {
-                skipped.append(app)
-            }
-        }
-        
-        print("[WorkspaceActionExecution] opened_apps=\(opened.joined(separator: ","))")
-        if !skipped.isEmpty {
-            print("[WorkspaceActionExecution] skipped_apps=\(skipped.joined(separator: ","))")
-        }
-        
-        if opened.isEmpty {
-            print("[WorkspaceActionExecution] status=unavailable")
-            print("[CapabilityExecution] completed status=unavailable id=launch_recent_workspace reason=failed_to_open_any_apps")
-            return .unavailable
-        }
-        
-        let statusStr = skipped.isEmpty ? "success" : "partial"
-        print("[WorkspaceActionExecution] status=\(statusStr)")
-        print("[CapabilityExecution] completed status=success id=launch_recent_workspace reason=opened_workspace_apps")
-        return .success
+        return restoreWorkspace(context: context)
     }
     
     private func pauseMedia() async -> CapabilityExecutionStatus {
@@ -791,11 +938,16 @@ public final class CapabilityExecutor {
              return .blocked
         }
 
+        print("[ActionExecution] capability=open_relevant_app")
+
         // Use modern API if possible, fallback to launchApplication for simplicity in this prototype
         if NSWorkspace.shared.launchApplication(appName) {
+            print("[ActionVerification] capability=open_relevant_app status=success")
             print("[CapabilityExecution] completed status=success id=open_relevant_app")
             return .success
         }
+        print("[ActionFailure] capability=open_relevant_app reason=failed_to_launch_app")
+        print("[ActionVerification] capability=open_relevant_app status=failed")
         return .unavailable
     }
 
@@ -803,6 +955,7 @@ public final class CapabilityExecutor {
 
     /// Collect current tab titles + URLs, format as markdown, copy to clipboard.
     private func collectReferences(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=collect_references")
         let tabTitles = context["tabTitles"] as? [String] ?? []
         let tabURLs = context["tabURLs"] as? [String] ?? []
         let entity = context["entity"] as? String ?? ""
@@ -820,6 +973,8 @@ public final class CapabilityExecutor {
         let count = max(tabTitles.count, tabURLs.count)
         if count == 0 && repeatedConcepts.isEmpty {
             print("[ReferenceCollector] collected count=0")
+            print("[ActionFailure] capability=collect_references reason=no_references_found")
+            print("[ActionVerification] capability=collect_references status=failed")
             print("[CapabilityExecution] completed status=unavailable id=collect_references reason=no_references_found")
             return .unavailable
         }
@@ -848,6 +1003,7 @@ public final class CapabilityExecutor {
 
         print("[ReferenceCollector] collected count=\(count)")
         print("[ReferenceCollector] copied_to_clipboard=yes")
+        print("[ActionVerification] capability=collect_references status=success")
         print("[CapabilityExecution] completed status=success id=collect_references")
         return .success
     }
@@ -855,67 +1011,484 @@ public final class CapabilityExecutor {
     /// Pin reference tabs — not wired to browser pinning yet.
     /// Falls back to collecting repeated tab info to clipboard.
     private func pinReferenceTabs(context: [String: Any]) -> CapabilityExecutionStatus {
-        // Browser tab pinning requires AppleScript or accessibility — not wired yet.
-        print("[TabActionExecution] action=pin_reference_tabs status=unavailable reason=browser_pin_not_wired")
+        return restoreResearchTabs(context: context)
+    }
 
-        // Fallback: collect the tabs the user keeps switching between
-        let tabTitles = context["tabTitles"] as? [String] ?? []
-        let tabURLs = context["tabURLs"] as? [String] ?? []
-        if tabTitles.isEmpty && tabURLs.isEmpty {
-            print("[CapabilityExecution] completed status=unavailable id=pin_reference_tabs reason=no_tab_data")
+    private func restoreResearchTabs(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=restore_research_tabs")
+        let urls = resolvedTabURLs(from: context)
+        if let override = Self.testHooks.restoreResearchTabs {
+            let outcome = override(urls)
+            print("[TabRestore] opened=\(urls.count)")
+            print("[TabRestore] status=\(outcome.verificationStatus)")
+            if outcome.status != .success {
+                print("[ActionFailure] capability=restore_research_tabs reason=\(outcome.reason)")
+            }
+            print("[ActionVerification] capability=restore_research_tabs status=\(outcome.verificationStatus)")
+            print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=restore_research_tabs reason=\(outcome.reason)")
+            return outcome.status
+        }
+
+        guard !urls.isEmpty else {
+            print("[ActionFailure] capability=restore_research_tabs reason=no_tab_urls")
+            print("[ActionVerification] capability=restore_research_tabs status=failed")
+            print("[CapabilityExecution] completed status=unavailable id=restore_research_tabs reason=no_tab_urls")
             return .unavailable
         }
 
-        // Collect to clipboard as fallback
-        return collectReferences(context: context)
+        let browserApp = resolvedBrowserAppName(from: context)
+        var opened = 0
+        for urlString in urls {
+            guard let url = URL(string: urlString), openURL(url, preferredAppName: browserApp) else { continue }
+            opened += 1
+        }
+        let status = opened > 0 ? CapabilityExecutionStatus.success : .unavailable
+        let verification = opened == urls.count ? "success" : (opened > 0 ? "partial" : "failed")
+        print("[TabRestore] opened=\(opened)")
+        print("[TabRestore] status=\(verification)")
+        if opened == 0 {
+            print("[ActionFailure] capability=restore_research_tabs reason=failed_to_open_urls")
+        }
+        print("[ActionVerification] capability=restore_research_tabs status=\(verification)")
+        print("[CapabilityExecution] completed status=\(status.rawValue) id=restore_research_tabs reason=\(opened > 0 ? "opened_urls" : "failed_to_open_urls")")
+        return status
     }
 
-    /// Restore workspace / arrange side by side — open missing apps.
-    /// Filters out system apps that shouldn't be launched.
     private func restoreWorkspace(context: [String: Any]) -> CapabilityExecutionStatus {
-        guard let rawApps = context["apps"] as? [String], !rawApps.isEmpty else {
-            print("[WorkspaceAction] blocked reason=no_apps")
-            print("[WorkspaceActionExecution] status=blocked")
+        print("[ActionExecution] capability=restore_workspace")
+        let apps = resolvedWorkspaceApps(from: context)
+        let urls = resolvedTabURLs(from: context)
+        LiveActionPath.emit(capability: "restore_workspace", route: "environment", executor: "WorkspaceRestore", snapshotAge: 0, hasTargets: !apps.isEmpty, hasURLs: !urls.isEmpty, willExecute: !apps.isEmpty || !urls.isEmpty, reason: "user_click")
+
+        if let override = Self.testHooks.restoreWorkspace {
+            let outcome = override(apps, urls)
+            print("[WorkspaceRestore] apps=\(apps.joined(separator: ","))")
+            print("[WorkspaceRestore] status=\(outcome.verificationStatus)")
+            if outcome.status != .success {
+                print("[ActionFailure] capability=restore_workspace reason=\(outcome.reason)")
+            }
+            print("[ActionVerification] capability=restore_workspace status=\(outcome.verificationStatus)")
+            print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=restore_workspace reason=\(outcome.reason)")
+            return outcome.status
+        }
+
+        guard !apps.isEmpty || !urls.isEmpty else {
+            print("[ActionFailure] capability=restore_workspace reason=no_apps_or_urls")
+            print("[ActionVerification] capability=restore_workspace status=failed")
+            print("[CapabilityExecution] completed status=blocked id=restore_workspace reason=no_apps_or_urls")
             return .blocked
         }
 
-        // Phase 26.1 — Filter system apps before launching
-        let apps = rawApps.filter { !WorkspaceAppFilter.isSystemApp($0) }
+        var openedApps = 0
+        for app in apps where launchOrActivate(appName: app) {
+            openedApps += 1
+        }
+
+        let browserApp = resolvedBrowserAppName(from: context)
+        var openedURLs = 0
+        for urlString in urls {
+            guard let url = URL(string: urlString), openURL(url, preferredAppName: browserApp) else { continue }
+            openedURLs += 1
+        }
+
+        let anySuccess = openedApps > 0 || openedURLs > 0
+        let verification = (openedApps == apps.count && openedURLs == urls.count) ? "success" : (anySuccess ? "partial" : "failed")
+        print("[WorkspaceRestore] apps=\(apps.joined(separator: ","))")
+        print("[WorkspaceRestore] status=\(verification)")
+        if !anySuccess {
+            print("[ActionFailure] capability=restore_workspace reason=failed_to_restore_workspace")
+        }
+        print("[ActionVerification] capability=restore_workspace status=\(verification)")
+        print("[CapabilityExecution] completed status=\(anySuccess ? CapabilityExecutionStatus.success.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=restore_workspace reason=\(anySuccess ? "restored_workspace" : "failed_to_restore_workspace")")
+        return anySuccess ? .success : .unavailable
+    }
+
+    private func arrangeSideBySide(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=arrange_side_by_side")
+        let apps = resolvedWorkspaceApps(from: context)
+        let titles = resolvedTabTitles(from: context)
+        let urls = resolvedTabURLs(from: context)
+        LiveActionPath.emit(capability: "arrange_side_by_side", route: "environment", executor: "IntentExecutor", snapshotAge: 0, hasTargets: !apps.isEmpty, hasURLs: !urls.isEmpty, willExecute: true, reason: "runtime_discovery")
+
+        if let override = Self.testHooks.arrangeSideBySide {
+            let outcome = override(apps, titles)
+            print("[WindowArrange] targetA=\(apps.first ?? "unknown")")
+            print("[WindowArrange] targetB=\(apps.dropFirst().first ?? titles.first ?? "unknown")")
+            print("[WindowArrange] layout=left_right")
+            print("[WindowArrange] status=\(outcome.verificationStatus)")
+            if outcome.status != .success {
+                print("[ActionFailure] capability=arrange_side_by_side reason=\(outcome.reason)")
+            }
+            print("[ActionVerification] capability=arrange_side_by_side status=\(outcome.verificationStatus)")
+            print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=arrange_side_by_side reason=\(outcome.reason)")
+            return outcome.status
+        }
+
+        // Phase 34: Intent-driven execution via LayoutEngine with runtime window discovery.
+        // No payload required — discovers actual windows on screen.
+        let compartment = context["compartment"] as? TaskCompartment
+        let result = IntentExecutor.execute(
+            intent: "arrange_side_by_side",
+            compartment: compartment,
+            preferredAppA: apps.count >= 1 ? apps[0] : nil,
+            preferredAppB: apps.count >= 2 ? apps[1] : nil,
+            titleHintA: titles.first,
+            titleHintB: titles.dropFirst().first
+        )
+        let status: CapabilityExecutionStatus = (result == .success) ? .success : .unavailable
+        print("[CapabilityExecution] completed status=\(status.rawValue) id=arrange_side_by_side reason=intent_executor")
+        return status
+    }
+
+    private func switchToPairedApp(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=switch_to_paired_app")
+        let apps = resolvedWorkspaceApps(from: context)
+        let titleHint = context["windowTitleHint"] as? String ?? context["suggestionTitle"] as? String
+        LiveActionPath.emit(capability: "switch_to_paired_app", route: "environment", executor: "NSWorkspace", snapshotAge: 0, hasTargets: !apps.isEmpty, hasURLs: false, willExecute: !apps.isEmpty, reason: "user_click")
+        if let override = Self.testHooks.switchToPairedApp {
+            let outcome = override(apps)
+            print("[SwitchAction] target=\(apps.first ?? "unknown")")
+            print("[SwitchAction] status=\(outcome.verificationStatus)")
+            if outcome.status != .success {
+                print("[ActionFailure] capability=switch_to_paired_app reason=\(outcome.reason)")
+            }
+            print("[ActionVerification] capability=switch_to_paired_app status=\(outcome.verificationStatus)")
+            print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=switch_to_paired_app reason=\(outcome.reason)")
+            return outcome.status
+        }
+
+        // Phase 34: Intent-driven execution with runtime discovery
+        let compartment = context["compartment"] as? TaskCompartment
+        let result = IntentExecutor.execute(
+            intent: "switch_to_paired_app",
+            compartment: compartment,
+            preferredAppA: apps.first,
+            titleHintA: titleHint
+        )
+        print("[SwitchAction] target=\(apps.first ?? "discovered")")
+        print("[SwitchAction] status=\(result == .success ? "success" : "failed")")
+        print("[CapabilityExecution] completed status=\(result.rawValue) id=switch_to_paired_app reason=intent_executor")
+        return result
+    }
+
+    private func openCommonAppPair(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=open_related_app_set")
+        let apps = resolvedWorkspaceApps(from: context)
+        if let override = Self.testHooks.openAppPair {
+            let outcome = override(apps)
+            print("[OpenPair] apps=\(apps.joined(separator: ","))")
+            print("[OpenPair] status=\(outcome.verificationStatus)")
+            if outcome.status != .success {
+                print("[ActionFailure] capability=open_related_app_set reason=\(outcome.reason)")
+            }
+            print("[ActionVerification] capability=open_related_app_set status=\(outcome.verificationStatus)")
+            print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=open_related_app_set reason=\(outcome.reason)")
+            return outcome.status
+        }
+
         guard !apps.isEmpty else {
-            print("[WorkspaceAction] blocked reason=only_system_apps_in_list")
-            print("[WorkspaceActionExecution] status=blocked filtered_system_apps=\(rawApps.joined(separator: ","))")
+            print("[ActionFailure] capability=open_related_app_set reason=no_apps")
+            print("[ActionVerification] capability=open_related_app_set status=failed")
+            print("[CapabilityExecution] completed status=blocked id=open_related_app_set reason=no_apps")
             return .blocked
         }
 
-        print("[WorkspaceAction] mode=open_apps")
-        print("[WorkspaceAction] apps_to_open=\(apps.joined(separator: ","))")
+        var launched = 0
+        for app in Array(apps.prefix(2)) where launchOrActivate(appName: app) {
+            launched += 1
+        }
+        let verification = launched == min(apps.count, 2) ? "success" : (launched > 0 ? "partial" : "failed")
+        print("[OpenPair] apps=\(Array(apps.prefix(2)).joined(separator: ","))")
+        print("[OpenPair] status=\(verification)")
+        if launched == 0 {
+            print("[ActionFailure] capability=open_related_app_set reason=failed_to_launch_pair")
+        }
+        print("[ActionVerification] capability=open_related_app_set status=\(verification)")
+        print("[CapabilityExecution] completed status=\(launched > 0 ? CapabilityExecutionStatus.success.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=open_related_app_set reason=\(launched > 0 ? "opened_app_pair" : "failed_to_launch_pair")")
+        return launched > 0 ? .success : .unavailable
+    }
 
-        var opened: [String] = []
-        var skipped: [String] = []
+    private func splitResearchSetup(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[ActionExecution] capability=split_research_setup")
+        let urls = resolvedTabURLs(from: context)
+        let browser = resolvedBrowserAppName(from: context) ?? "Unknown"
+        LiveActionPath.emit(capability: "split_research_setup", route: "environment", executor: "IntentExecutor", snapshotAge: 0, hasTargets: true, hasURLs: !urls.isEmpty, willExecute: true, reason: "runtime_discovery")
 
-        for app in apps {
-            if NSWorkspace.shared.launchApplication(app) {
-                opened.append(app)
-            } else {
-                skipped.append(app)
+        if let override = Self.testHooks.splitResearchSetup {
+            let outcome = override(browser, urls)
+            print("[TabSplit] browser=\(browser)")
+            print("[TabSplit] strategy=\(BrowserSplitStrategy.strategy(for: browser))")
+            print("[TabSplit] status=\(outcome.verificationStatus)")
+            if outcome.status != .success {
+                print("[ActionFailure] capability=split_research_setup reason=\(outcome.reason)")
+            }
+            print("[ActionVerification] capability=split_research_setup status=\(outcome.verificationStatus)")
+            print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=split_research_setup reason=\(outcome.reason)")
+            return outcome.status
+        }
+
+        // Phase 34: Intent-driven execution — discovers URL from browser if not in payload
+        let result = IntentExecutor.execute(
+            intent: "split_research_setup",
+            compartment: context["compartment"] as? TaskCompartment,
+            targetURL: urls.dropFirst().first ?? urls.first,
+            browserName: browser
+        )
+        print("[CapabilityExecution] completed status=\(result.rawValue) id=split_research_setup reason=intent_executor")
+        return result
+    }
+
+    private func resolvedWorkspaceApps(from context: [String: Any]) -> [String] {
+        let explicit = (context["apps"] as? [String] ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !WorkspaceAppFilter.isSystemApp($0) }
+        if !explicit.isEmpty {
+            return explicit.reduce(into: [String]()) { acc, app in
+                if !acc.contains(app) { acc.append(app) }
             }
         }
 
-        print("[WorkspaceActionExecution] opened_apps=\(opened.joined(separator: ","))")
-        if !skipped.isEmpty {
-            print("[WorkspaceActionExecution] skipped_apps=\(skipped.joined(separator: ","))")
+        let hints = Set(resolvedTabTitles(from: context).map { $0.lowercased() })
+        let patterns = WorkspacePatternTracker.shared.knownPatterns()
+        if let best = patterns.max(by: { patternSupport($0, titleHints: hints) < patternSupport($1, titleHints: hints) }) {
+            return best.apps.filter { !WorkspaceAppFilter.isSystemApp($0) }
+        }
+        return []
+    }
+
+    private func resolvedTabURLs(from context: [String: Any]) -> [String] {
+        let explicit = (context["tabURLs"] as? [String] ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !explicit.isEmpty { return explicit }
+
+        let hints = Set(resolvedTabTitles(from: context).map { $0.lowercased() })
+        let patterns = WorkspacePatternTracker.shared.knownPatterns()
+        if let best = patterns.max(by: { patternSupport($0, titleHints: hints) < patternSupport($1, titleHints: hints) }) {
+            return Array(best.urls.prefix(8))
         }
 
-        if opened.isEmpty {
-            print("[WorkspaceActionExecution] status=unavailable")
-            print("[CapabilityExecution] completed status=unavailable id=restore_workspace reason=failed_to_open_any_apps")
-            return .unavailable
+        if let browser = currentBrowserContext(), let selected = browser.selectedURL?.absoluteString ?? browser.currentURL?.absoluteString {
+            return [selected]
+        }
+        return []
+    }
+
+    private func resolvedTabTitles(from context: [String: Any]) -> [String] {
+        let explicit = (context["tabTitles"] as? [String] ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !explicit.isEmpty { return explicit }
+        if let browser = currentBrowserContext() {
+            let selected = browser.selectedTitle.map { [$0] } ?? []
+            return Array((selected + browser.recentTabTitles).prefix(10))
+        }
+        return []
+    }
+
+    private func resolvedBrowserAppName(from context: [String: Any]) -> String? {
+        if let explicit = context["browserAppName"] as? String, !explicit.isEmpty {
+            return explicit
+        }
+        if let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName,
+           ["Safari", "Google Chrome", "Chrome", "Firefox", "Arc", "Brave Browser", "Microsoft Edge"].contains(frontmost) {
+            return frontmost
+        }
+        return currentBrowserContext()?.appName
+    }
+
+    private func currentBrowserContext() -> BrowserContextExtractor.BrowserContext? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        return BrowserContextExtractor.extract(appName: app.localizedName ?? "", activeAppPID: app.processIdentifier)
+    }
+
+    private func patternSupport(_ pattern: WorkspacePattern, titleHints: Set<String>) -> Int {
+        let tabs = Set(pattern.tabTitles.map { $0.lowercased() })
+        return tabs.intersection(titleHints).count * 3 + min(pattern.urls.count, 4) + pattern.frequency
+    }
+
+    private func pairedAppTarget(from apps: [String]) -> String? {
+        let current = NSWorkspace.shared.frontmostApplication?.localizedName?.lowercased()
+        return apps.first { $0.lowercased() != current } ?? apps.first
+    }
+
+    private func launchOrActivate(appName: String) -> Bool {
+        if let running = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == appName }) {
+            return running.activate(options: [.activateIgnoringOtherApps])
+        }
+        return NSWorkspace.shared.launchApplication(appName)
+    }
+
+    private func openURL(_ url: URL, preferredAppName: String?) -> Bool {
+        guard let preferredAppName else {
+            return NSWorkspace.shared.open(url)
+        }
+        let result = runProcess("/usr/bin/open", arguments: ["-a", preferredAppName, url.absoluteString])
+        return result.success || NSWorkspace.shared.open(url)
+    }
+
+    private func browserSplitStrategy(for browser: String) -> String {
+        let lower = browser.lowercased()
+        if lower.contains("firefox") { return "open_url_new_window" }
+        if lower.contains("chrome") || lower.contains("brave") || lower.contains("edge") || lower.contains("arc") { return "open_url_new_window" }
+        if lower.contains("safari") { return "new_document" }
+        return "open_url_new_window"
+    }
+
+    private func openURLInNewWindow(_ urlString: String, browserName: String) -> Bool {
+        guard let url = URL(string: urlString) else { return false }
+        let lower = browserName.lowercased()
+        if lower.contains("firefox") {
+            return runProcess("/usr/bin/open", arguments: ["-a", browserName, "--args", "-new-window", url.absoluteString]).success
+        }
+        if lower.contains("chrome") || lower.contains("brave") || lower.contains("edge") || lower.contains("arc") {
+            return runProcess("/usr/bin/open", arguments: ["-a", browserName, "--args", "--new-window", url.absoluteString]).success
+        }
+        if lower.contains("safari") {
+            let script = "tell application \"Safari\" to make new document with properties {URL:\"\(url.absoluteString)\"}"
+            return runProcess("/usr/bin/osascript", arguments: ["-e", script]).success
+        }
+        return openURL(url, preferredAppName: browserName)
+    }
+
+    private func focusShortcut(named preferred: String) -> String? {
+        if let override = Self.testHooks.focusShortcutAvailable {
+            return override() ? preferred : nil
+        }
+        if let cachedFocusShortcut,
+           Date().timeIntervalSince(cachedFocusShortcut.checkedAt) < 60 {
+            return cachedFocusShortcut.name
+        }
+        let result = runProcess("/usr/bin/shortcuts", arguments: ["list"])
+        guard result.success else {
+            cachedFocusShortcut = (nil, Date())
+            return nil
+        }
+        let shortcuts = result.stdout
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let found = shortcuts.first { $0.caseInsensitiveCompare(preferred) == .orderedSame }
+        cachedFocusShortcut = (found, Date())
+        return found
+    }
+
+    private func runProcess(_ launchPath: String, arguments: [String]) -> (success: Bool, stdout: String, stderr: String) {
+        let task = Process()
+        task.launchPath = launchPath
+        task.arguments = arguments
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        task.standardOutput = outPipe
+        task.standardError = errPipe
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            return (task.terminationStatus == 0, out.trimmingCharacters(in: .whitespacesAndNewlines), err.trimmingCharacters(in: .whitespacesAndNewlines))
+        } catch {
+            return (false, "", error.localizedDescription)
+        }
+    }
+
+    private struct ArrangeVerification {
+        let targetA: String
+        let targetB: String
+        let verified: Bool
+    }
+
+    private func arrangeWindowsForTargets(apps: [String], titleHints: [String]) -> ArrangeVerification? {
+        let targetApps = apps.isEmpty ? fallbackArrangeApps(from: titleHints) : apps
+        guard !targetApps.isEmpty else { return nil }
+        guard let screenFrame = NSScreen.main?.visibleFrame else { return nil }
+
+        let leftFrame = CGRect(x: screenFrame.minX, y: screenFrame.minY, width: floor(screenFrame.width / 2.0), height: screenFrame.height)
+        let rightFrame = CGRect(x: screenFrame.minX + floor(screenFrame.width / 2.0), y: screenFrame.minY, width: ceil(screenFrame.width / 2.0), height: screenFrame.height)
+
+        if targetApps.count == 1 {
+            guard let bundle = appBundleIdentifier(named: targetApps[0]) else { return nil }
+            let elements = windowElements(bundleIdentifier: bundle)
+            guard elements.count >= 2 else { return nil }
+            let leftOK = setWindow(elements[0], frame: leftFrame)
+            let rightOK = setWindow(elements[1], frame: rightFrame)
+            return ArrangeVerification(targetA: targetApps[0], targetB: targetApps[0], verified: leftOK && rightOK)
         }
 
-        let statusStr = skipped.isEmpty ? "success" : "partial"
-        print("[WorkspaceActionExecution] status=\(statusStr)")
-        print("[CapabilityExecution] completed status=success id=restore_workspace reason=opened_workspace_apps")
-        return .success
+        guard let leftBundle = appBundleIdentifier(named: targetApps[0]),
+              let rightBundle = appBundleIdentifier(named: targetApps[1]),
+              let leftWindow = windowElements(bundleIdentifier: leftBundle).first,
+              let rightWindow = windowElements(bundleIdentifier: rightBundle).first else {
+            return nil
+        }
+        let leftOK = setWindow(leftWindow, frame: leftFrame)
+        let rightOK = setWindow(rightWindow, frame: rightFrame)
+        return ArrangeVerification(targetA: targetApps[0], targetB: targetApps[1], verified: leftOK && rightOK)
+    }
+
+    private func fallbackArrangeApps(from titleHints: [String]) -> [String] {
+        let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName.map { [$0] } ?? []
+        if frontmost.isEmpty {
+            return []
+        }
+        if titleHints.count >= 2 {
+            return [frontmost[0], frontmost[0]]
+        }
+        let patterns = WorkspacePatternTracker.shared.knownPatterns()
+        if let firstPattern = patterns.first, firstPattern.apps.count >= 2 {
+            return Array(firstPattern.apps.prefix(2))
+        }
+        return frontmost
+    }
+
+    private func appBundleIdentifier(named appName: String) -> String? {
+        NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == appName })?.bundleIdentifier
+    }
+
+    private func windowElements(bundleIdentifier: String) -> [AXUIElement] {
+        guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else { return [] }
+        let axApp = AXUIElementCreateApplication(running.processIdentifier)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
+              let elements = value as? [AXUIElement] else { return [] }
+        return elements
+    }
+
+    private func setWindow(_ window: AXUIElement, frame: CGRect) -> Bool {
+        var position = CGPoint(x: frame.minX, y: frame.minY)
+        var size = CGSize(width: frame.width, height: frame.height)
+        guard let posValue = AXValueCreate(.cgPoint, &position),
+              let sizeValue = AXValueCreate(.cgSize, &size) else {
+            return false
+        }
+        let posSet = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posValue) == .success
+        let sizeSet = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue) == .success
+        guard posSet && sizeSet else { return false }
+        return verifyWindow(window, expectedFrame: frame)
+    }
+
+    private func verifyWindow(_ window: AXUIElement, expectedFrame: CGRect) -> Bool {
+        var posRef: CFTypeRef?
+        var sizeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &posRef) == .success,
+              AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRef) == .success,
+              let posValue = posRef,
+              let sizeValue = sizeRef else {
+            return false
+        }
+        var point = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetType(posValue as! AXValue) == .cgPoint,
+              AXValueGetType(sizeValue as! AXValue) == .cgSize,
+              AXValueGetValue(posValue as! AXValue, .cgPoint, &point),
+              AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else {
+            return false
+        }
+        let actual = CGRect(origin: point, size: size)
+        return abs(actual.minX - expectedFrame.minX) < 12
+            && abs(actual.minY - expectedFrame.minY) < 12
+            && abs(actual.width - expectedFrame.width) < 24
+            && abs(actual.height - expectedFrame.height) < 24
     }
 }
 

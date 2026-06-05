@@ -69,19 +69,75 @@ enum FrictionOpportunityReasoner {
                 }
 
             case .repeated_tab_switching:
-                // Phase 26.1 — Browser tab pinning is not wired. Use honest title.
-                // "Pin tabs" implies browser-level pinning; "Collect" is what actually executes.
-                let opp = FrictionOpportunity(
-                    capabilityId: "pin_reference_tabs",
-                    title: "Collect the tabs you keep switching between?",
-                    frictionType: .repeated_tab_switching,
-                    frictionRemoved: "Stops revisiting \(signal.evidence.first ?? "tabs") repeatedly",
-                    confidence: signal.confidence,
-                    requiresConfirmation: true,
-                    involvedApps: []
-                )
-                opportunities.append(opp)
-                generatedCandidate = opp.capabilityId
+                // Repeated tab switching with already-open tabs should produce
+                // arrange/pin/group friction, NOT "restore". Restore means reopen
+                // missing saved URLs from history.
+                let wsHistory = workspacePatterns.count
+                var tabsOpen = false
+                let browsers = ["Safari", "Google Chrome", "Firefox", "Arc"]
+                for browser in browsers {
+                    if let context = BrowserContextExtractor.extract(appName: browser, activeAppPID: nil) {
+                        if !context.recentTabTitles.isEmpty || context.currentURL != nil {
+                            tabsOpen = true
+                            break
+                        }
+                    }
+                }
+
+                if tabsOpen {
+                    print("[ProposalFunnelAudit] not_generated capability=restore_research_tabs reason=tabs_already_open")
+                    print("[WorkspaceRestoreGate] can_restore=no reason=tabs_present")
+                    
+                    let pinOpp = FrictionOpportunity(
+                        capabilityId: "pin_reference_tabs",
+                        title: "Pin these research tabs?",
+                        frictionType: .repeated_tab_switching,
+                        frictionRemoved: "Consolidates and pins the active research tabs",
+                        confidence: signal.confidence,
+                        requiresConfirmation: true,
+                        involvedApps: []
+                    )
+                    opportunities.append(pinOpp)
+                    
+                    let panelOpp = FrictionOpportunity(
+                        capabilityId: "open_current_task_panel",
+                        title: "Open the workspace task panel?",
+                        frictionType: .repeated_tab_switching,
+                        frictionRemoved: "Allows managing open research tasks",
+                        confidence: signal.confidence * 0.8,
+                        requiresConfirmation: false,
+                        involvedApps: []
+                    )
+                    opportunities.append(panelOpp)
+                    generatedCandidate = pinOpp.capabilityId
+                } else if wsHistory == 0 {
+                    // No workspace history = tabs are already open, nothing to restore.
+                    // Generate arrange_side_by_side instead.
+                    print("[ProposalFunnelAudit] not_generated capability=restore_research_tabs reason=no_missing_workspace_to_restore")
+                    let opp = FrictionOpportunity(
+                        capabilityId: "arrange_side_by_side",
+                        title: "Put these tabs side by side?",
+                        frictionType: .repeated_tab_switching,
+                        frictionRemoved: "Arranges \(signal.evidence.first ?? "tabs") you keep switching between",
+                        confidence: signal.confidence,
+                        requiresConfirmation: true,
+                        involvedApps: signal.involvedApps
+                    )
+                    opportunities.append(opp)
+                    generatedCandidate = opp.capabilityId
+                } else {
+                    let opp = FrictionOpportunity(
+                        capabilityId: "restore_research_tabs",
+                        title: "Restore the tabs you keep switching between?",
+                        frictionType: .repeated_tab_switching,
+                        frictionRemoved: "Stops revisiting \(signal.evidence.first ?? "tabs") repeatedly",
+                        confidence: signal.confidence,
+                        requiresConfirmation: true,
+                        involvedApps: []
+                    )
+                    opportunities.append(opp)
+                    generatedCandidate = opp.capabilityId
+                }
 
             case .repeated_reference_lookup:
                 let concepts = signal.evidence.prefix(2).joined(separator: ", ")

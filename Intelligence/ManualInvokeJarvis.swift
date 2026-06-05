@@ -73,6 +73,15 @@ enum ManualInvokeJarvis {
         }()
         print("[ManualInvokeJarvis] current_context_priority=yes")
         print("[ManualInvokeJarvis] current_title=\"\(windowTitle.prefix(120))\"")
+        let browserAssessment = browser.map {
+            BrowserContextStrategy.assess(
+                title: $0.selectedTitle ?? windowTitle,
+                url: $0.currentURL,
+                tabTitles: $0.recentTabTitles,
+                hasAXText: false,
+                hasOCR: false
+            )
+        }
         let selectedText = currentSnapshot?.selectedText ?? ""
         let hasSelection = !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasBrowserContext = browserURL != nil || !tabTitles.isEmpty
@@ -91,6 +100,28 @@ enum ManualInvokeJarvis {
         let useVisual = !hasNonVisualContext
         let visualReason = useVisual ? "no_other_context_available" : "browser_or_ax_or_title_available"
         print("[ManualInvokeJarvis] visual_fallback_used=\(useVisual ? "yes" : "no") reason=\(visualReason)")
+        let _ = await ContextAcquisitionCoordinator.shared.acquire(.init(
+            reason: "manual_invoke",
+            desiredLevel: .visibleRegion,
+            activeApp: appName,
+            bundleIdentifier: bundleID,
+            windowTitle: windowTitle,
+            browserContext: browser,
+            appCategory: nil,
+            explicitUserInitiated: true,
+            allowExpensive: true,
+            currentEvidence: EvidenceQualityModel.evaluate(
+                title: windowTitle,
+                url: browserURL,
+                tabTitles: tabTitles,
+                hasAXText: false,
+                hasOCR: !(currentSnapshot?.recentOCRExcerpt ?? "").isEmpty,
+                hasSelectedText: hasSelection,
+                semanticGrounding: false,
+                durableCompartment: false,
+                browserAssessment: browserAssessment
+            ).level
+        ))
 
         // Step 4b: Phase 21.2 — Editor context fallback for coding apps.
         // When AX selection is unavailable in an editor, use title / AX window /
@@ -322,6 +353,17 @@ enum ManualInvokeJarvis {
 
         print("[ManualInvokeJarvis] current_context_priority=yes")
         print("[ManualInvokeJarvis] current_title=\"\(synthesizedSnapshot.windowTitle.prefix(120))\"")
+        let syntheticBrowserContext = hasBrowserContext
+            ? BrowserContextExtractor.BrowserContext(
+                appName: synthesizedSnapshot.activeApp,
+                selectedTitle: selectedBrowserTabTitle ?? synthesizedSnapshot.windowTitle,
+                currentURL: nil,
+                selectedURL: nil,
+                recentTabTitles: browserTabTitles,
+                webAreaFrame: nil,
+                scrollAreaFrame: nil
+            )
+            : nil
 
         let hasSelection = !(synthesizedSnapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasTitle = !synthesizedSnapshot.windowTitle.isEmpty
@@ -338,6 +380,18 @@ enum ManualInvokeJarvis {
         let useVisual = !hasNonVisualContext
         let visualReason = useVisual ? "no_other_context_available" : "browser_or_ax_or_title_available"
         print("[ManualInvokeJarvis] visual_fallback_used=\(useVisual ? "yes" : "no") reason=\(visualReason)")
+        let _ = await ContextAcquisitionCoordinator.shared.acquire(.init(
+            reason: "manual_invoke_test",
+            desiredLevel: .visibleRegion,
+            activeApp: synthesizedSnapshot.activeApp,
+            bundleIdentifier: synthesizedSnapshot.bundleIdentifier,
+            windowTitle: synthesizedSnapshot.windowTitle,
+            browserContext: syntheticBrowserContext,
+            appCategory: nil,
+            explicitUserInitiated: true,
+            allowExpensive: true,
+            currentEvidence: EvidenceQualityModel.level(from: evidenceQuality)
+        ))
 
         await producer.ingest(snapshot: synthesizedSnapshot)
         let state: WorkflowState

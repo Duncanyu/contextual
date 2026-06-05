@@ -50,12 +50,28 @@ enum ContextExecutionEngine {
         } else {
             let _ = await SurgicalOCR.extract(appName: packet.currentApp, windowTitle: windowTitle)
         }
-        
-		let pageCtx = await PublicPageContextExtractor.shared.extract(
-			windowTitle: windowTitle,
-			axTextFragments: axFragments,
-			clipboardText: snapshot?.clipboardText
-		)
+
+        let visibleContextOnlyReason = determineVisibleContextOnlyReason(
+            appName: packet.currentApp,
+            windowTitle: windowTitle,
+            browserURL: browserCtx?.currentURL,
+            selectedText: snapshot?.selectedText,
+            axTextFragments: axFragments
+        )
+        if let reason = visibleContextOnlyReason {
+            print("[ContextExecutionEngine] visible_context_only=yes reason=\(reason)")
+        }
+
+		let pageCtx: PublicPageContextExtractor.PublicPageContext
+        if visibleContextOnlyReason == nil {
+            pageCtx = await PublicPageContextExtractor.shared.extract(
+                windowTitle: windowTitle,
+                axTextFragments: axFragments,
+                clipboardText: snapshot?.clipboardText
+            )
+        } else {
+            pageCtx = emptyPublicPageContext()
+        }
 
         let activeComp: TaskCompartment?
         if let overridden = overriddenCompartment {
@@ -129,6 +145,7 @@ enum ContextExecutionEngine {
             snapshot: snapshot,
             web: webEnrichment,
 			page: pageCtx,
+            visibleContextOnlyReason: visibleContextOnlyReason,
             memory: memory,
             judgment: .empty
         )
@@ -144,6 +161,7 @@ enum ContextExecutionEngine {
 				return "title_only"
 			}()
 		}
+		let evidenceLevel = EvidenceQualityModel.level(from: evidenceQuality)
 		print("[ContextEvidence] quality=\(evidenceQuality)")
 
         // Stage 1 — intent inference & Evidence Gating (Task B).
@@ -177,8 +195,8 @@ enum ContextExecutionEngine {
                 // Note: `requestedIntent != nil` is always true inside this block,
                 // but keeping the check explicit clarifies the intent.
                 let isAutonomous = false  // requestedIntent is non-nil here by construction
-                if isAutonomous && evidenceQuality != "selection" {
-                    if !contentRich || evidenceQuality == "title_only" || evidenceQuality == "browser_tabs" {
+                if isAutonomous && evidenceLevel != .selected_content {
+                    if !contentRich || evidenceLevel.rank <= ProgressiveEvidenceLevel.metadata_rich.rank {
                         finalIntentStr = "organize_review_plan"
                         downgrade = true
                     }
@@ -212,7 +230,11 @@ enum ContextExecutionEngine {
         )
 
         // Public Web Research Enrichment (Phase 19 & 20C)
-        if evidenceQuality == "title_only" {
+        if evidenceLevel == .metadata_only,
+           shouldAttemptPublicWebResearch(
+                envelope: envelope,
+                browserURL: browserCtx?.currentURL
+           ) {
             print("[ContextEvidence] attempting_public_web_research=yes")
             let searchTitles = !envelope.memory.comparisonCandidates.isEmpty ? envelope.memory.comparisonCandidates : packet.recentTitles
             let researchResult = await PublicWebResearchEnricher.shared.searchAndFetch(
@@ -230,6 +252,8 @@ enum ContextExecutionEngine {
                 evidenceQuality = "public_web_research"
                 print("[ContextEvidence] quality=\(evidenceQuality)")
             }
+        } else if evidenceLevel == .metadata_only {
+            print("[ContextEvidence] attempting_public_web_research=no reason=visible_context_only")
         }
 
         // Phase 20D — Judgment Layer. Runs AFTER all evidence is gathered,
@@ -310,6 +334,7 @@ enum ContextExecutionEngine {
         let web: WebContextEnrichment
 		let page: PublicPageContextExtractor.PublicPageContext
         var webResearchFacts: [PublicWebResearchEnricher.PublicGroundedFact] = []
+        let visibleContextOnlyReason: String?
         let memory: WorkingMemorySnapshot
         var judgment: ContextJudgment
 
@@ -535,7 +560,9 @@ enum ContextExecutionEngine {
         }
         // Honest title-only acknowledgment — this is what the grounding-quality
         // brief specifically asked for.
-        if quality == "title_only" && !envelope.hasOCRDetail && !envelope.hasSelectedText {
+        if EvidenceQualityModel.level(from: quality).rank <= ProgressiveEvidenceLevel.metadata_rich.rank
+            && !envelope.hasOCRDetail
+            && !envelope.hasSelectedText {
             inferred.append("Only titles and metadata are available — specific specs, prices, or details cannot be compared from this data alone.")
         }
         if envelope.packet.contextShiftDetected {
@@ -578,6 +605,21 @@ enum ContextExecutionEngine {
         // Switches on intent.intent (= opportunity.capabilityId when driven by
         // OpportunityEngine). Each branch generates concrete, honest content
         // using only what is in the envelope — no hallucinated specs or facts.
+        if let phase29 = buildPhase29Artifact(
+            intent: intent.intent,
+            entityShort: entityShort,
+            envelope: envelope,
+            evidenceQuality: quality
+        ) {
+            artifactType = phase29.type
+            title = phase29.title
+            subtitle = phase29.subtitle
+            sections = phase29.sections
+            tableRows = phase29.tableRows
+            nextActions = phase29.nextActions
+            missingInfo = phase29.missingInfo
+            print("[ArtifactRender] type=\(phase29.type) capability=\(intent.intent)")
+        } else {
         switch intent.intent {
 
         // ── Comparison ─────────────────────────────────────────────────────
@@ -813,6 +855,7 @@ enum ContextExecutionEngine {
             sections.append(ArtifactSection(header: "Inferred", items: inferred))
             print("[ArtifactRender] type=summary capability=\(intent.intent)")
         }
+        }
 
         let artifact = ArtifactResult(
             type: artifactType,
@@ -964,7 +1007,7 @@ enum ContextExecutionEngine {
         - Do NOT include action verbs (click, open, buy, install).
         - Do NOT define generic terms.
         - Never answer "what is X" unless X appears in extracted facts.
-        - evidence_quality=\(evidenceQuality). If title_only, do not compare specs.
+        - evidence_quality=\(evidenceQuality). If evidence is metadata-only or metadata-rich, do not compare specs.
 
         Intent: \(intent.intent)
         Goal: \(goal.goal)
@@ -1021,6 +1064,324 @@ enum ContextExecutionEngine {
 		add("ports", "product.ports")
 		return out
 	}
+
+    private struct Phase29ArtifactBuild {
+        let type: String
+        let title: String
+        let subtitle: String
+        let sections: [ArtifactSection]
+        let tableRows: [[String]]?
+        let missingInfo: [String]
+        let nextActions: [String]
+    }
+
+    private static func buildPhase29Artifact(
+        intent: String,
+        entityShort: String,
+        envelope: Envelope,
+        evidenceQuality: String
+    ) -> Phase29ArtifactBuild? {
+        let hookChain = previewHookChain(for: intent)
+        guard !hookChain.isEmpty else { return nil }
+        for hook in hookChain {
+            print("[HookChainExecution] capability=\(intent) hook=\(hook) mapped=yes target=preview_artifact_builder")
+        }
+
+        let localOnly = envelope.visibleContextOnlyReason != nil
+        let localOnlySubtitle = localOnly ? "Based on visible/current context." : ""
+        let sourceTitles = visibleSourceTitles(from: envelope)
+        let repeatedTerms = Array(envelope.memory.repeatedConcepts.prefix(6))
+        let selectedText = envelope.snapshot?.selectedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasStructuredFacts = !envelope.page.productFacts.isEmpty || !envelope.webResearchFacts.isEmpty
+        let visibleSnippet = selectedText.isEmpty ? nil : String(selectedText.prefix(220))
+
+        switch intent {
+        case "synthesize_sources":
+            var sections: [ArtifactSection] = [
+                ArtifactSection(
+                    header: "Sources Detected",
+                    items: sourceTitles.isEmpty ? ["Only the current title is available from visible context."] : sourceTitles
+                ),
+                ArtifactSection(
+                    header: "Shared Themes",
+                    items: repeatedTerms.isEmpty ? ["No shared themes extracted yet from visible context."] : repeatedTerms
+                )
+            ]
+            if let visibleSnippet {
+                sections.append(ArtifactSection(
+                    header: "Visible Context",
+                    items: [visibleSnippet]
+                ))
+            }
+            sections.append(ArtifactSection(
+                header: "What This Supports",
+                items: [
+                    localOnly ? "A conservative synthesis based on visible/current context." : "A synthesis using currently visible sources and page metadata.",
+                    "Common threads across the open sources.",
+                    "Questions or gaps worth checking next."
+                ]
+            ))
+            return Phase29ArtifactBuild(
+                type: "synthesis",
+                title: entityShort.isEmpty ? "Research Synthesis" : "Synthesis: \(entityShort)",
+                subtitle: localOnlySubtitle.isEmpty ? "Synthesized from currently visible sources." : localOnlySubtitle,
+                sections: sections,
+                tableRows: nil,
+                missingInfo: [
+                    "Full source text beyond what is currently visible.",
+                    "Publication dates, authorship, and credibility details.",
+                    "Any hidden or collapsed content not present on screen."
+                ],
+                nextActions: ["Verify the most important claim against the original source text"]
+            )
+
+        case "compare_rental_options":
+            let candidates = sourceTitles.isEmpty ? [entityShort].filter { !$0.isEmpty } : sourceTitles
+            let comparisonRows: [[String]] = {
+                var rows = [["Candidate", "Visible Signal", "Missing To Compare"]]
+                for candidate in candidates.prefix(4) {
+                    let visibleSignal = repeatedTerms.isEmpty ? "Title/context only" : repeatedTerms.prefix(2).joined(separator: ", ")
+                    rows.append([candidate, visibleSignal, "rent, utilities, lease term, location"])
+                }
+                return rows
+            }()
+
+            let conservativeLine = "I only have titles, so I can identify candidate items but cannot compare specs yet."
+            let compareSections: [ArtifactSection] = [
+                ArtifactSection(
+                    header: "Observed from screen",
+                    items: candidates.isEmpty ? ["No candidate rental posts were extracted."] : candidates
+                ),
+                ArtifactSection(
+                    header: "Comparison Readiness",
+                    items: hasStructuredFacts && EvidenceQualityModel.level(from: evidenceQuality).rank > ProgressiveEvidenceLevel.metadata_rich.rank
+                        ? ["Some explicit metadata is available, but rental-specific fields remain sparse."]
+                        : [conservativeLine]
+                )
+            ]
+            return Phase29ArtifactBuild(
+                type: "table",
+                title: candidates.count >= 2 ? "Compare Rental Options" : "Rental Context Comparison",
+                subtitle: localOnlySubtitle.isEmpty ? conservativeLine : localOnlySubtitle,
+                sections: compareSections,
+                tableRows: comparisonRows,
+                missingInfo: [
+                    "Exact monthly rent and whether utilities are included.",
+                    "Lease term, move-in date, and deposit details.",
+                    "Location, furnishing, and roommate/occupancy details."
+                ],
+                nextActions: ["Collect the missing listing facts before making a final comparison"]
+            )
+
+        case "draft_listing_ad":
+            let observedFacts = listingObservedFacts(from: envelope)
+            let draftItems: [String] = {
+                if observedFacts.isEmpty {
+                    return [
+                        "Headline: [Add room or apartment type]",
+                        "Location: [Add neighborhood or campus proximity]",
+                        "Availability: [Add move-in date and lease term]",
+                        "Amenities: [Add furnishing, utilities, laundry, parking]"
+                    ]
+                }
+                return observedFacts.map { "\($0.key.capitalized): \($0.value)" }
+            }()
+            return Phase29ArtifactBuild(
+                type: "draft",
+                title: entityShort.isEmpty ? "Draft Listing Ad" : "Draft Listing Ad: \(entityShort)",
+                subtitle: localOnlySubtitle.isEmpty ? "Drafted from the details currently visible in context." : localOnlySubtitle,
+                sections: [
+                    ArtifactSection(
+                        header: "Observed from screen",
+                        items: observedFacts.isEmpty
+                            ? (sourceTitles.isEmpty ? ["Only listing titles are available."] : sourceTitles)
+                            : observedFacts.map { "\($0.key): \($0.value)" }
+                    ),
+                    ArtifactSection(
+                        header: "Draft Ad Structure",
+                        items: draftItems
+                    )
+                ],
+                tableRows: nil,
+                missingInfo: [
+                    "Exact rent amount, utilities, and deposit.",
+                    "Room dimensions, furnishing details, and house rules.",
+                    "Preferred tenant profile and contact instructions."
+                ],
+                nextActions: ["Add the missing facts before publishing the listing"]
+            )
+
+        case "create_listing_checklist":
+            return Phase29ArtifactBuild(
+                type: "checklist",
+                title: entityShort.isEmpty ? "Listing Checklist" : "Listing Checklist: \(entityShort)",
+                subtitle: localOnlySubtitle.isEmpty ? "Checklist built from the current listing context." : localOnlySubtitle,
+                sections: [
+                    ArtifactSection(
+                        header: "Before Posting",
+                        items: [
+                            "Confirm rent, deposit, and utility details.",
+                            "Confirm lease term, move-in date, and occupancy limits.",
+                            "Confirm amenities, furnishing, laundry, and parking.",
+                            "Confirm contact method and showing availability."
+                        ]
+                    ),
+                    ArtifactSection(
+                        header: "Visible Context Used",
+                        items: sourceTitles.isEmpty ? ["Only the current page title is visible."] : sourceTitles
+                    )
+                ],
+                tableRows: nil,
+                missingInfo: [
+                    "Any listing fields not visible in the current browser context.",
+                    "Photos, floor plan, and exact address details.",
+                    "Policy details such as pets, guests, or subletting."
+                ],
+                nextActions: ["Fill the missing fields before posting the ad"]
+            )
+
+        case "create_questions_to_ask_landlord":
+            let questionSeed = repeatedTerms
+            let contextualQuestions = [
+                "What is included in the rent, and what costs are separate?",
+                "What are the lease term, deposit, and move-in requirements?",
+                "Are there any rules about guests, pets, parking, or subletting?",
+                "How are maintenance issues handled, and how quickly are repairs addressed?"
+            ]
+            return Phase29ArtifactBuild(
+                type: "draft",
+                title: entityShort.isEmpty ? "Questions to Ask the Landlord" : "Questions to Ask: \(entityShort)",
+                subtitle: localOnlySubtitle.isEmpty ? "Questions drafted from visible/current context." : localOnlySubtitle,
+                sections: [
+                    ArtifactSection(
+                        header: "Questions",
+                        items: contextualQuestions
+                    ),
+                    ArtifactSection(
+                        header: "Observed context",
+                        items: questionSeed.isEmpty
+                            ? (sourceTitles.isEmpty ? ["Only high-level rental context is visible."] : sourceTitles)
+                            : questionSeed
+                    )
+                ],
+                tableRows: nil,
+                missingInfo: [
+                    "Exact rent breakdown and fees.",
+                    "House rules and occupancy constraints.",
+                    "Repair process, internet, and utility responsibilities."
+                ],
+                nextActions: ["Use these questions only after verifying the listing details you can already see"]
+            )
+
+        default:
+            return nil
+        }
+    }
+
+    private static func visibleSourceTitles(from envelope: Envelope) -> [String] {
+        let combined = [envelope.memory.currentEntity]
+            + envelope.memory.comparisonCandidates
+            + envelope.memory.relatedFocusEntities
+            + envelope.packet.recentTitles
+        return uniqueNonEmpty(combined).prefix(4).map { $0 }
+    }
+
+    private static func listingObservedFacts(from envelope: Envelope) -> [(key: String, value: String)] {
+        var rows: [(String, String)] = []
+        if let title = envelope.page.pageTitle, !title.isEmpty {
+            rows.append(("title", String(title.prefix(140))))
+        }
+        if let description = envelope.page.ogDescription, !description.isEmpty {
+            rows.append(("description", String(description.prefix(180))))
+        }
+        for key in ["price", "priceCurrency", "brand", "title"] {
+            if let value = envelope.page.productFacts[key], !value.isEmpty {
+                rows.append((key, value))
+            }
+        }
+        return rows
+    }
+
+    private static func uniqueNonEmpty(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for value in values {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let key = trimmed.lowercased()
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            out.append(trimmed)
+        }
+        return out
+    }
+
+    private static func previewHookChain(for capabilityId: String) -> [String] {
+        switch capabilityId {
+        case "synthesize_sources":
+            return ["gather_context", "generate_text", "present_artifact"]
+        case "compare_rental_options":
+            return ["browser_tabs_context", "extract_listing_details", "compare_table", "present_summary"]
+        case "draft_listing_ad":
+            return ["browser_context", "infer_listing_details", "draft_text", "present_editable_result"]
+        case "create_listing_checklist":
+            return ["browser_context", "extract_listing_fields", "generate_checklist", "present_editable_result"]
+        case "create_questions_to_ask_landlord":
+            return ["browser_context", "extract_listing_details", "draft_questions", "present_editable_result"]
+        default:
+            return []
+        }
+    }
+
+    private static func determineVisibleContextOnlyReason(
+        appName: String,
+        windowTitle: String,
+        browserURL: URL?,
+        selectedText: String?,
+        axTextFragments: [String]
+    ) -> String? {
+        let lowerTitle = windowTitle.lowercased()
+        let host = browserURL?.host?.lowercased() ?? ""
+        let path = browserURL?.path.lowercased() ?? ""
+        let combined = ([lowerTitle] + axTextFragments.map { $0.lowercased() } + [(selectedText ?? "").lowercased()]).joined(separator: " ")
+
+        let privateMarkers = ["inbox", "draft", "compose", "conversation", "chat", "document", "editor", "workspace", "dashboard", "account"]
+        if privateMarkers.contains(where: { lowerTitle.contains($0) || combined.contains($0) || path.contains($0) }) {
+            return "private_or_sensitive_page"
+        }
+        if host.contains("chatgpt") || host.contains("claude") || host.contains("perplexity") || host.contains("gemini") {
+            return "assistant_tool_page"
+        }
+        if browserURL == nil && (!combined.isEmpty || !(selectedText ?? "").isEmpty) {
+            return "no_public_url"
+        }
+        return nil
+    }
+
+    private static func shouldAttemptPublicWebResearch(
+        envelope: Envelope,
+        browserURL: URL?
+    ) -> Bool {
+        if envelope.visibleContextOnlyReason != nil {
+            return false
+        }
+        guard browserURL != nil || envelope.page.url != nil else {
+            return false
+        }
+        return true
+    }
+
+    private static func emptyPublicPageContext() -> PublicPageContextExtractor.PublicPageContext {
+        PublicPageContextExtractor.PublicPageContext(
+            url: nil,
+            pageTitle: nil,
+            ogTitle: nil,
+            ogDescription: nil,
+            productFacts: [:],
+            extractedAt: Date(),
+            source: "none"
+        )
+    }
 
     // MARK: - Parsers
 
@@ -1104,7 +1465,7 @@ enum ContextExecutionEngine {
 
 			// Evidence-quality gate: if we only have titles (no product metadata),
 			// do not allow spec-like numeric claims (prices, wattage, capacities).
-			if evidenceQuality == "title_only" {
+			if EvidenceQualityModel.level(from: evidenceQuality).rank <= ProgressiveEvidenceLevel.metadata_rich.rank {
 				let extractedJoined = extractedFacts.values.joined(separator: " ").lowercased()
 				let specLike = all.contains(where: { item in
 					let l = item.lowercased()

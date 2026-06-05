@@ -324,41 +324,27 @@ final class FrictionEngine {
             return nil
         }
 
-        // Phase 28.2 — Topical browsing exclusion.
-        // Repeated topic words within the same browsing task are NOT reference lookup.
-        // Reference lookup requires cross-category transitions (editor→browser, search→docs).
-        // If ALL entries are browser-only and the source titles share a dominant theme,
-        // this is same-topic browsing (e.g., rental listings, housing search pages).
+        // Phase 28.3 — Reference lookup requires cross-category source evidence.
+        //
+        // Repeated topic words within browser-only browsing (no editor involvement) are
+        // task continuity, not reference lookup. The user browses rental listings, housing
+        // search pages, reddit threads about the same topic — "rent" appears 6 times because
+        // every page mentions rent, not because the user is doing lookup behavior.
+        //
+        // A valid reference_lookup requires the user to LEAVE one context category and
+        // CONSULT another:
+        //   editor → browser → editor (looking up docs while coding)
+        //   browser + editor (cross-app concept sharing)
+        //
+        // Browser-only concept repetition across different page titles is browsing, not lookup.
         let hasEditorSource = recent.contains { $0.source == .editor_title }
         if !hasEditorSource {
-            // All entries are browser/external only — check for topical coherence.
-            // Extract terms from all source titles and see if repeated concepts ARE the title terms.
-            let allSourceTitles = Set(recent.compactMap { $0.sourceTitle }).filter { !$0.isEmpty }
-            if allSourceTitles.count >= 2 {
-                let repeatedTermSet = Set(repeated.map { $0.key })
-                let titleTerms = allSourceTitles.flatMap { title in
-                    title.lowercased()
-                        .components(separatedBy: CharacterSet.alphanumerics.inverted)
-                        .filter { $0.count >= 3 }
-                }
-                let titleTermFreq = Dictionary(grouping: titleTerms, by: { $0 }).mapValues(\.count)
-                // A term is "dominant" if it appears in most source titles
-                let titleCount = allSourceTitles.count
-                let dominantTerms = titleTermFreq.filter { Double($0.value) >= Double(titleCount) * 0.5 }.map(\.key)
-                let dominantSet = Set(dominantTerms)
-                // If all repeated concepts are also dominant title terms, this is topical browsing.
-                // The same words appear because every page is about the same thing, not because
-                // the user is doing reference lookups.
-                let overlapCount = repeatedTermSet.intersection(dominantSet).count
-                if overlapCount >= repeatedTermSet.count / 2 + 1 || (repeatedTermSet.count <= 3 && overlapCount >= repeatedTermSet.count) {
-                    let evidence = repeated.map { "\($0.key)x\($0.value)" }
-                    print("[FrictionEngine] suppressed reason=topical_browsing_not_reference_lookup dominant_terms=[\(dominantTerms.sorted().prefix(5).joined(separator: ","))] evidence=[\(evidence.joined(separator: ","))]")
-                    return nil
-                }
-            }
+            let evidence = repeated.map { "\($0.key)x\($0.value)" }
+            print("[FrictionEngine] suppressed reason=browser_only_no_cross_category_transition evidence=[\(evidence.joined(separator: ","))]")
+            return nil
         }
 
-        // Multiple independent repeated concepts with cross-category evidence — genuine reference lookup.
+        // Has editor source — genuine cross-category reference lookup.
         let topConcepts = repeated.prefix(3).map { "\($0.key)x\($0.value)" }
         let confidence = min(0.90, 0.35 + Double(repeated.first!.value) * 0.12)
 

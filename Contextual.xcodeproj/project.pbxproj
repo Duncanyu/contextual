@@ -21,6 +21,17 @@
 		F3E001F100000000000001F1 /* ActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3E002F100000000000001F1 /* ActivityState.swift */; };
 		F3F001A100000000000001A1 /* ActivityStateSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F002A100000000000001A1 /* ActivityStateSelfTest.swift */; };
 		F5A001B100000000000001B1 /* OpportunityEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A002B100000000000001B1 /* OpportunityEngine.swift */; };
+		3655283D96FDB3C86067B3DB /* Phase31DebugInfra.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD835D6A3900E44FAD678F0F /* Phase31DebugInfra.swift */; };
+		9D87B2C5AA22F155CA8F07FE /* Phase31SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D77A0BEE7AC7CB81554D2D /* Phase31SelfTest.swift */; };
+		C02A5C2523BF5D207424E419 /* Phase32SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C903E8A85E44B9CCA74F13 /* Phase32SelfTest.swift */; };
+		FDE0956FC015C8758F6D4F6B /* Phase33SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D234D39CC72F9457361E7BB5 /* Phase33SelfTest.swift */; };
+		1BAB198348BEB67D6D5C367E /* WindowDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44833CF4B99D115CECB8B4E4 /* WindowDiscovery.swift */; };
+		78E398BC71B40F45D6034B01 /* SuggestionTitleRewriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A7F639751292ED87D12311 /* SuggestionTitleRewriter.swift */; };
+		EAFC29E7AEB38CFE72BE648D /* Phase35_4SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D8E75D082663CEE035EE57 /* Phase35_4SelfTest.swift */; };
+		FD97CD4AC801E70BEB84683B /* Phase33DogfoodReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331FDC18658EF5B651D95C92 /* Phase33DogfoodReadiness.swift */; };
+		7880D8B9AE9789AD1C280C44 /* Phase32Hardening.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40C2813758BC8FE2B19433F /* Phase32Hardening.swift */; };
+		F6366A8EB0C55F3B52AFFF2D /* Phase31LocalActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909E51B034FFB42B98689D18 /* Phase31LocalActions.swift */; };
+		8D24F7C1A4E96B13C05D7AF2 /* Phase35ContextLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9215C36E7F4B812D08C49E1 /* Phase35ContextLayer.swift */; };
 		F5B001C100000000000001B1 /* OpportunityEngineSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */; };
 		F5C001D100000000000001C1 /* OpportunityExecutionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */; };
 		F5D001E100000000000001D1 /* CompartmentTransitionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */; };
@@ -491,6 +502,17 @@
 		F3E002F100000000000001F1 /* ActivityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityState.swift; sourceTree = "<group>"; };
 		F3F002A100000000000001A1 /* ActivityStateSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityStateSelfTest.swift; sourceTree = "<group>"; };
 		F5A002B100000000000001B1 /* OpportunityEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityEngine.swift; sourceTree = "<group>"; };
+		AD835D6A3900E44FAD678F0F /* Phase31DebugInfra.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase31DebugInfra.swift; sourceTree = "<group>"; };
+		14D77A0BEE7AC7CB81554D2D /* Phase31SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase31SelfTest.swift; sourceTree = "<group>"; };
+		56C903E8A85E44B9CCA74F13 /* Phase32SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase32SelfTest.swift; sourceTree = "<group>"; };
+		D234D39CC72F9457361E7BB5 /* Phase33SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase33SelfTest.swift; sourceTree = "<group>"; };
+		44833CF4B99D115CECB8B4E4 /* WindowDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowDiscovery.swift; sourceTree = "<group>"; };
+		93A7F639751292ED87D12311 /* SuggestionTitleRewriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionTitleRewriter.swift; sourceTree = "<group>"; };
+		84D8E75D082663CEE035EE57 /* Phase35_4SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase35_4SelfTest.swift; sourceTree = "<group>"; };
+		331FDC18658EF5B651D95C92 /* Phase33DogfoodReadiness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase33DogfoodReadiness.swift; sourceTree = "<group>"; };
+		A40C2813758BC8FE2B19433F /* Phase32Hardening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase32Hardening.swift; sourceTree = "<group>"; };
+		909E51B034FFB42B98689D18 /* Phase31LocalActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase31LocalActions.swift; sourceTree = "<group>"; };
+		A9215C36E7F4B812D08C49E1 /* Phase35ContextLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase35ContextLayer.swift; sourceTree = "<group>"; };
 		F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityEngineSelfTest.swift; sourceTree = "<group>"; };
 		F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityExecutionSelfTest.swift; sourceTree = "<group>"; };
 		F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompartmentTransitionSelfTest.swift; sourceTree = "<group>"; };
@@ -1286,6 +1308,17 @@
 				F3E002F100000000000001F1 /* ActivityState.swift */,
 				F3F002A100000000000001A1 /* ActivityStateSelfTest.swift */,
 				F5A002B100000000000001B1 /* OpportunityEngine.swift */,
+				AD835D6A3900E44FAD678F0F /* Phase31DebugInfra.swift */,
+				14D77A0BEE7AC7CB81554D2D /* Phase31SelfTest.swift */,
+				56C903E8A85E44B9CCA74F13 /* Phase32SelfTest.swift */,
+				D234D39CC72F9457361E7BB5 /* Phase33SelfTest.swift */,
+				44833CF4B99D115CECB8B4E4 /* WindowDiscovery.swift */,
+				93A7F639751292ED87D12311 /* SuggestionTitleRewriter.swift */,
+				84D8E75D082663CEE035EE57 /* Phase35_4SelfTest.swift */,
+				331FDC18658EF5B651D95C92 /* Phase33DogfoodReadiness.swift */,
+				A40C2813758BC8FE2B19433F /* Phase32Hardening.swift */,
+				909E51B034FFB42B98689D18 /* Phase31LocalActions.swift */,
+				A9215C36E7F4B812D08C49E1 /* Phase35ContextLayer.swift */,
 				F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */,
 				F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */,
 				F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */,
@@ -1847,6 +1880,17 @@
 				F3E001F100000000000001F1 /* ActivityState.swift in Sources */,
 				F3F001A100000000000001A1 /* ActivityStateSelfTest.swift in Sources */,
 				F5A001B100000000000001B1 /* OpportunityEngine.swift in Sources */,
+				3655283D96FDB3C86067B3DB /* Phase31DebugInfra.swift in Sources */,
+				9D87B2C5AA22F155CA8F07FE /* Phase31SelfTest.swift in Sources */,
+				C02A5C2523BF5D207424E419 /* Phase32SelfTest.swift in Sources */,
+				FDE0956FC015C8758F6D4F6B /* Phase33SelfTest.swift in Sources */,
+				1BAB198348BEB67D6D5C367E /* WindowDiscovery.swift in Sources */,
+				78E398BC71B40F45D6034B01 /* SuggestionTitleRewriter.swift in Sources */,
+				EAFC29E7AEB38CFE72BE648D /* Phase35_4SelfTest.swift in Sources */,
+				FD97CD4AC801E70BEB84683B /* Phase33DogfoodReadiness.swift in Sources */,
+				7880D8B9AE9789AD1C280C44 /* Phase32Hardening.swift in Sources */,
+				F6366A8EB0C55F3B52AFFF2D /* Phase31LocalActions.swift in Sources */,
+				8D24F7C1A4E96B13C05D7AF2 /* Phase35ContextLayer.swift in Sources */,
 				F5B001C100000000000001B1 /* OpportunityEngineSelfTest.swift in Sources */,
 				F5C001D100000000000001C1 /* OpportunityExecutionSelfTest.swift in Sources */,
 				F5D001E100000000000001D1 /* CompartmentTransitionSelfTest.swift in Sources */,

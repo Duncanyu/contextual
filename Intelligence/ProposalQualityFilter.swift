@@ -16,7 +16,9 @@ enum ProposalQualityFilter {
 		let reason: String?
 	}
 
-    static func hasPromptLeakOrCapabilityId(_ title: String) -> Bool {
+    /// Titles containing filenames (e.g. "_182_Montreal_Street_Accommodation_Agreement.pdf")
+    /// should not be rejected. Only reject snake_case that looks like capability IDs or prompt leaks.
+    static func hasPromptLeakOrCapabilityId(_ title: String, isFrictionAction: Bool = false) -> Bool {
         let lower = title.lowercased()
         let capabilityIds: Set<String> = [
             "summarize_context", "create_next_steps", "generate_quiz", "create_review_plan",
@@ -29,9 +31,13 @@ enum ProposalQualityFilter {
                 return true
             }
         }
-        let snakePattern = #"[a-zA-Z0-9]+_[a-zA-Z0-9]+"#
-        if title.range(of: snakePattern, options: .regularExpression) != nil {
-            return true
+        // Snake_case check: only for non-friction actions.
+        // Friction action titles may contain filenames with underscores (e.g. "_182_Montreal_Street...").
+        if !isFrictionAction {
+            let snakePattern = #"[a-zA-Z0-9]+_[a-zA-Z0-9]+"#
+            if title.range(of: snakePattern, options: .regularExpression) != nil {
+                return true
+            }
         }
         let actionVerbColonPattern = #"^[A-Za-z]+:\s"#
         if title.range(of: actionVerbColonPattern, options: .regularExpression) != nil {

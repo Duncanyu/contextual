@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // MARK: - Need
@@ -32,7 +33,12 @@ public struct Opportunity: Sendable, Equatable, Codable {
     public let inferredNeed: Need
     public let requiresConfirmation: Bool
     public let auxiliaryCapabilityIds: [String]
+	public let involvedApps: [String]
+	public let involvedURLs: [String]
+	public let browserTabTitles: [String]
 	let generatedAction: GeneratedActionProposal?
+	// Phase 28.3: Carry MusicIntent through the full pipeline so click routing can use it.
+	public let musicIntent: MusicIntent?
 
 	init(
 		id: String,
@@ -45,7 +51,11 @@ public struct Opportunity: Sendable, Equatable, Codable {
 		inferredNeed: Need,
 		requiresConfirmation: Bool,
 		auxiliaryCapabilityIds: [String],
-		generatedAction: GeneratedActionProposal? = nil
+		involvedApps: [String] = [],
+		involvedURLs: [String] = [],
+		browserTabTitles: [String] = [],
+		generatedAction: GeneratedActionProposal? = nil,
+		musicIntent: MusicIntent? = nil
 	) {
 		self.id = id
 		self.title = title
@@ -57,7 +67,11 @@ public struct Opportunity: Sendable, Equatable, Codable {
 		self.inferredNeed = inferredNeed
 		self.requiresConfirmation = requiresConfirmation
 		self.auxiliaryCapabilityIds = auxiliaryCapabilityIds
+		self.involvedApps = involvedApps
+		self.involvedURLs = involvedURLs
+		self.browserTabTitles = browserTabTitles
 		self.generatedAction = generatedAction
+		self.musicIntent = musicIntent
 	}
 }
 
@@ -80,7 +94,7 @@ public enum OpportunityValidator {
         "suggest", "debug",
         // Phase 26 — friction-reduction verbs
         "put", "pin", "reopen", "restore", "resume", "collect", "arrange",
-        "pre-load", "copy",
+        "pre-load", "copy", "switch", "enable",
     ]
 
     public static func validate(_ title: String) -> Bool {
@@ -423,7 +437,11 @@ public enum OpportunityEngine {
                 inferredNeed: .planning,
                 requiresConfirmation: winner.requiresConfirmation,
                 auxiliaryCapabilityIds: [],
-                generatedAction: winner.generatedAction
+                involvedApps: winner.involvedApps,
+                involvedURLs: supportingURLs(for: winner, compartment: compartment, memory: memory),
+                browserTabTitles: supportingBrowserTabTitles(for: winner, compartment: compartment, memory: memory),
+                generatedAction: winner.generatedAction,
+                musicIntent: winner.musicIntent
             )
 
             print("[OpportunityEngine] portfolio_winner"
@@ -444,7 +462,7 @@ public enum OpportunityEngine {
 
             // If the portfolio winner is from an executable lane (music/friction/workspace),
             // skip the GeneratedActionGenerator pipeline entirely.
-            let executableLanes: Set<PortfolioCandidate.Lane> = [.music, .friction, .workspace]
+            let executableLanes: Set<PortfolioCandidate.Lane> = [.music, .friction, .workspace, .metadata]
             if executableLanes.contains(winner.lane) {
 				lifecycleAudit.noteSelected(
 					candidate: winnerLifecycleName,
@@ -486,7 +504,7 @@ public enum OpportunityEngine {
 			lifecycleAudit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: "generator_returned_empty")
 		}
 
-        let hasRealContent = evidenceQuality != "title_only"
+        let hasRealContent = EvidenceQualityModel.level(from: evidenceQuality).rank >= ProgressiveEvidenceLevel.visible_content.rank
         for action in generatedActions {
 			let candidateName = lifecycleName(forGeneratedTitle: action.title)
 			lifecycleAudit.noteGenerated(candidate: candidateName, bucket: "generated_action", score: action.confidence)
@@ -588,7 +606,11 @@ public enum OpportunityEngine {
                     inferredNeed: .planning,
                     requiresConfirmation: winner.requiresConfirmation,
                     auxiliaryCapabilityIds: [],
-                    generatedAction: winner.generatedAction
+                    involvedApps: winner.involvedApps,
+                    involvedURLs: supportingURLs(for: winner, compartment: compartment, memory: memory),
+                    browserTabTitles: supportingBrowserTabTitles(for: winner, compartment: compartment, memory: memory),
+                    generatedAction: winner.generatedAction,
+                    musicIntent: winner.musicIntent
                 )
                 print("[OpportunityEngine] portfolio_cognitive_winner capability=\(winner.capabilityId)")
                 OpportunityNoveltyTracker.shared.markShown(
@@ -712,6 +734,24 @@ public enum OpportunityEngine {
             return "Compare the options you're viewing"
         case "decision_matrix":
             return "Build a decision matrix for this comparison"
+        case "compare_rental_options":
+            return "Compare the rental posts you're viewing?"
+        case "draft_listing_ad":
+            return "Draft a rental listing from the details you have?"
+        case "create_listing_checklist":
+            return "Draft a checklist for your rental ad?"
+        case "extract_pricing_guidance":
+            return "Extract pricing guidance from these threads?"
+        case "identify_missing_listing_details":
+            return "List missing details for the room posting?"
+        case "create_questions_to_ask_landlord":
+            return "Create questions to ask the landlord?"
+        case "compare_listing_platforms":
+            return "Compare listing platforms for this search?"
+        case "summarize_thread":
+            return "Summarize what these renters are saying?"
+        case "synthesize_advice":
+            return "Compare the rental advice from these posts?"
         case "summarize_context":
             return "Summarize the current context"
         // Communication
@@ -737,9 +777,19 @@ public enum OpportunityEngine {
             return e.map { "Open your usual \($0) setup?" }
                    ?? "Restore your usual workspace?"
         case "arrange_side_by_side":
+            if let e = e {
+                return "Put \(e) beside the other open tab?"
+            }
             return "Put the apps you keep switching between side by side?"
+        case "switch_to_paired_app":
+            return e.map { "Switch back to \($0)?" }
+                   ?? "Switch back to the other app you keep revisiting?"
         case "pin_reference_tabs":
             return "Collect the tabs you keep switching between?"
+        case "restore_research_tabs":
+            return "Restore the tabs you keep switching between?"
+        case "split_research_setup":
+            return "Put these research windows side by side?"
         case "collect_references":
             return "Collect the references you keep looking up?"
         case "resume_focus_media":
@@ -797,6 +847,78 @@ public enum OpportunityEngine {
         )
     }
 
+	private static func supportingWorkspacePattern(
+		for candidate: PortfolioCandidate,
+		compartment: TaskCompartment?,
+		memory: WorkingMemorySnapshot
+	) -> WorkspacePattern? {
+		let patterns = WorkspacePatternTracker.shared.knownPatterns()
+		guard !patterns.isEmpty else { return nil }
+
+		let appHints = Set(candidate.involvedApps.map { $0.lowercased() })
+		let tabHints = Set((compartment?.browserTabs ?? []).map { $0.lowercased() })
+		let relatedHints = Set((memory.relatedFocusEntities + memory.comparisonCandidates).map { $0.lowercased() })
+
+		return patterns.max { lhs, rhs in
+			patternSupportScore(lhs, appHints: appHints, tabHints: tabHints, relatedHints: relatedHints)
+				< patternSupportScore(rhs, appHints: appHints, tabHints: tabHints, relatedHints: relatedHints)
+		}
+	}
+
+	private static func patternSupportScore(
+		_ pattern: WorkspacePattern,
+		appHints: Set<String>,
+		tabHints: Set<String>,
+		relatedHints: Set<String>
+	) -> Int {
+		let patternApps = Set(pattern.apps.map { $0.lowercased() })
+		let patternTabs = Set(pattern.tabTitles.map { $0.lowercased() })
+		let appOverlap = patternApps.intersection(appHints).count * 4
+		let tabOverlap = patternTabs.intersection(tabHints).count * 3
+		let relatedOverlap = patternTabs.intersection(relatedHints).count * 2
+		let urlScore = min(pattern.urls.count, 4)
+		return appOverlap + tabOverlap + relatedOverlap + urlScore + pattern.frequency
+	}
+
+	private static func supportingURLs(
+		for candidate: PortfolioCandidate,
+		compartment: TaskCompartment?,
+		memory: WorkingMemorySnapshot
+	) -> [String] {
+		switch candidate.capabilityId {
+		case "restore_workspace", "restore_research_tabs", "split_research_setup":
+			let pattern = supportingWorkspacePattern(for: candidate, compartment: compartment, memory: memory)
+			return Array((pattern?.urls ?? []).prefix(8))
+		case "copy_current_url", "collect_references", "remember_workspace":
+			if let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName,
+			   let browser = BrowserContextExtractor.extract(appName: frontmost, activeAppPID: nil),
+			   let url = browser.selectedURL?.absoluteString ?? browser.currentURL?.absoluteString,
+			   !url.isEmpty {
+				return [url]
+			}
+			let pattern = supportingWorkspacePattern(for: candidate, compartment: compartment, memory: memory)
+			return Array((pattern?.urls ?? []).prefix(8))
+		default:
+			return []
+		}
+	}
+
+	private static func supportingBrowserTabTitles(
+		for candidate: PortfolioCandidate,
+		compartment: TaskCompartment?,
+		memory: WorkingMemorySnapshot
+	) -> [String] {
+		var titles = compartment?.browserTabs.sorted() ?? []
+		if titles.isEmpty {
+			titles = memory.relatedFocusEntities
+		}
+		if let pattern = supportingWorkspacePattern(for: candidate, compartment: compartment, memory: memory) {
+			let merged = Array(Set(titles + pattern.tabTitles)).sorted()
+			return Array(merged.prefix(10))
+		}
+		return Array(titles.prefix(10))
+	}
+
 	private static func need(for action: GeneratedActionProposal, intent: IntentType) -> Need {
 		switch intent {
 		case .compare: return .comparison
@@ -844,6 +966,7 @@ public enum OpportunityEngine {
 		switch candidate.lane {
 		case .music: return "music"
 		case .workspace: return "workspace"
+		case .metadata: return "metadata"
 		case .friction: return "friction"
 		case .research: return "research"
 		case .cognitive: return "coding"
