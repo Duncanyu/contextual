@@ -71,6 +71,7 @@ struct GeneratedActionInput: Sendable, Equatable {
 	let mode: DeterminerSignal.Mode
 	let entityType: EntityGrounding.EntityType
 	let entityConfidence: Double
+	let browserAssessment: BrowserContextAssessment?
 	let hasErrorTerms: Bool
 	let hasMultipleSources: Bool
 	let hasComparisonCandidates: Bool
@@ -91,6 +92,7 @@ struct GeneratedActionInput: Sendable, Equatable {
 		mode: DeterminerSignal.Mode,
 		entityType: EntityGrounding.EntityType,
 		entityConfidence: Double? = nil,
+		browserAssessment: BrowserContextAssessment? = nil,
 		hasErrorTerms: Bool,
 		hasMultipleSources: Bool,
 		hasComparisonCandidates: Bool,
@@ -110,6 +112,7 @@ struct GeneratedActionInput: Sendable, Equatable {
 		self.mode = mode
 		self.entityType = entityType
 		self.entityConfidence = entityConfidence ?? (entityType == .unknown ? 0.0 : confidenceSeed)
+		self.browserAssessment = browserAssessment
 		self.hasErrorTerms = hasErrorTerms
 		self.hasMultipleSources = hasMultipleSources
 		self.hasComparisonCandidates = hasComparisonCandidates
@@ -117,8 +120,20 @@ struct GeneratedActionInput: Sendable, Equatable {
 	}
 }
 
+struct GeneratedActionGenerationResult: Sendable, Equatable {
+	let actions: [GeneratedActionProposal]
+	let blockedForEvidence: Bool
+}
+
 enum GeneratedActionGenerator {
 	static func generate(input: GeneratedActionInput, referenceTime: Date = Date()) -> [GeneratedActionProposal] {
+		generateDetailed(input: input, referenceTime: referenceTime).actions
+	}
+
+	static func generateDetailed(
+		input: GeneratedActionInput,
+		referenceTime: Date = Date()
+	) -> GeneratedActionGenerationResult {
 		let terms = normalizedTerms(input.activeTerms)
 		let entity = cleanEntity(input.currentEntity, fallback: input.activeCompartmentLabel)
 		let workflow = workflowType(from: input)
@@ -127,14 +142,16 @@ enum GeneratedActionGenerator {
 
 		guard !titles.isEmpty else {
 			print("[GeneratedAction] skipped reason=no_specific_action")
-			return []
+			return GeneratedActionGenerationResult(actions: [], blockedForEvidence: false)
 		}
 		let reason = reasoning(input: input, workflow: workflow, focus: focus, entity: entity)
 		let description = description(input: input, workflow: workflow, focus: focus)
 		let required = requiredContext(input: input, workflow: workflow)
 		let baseConfidence = confidence(input: input, workflow: workflow, focusCount: focus.count)
-		let actions = titles.enumerated().map { index, title in
-			GeneratedActionProposal(
+		var blockedForEvidence = false
+		var actions: [GeneratedActionProposal] = []
+		for (index, title) in titles.enumerated() {
+			let proposal = GeneratedActionProposal(
 				id: stableId(title: title, workflow: workflow, entity: entity),
 				title: title,
 				description: description,
@@ -144,6 +161,18 @@ enum GeneratedActionGenerator {
 				requiredContext: required,
 				createdAt: referenceTime
 			)
+			let gate = GeneratedActionEvidenceGate.evaluate(
+				action: proposal,
+				evidenceQuality: input.evidenceQuality,
+				browserAssessment: input.browserAssessment,
+				emitAllowedLog: false,
+				emitRejectedLog: true
+			)
+			if !gate.allowed {
+				blockedForEvidence = blockedForEvidence || gate.rejectedReason == "evidence_level_requires_content"
+				continue
+			}
+			actions.append(proposal.withPrimitives(gate.inferredPrimitives))
 		}
 		if isRentalResearchContext(input: input, focus: focus, entity: entity) {
 			print("[TextSuggestionFamily] domain=rental_research candidates=\(actions.map(\.id).joined(separator: ",")) selected=\(actions.first?.id ?? "none")")
@@ -153,7 +182,7 @@ enum GeneratedActionGenerator {
 			print("[GeneratedAction] confidence=\(String(format: "%.2f", action.confidence))")
 			print("[GeneratedAction] reasoning=\(action.reasoning)")
 		}
-		return actions
+		return GeneratedActionGenerationResult(actions: actions, blockedForEvidence: blockedForEvidence)
 	}
 
 	static func generate(
@@ -591,7 +620,47 @@ struct PrimitiveCompositionResult: Sendable, Equatable {
 }
 
 enum PrimitiveComposer {
-	static func compose(_ action: GeneratedActionProposal) -> PrimitiveCompositionResult? {
+	static func compose(
+		_ action: GeneratedActionProposal,
+		evidenceQuality: String? = nil,
+		browserAssessment: BrowserContextAssessment? = nil
+	) -> PrimitiveCompositionResult? {
+		let primitives = inferredPrimitives(for: action)
+		guard !primitives.isEmpty else {
+			print("[PrimitiveComposer] primitives=")
+			print("[PrimitiveComposer] confidence=0.00")
+			return nil
+		}
+		if let evidenceQuality {
+			let gate = GeneratedActionEvidenceGate.evaluate(
+				action: action.withPrimitives(primitives),
+				evidenceQuality: evidenceQuality,
+				browserAssessment: browserAssessment
+			)
+			guard gate.allowed else { return nil }
+		}
+
+		let confidence = min(0.95, action.confidence + (primitives.count > 1 ? 0.03 : 0))
+		let composed = action.withPrimitives(primitives, confidence: confidence)
+		let intent = intentType(from: primitives)
+		print("[PrimitiveComposer] primitives=\(primitives.map(\.rawValue).joined(separator: ","))")
+		print("[PrimitiveComposer] confidence=\(String(format: "%.2f", confidence))")
+		return PrimitiveCompositionResult(
+			action: composed,
+			primitives: primitives,
+			confidence: confidence,
+			intentType: intent
+		)
+	}
+
+	static func inferredPrimitives(for action: GeneratedActionProposal) -> [ExecutionPrimitive] {
+		if !action.primitives.isEmpty {
+			return dedupe(action.primitives)
+		}
+		return lexicalPrimitives(for: action)
+	}
+
+	static func lexicalPrimitives(for action: GeneratedActionProposal) -> [ExecutionPrimitive] {
 		let lower = "\(action.title) \(action.description) \(action.reasoning)".lowercased()
 		var primitives: [ExecutionPrimitive] = []
 
@@ -617,28 +686,13 @@ enum PrimitiveComposer {
 			primitives.append(.extractActionItems)
 		} else if containsAny(lower, ["synthesize", "findings", "research"]) {
 			primitives.append(.synthesizeResearchSummary)
+		} else if containsAny(lower, ["summarize", "summary", "summarise"]) {
+			primitives.append(.summarizeContext)
 		} else if containsAny(lower, ["explain", "investigate"]) {
 			primitives.append(.answerFromContext)
 		}
 
-		primitives = dedupe(primitives)
-		guard !primitives.isEmpty else {
-			print("[PrimitiveComposer] primitives=")
-			print("[PrimitiveComposer] confidence=0.00")
-			return nil
-		}
-
-		let confidence = min(0.95, action.confidence + (primitives.count > 1 ? 0.03 : 0))
-		let composed = action.withPrimitives(primitives, confidence: confidence)
-		let intent = intentType(from: primitives)
-		print("[PrimitiveComposer] primitives=\(primitives.map(\.rawValue).joined(separator: ","))")
-		print("[PrimitiveComposer] confidence=\(String(format: "%.2f", confidence))")
-		return PrimitiveCompositionResult(
-			action: composed,
-			primitives: primitives,
-			confidence: confidence,
-			intentType: intent
-		)
+		return dedupe(primitives)
 	}
 
 	private static func containsAny(_ text: String, _ terms: [String]) -> Bool {
@@ -661,6 +715,156 @@ enum PrimitiveComposer {
 		if primitives.contains(.answerFromContext) { return .answer }
 		if primitives.contains(.summarizeContext) { return .summarize }
 		return .unknown
+	}
+}
+
+struct GeneratedActionEvidenceGateResult: Sendable, Equatable {
+	let allowed: Bool
+	let inferredPrimitives: [ExecutionPrimitive]
+	let blockedPrimitive: ExecutionPrimitive?
+	let requiredEvidence: ProgressiveEvidenceLevel?
+	let rejectedReason: String?
+}
+
+enum GeneratedActionEvidenceGate {
+	static func evaluate(
+		action: GeneratedActionProposal,
+		evidenceQuality: String,
+		browserAssessment: BrowserContextAssessment? = nil,
+		emitAllowedLog: Bool = true,
+		emitRejectedLog: Bool = true
+	) -> GeneratedActionEvidenceGateResult {
+		let executionPrimitives = PrimitiveComposer.inferredPrimitives(for: action)
+		let gatingPrimitives = evidencePrimitives(for: action)
+		guard !gatingPrimitives.isEmpty else {
+			return GeneratedActionEvidenceGateResult(
+				allowed: true,
+				inferredPrimitives: executionPrimitives,
+				blockedPrimitive: nil,
+				requiredEvidence: nil,
+				rejectedReason: nil
+			)
+		}
+
+		let current = EvidenceQualityModel.level(from: evidenceQuality)
+		let contentAvailable = (browserAssessment?.contentAvailable == true)
+			|| current.rank >= ProgressiveEvidenceLevel.visible_content.rank
+
+		for primitive in gatingPrimitives {
+			guard let required = requiredEvidence(for: primitive) else { continue }
+			let needsContent = required.rank >= ProgressiveEvidenceLevel.visible_content.rank
+			let allowed = current.rank >= required.rank && (!needsContent || contentAvailable)
+			guard allowed else {
+				if emitRejectedLog {
+					print("[GeneratedActionEvidenceGate] title=\"\(String(action.title.prefix(80)))\" primitive=\(primitive.rawValue) required=\(required.rawValue) current=\(current.rawValue) allowed=no reason=content_unavailable")
+					print("[PrimitiveComposer] rejected primitive=\(primitive.rawValue) reason=evidence_level_requires_content current=\(current.rawValue)")
+					print("[ActionValidation] accepted=no rejected_reason=evidence_level_requires_content")
+				}
+				return GeneratedActionEvidenceGateResult(
+					allowed: false,
+					inferredPrimitives: executionPrimitives,
+					blockedPrimitive: primitive,
+					requiredEvidence: required,
+					rejectedReason: "evidence_level_requires_content"
+				)
+			}
+		}
+
+		if emitAllowedLog, let first = gatingPrimitives.first {
+			let required = requiredEvidence(for: first) ?? .metadata_rich
+			let reason = required.rank <= ProgressiveEvidenceLevel.metadata_rich.rank ? "metadata_safe" : "content_available"
+			print("[GeneratedActionEvidenceGate] title=\"\(String(action.title.prefix(80)))\" primitive=\(first.rawValue) required=\(required.rawValue) current=\(current.rawValue) allowed=yes reason=\(reason)")
+		}
+
+		return GeneratedActionEvidenceGateResult(
+			allowed: true,
+			inferredPrimitives: executionPrimitives,
+			blockedPrimitive: nil,
+			requiredEvidence: nil,
+			rejectedReason: nil
+		)
+	}
+
+	static func evaluate(
+		proposal: ValidatedDynamicGeneratedProposal,
+		evidenceQuality: String,
+		browserAssessment: BrowserContextAssessment? = nil,
+		emitAllowedLog: Bool = true,
+		emitRejectedLog: Bool = true
+	) -> GeneratedActionEvidenceGateResult {
+		evaluate(
+			action: GeneratedActionProposal(
+				id: proposal.id,
+				title: proposal.title,
+				description: proposal.description,
+				reasoning: proposal.expectedOutcome,
+				confidence: proposal.confidence,
+				workflow: proposal.workflowType,
+				requiredContext: proposal.requiredContextTypes,
+				primitives: proposal.suggestedPrimitives,
+				createdAt: Date()
+			),
+			evidenceQuality: evidenceQuality,
+			browserAssessment: browserAssessment,
+			emitAllowedLog: emitAllowedLog,
+			emitRejectedLog: emitRejectedLog
+		)
+	}
+
+	static func evaluate(
+		reusableRecord: ReusableGeneratedActionRecord,
+		evidenceQuality: String,
+		browserAssessment: BrowserContextAssessment? = nil,
+		emitAllowedLog: Bool = true,
+		emitRejectedLog: Bool = true
+	) -> GeneratedActionEvidenceGateResult {
+		let primitives = reusableRecord.primitiveSignature
+			.split(separator: ",")
+			.compactMap { ExecutionPrimitive(rawValue: String($0)) }
+		return evaluate(
+			action: GeneratedActionProposal(
+				id: reusableRecord.actionTemplateId,
+				title: reusableRecord.title,
+				description: reusableRecord.description,
+				reasoning: reusableRecord.intentType.rawValue,
+				confidence: reusableRecord.averageConfidence,
+				workflow: reusableRecord.workflowType,
+				requiredContext: reusableRecord.requiredContextTypes,
+				primitives: primitives,
+				createdAt: reusableRecord.createdAt
+			),
+			evidenceQuality: evidenceQuality,
+			browserAssessment: browserAssessment,
+			emitAllowedLog: emitAllowedLog,
+			emitRejectedLog: emitRejectedLog
+		)
+	}
+
+	private static func evidencePrimitives(for action: GeneratedActionProposal) -> [ExecutionPrimitive] {
+		let explicit = action.primitives
+		let lexical = PrimitiveComposer.lexicalPrimitives(for: GeneratedActionProposal(
+			id: action.id,
+			title: action.title,
+			description: action.description,
+			reasoning: action.reasoning,
+			confidence: action.confidence,
+			workflow: action.workflow,
+			requiredContext: action.requiredContext,
+			primitives: [],
+			createdAt: action.createdAt,
+			expiresAt: action.expiresAt
+		))
+		var seen: Set<ExecutionPrimitive> = []
+		return (explicit + lexical).filter { seen.insert($0).inserted }
+	}
+
+	private static func requiredEvidence(for primitive: ExecutionPrimitive) -> ProgressiveEvidenceLevel? {
+		switch primitive {
+		case .synthesizeResearchSummary, .summarizeContext, .extractActionItems, .compareContexts, .generateChecklist:
+			return .visible_content
+		default:
+			return nil
+		}
 	}
 }
 
@@ -754,7 +958,11 @@ enum GeneratedActionPipeline {
 					PlannerStats.recordRejectedCandidate()
 					continue
 				}
-				guard let composition = PrimitiveComposer.compose(action) else { continue }
+				guard let composition = PrimitiveComposer.compose(
+					action,
+					evidenceQuality: input.evidenceQuality,
+					browserAssessment: input.browserAssessment
+				) else { continue }
 				print("[PrimitiveComposition] primitives=\(composition.primitives.map(\.rawValue).joined(separator: ",")) confidence=\(String(format: "%.2f", composition.confidence))")
 				print("[ProposalReasoning] selected_title=\"\(composition.action.title)\" problem=\(problem.problem) reasoning=\"\(composition.action.reasoning)\"")
 				PlannerStats.recordAcceptedCandidate()
@@ -857,7 +1065,7 @@ enum GeneratedActionSelfTest {
 			activeTerms: ["retrieval", "quality", "authors", "conclusions"],
 			activeCompartmentLabel: "Research tabs",
 			activeCompartmentWorkflow: .researching,
-			evidenceQuality: "browser_tabs",
+			evidenceQuality: "ax_content",
 			activeApplication: "Safari",
 			domain: .researching,
 			mode: .comparing,

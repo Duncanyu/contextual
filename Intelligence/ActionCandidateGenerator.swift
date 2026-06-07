@@ -62,7 +62,7 @@ enum ActionCandidateGenerator {
 		llm: any ActionCandidateLLMGenerating = LocalAIClient.shared
 	) async -> [GeneratedActionProposal] {
 		let candidates = await generate(request: request, llm: llm)
-		return candidates.map { candidate in
+		return candidates.compactMap { candidate in
 			let proposal = GeneratedActionProposal(
 				id: stableId(title: candidate.title, problem: request.problem.problem),
 				title: candidate.title,
@@ -73,10 +73,19 @@ enum ActionCandidateGenerator {
 				requiredContext: requiredContext(from: request.problem, input: request.input),
 				createdAt: request.referenceTime
 			)
-			print("[GeneratedAction] title=\(proposal.title)")
-			print("[GeneratedAction] confidence=\(String(format: "%.2f", proposal.confidence))")
-			print("[GeneratedAction] reasoning=\(proposal.reasoning)")
-			return proposal
+			let gate = GeneratedActionEvidenceGate.evaluate(
+				action: proposal,
+				evidenceQuality: request.input.evidenceQuality,
+				browserAssessment: request.input.browserAssessment,
+				emitAllowedLog: false,
+				emitRejectedLog: true
+			)
+			guard gate.allowed else { return nil }
+			let gated = proposal.withPrimitives(gate.inferredPrimitives)
+			print("[GeneratedAction] title=\(gated.title)")
+			print("[GeneratedAction] confidence=\(String(format: "%.2f", gated.confidence))")
+			print("[GeneratedAction] reasoning=\(gated.reasoning)")
+			return gated
 		}
 	}
 
@@ -503,7 +512,7 @@ enum ActionCandidateGeneratorSelfTest {
 			activeTerms: terms,
 			activeCompartmentLabel: entity,
 			activeCompartmentWorkflow: nil,
-			evidenceQuality: multi ? "browser_tabs" : "ax_content",
+			evidenceQuality: "ax_content",
 			activeApplication: domain == .communicating ? "Mail" : "Safari",
 			domain: domain,
 			mode: mode,

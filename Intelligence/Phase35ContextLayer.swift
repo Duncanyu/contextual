@@ -566,10 +566,24 @@ enum DeterministicPanelActionPlanner {
         if safeActions.contains("arrange_side_by_side") {
             let frictionUsefulness = activeSwitching ? 0.42 : 0.18
             let frictionConfidence = activeSwitching ? 0.70 : 0.58
+            let arrangeTitle: String = {
+                let primaryRaw = input.browserAssessment?.kind == .google_docs
+                    ? "Google Doc"
+                    : (input.windowTitle ?? input.tabTitles.first ?? "this page")
+                let secondaryRaw: String = {
+                    if visibleApps.contains("Preview") { return "lease PDF" }
+                    if input.tabTitles.count >= 2 { return input.tabTitles[1] }
+                    return "the other window"
+                }()
+                let primary = SuggestionTitleRewriter.semanticRoleLabel(for: primaryRaw)
+                let secondary = SuggestionTitleRewriter.semanticRoleLabel(for: secondaryRaw)
+                print("[SuggestionTitleContext] capability=arrange_side_by_side source=work_pair primary=\"\(primary)\" secondary=\"\(secondary)\"")
+                return "Put \(primary) beside \(secondary)?"
+            }()
             makeCandidate(
                 lane: .friction,
                 capabilityId: "arrange_side_by_side",
-                title: "Arrange these side by side?",
+                title: arrangeTitle,
                 confidence: frictionConfidence,
                 usefulness: frictionUsefulness,
                 executability: 0.88,
@@ -1155,6 +1169,11 @@ final class DurableMemory: @unchecked Sendable {
             )
             switch event {
             case .accepted:
+                if let lastAuto = record.recentAutoDismissedAt, Date().timeIntervalSince(lastAuto) < 600 {
+                    if record.autoDismissedCount > 0 {
+                        record.autoDismissedCount -= 1
+                    }
+                }
                 record.acceptedCount += 1
                 record.recentAcceptedAt = Date()
             case .dismissed:
@@ -1176,6 +1195,12 @@ final class DurableMemory: @unchecked Sendable {
         }
     }
 
+    func actionFeedbackRecord(for capabilityId: String) -> ActionFeedbackRecord? {
+        queue.sync {
+            store.actionFeedback[capabilityId]
+        }
+    }
+
     func recordRestoreFeedback(restoreKey: String, event: DurableMemoryActionEvent) {
         queue.sync {
             var record = store.restoreCooldowns[restoreKey] ?? ActionFeedbackRecord(
@@ -1192,6 +1217,11 @@ final class DurableMemory: @unchecked Sendable {
             )
             switch event {
             case .accepted:
+                if let lastAuto = record.recentAutoDismissedAt, Date().timeIntervalSince(lastAuto) < 600 {
+                    if record.autoDismissedCount > 0 {
+                        record.autoDismissedCount -= 1
+                    }
+                }
                 record.acceptedCount += 1
                 record.recentAcceptedAt = Date()
             case .dismissed:

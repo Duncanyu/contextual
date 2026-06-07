@@ -1606,22 +1606,29 @@ enum ActionPortfolioEngine {
 		// Try work pair first
 		let workPair = WorkPairMemory.shared.bestPair()
 		if let pair = workPair {
-			let a = String(pair.titleA.prefix(36)).trimmingCharacters(in: .whitespaces)
-			let b = String(pair.titleB.prefix(36)).trimmingCharacters(in: .whitespaces)
+			let a = SuggestionTitleRewriter.semanticRoleLabel(title: pair.titleA, appName: pair.appA)
+			let b = SuggestionTitleRewriter.semanticRoleLabel(title: pair.titleB, appName: pair.appB)
 			if !a.isEmpty && !b.isEmpty {
 				print("[SuggestionTitleContext] capability=arrange_side_by_side source=work_pair primary=\"\(a)\" secondary=\"\(b)\" excluded_stale=\(staleCount)")
 				return "Put \(a) beside \(b)?"
 			}
 		}
 
-		let shortCurrent = String(current.prefix(36)).trimmingCharacters(in: .whitespaces)
+		let frontmostApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+		let shortCurrent = SuggestionTitleRewriter.semanticRoleLabel(title: current, appName: frontmostApp)
 		let secondEntity: String? = {
 			if cleanComparison.count >= 2 {
 				let other = cleanComparison.first { $0 != current }
-				return other.map { String($0.prefix(36)).trimmingCharacters(in: .whitespaces) }
+				if let other {
+					let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
+					let appOther = runtime.visibleWindows.first { $0.title.lowercased().contains(other.lowercased()) || other.lowercased().contains($0.title.lowercased()) }?.appName ?? ""
+					return SuggestionTitleRewriter.semanticRoleLabel(title: other, appName: appOther)
+				}
 			}
 			if let first = cleanRelated.first {
-				return String(first.prefix(36)).trimmingCharacters(in: .whitespaces)
+				let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
+				let appFirst = runtime.visibleWindows.first { $0.title.lowercased().contains(first.lowercased()) || first.lowercased().contains($0.title.lowercased()) }?.appName ?? ""
+				return SuggestionTitleRewriter.semanticRoleLabel(title: first, appName: appFirst)
 			}
 			return nil
 		}()

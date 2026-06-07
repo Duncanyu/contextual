@@ -491,7 +491,13 @@ enum SuggestionSurfacePolicy: Sendable {
         
         if surface == .suppressed {
             var suppressedReason = "no_time_saved"
-            if reason == "typing_active" || reason == "recently_dismissed" || reason == "already_done" || reason == "low_value_metadata" {
+            if reason == "typing_active"
+                || reason == "recently_dismissed"
+                || reason == "already_done"
+                || reason == "low_value_metadata"
+                || reason == "already_playing"
+                || reason == "recently_accepted"
+                || reason == "task_action_preferred" {
                 suppressedReason = reason
             } else if reason == "no_prior_music_acceptance" {
                 suppressedReason = "no_time_saved"
@@ -541,6 +547,9 @@ enum SuggestionSurfacePolicy: Sendable {
         
         // 1. Typing Active check — suppress floating, but keep panel for actionable/metadata-safe
         if isUserTyping {
+            if capabilityId == "play_focus_media" {
+                print("[MusicSuggestion] suppressed reason=typing_active")
+            }
             let panelSafeDuringTyping: Set<String> = [
                 // Friction actions
                 "arrange_side_by_side", "split_research_setup",
@@ -565,10 +574,20 @@ enum SuggestionSurfacePolicy: Sendable {
             
         case "play_focus_media":
             if isMusicPlaying {
-                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "already_done", expectedFriction: .low)
+                print("[MusicSuggestion] suppressed reason=already_playing")
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "already_playing", expectedFriction: .low)
+            }
+            if recentFeedback == "accepted" {
+                print("[MusicSuggestion] suppressed reason=recently_accepted")
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "recently_accepted", expectedFriction: .low)
+            }
+            if isUserActivelySwitching || !isLayoutAlreadyGood || hasDurablePattern {
+                print("[MusicSuggestion] suppressed reason=task_action_preferred")
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "task_action_preferred", expectedFriction: .low)
             }
             if isMusicSuppressed {
-                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "low_value_metadata", expectedFriction: .low)
+                print("[MusicSuggestion] suppressed reason=context_mismatch")
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "context_mismatch", expectedFriction: .low)
             }
             
             // Music can float only when:
@@ -578,7 +597,7 @@ enum SuggestionSurfacePolicy: Sendable {
             // - user is idle or transitioning (not typing check passed above)
             // - current task context is compatible (not suppressed check passed above)
             if userAcceptedMusicBefore {
-                return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "music_accepted_before", expectedFriction: .medium)
+                return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "music_idle_context_match", expectedFriction: .medium)
             } else {
                 return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "no_prior_music_acceptance", expectedFriction: .low)
             }

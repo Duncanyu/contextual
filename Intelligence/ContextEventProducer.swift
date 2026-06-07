@@ -1433,9 +1433,11 @@ final class ContextEventProducer {
 			let bestBlockedAction = evidenceProfile.level.rank < ProgressiveEvidenceLevel.visible_content.rank
 				? "summarize_visible_content"
 				: nil
-			let quietReason = evidenceProfile.level.rank < ProgressiveEvidenceLevel.metadata_rich.rank
-				? "evidence_is_metadata_only"
-				: (portfolioResult.panelCandidates.isEmpty ? "no_useful_action_exists" : "no_floating_action")
+			let quietReason = evidenceProfile.level.rank < ProgressiveEvidenceLevel.visible_content.rank && !portfolioResult.panelCandidates.isEmpty
+				? "no_content_action"
+				: (evidenceProfile.level.rank < ProgressiveEvidenceLevel.metadata_rich.rank
+					? "evidence_is_metadata_only"
+					: (portfolioResult.panelCandidates.isEmpty ? "no_useful_action_exists" : "no_floating_action"))
 			QuietDecisionLogger.emit(
 				shown: false,
 				reason: quietReason,

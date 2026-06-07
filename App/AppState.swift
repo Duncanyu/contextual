@@ -300,9 +300,13 @@ final class AppState: ObservableObject {
 	private var lastAmbientJarvisTargetEntity: String = ""
 	var lastAmbientJarvisShownAt: Date? = nil
 	private var loggedFeedbackEvents: [String: String] = [:]
+	private var pendingAutoDismissDurableFeedback: [String: Task<Void, Never>] = [:]
 
 	func recordSuggestionFeedback(id: String, event: String) {
 		let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
+		if event == "accepted" {
+			cancelPendingDurableFeedback(for: normalizedId)
+		}
 		if let oldEvent = loggedFeedbackEvents[normalizedId] {
 			if oldEvent == "accepted" {
 				print("[SuggestionFeedback] suppressed_duplicate_event id=\(normalizedId) old=\(oldEvent) new=\(event)")
@@ -323,6 +327,48 @@ final class AppState: ObservableObject {
 	func wasSuggestionFeedbackLogged(id: String, event: String) -> Bool {
 		let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
 		return loggedFeedbackEvents[normalizedId] == event
+	}
+
+	private func cancelPendingDurableFeedback(for id: String) {
+		pendingAutoDismissDurableFeedback[id]?.cancel()
+		pendingAutoDismissDurableFeedback.removeValue(forKey: id)
+	}
+
+	private func commitDurableFeedback(
+		id: String,
+		capabilityId: String,
+		event: DurableMemoryActionEvent,
+		context: DurableMemoryContext,
+		restoreKey: String? = nil
+	) {
+		cancelPendingDurableFeedback(for: id)
+		DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: event, context: context)
+		if let restoreKey {
+			DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: event)
+		}
+	}
+
+	private func scheduleAutoDismissDurableFeedback(
+		id: String,
+		capabilityId: String,
+		context: DurableMemoryContext,
+		restoreKey: String? = nil
+	) {
+		cancelPendingDurableFeedback(for: id)
+		let task = Task { @MainActor [weak self] in
+			try? await Task.sleep(nanoseconds: 1_000_000_000)
+			guard let self, !Task.isCancelled else { return }
+			guard self.loggedFeedbackEvents[id] == "auto_dismissed" else {
+				self.pendingAutoDismissDurableFeedback.removeValue(forKey: id)
+				return
+			}
+			DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: .autoDismissed, context: context)
+			if let restoreKey {
+				DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: .autoDismissed)
+			}
+			self.pendingAutoDismissDurableFeedback.removeValue(forKey: id)
+		}
+		pendingAutoDismissDurableFeedback[id] = task
 	}
 
 	private func durableContext(for suggestion: AmbientJarvisSuggestion?) -> DurableMemoryContext? {
@@ -523,7 +569,15 @@ final class AppState: ObservableObject {
 				if let suggestion = self.activeAmbientJarvisSuggestion {
 					if let context = self.durableContext(for: suggestion) {
 						let capabilityId = self.ambientCapabilityId(for: suggestion, actionId: id)
-						DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: .accepted, context: context)
+						let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
+						await MainActor.run {
+							self.commitDurableFeedback(
+								id: normalizedId,
+								capabilityId: capabilityId,
+								event: .accepted,
+								context: context
+							)
+						}
 						DurableMemory.shared.recordScheduleObservation(context: context, accepted: true, activityState: "active")
 					}
 					let environmentActionIds: Set<String> = [
@@ -1307,10 +1361,22 @@ final class AppState: ObservableObject {
 		   let context = durableContext(for: ambient),
 		   reason != .accepted {
 			let capabilityId = ambientCapabilityId(for: ambient)
-			let feedbackEvent: DurableMemoryActionEvent = (reason == .auto || reason == .panelOpen) ? .autoDismissed : .dismissed
-			DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: feedbackEvent, context: context)
-			if let restoreKey = restoreCooldownKey(for: ambient) {
-				DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: feedbackEvent)
+			let normalizedId = proposalSnapshot?.primaryActionId.replacingOccurrences(of: "ambient_jarvis:", with: "") ?? capabilityId
+			if reason == .auto || reason == .panelOpen {
+				scheduleAutoDismissDurableFeedback(
+					id: normalizedId,
+					capabilityId: capabilityId,
+					context: context,
+					restoreKey: restoreCooldownKey(for: ambient)
+				)
+			} else {
+				commitDurableFeedback(
+					id: normalizedId,
+					capabilityId: capabilityId,
+					event: .dismissed,
+					context: context,
+					restoreKey: restoreCooldownKey(for: ambient)
+				)
 			}
 		}
 

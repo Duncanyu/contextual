@@ -5,6 +5,17 @@ import Foundation
 enum TaskInferenceSelfTest {
 
 	static func run() async -> Bool {
+		let hadOriginalDay1 = UserDefaults.standard.object(forKey: "contextual.day1BehaviorValidationMode") != nil
+		let originalDay1 = UserDefaults.standard.bool(forKey: "contextual.day1BehaviorValidationMode")
+		UserDefaults.standard.set(false, forKey: "contextual.day1BehaviorValidationMode")
+		defer {
+			if hadOriginalDay1 {
+				UserDefaults.standard.set(originalDay1, forKey: "contextual.day1BehaviorValidationMode")
+			} else {
+				UserDefaults.standard.removeObject(forKey: "contextual.day1BehaviorValidationMode")
+			}
+		}
+
 		var failures: [String] = []
 		func check(_ name: String, _ ok: Bool) {
 			if !ok { failures.append(name) }
@@ -68,12 +79,20 @@ enum TaskInferenceSelfTest {
 			needReason: nil
 		)
 
+		struct TestStubPlannerLLM: ActionCandidateLLMGenerating {
+			func generate(prompt: String, model: String, numPredict: Int, temperature: Double, purpose: String?, schema: [String: Any]?) async throws -> String {
+				return #"{"candidates":[{"title":"Compare battery-runtime tradeoffs across active products","reasoning":"Specific comparison support.","confidence":0.85}]}"#
+			}
+		}
+		let testLLM = TestStubPlannerLLM()
+
 		let planned = await TaskInferencePlanningPipeline.compose(
 			inference: inference,
 			snapshot: snap,
 			situational: situational,
 			recentTitles: [snap.windowTitle],
-			referenceTime: now
+			referenceTime: now,
+			llm: testLLM
 		)
 		check("planner_returns_proposal", planned != nil)
 		check("planner_title_not_empty", !(planned?.proposal.title ?? "").isEmpty)

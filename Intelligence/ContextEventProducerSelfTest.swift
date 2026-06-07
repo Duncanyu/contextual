@@ -130,7 +130,7 @@ enum ContextEventProducerSelfTest {
                 hasSelection: ContextEventProducer.hasRecentSelectionEvidence(in: selectionPacket),
                 hasOCRHints: false,
                 hasBrowserContext: false
-            ) == "selection")
+            ) == "selected_content")
 
         // Length bucket helper — direct unit check on the static helper.
         check("length_bucket_short", ContextEventProducer.lengthBucket(15) == "0-20")
@@ -239,7 +239,7 @@ extension ContextEventProducer {
         )
         check("selection_evidence_detected", hasRecentSelectionEvidence(in: selectionPacket))
         check("evidence_quality_prefers_selection",
-            evidenceQuality(hasSelection: true, hasOCRHints: true, hasBrowserContext: true) == "selection")
+            evidenceQuality(hasSelection: true, hasOCRHints: true, hasBrowserContext: true) == "selected_content")
     }
 }
 

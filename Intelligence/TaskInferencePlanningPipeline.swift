@@ -22,7 +22,8 @@ enum TaskInferencePlanningPipeline {
 		situational: SituationalContextSnapshot,
 		recentTitles: [String],
 		registry: HookCapabilityRegistry = .shared,
-		referenceTime: Date = Date()
+		referenceTime: Date = Date(),
+		llm: (any ActionCandidateLLMGenerating)? = nil
 	) async -> PlanningOutput? {
 		if Day1BehaviorValidationMode.isEnabled {
 			print("[HookCompositionPipeline] blocked reason=day1_behavior_validation")
@@ -59,17 +60,14 @@ enum TaskInferencePlanningPipeline {
 		)
 		guard let generated = await GeneratedActionPipeline.firstAction(
 			input: actionInput,
-			referenceTime: referenceTime
+			referenceTime: referenceTime,
+			llm: llm ?? LocalAIClient.shared
 		) else {
 			print("[HookCompositionPipeline] skipped reason=no_generated_action")
 			return nil
 		}
 
-		let validation = ActionCandidateValidator.validate(generated)
-		guard validation.accepted else {
-			print("[HookCompositionPipeline] skipped reason=action_validation_failed")
-			return nil
-		}
+		// Candidate is already validated by firstAction, no need to double-validate here.
 
 		guard let composition = PrimitiveComposer.compose(generated) else {
 			print("[HookCompositionPipeline] skipped reason=primitive_composition_failed")
@@ -145,13 +143,14 @@ enum TaskInferencePlanningPipeline {
 			snapshot.clipboardText
 		].compactMap { $0 }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 		let workflow = WorkflowExecutionMapper.workflowType(from: situational.inferredWorkflow)
+		let evidenceQuality = inferredEvidenceQuality(from: snapshot)
 		return GeneratedActionInput(
 			currentEntity: snapshot.windowTitle.isEmpty ? situational.windowTitle : snapshot.windowTitle,
 			relatedEntities: Array(related.prefix(4)),
 			activeTerms: terms,
 			activeCompartmentLabel: nil,
 			activeCompartmentWorkflow: nil,
-			evidenceQuality: snapshot.availableContextTypes.contains(.multiSource) ? "browser_tabs" : "title_only",
+			evidenceQuality: evidenceQuality,
 			activeApplication: snapshot.activeApp,
 			domain: domain(from: workflow),
 			mode: mode(from: workflow),
@@ -162,6 +161,18 @@ enum TaskInferencePlanningPipeline {
 			hasComparisonCandidates: inference.neededCapabilityCategories.map { $0.lowercased() }.contains("compare"),
 			confidenceSeed: inference.confidence
 		)
+	}
+
+	private static func inferredEvidenceQuality(
+		from snapshot: CanonicalGeneratedExecutionContextSnapshot
+	) -> String {
+		let hasSelectedText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasOCRText = !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		if hasSelectedText { return "selection" }
+		if hasOCRText { return "ax_content" }
+		if snapshot.availableContextTypes.contains(.multiSource) { return "browser_tabs" }
+		if !snapshot.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "title_only" }
+		return "none"
 	}
 
 	private static func domain(from workflow: WorkflowType) -> DeterminerSignal.Domain {

@@ -154,6 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 		}
+		if env["CONTEXTUAL_RUN_PHASE35_6_COMPLETION_SELFTEST"] == "1" {
+			Task {
+				let ok = await Phase35_6CompletionSelfTest.run()
+				print("[Phase35_6CompletionSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
 		if env["CONTEXTUAL_RUN_HOOK_IO_CONTRACT_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_IO_VALIDATOR_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_HOOK_CHAIN_REPAIR_SELFTEST"] == "1" {
 			HookCapabilityRegistry.hookAuditEnabled = true
 		}
@@ -804,7 +811,9 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			object: nil,
 			queue: .main
 		) { [weak self] _ in
-			self?.appState.refreshContextAwarenessSummary()
+			Task { @MainActor in
+				self?.appState.refreshContextAwarenessSummary()
+			}
 		}
 
 		openTaskPanelObserver = NotificationCenter.default.addObserver(
@@ -812,8 +821,10 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			object: nil,
 			queue: .main
 		) { [weak self] _ in
-			self?.menuBarController?.revealPopoverIfNeeded()
-			self?.appState.isPanelVisible = true
+			Task { @MainActor in
+				self?.menuBarController?.revealPopoverIfNeeded()
+				self?.appState.isPanelVisible = true
+			}
 		}
 
 		let manager = SourceManager { event in
@@ -2066,7 +2077,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			return
 		}
 
-		let llmResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
+		let rawLLMResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
 			snapshot: prepared.snapshot,
 			existingStaticActions: [],
 			reusableActions: [],
@@ -2076,6 +2087,14 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			isActionExecuting: appState.isActionExecuting,
 			isWarmupReady: twoStageWarmupComplete,
 			forcePlannerFromPendingActionIntentRetry: forcePlannerPendingRetry
+		)
+		let llmResult = gateDynamicGeneratedResult(
+			rawLLMResult,
+			evidenceContext: dynamicGeneratedEvidenceContext(
+				context: context,
+				snapshot: prepared.snapshot,
+				situational: prepared.situational
+			)
 		)
 		// T18.3.6B: Explicit pipeline trace — log engine result and library record count before activator.
 		print("[ProposalPipeline] engine_result status=\(llmResult.status.rawValue) library_records=\(llmResult.libraryRecords.count) should_chime=\(llmResult.shouldChimeIn) reason=\(llmResult.reason)")
@@ -2632,6 +2651,11 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		let suppressedCount: Int
 	}
 
+	private struct DynamicGeneratedEvidenceContext {
+		let evidenceQuality: String
+		let browserAssessment: BrowserContextAssessment?
+	}
+
 	private func buildDeterministicPanelPublication(context: ContextModel) -> DeterministicPanelPublication {
 		let frontmost = NSWorkspace.shared.frontmostApplication
 		let activeAppName = context.activeAppName ?? frontmost?.localizedName ?? ""
@@ -2770,6 +2794,100 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			floatingCandidate: floatingCandidate,
 			panelCount: mergedActions.count,
 			suppressedCount: suppressedCount
+		)
+	}
+
+	private func dynamicGeneratedEvidenceContext(
+		context: ContextModel,
+		snapshot: CanonicalGeneratedExecutionContextSnapshot,
+		situational: SituationalContextSnapshot
+	) -> DynamicGeneratedEvidenceContext {
+		let frontmost = NSWorkspace.shared.frontmostApplication
+		let activeAppName = snapshot.activeApp.isEmpty
+			? (context.activeAppName ?? frontmost?.localizedName ?? situational.activeAppName)
+			: snapshot.activeApp
+		let browserContext = BrowserContextExtractor.extract(
+			appName: activeAppName,
+			activeAppPID: frontmost?.processIdentifier
+		)
+		let currentURL = browserContext?.selectedURL ?? browserContext?.currentURL
+		let selectedTitle = browserContext?.selectedTitle
+		let tabTitles = browserContext?.recentTabTitles ?? []
+		let hasOCRText = !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let hasSelectedText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		let browserAssessment = (currentURL != nil || !tabTitles.isEmpty || !(selectedTitle ?? "").isEmpty)
+			? BrowserContextStrategy.assess(
+				title: selectedTitle ?? context.activeWindowTitle ?? snapshot.windowTitle,
+				url: currentURL,
+				tabTitles: tabTitles,
+				hasAXText: false,
+				hasOCR: hasOCRText
+			)
+			: nil
+		let evidenceProfile = EvidenceQualityModel.evaluate(
+			title: selectedTitle ?? context.activeWindowTitle ?? snapshot.windowTitle,
+			url: currentURL,
+			tabTitles: tabTitles,
+			hasAXText: false,
+			hasOCR: hasOCRText,
+			hasSelectedText: hasSelectedText,
+			semanticGrounding: false,
+			durableCompartment: false,
+			browserAssessment: browserAssessment
+		)
+		return DynamicGeneratedEvidenceContext(
+			evidenceQuality: evidenceProfile.level.legacyQuality,
+			browserAssessment: browserAssessment
+		)
+	}
+
+	private func gateDynamicGeneratedResult(
+		_ result: DynamicGeneratedProposalResult,
+		evidenceContext: DynamicGeneratedEvidenceContext
+	) -> DynamicGeneratedProposalResult {
+		var blockedForEvidence = 0
+		let allowedProposals = result.proposals.filter { proposal in
+			let gate = GeneratedActionEvidenceGate.evaluate(
+				proposal: proposal,
+				evidenceQuality: evidenceContext.evidenceQuality,
+				browserAssessment: evidenceContext.browserAssessment,
+				emitAllowedLog: false,
+				emitRejectedLog: true
+			)
+			if !gate.allowed { blockedForEvidence += 1 }
+			return gate.allowed
+		}
+		let allowedProposalIds = Set(allowedProposals.map(\.id))
+		let allowedLibraryRecords = result.libraryRecords.filter { record in
+			let gate = GeneratedActionEvidenceGate.evaluate(
+				reusableRecord: record,
+				evidenceQuality: evidenceContext.evidenceQuality,
+				browserAssessment: evidenceContext.browserAssessment,
+				emitAllowedLog: false,
+				emitRejectedLog: true
+			)
+			if !gate.allowed { blockedForEvidence += 1 }
+			return gate.allowed
+		}
+		let allowedHookContracts = result.hookContracts.filter { allowedProposalIds.contains($0.id) }
+		if blockedForEvidence > 0 && allowedProposals.isEmpty && allowedLibraryRecords.isEmpty {
+			print("[ProposalFunnelAudit] not_generated capability=generated_action reason=content_primitive_requires_visible_content")
+			print("[OpportunityEngine] suppressed capability=generated_action reason=content_unavailable_metadata_only")
+		}
+		return DynamicGeneratedProposalResult(
+			status: result.status,
+			shouldChimeIn: result.shouldChimeIn,
+			reason: result.reason,
+			workflowAssessment: result.workflowAssessment,
+			proposalConfidence: result.proposalConfidence,
+			requiresVisualContext: result.requiresVisualContext,
+			proposals: allowedProposals,
+			warnings: result.warnings,
+			llmDiagnosticCause: result.llmDiagnosticCause,
+			createdAt: result.createdAt,
+			contextSnapshot: result.contextSnapshot,
+			libraryRecords: allowedLibraryRecords,
+			hookContracts: allowedHookContracts
 		)
 	}
 

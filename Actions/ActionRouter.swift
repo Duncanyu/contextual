@@ -43,7 +43,7 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 
 	init(seed: DeterministicCapabilityActionSeed) {
 		self.id = seed.capabilityId
-		self.name = seed.title
+		self.name = SuggestionTitleRewriter.rewrite(title: seed.title, capabilityId: seed.capabilityId)
 		self.seed = seed
 	}
 

@@ -498,10 +498,17 @@ public enum OpportunityEngine {
             )
         )
 
-        let generatedActions = GeneratedActionGenerator.generate(input: input)
+        let generatedResult = GeneratedActionGenerator.generateDetailed(input: input)
+        let generatedActions = generatedResult.actions
         var validated: [Opportunity] = []
 		if generatedActions.isEmpty {
-			lifecycleAudit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: "generator_returned_empty")
+			if generatedResult.blockedForEvidence {
+				lifecycleAudit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: "content_primitive_requires_visible_content")
+				print("[ProposalFunnelAudit] not_generated capability=generated_action reason=content_primitive_requires_visible_content")
+				print("[OpportunityEngine] suppressed capability=generated_action reason=content_unavailable_metadata_only")
+			} else {
+				lifecycleAudit.noteNotGenerated(candidate: "generated_action", bucket: "generated_action", reason: "generator_returned_empty")
+			}
 		}
 
         let hasRealContent = EvidenceQualityModel.level(from: evidenceQuality).rank >= ProgressiveEvidenceLevel.visible_content.rank
@@ -518,7 +525,10 @@ public enum OpportunityEngine {
 				)
 				continue
 			}
-            guard let composition = PrimitiveComposer.compose(action) else {
+            guard let composition = PrimitiveComposer.compose(
+				action,
+				evidenceQuality: evidenceQuality
+			) else {
 				lifecycleAudit.noteRejected(
 					candidate: candidateName, 
 					bucket: "generated_action", 
