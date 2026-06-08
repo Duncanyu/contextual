@@ -36,6 +36,8 @@ public struct Opportunity: Sendable, Equatable, Codable {
 	public let involvedApps: [String]
 	public let involvedURLs: [String]
 	public let browserTabTitles: [String]
+	public let candidateID: String?
+	let targetContract: ActionTargetContract?
 	let generatedAction: GeneratedActionProposal?
 	// Phase 28.3: Carry MusicIntent through the full pipeline so click routing can use it.
 	public let musicIntent: MusicIntent?
@@ -54,6 +56,8 @@ public struct Opportunity: Sendable, Equatable, Codable {
 		involvedApps: [String] = [],
 		involvedURLs: [String] = [],
 		browserTabTitles: [String] = [],
+		candidateID: String? = nil,
+		targetContract: ActionTargetContract? = nil,
 		generatedAction: GeneratedActionProposal? = nil,
 		musicIntent: MusicIntent? = nil
 	) {
@@ -70,6 +74,8 @@ public struct Opportunity: Sendable, Equatable, Codable {
 		self.involvedApps = involvedApps
 		self.involvedURLs = involvedURLs
 		self.browserTabTitles = browserTabTitles
+		self.candidateID = candidateID
+		self.targetContract = targetContract
 		self.generatedAction = generatedAction
 		self.musicIntent = musicIntent
 	}
@@ -427,7 +433,7 @@ public enum OpportunityEngine {
         // The portfolio winner is already ranked by score = usefulness * executability * confidence * novelty.
         if let winner = portfolioCandidates.first {
             let portfolioOpp = Opportunity(
-                id: "opp:portfolio:\(winner.capabilityId):\(UUID().uuidString.prefix(6))",
+                id: "opp:portfolio:\(winner.candidateID)",
                 title: winner.title,
                 capabilityId: winner.capabilityId,
                 confidence: min(0.95, winner.confidence),
@@ -440,6 +446,8 @@ public enum OpportunityEngine {
                 involvedApps: winner.involvedApps,
                 involvedURLs: supportingURLs(for: winner, compartment: compartment, memory: memory),
                 browserTabTitles: supportingBrowserTabTitles(for: winner, compartment: compartment, memory: memory),
+                candidateID: winner.candidateID,
+                targetContract: winner.targetContract,
                 generatedAction: winner.generatedAction,
                 musicIntent: winner.musicIntent
             )
@@ -606,7 +614,7 @@ public enum OpportunityEngine {
                 // Portfolio cognitive winner still wins
                 print("winner=\(winner.capabilityId)")
                 let portfolioOpp = Opportunity(
-                    id: "opp:portfolio:\(winner.capabilityId):\(UUID().uuidString.prefix(6))",
+                    id: "opp:portfolio:\(winner.candidateID)",
                     title: winner.title,
                     capabilityId: winner.capabilityId,
                     confidence: min(0.95, winner.confidence),
@@ -619,6 +627,8 @@ public enum OpportunityEngine {
                     involvedApps: winner.involvedApps,
                     involvedURLs: supportingURLs(for: winner, compartment: compartment, memory: memory),
                     browserTabTitles: supportingBrowserTabTitles(for: winner, compartment: compartment, memory: memory),
+                    candidateID: winner.candidateID,
+                    targetContract: winner.targetContract,
                     generatedAction: winner.generatedAction,
                     musicIntent: winner.musicIntent
                 )

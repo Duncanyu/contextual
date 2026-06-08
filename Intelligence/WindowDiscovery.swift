@@ -25,6 +25,12 @@ enum WindowDiscovery {
         "Notification Centre", "universalaccessd"
     ]
 
+    /// Phase 40 — dogfood mode suppresses per-window candidate spam. Set
+    /// `CONTEXTUAL_TRACE_WINDOW_DISCOVERY=1` to re-enable per-window candidate logs.
+    private static let traceCandidates: Bool = {
+        ProcessInfo.processInfo.environment["CONTEXTUAL_TRACE_WINDOW_DISCOVERY"] == "1"
+    }()
+
     static func discoverAll() -> [WindowSnapshot] {
         guard let raw = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements],
@@ -37,6 +43,7 @@ enum WindowDiscovery {
         let selfPID = ProcessInfo.processInfo.processIdentifier
         let activeScreen = NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
         var kept: [WindowSnapshot] = []
+        var rejectionCounts: [String: Int] = [:]
 
         for dict in raw {
             let pid = dict[kCGWindowOwnerPID as String] as? Int32 ?? -1
@@ -71,17 +78,24 @@ enum WindowDiscovery {
                 reason = "kept"
             }
 
-            print("[WindowDiscovery] candidate"
-                + " pid=\(pid)"
-                + " app=\(ownerName)"
-                + " title=\"\(String(title.prefix(40)))\""
-                + " bounds=\(Int(frame.origin.x)),\(Int(frame.origin.y)),\(Int(frame.width)),\(Int(frame.height))"
-                + " layer=\(layer)"
-                + " visible=\(isOnScreen ? "yes" : "no")"
-                + " active_screen=\(onActiveScreen ? "yes" : "no")"
-                + " reason=\(reason)")
+            if Self.traceCandidates {
+                print("[WindowDiscovery] candidate"
+                    + " pid=\(pid)"
+                    + " app=\(ownerName)"
+                    + " title=\"\(String(title.prefix(40)))\""
+                    + " bounds=\(Int(frame.origin.x)),\(Int(frame.origin.y)),\(Int(frame.width)),\(Int(frame.height))"
+                    + " layer=\(layer)"
+                    + " visible=\(isOnScreen ? "yes" : "no")"
+                    + " active_screen=\(onActiveScreen ? "yes" : "no")"
+                    + " reason=\(reason)")
+            }
 
-            guard reason == "kept" else { continue }
+            guard reason == "kept" else {
+                // Aggregate rejection reasons (collapse layer numbers to "rejected_layer_N+").
+                let key = reason.hasPrefix("rejected_layer_") ? "rejected_layer_nonzero" : reason
+                rejectionCounts[key, default: 0] += 1
+                continue
+            }
 
             let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
             kept.append(WindowSnapshot(
@@ -91,7 +105,16 @@ enum WindowDiscovery {
             ))
         }
 
-        print("[WindowDiscovery] discovered=\(kept.count) total_candidates=\(raw.count)")
+        let rejectedTotal = raw.count - kept.count
+        let summary = rejectionCounts
+            .sorted { $0.value > $1.value }
+            .prefix(4)
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ",")
+        print("[WindowDiscovery] discovered=\(kept.count) eligible=\(kept.count) rejected=\(rejectedTotal) reason_summary=\(summary.isEmpty ? "none" : summary)")
+        if !Self.traceCandidates && rejectedTotal > 0 {
+            print("[LogSuppression] category=window_discovery_candidates suppressed_count=\(rejectedTotal) mode=dogfood")
+        }
         return kept
     }
 
@@ -313,8 +336,23 @@ enum LayoutEngine {
         preferredAppB: String? = nil,
         titleHintA: String? = nil,
         titleHintB: String? = nil,
-        compartment: TaskCompartment? = nil
+        compartment: TaskCompartment? = nil,
+        contract: ActionTargetContract? = nil
     ) -> LayoutResult {
+
+        // Part C: determine layout mode
+        let mode: LayoutIntentMode = (contract != nil) ? .proposalBoundLayout : .genericRuntimeLayout
+        print("[LayoutIntent] mode=\(mode.rawValue)\(contract.map { " contract_id=\($0.contractID)" } ?? "")")
+
+        if let contract = contract {
+            // Proposal-bound: validate contract before proceeding
+            print("[LayoutIntent] target_contract=\(contract.isExpired ? "stale" : "present")")
+            if contract.isExpired {
+                print("[LayoutIntent] blocked reason=bound_target_missing")
+                print("[ActionVerification] capability=arrange_side_by_side status=failed reason=bound_target_contract_expired")
+                return LayoutResult(status: "failed", reason: "bound_target_contract_expired", windowA: "none", windowB: "none")
+            }
+        }
 
         guard AXPermissionProbe.check(reason: "layout_arrange") else {
             print("[ActionVerification] capability=arrange_side_by_side status=failed reason=accessibility_permission_required")
@@ -325,8 +363,27 @@ enum LayoutEngine {
         let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
         let workPair = WorkPairMemory.shared.bestPair()
 
-        // Score all candidates
-        let scored = allCG.map { LayoutCandidateScorer.score($0, frontmostPID: frontPID, workPair: workPair, compartment: compartment) }
+        // Score all candidates; in proposal-bound mode skip windows not in contract
+        let scored: [LayoutCandidateScorer.ScoredWindow]
+        if let contract = contract, mode == .proposalBoundLayout {
+            let contractBundles = Set(contract.targets.compactMap { $0.appBundleID })
+            let contractApps = Set(contract.targets.compactMap { $0.appName })
+            scored = allCG.compactMap { window in
+                let inContract = contractBundles.contains(window.bundleID) || contractApps.contains(window.appName)
+                if !inContract {
+                    print("[LayoutCandidateScore] skipped_unrelated app=\(window.appName) reason=proposal_bound_mode")
+                    return nil
+                }
+                return LayoutCandidateScorer.score(window, frontmostPID: frontPID, workPair: workPair, compartment: compartment)
+            }
+            if scored.count < 2 {
+                print("[LayoutIntent] blocked reason=bound_target_missing")
+                print("[ActionVerification] capability=arrange_side_by_side status=failed reason=bound_targets_not_found")
+                return LayoutResult(status: "failed", reason: "bound_targets_not_found", windowA: "none", windowB: "none")
+            }
+        } else {
+            scored = allCG.map { LayoutCandidateScorer.score($0, frontmostPID: frontPID, workPair: workPair, compartment: compartment) }
+        }
         let ranked = scored.sorted { $0.score > $1.score }
 
         // Select best pair: highest-scored + best complement
@@ -368,24 +425,139 @@ enum LayoutEngine {
         }
 
         // Move
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let screenDesc = screen.map { "\($0.frame.width)x\($0.frame.height)" } ?? "unknown"
         let left = computeLeftHalf()
         let right = computeRightHalf()
-        let leftOK = moveAndVerify(handle: axA, target: left, label: aLabel)
-        let rightOK = moveAndVerify(handle: axB, target: right, label: bLabel)
+
+        print("[LayoutPlan] capability=arrange_side_by_side primary_target=\(fmtRectAngle(left)) secondary_target=\(fmtRectAngle(right)) screen=\(screenDesc)")
+
+        var targetA = left
+        var targetB = right
+
+        var actualA = CGRect.zero
+        var actualB = CGRect.zero
+
+        var isOverlap = false
+        var isSameSide = false
+        var isWithinTolerance = false
+
+        var finalStatus = "failed"
+        var finalReason = "move_verify_failed"
+
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            let errPosA = setAXPosition(axA.axElement, x: targetA.minX, y: targetA.minY)
+            let errSizeA = setAXSize(axA.axElement, w: targetA.width, h: targetA.height)
+            let errPosB = setAXPosition(axB.axElement, x: targetB.minX, y: targetB.minY)
+            let errSizeB = setAXSize(axB.axElement, w: targetB.width, h: targetB.height)
+
+            actualA = readAXFrame(axA.axElement) ?? targetA
+            actualB = readAXFrame(axB.axElement) ?? targetB
+
+            let menuBarOffset = computeMenuBarHeight()
+            let tol: CGFloat = 24
+            let aWithinTol = withinTolerance(actualA, targetA, tol: tol, menuBarOffset: menuBarOffset)
+            let bWithinTol = withinTolerance(actualB, targetB, tol: tol, menuBarOffset: menuBarOffset)
+            isWithinTolerance = aWithinTol && bWithinTol
+
+            // Check overlap
+            isOverlap = actualA.insetBy(dx: 10, dy: 10).intersects(actualB.insetBy(dx: 10, dy: 10))
+
+            // Check same side
+            let screenMidX = screen?.visibleFrame.midX ?? 720
+            isSameSide = (actualA.midX < screenMidX && actualB.midX < screenMidX) ||
+                         (actualA.midX > screenMidX && actualB.midX > screenMidX)
+
+            let overlapArea = isOverlap ? actualA.intersection(actualB).width * actualA.intersection(actualB).height : 0
+            if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+                print("[LayoutVerify] overlap_area=\(Int(overlapArea)) same_side=\(isSameSide ? "yes" : "no") within_tolerance=\(isWithinTolerance ? "yes" : "no")")
+            }
+
+            if !isOverlap && !isSameSide && isWithinTolerance {
+                finalStatus = "success"
+                finalReason = "windows_arranged"
+                break
+            }
+
+            if attempt < maxAttempts {
+                let retryReason: String
+                if isOverlap {
+                    retryReason = "overlap"
+                } else if isSameSide {
+                    retryReason = "same_side"
+                } else if errPosA != .success || errSizeA != .success || errPosB != .success || errSizeB != .success {
+                    retryReason = "ax_resisted_move"
+                } else {
+                    retryReason = "size_mismatch"
+                }
+                if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+                    print("[LayoutRetry] attempt=\(attempt) reason=\(retryReason)")
+                }
+
+                let screenFrame = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+                let minWidth: CGFloat = 200
+                if actualA.width > targetA.width + tol {
+                    let newWidthA = min(actualA.width, screenFrame.width - minWidth)
+                    targetA.size.width = newWidthA
+                    targetB.origin.x = screenFrame.minX + newWidthA
+                    targetB.size.width = max(minWidth, screenFrame.width - newWidthA)
+                } else if actualB.width > targetB.width + tol {
+                    let newWidthB = min(actualB.width, screenFrame.width - minWidth)
+                    targetB.size.width = newWidthB
+                    targetB.origin.x = screenFrame.maxX - newWidthB
+                    targetA.size.width = max(minWidth, screenFrame.width - newWidthB)
+                } else {
+                    targetA = left.insetBy(dx: 15, dy: 0)
+                    targetB = right.insetBy(dx: 15, dy: 0)
+                    targetA.origin.x = left.minX
+                    targetB.origin.x = right.minX + 15
+                }
+            }
+        }
+
         raiseAX(axA.axElement)
         raiseAX(axB.axElement)
 
-        let status = (leftOK && rightOK) ? "success" : ((leftOK || rightOK) ? "partial" : "failed")
-        let reason = (leftOK && rightOK) ? "windows_arranged" : "move_verify_failed"
-        print("[ActionVerification] capability=arrange_side_by_side status=\(status) reason=\(reason)")
-        return LayoutResult(status: status, reason: reason, windowA: aLabel, windowB: bLabel)
+        if finalStatus != "success" {
+            if isOverlap || isSameSide {
+                finalStatus = "failed"
+                finalReason = isOverlap ? "overlap_detected" : "same_side_detected"
+            } else if actualA.width != targetA.width || actualB.width != targetB.width {
+                finalStatus = "partial"
+                finalReason = "one_app_resisted_resize"
+            } else {
+                finalStatus = "failed"
+                finalReason = "move_verify_failed"
+            }
+        }
+
+        if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+            print("[ActionVerification] capability=arrange_side_by_side status=\(finalStatus) reason=\(finalReason)")
+        }
+        return LayoutResult(status: finalStatus, reason: finalReason, windowA: aLabel, windowB: bLabel)
+    }
+
+    private static func fmtRectAngle(_ r: CGRect) -> String {
+        "<\(Int(r.origin.x)),\(Int(r.origin.y)),\(Int(r.width)),\(Int(r.height))>"
     }
 
     static func switchToRelevantWindow(
         preferredApp: String? = nil,
         titleHint: String? = nil,
-        compartment: TaskCompartment? = nil
+        compartment: TaskCompartment? = nil,
+        contract: ActionTargetContract? = nil
     ) -> LayoutResult {
+        let mode: LayoutIntentMode = (contract != nil) ? .proposalBoundLayout : .genericRuntimeLayout
+        print("[LayoutIntent] mode=\(mode.rawValue)\(contract.map { " contract_id=\($0.contractID)" } ?? "")")
+        if let contract = contract {
+            print("[LayoutIntent] target_contract=\(contract.isExpired ? "stale" : "present")")
+            if contract.isExpired {
+                print("[LayoutIntent] blocked reason=bound_target_missing")
+                print("[ActionVerification] capability=switch_to_paired_app status=failed reason=bound_target_contract_expired")
+                return LayoutResult(status: "failed", reason: "bound_target_contract_expired", windowA: "none", windowB: "none")
+            }
+        }
         let allCG = WindowDiscovery.discoverAll()
         let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
         let target: WindowSnapshot? = {
@@ -620,10 +792,12 @@ enum IntentExecutor {
         }
     }
 
+    // Part D: honest status — partial must NOT become success
     private static func layoutStatus(_ r: LayoutEngine.LayoutResult) -> CapabilityExecutionStatus {
         switch r.status {
         case "success": return .success
-        case "partial": return .success
+        case "partial": return .partial
+        case "no_op", "already_satisfied": return .alreadySatisfied
         default: return .unavailable
         }
     }

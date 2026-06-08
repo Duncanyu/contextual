@@ -3,8 +3,14 @@ import Foundation
 public enum AmbientSuggestionKind: String, Sendable, Codable {
     /// Phase 22 — Standard action opportunity (driven by OpportunityEngine).
     case cognitive_action = "cognitive_action"
+    /// High-utility task friction reduction action.
+    case friction_action = "friction_action"
     /// Comfort/local action (play music, start timer, open app).
     case comfort_action = "comfort_action"
+    /// Media-specific comfort action.
+    case media_action = "media_action"
+    /// Safe utility action surfaced without interruption.
+    case utility_action = "utility_action"
     /// Manually triggered by the user.
     case user_initiated = "user_initiated"
     /// No useful opportunity found — suppressed.

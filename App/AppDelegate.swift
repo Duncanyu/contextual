@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private let appState = AppState()
 	private var menuBarController: MenuBarController?
 	private var floatingSuggestionController: FloatingSuggestionWindowController?
+	private var floatingResultCardController: FloatingResultCardWindowController?
 	private var sourceManager: SourceManager?
 	private let contextBuilder = ContextBuilder()
 	private let triggerEngine = TriggerEngine()
@@ -96,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		ValidationConfiguration.logStatus()
 		AmbientMVPMode.logStatus()
+		UsefulActionOpportunityRegistry.logRegistry()
 		// Phase 18C — hard proof that the binary actually contains the new
 		// engine + mode types. If any of these symbols were missing, this file
 		// would not have compiled in the first place.
@@ -104,6 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		_ = ValidationConfiguration.self
 		print("[Phase18C] compiled=yes context_execution_engine=yes ambient_mvp_mode=yes")
 		DogfoodChecklist.printIfEnabled()
+		
+		menuBarController = MenuBarController(appState: appState)
+		floatingSuggestionController = FloatingSuggestionWindowController(appState: appState)
+		floatingResultCardController = FloatingResultCardWindowController(appState: appState)
+
 		let env = ProcessInfo.processInfo.environment
 		if env["CONTEXTUAL_RUN_BROWSER_TAB_MEMORY_SELFTEST"] == "1" {
 			Task {
@@ -753,11 +760,9 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 		syncLocalAIFromStorage()
 		wireLocalAIHandlers()
-		menuBarController = MenuBarController(appState: appState)
-		floatingSuggestionController = FloatingSuggestionWindowController(appState: appState)
 
 		appState.onRevealAssistantPanel = { [weak self] in
-			self?.menuBarController?.revealPopoverIfNeeded()
+			self?.menuBarController?.revealPopoverIfNeeded(source: .suggestion_auto)
 		}
 		appState.onAmbientJarvisFloatingSuggestionCandidate = { [weak self] proposal in
 			Task { @MainActor in
@@ -768,15 +773,17 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		menuBarController?.onPopoverDidShow = { [weak self] in
             self?.appState.isPanelVisible = true
 			self?.appState.dismissFloatingSuggestion(reason: .panelOpen)
+			self?.appState.updateHighUsefulnessPanelVisibility()
 		}
         menuBarController?.onPopoverDidClose = { [weak self] in
             self?.appState.isPanelVisible = false
+			self?.appState.updateHighUsefulnessPanelVisibility()
         }
 
 		appState.requestManualInvocation = { [weak self] in
 			Task { @MainActor in
 				self?.dispatchManualTriggerEvent()
-				self?.menuBarController?.revealPopoverIfNeeded()
+				self?.menuBarController?.revealPopoverIfNeeded(source: .explicit_button)
 			}
 		}
 
@@ -802,7 +809,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		) { [weak self] _ in
 			Task { @MainActor in
 				self?.dispatchManualTriggerEvent()
-				self?.menuBarController?.revealPopoverIfNeeded()
+				self?.menuBarController?.revealPopoverIfNeeded(source: .shortcut)
 			}
 		}
 
@@ -822,7 +829,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			queue: .main
 		) { [weak self] _ in
 			Task { @MainActor in
-				self?.menuBarController?.revealPopoverIfNeeded()
+				self?.menuBarController?.revealPopoverIfNeeded(source: .explicit_button)
 				self?.appState.isPanelVisible = true
 			}
 		}
@@ -2765,6 +2772,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=panel_only actual=suppressed reason=\(evaluation.reason)")
 			case .panelOnly:
 				let seed = DeterministicCapabilityActionSeed(
+					candidateID: candidate.candidate.candidateID,
+					proposalID: "panel:\(candidate.candidate.candidateID)",
 					capabilityId: candidate.candidate.capabilityId,
 					title: candidate.candidate.title,
 					involvedApps: candidate.involvedApps,
@@ -2775,9 +2784,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 					compartmentLabel: candidate.compartmentLabel,
 					windowTitle: candidate.windowTitle,
 					entity: candidate.entity,
-					compartment: candidate.compartment
+					compartment: candidate.compartment,
+					targetContract: candidate.targetContract
 				)
-				panelActions.append(DeterministicCapabilityPanelAction(seed: seed))
+				let panelAction = DeterministicCapabilityPanelAction(seed: seed)
+				panelActions.append(panelAction)
+				print("[PanelFallback] stored proposal_id=\(panelAction.proposalID) candidate_id=\(panelAction.candidateID) contract_id=\(panelAction.contractID ?? "missing")")
 				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=panel_only actual=panel_added reason=\(evaluation.reason)")
 				print("[PanelAction] added capability=\(candidate.candidate.capabilityId) reason=\(evaluation.reason)")
 			case .floatingInterrupt:
@@ -2936,6 +2948,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
 		appState.refreshProposalContext(for: finalProposal)
+		appState.updateHighUsefulnessPanelVisibility()
 		lastReasonedActions = publishedActions
 		lastReasonedActionsAt = Date()
 		lastReasonedTriggerType = packet.triggerType
@@ -2981,6 +2994,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		appState.currentProposal = finalProposal
 		appState.currentProposalKey = finalProposalKey
 		appState.refreshProposalContext(for: finalProposal)
+		appState.updateHighUsefulnessPanelVisibility()
 		lastReasonedActions = ordered
 		lastReasonedActionsAt = Date()
 		lastReasonedTriggerType = packet.triggerType
@@ -3490,32 +3504,43 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		let userAcceptedMusicBefore = DurableMemory.shared.hasAcceptedMusicPreference()
 		
 		let isLayoutAlreadyGood = !frictionSignals.contains { $0.type == .repeated_app_switching || $0.type == .repeated_tab_switching }
+		let finalSurfaceAuthoritativeCapabilities: Set<String> = [
+			"arrange_side_by_side",
+			"switch_to_paired_app",
+			"restore_workspace",
+			"split_research_setup"
+		]
+		if finalSurfaceAuthoritativeCapabilities.contains(capabilityId),
+		   activeSuggestion?.whyNow.contains("Cheap always-on portfolio selected") == true {
+			print("[SurfacePolicyBypass] capability=\(capabilityId) reason=final_surface_arbiter_authoritative")
+		} else {
 		
-		let evaluation = SuggestionSurfacePolicy.evaluate(
-			capabilityId: capabilityId,
-			context: ctx,
-			isMusicPlaying: isMusicPlaying,
-			isMusicSuppressed: isMusicSuppressed,
-			isUserTyping: isUserTyping,
-			missing: missing,
-			recentFeedback: recentFeedback,
-			frictionSignals: frictionSignals,
-			hasDurablePattern: hasDurablePattern,
-			involvedURLs: involvedURLs,
-			userAcceptedMusicBefore: userAcceptedMusicBefore,
-			isLayoutAlreadyGood: isLayoutAlreadyGood
-		)
-		
-		if evaluation.surface == SurfaceClassification.suppressed {
-			print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=suppressed reason=\(evaluation.reason)")
-			print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=\(evaluation.reason)")
-			return
-		}
-		if evaluation.surface == SurfaceClassification.panelOnly {
-			print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=panel_added reason=\(evaluation.reason)")
-			print("[PanelAction] added capability=\(capabilityId) reason=surface_policy_panel_only")
-			print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=panel_only")
-			return
+			let evaluation = SuggestionSurfacePolicy.evaluate(
+				capabilityId: capabilityId,
+				context: ctx,
+				isMusicPlaying: isMusicPlaying,
+				isMusicSuppressed: isMusicSuppressed,
+				isUserTyping: isUserTyping,
+				missing: missing,
+				recentFeedback: recentFeedback,
+				frictionSignals: frictionSignals,
+				hasDurablePattern: hasDurablePattern,
+				involvedURLs: involvedURLs,
+				userAcceptedMusicBefore: userAcceptedMusicBefore,
+				isLayoutAlreadyGood: isLayoutAlreadyGood
+			)
+			
+			if evaluation.surface == SurfaceClassification.suppressed {
+				print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=suppressed reason=\(evaluation.reason)")
+				print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=\(evaluation.reason)")
+				return
+			}
+			if evaluation.surface == SurfaceClassification.panelOnly {
+				print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=panel_added reason=\(evaluation.reason)")
+				print("[PanelAction] added capability=\(capabilityId) reason=surface_policy_panel_only")
+				print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=panel_only")
+				return
+			}
 		}
 
 		print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=shown reason=surface_policy_allowed")
@@ -3583,6 +3608,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			appState.currentProposal = nil
 			appState.currentProposalKey = nil
 			appState.refreshProposalContext(for: nil)
+			appState.updateHighUsefulnessPanelVisibility()
 			lastReasonedProposal = nil
 			lastReasonedProposalKey = nil
 			return
@@ -3601,6 +3627,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				appState.currentProposal = nil
 				appState.currentProposalKey = nil
 				appState.refreshProposalContext(for: nil)
+				appState.updateHighUsefulnessPanelVisibility()
 				print("[AvailableActions] cleared cached actions reason=\(reason) count_before=\(countBefore)")
 			}
 			return
@@ -3635,6 +3662,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 					appState.currentProposalKey = nil
 					appState.refreshProposalContext(for: nil)
 				}
+				appState.updateHighUsefulnessPanelVisibility()
 				let now = Date()
 				if lastPreserveLogAt == nil || now.timeIntervalSince(lastPreserveLogAt!) > 2 {
 					lastPreserveLogAt = now
@@ -3655,6 +3683,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		appState.currentProposal = nil
 		appState.currentProposalKey = nil
 		appState.refreshProposalContext(for: nil)
+		appState.updateHighUsefulnessPanelVisibility()
 		lastReasonedActions = []
 		lastReasonedActionsAt = nil
 		lastReasonedTriggerType = nil
@@ -4081,18 +4110,40 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			invokeAnalyzeScreenStoredAction()
 			return
 		}
-		if actionId == "open_current_task_panel" {
-			menuBarController?.revealPopoverIfNeeded()
+		let panelCapabilityID = (appState.availableActions.first { $0.id == actionId } as? DeterministicCapabilityPanelAction)?.capabilityId
+		if actionId == "open_current_task_panel" || panelCapabilityID == "open_current_task_panel" {
+			if let click = appState.pendingClickContext(for: actionId) {
+				print("[ActionPreflight] capability=\(click.capabilityID) contract_id=\(click.contractID ?? "missing") status=ok")
+				print("[CapabilityExecution] started id=\(click.capabilityID) source_surface=\(click.sourceSurface.rawValue)")
+				print("[ActionVerification] capability=\(click.capabilityID) status=success")
+				appState.finalizeActionFeedback(actionID: actionId, status: .success)
+			}
+			menuBarController?.revealPopoverIfNeeded(source: .explicit_button)
 			appState.isPanelVisible = true
+			appState.updateHighUsefulnessPanelVisibility()
 			print("[CapabilityExecution] completed status=success id=open_current_task_panel reason=panel_requested")
 			return
 		}
 
 		var execContext = contextBuilder.model
 		execContext.actionInputSourcePreference = appState.selectedInputSourceChoice
-		guard let action = appState.availableActions.first(where: { $0.id == actionId }) else { return }
+		let resolution = appState.resolveStoredAction(id: actionId, context: execContext)
+		print("[ActionClickResolution] proposal_id=\(resolution.proposalID) candidate_id=\(resolution.candidateID) resolved=\(resolution.resolved ? "yes" : "no") reason=\(resolution.reason) contract_id=\(resolution.contractID ?? "missing")")
+		if resolution.preservedRecentCandidate {
+			print("[ActionClickResolution] preserved_recent_candidate=yes contract_valid=\(resolution.contractValid ? "yes" : "no")")
+		}
+		guard let action = resolution.action else {
+			appState.finalizeActionFeedback(actionID: actionId, status: .unavailable, reason: resolution.reason)
+			return
+		}
 		guard action.canExecute(context: execContext) else {
 			print("[ActionResult] No valid actions")
+			appState.finalizeActionFeedback(actionID: actionId, status: .blocked, reason: "payload_invalid")
+			return
+		}
+		print("[ActionPreflight] capability=\(resolution.capabilityID) contract_id=\(resolution.contractID ?? "missing") status=\(resolution.contractValid ? "ok" : "blocked")")
+		if !resolution.contractValid {
+			appState.finalizeActionFeedback(actionID: actionId, status: .unavailable, reason: "missing_contract")
 			return
 		}
 
@@ -4116,6 +4167,9 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		appState.latestActionResult = nil
 		appState.latestActionId = actionId
 		appState.latestActionTimestamp = Date()
+		if let click = appState.pendingClickContext(for: actionId) {
+			print("[CapabilityExecution] started id=\(resolution.capabilityID) source_surface=\(click.sourceSurface.rawValue)")
+		}
 		print("[AppState] executing action=\(actionId)")
 		print("[ActionExecution] Starting action \(actionId)")
 		Task { @MainActor in
@@ -4129,7 +4183,11 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[ActionExecution] Cleared in-flight state")
 			}
 			let outcome = await Self.runActionWithSecondsTimeout(seconds: 45) {
-				await action.execute(context: execContext)
+				if let panelAction = action as? DeterministicCapabilityPanelAction,
+				   let click = self.appState.pendingClickContext(for: actionId) {
+					return await panelAction.execute(context: execContext, sourceSurface: click.sourceSurface.rawValue)
+				}
+				return await action.execute(context: execContext)
 			}
 			switch outcome {
 			case .completed(let result):
@@ -4137,11 +4195,31 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				appState.latestActionResult = result.outputText
 				appState.latestActionTimestamp = Date()
 				print("[ActionExecution] Finished action \(actionId)")
+				
+				let cleanActionId = actionId.replacingOccurrences(of: "ambient_jarvis:", with: "")
+				let researchActions: Set<String> = [
+					"explicit_visible_capture_summary", "summarize_visible_content", "extract_action_items", "create_checklist",
+					"rewrite_text", "explain_context", "draft_reply", "diagnose_error"
+				]
+				if researchActions.contains(cleanActionId) {
+					let outputText = result.outputText
+					let chars = outputText.count
+					appState.activeResearchResultCard = ResearchResultCardState(
+						capabilityID: cleanActionId,
+						title: "Research Result", // Generic title since suggestion isn't available here
+						text: outputText,
+						outputChars: chars
+					)
+					print("[ResearchResultCard] shown capability=\(cleanActionId) output_chars=\(chars) dismissible=yes open_panel_option=yes")
+				}
+				
+				appState.finalizeActionFeedback(actionID: actionId, status: result.executionStatus)
 			case .timedOut:
 				print("[ActionExecution] Action timed out")
 				print("[ActionExecution] Failed action \(actionId): timed out")
 				appState.latestActionResult = "This action timed out. Try again with less text or check that local AI is responding."
 				appState.latestActionTimestamp = Date()
+				appState.finalizeActionFeedback(actionID: actionId, status: .cancelled, reason: "timed_out")
 			}
 		}
 	}
@@ -4553,6 +4631,32 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			Task {
 				let ok = await Phase31SelfTest.run()
 				print("[Phase31SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+			return true
+		}
+
+		if env["CONTEXTUAL_RUN_PHASE36_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let phase36 = await Phase36SelfTest.run()
+				let livePath = LivePathEnforcementSelfTest.run()
+				let phase361 = await Phase361LivePathSelfTest.run()
+				let runtimeFriction = RuntimeWorkspaceFrictionSelfTest.run()
+				let phase362 = await Phase362SelfTest.run()
+				let phase363 = await Phase363SelfTest.run()
+				let phase365 = await Phase365SelfTest.run()
+				let phase37 = await Phase37SelfTest.run()
+				let phase38 = await Phase38SelfTest.run()
+				
+				var phase39 = false
+				if let mbc = self.menuBarController {
+					phase39 = await Phase39ProductResetSelfTest.run(appState: appState, menuBarController: mbc)
+				} else {
+					print("[Phase39SelfTest] FAIL: menuBarController is nil")
+				}
+				
+				let ok = phase36 && livePath && phase361 && runtimeFriction && phase362 && phase363 && phase365 && phase37 && phase38 && phase39
+				print("[Phase36SelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 			return true

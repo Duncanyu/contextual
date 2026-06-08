@@ -316,7 +316,7 @@ final class ContextEventProducer {
 				heavyPlannerRan: false,
 				candidatesCount: cheap.candidatesCount,
 				selected: cheap.selected,
-				surfaceResult: cheap.suggestion == nil ? "suppressed" : "shown",
+				surfaceResult: cheap.suggestion != nil ? "pending_visibility_proof" : (cheap.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
 				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
 				panelCount: cheap.panelCount
 			)
@@ -350,7 +350,7 @@ final class ContextEventProducer {
 				heavyPlannerRan: false,
 				candidatesCount: cheap.candidatesCount,
 				selected: cheap.selected,
-				surfaceResult: cheap.suggestion == nil ? "suppressed" : "shown",
+				surfaceResult: cheap.suggestion != nil ? "pending_visibility_proof" : (cheap.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
 				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
 				panelCount: cheap.panelCount
 			)
@@ -755,7 +755,7 @@ final class ContextEventProducer {
 							heavyPlannerRan: true,
 							candidatesCount: opportunities.count + cheapFallback.candidatesCount,
 							selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
-							surfaceResult: suggestion == nil ? "suppressed" : "shown",
+							surfaceResult: suggestion != nil ? "pending_visibility_proof" : (cheapFallback.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
 							suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
 							panelCount: cheapFallback.panelCount
 						)
@@ -1104,7 +1104,7 @@ final class ContextEventProducer {
 						heavyPlannerRan: true,
 						candidatesCount: refreshOpportunities.count + cheapFallback.candidatesCount,
 						selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
-						surfaceResult: suggestion == nil ? "suppressed" : "shown",
+						surfaceResult: suggestion != nil ? "pending_visibility_proof" : (cheapFallback.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
 						suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
 						panelCount: cheapFallback.panelCount
 					)
@@ -1457,20 +1457,79 @@ final class ContextEventProducer {
 				determinerActionable: determiner.actionable
 			)
 		}
-		let cooldownKey = "\(selected.capabilityId)|\(entityKey)"
-		if let lastAt = lastCheapSuggestionAt,
-		   lastCheapSuggestionKey == cooldownKey,
-		   Date().timeIntervalSince(lastAt) < ActiveContextRefresh.suggestionCooldownSeconds {
+		// Phase 36.3 — State-aware cooldown via SuggestionCooldownArbiter + FinalSurfaceArbiter.
+		// The legacy cooldown was keyed `capability|entity` and silenced the same useful card
+		// for 60s even when runtime friction persisted. We now key on target fingerprint and
+		// target state, and route panel-only fallbacks so the assistant is never empty.
+		let targetFingerprint: String = {
+			let apps = selected.involvedApps.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+			if !apps.isEmpty { return apps.joined(separator: "+") }
+			return entityKey
+		}()
+		let targetState: String = {
+			switch selected.capabilityId {
+			case "arrange_side_by_side", "switch_to_paired_app", "split_research_setup":
+				return "present_not_arranged"
+			case "restore_workspace":
+				return "workspace_items_missing"
+			default:
+				return selected.lane.rawValue
+			}
+		}()
+		let cooldownInput = SuggestionCooldownArbiter.Input(
+			capabilityID: selected.capabilityId,
+			targetFingerprint: targetFingerprint,
+			targetState: targetState,
+			sourcePath: selected.requiredEvidence,
+			compartmentLabel: activeComp.label,
+			lastShownAt: lastCheapSuggestionAt,
+			lastShownKey: lastCheapSuggestionKey,
+			recentDismissCount: 0,
+			now: Date()
+		)
+		let cooldownDecision = SuggestionCooldownArbiter.evaluate(cooldownInput)
+		let arbiterInputs = FinalSurfaceInputs(
+			capabilityID: selected.capabilityId,
+			usefulnessSurface: .floating,             // selected at portfolio time, so usefulness=floating
+			livePathSurface: .floating,               // LivePathEnforcer already validated it floats
+			freshness: "fresh",
+			cooldownStatus: cooldownDecision.status,
+			cooldownReason: cooldownDecision.reason,
+			contractPresent: true,
+			alreadySatisfied: false,
+			alreadySatisfiedSource: "default"
+		)
+		let arbiterDecision = FinalSurfaceArbiter.decide(arbiterInputs)
+		arbiterDecision.log(inputs: arbiterInputs)
+
+		if arbiterDecision.final == .suppressed {
 			return CheapPortfolioRun(
 				ran: true,
 				suggestion: nil,
 				candidatesCount: candidates.count,
 				selected: selected.capabilityId,
 				panelCount: portfolioResult.panelCandidates.count,
-				suppressionReason: "recent_suggestion_cooldown",
+				suppressionReason: arbiterDecision.reason,
 				determinerActionable: determiner.actionable
 			)
 		}
+		if arbiterDecision.final == .panelOnly {
+			// Don't emit floating, but preserve the action as a panel suggestion so the UI
+			// is never empty when a useful action exists. The downstream SuggestionTickSummary
+			// will see surface_result=panel_only instead of suppressed.
+			print("[AvailableActions] panel_count=\(max(1, portfolioResult.panelCandidates.count)) source=surface_fallback")
+			return CheapPortfolioRun(
+				ran: true,
+				suggestion: nil,
+				candidatesCount: candidates.count,
+				selected: selected.capabilityId,
+				panelCount: max(1, portfolioResult.panelCandidates.count),
+				suppressionReason: "floating_cooldown_preserved_panel",
+				determinerActionable: determiner.actionable
+			)
+		}
+		// arbiterDecision.final == .floating — proceed with emission.
+		let cooldownKey = cooldownDecision.cooldownKey
 		lastCheapSuggestionAt = Date()
 		lastCheapSuggestionKey = cooldownKey
 		let suggestion = makeCheapSuggestion(
@@ -1547,8 +1606,10 @@ final class ContextEventProducer {
 			confidence: candidate.confidence,
 			confirmationState: candidate.requiresConfirmation ? "required" : "none"
 		)
+		let suggestionKind = Self.ambientSuggestionKind(for: candidate.capabilityId)
+		print("[ActionCard] style=\(suggestionKind.rawValue) capability=\(candidate.capabilityId)")
 		let opportunity = Opportunity(
-			id: "opp:cheap:\(candidate.capabilityId):\(UUID().uuidString.prefix(6))",
+			id: "opp:cheap:\(candidate.candidateID)",
 			title: candidate.title,
 			capabilityId: candidate.capabilityId,
 			confidence: candidate.confidence,
@@ -1561,6 +1622,8 @@ final class ContextEventProducer {
 			involvedApps: candidate.involvedApps,
 			involvedURLs: Array((workspacePattern?.urls ?? []).prefix(8)),
 			browserTabTitles: Array(Set((compartment?.browserTabs.sorted() ?? []) + (workspacePattern?.tabTitles ?? [])).prefix(10)),
+			candidateID: candidate.candidateID,
+			targetContract: candidate.targetContract,
 			generatedAction: nil
 		)
 		let executionMode: AmbientExecutionMode = {
@@ -1577,7 +1640,7 @@ final class ContextEventProducer {
 			workflow: workflow.workflowType.rawValue,
 			behavior: behavior.state.rawValue,
 			confidence: candidate.confidence,
-			kind: .comfort_action,
+			kind: suggestionKind,
 			intent: "environment:\(candidate.capabilityId)",
 			intentConfidence: candidate.confidence,
 			intentGoal: candidate.reason,
@@ -1601,6 +1664,19 @@ final class ContextEventProducer {
 			actionCard: card,
 			topOpportunity: opportunity
 		)
+	}
+
+	static func ambientSuggestionKind(for capabilityID: String) -> AmbientSuggestionKind {
+		switch capabilityID {
+		case "arrange_side_by_side", "switch_to_paired_app", "restore_workspace", "split_research_setup":
+			return .friction_action
+		case "play_focus_media", "resume_focus_media":
+			return .media_action
+		case "copy_current_url", "collect_references", "remember_workspace":
+			return .utility_action
+		default:
+			return .comfort_action
+		}
 	}
 
 	private nonisolated static func behaviorState(

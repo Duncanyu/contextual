@@ -472,6 +472,24 @@ enum EnvironmentActionEngine {
     static func propose(_ input: EnvironmentActionInput) async -> EnvironmentAction? {
         let playing = input.mediaState.isMusicPlaying ? "yes" : "no"
         print("[MediaContext] playing=\(playing) source=\(input.mediaState.source) detection_available=\(input.mediaState.detectionAvailable ? "yes" : "no")")
+        // Phase 36 audit: arrange_side_by_side is produced only by the deterministic panel path
+        // (Phase35ContextLayer → DeterministicPanelCandidate → DeterministicCapabilityActionSeed)
+        // and never by the environment path. The proposal-bound target contract chain is therefore
+        // enforced exclusively on the panel path; the environment path cannot bypass it.
+        print("[ProposalFunnelAudit] not_generated capability=arrange_side_by_side path=environment reason=handled_by_deterministic_panel_path")
+
+        // Part E: build general media awareness snapshot
+        let awareness = MediaAwarenessClassifier.classify(
+            mediaState: input.mediaState,
+            activeApp: input.activeApp,
+            recentApps: input.recentApps,
+            domain: input.domain,
+            behavior: input.behavior,
+            workflow: input.workflow,
+            activityState: input.activityState,
+            userContext: input.userContext
+        )
+        awareness.log()
 
 		// Phase 25.2 — Cheap Ambient Action Policy
 		let userIsActive = input.activityState.isActive
@@ -600,6 +618,20 @@ enum EnvironmentActionEngine {
         }
 
         if mediaSuitability.suitable {
+            // Part E: music usefulness gate via media awareness model
+            let musicUsefulness = MusicUsefulnessEvaluator.evaluate(
+                capabilityID: "play_focus_media",
+                awareness: awareness,
+                isMusicAlreadyPlaying: input.mediaState.isMusicPlaying,
+                recentFeedbackCooldownActive: input.userContext.recentDismissedActions.contains(where: { $0.lowercased().contains("play") || $0.lowercased().contains("music") }),
+                hasHigherPriorityTaskAction: false
+            )
+            guard musicUsefulness.eligible else {
+                print("[EnvironmentAction] proposed=none reason=music_usefulness_gate reason=\(musicUsefulness.reason)")
+                print("[CheapAmbientAction] selected=none reason=music_not_useful")
+                return nil
+            }
+
 			let mood: MusicIntent.Mood = (input.focusState.isDeepWork || input.mode == .building) ? .deepWork : .focus
 			let learnedPlaylist = PlaylistMemory.shared.suggest(compartment: input.taskCompartment, workflow: input.workflow)
 			let query = learnedPlaylist ?? musicQuery(workflow: input.workflow, domain: input.domain, mood: mood)
@@ -795,7 +827,9 @@ enum EnvironmentActionCapabilityAdapter {
 @MainActor
 enum EnvironmentActionExecutor {
     static func previewOrExecute(_ action: EnvironmentAction, supplementalContext: [String: Any] = [:]) async -> CapabilityExecutionStatus {
+        let sourceSurface = (supplementalContext["source_surface"] as? String) ?? "unknown"
         print("[EnvironmentActionExecution] started id=\(action.type.rawValue)")
+        print("[CapabilityExecution] started id=\(action.type.rawValue) source_surface=\(sourceSurface)")
         print("[CapabilityExecution] mode=\(action.executionMode.rawValue) id=\(action.type.rawValue)")
         if action.executionMode == .preview_only {
             print("[CapabilityExecution] status=preview_generated id=\(action.type.rawValue)")
@@ -807,6 +841,18 @@ enum EnvironmentActionExecutor {
               let capability = CognitiveCapabilityRegistry.shared.get(capabilityId) else {
             print("[CapabilityExecution] status=unavailable id=\(action.type.rawValue) reason=capability_not_registered")
             print("[CapabilityExecution] completed status=unavailable id=\(action.type.rawValue)")
+            return .unavailable
+        }
+
+        // Phase 36: proposal-bound layout capabilities must carry a target contract.
+        // The env path never produces them today, but if something ever did, block to prevent
+        // a generic-fallback substitution from running unproven.
+        let proposalBoundCapabilities: Set<String> = ["arrange_side_by_side", "switch_to_paired_app", "split_research_setup"]
+        if proposalBoundCapabilities.contains(capabilityId)
+           && supplementalContext["targetContract"] == nil {
+            print("[CapabilityExecution] status=unavailable id=\(capabilityId) reason=env_path_missing_target_contract")
+            print("[CapabilityExecution] completed status=unavailable id=\(capabilityId) reason=target_contract_failed")
+            print("[ActionPreflight] capability=\(capabilityId) path=environment status=blocked reason=no_contract_on_env_path")
             return .unavailable
         }
         AppState.lastAssistantInitiatedAppLaunch = action.apps.first

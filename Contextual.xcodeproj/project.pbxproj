@@ -32,6 +32,18 @@
 		7880D8B9AE9789AD1C280C44 /* Phase32Hardening.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40C2813758BC8FE2B19433F /* Phase32Hardening.swift */; };
 		F6366A8EB0C55F3B52AFFF2D /* Phase31LocalActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909E51B034FFB42B98689D18 /* Phase31LocalActions.swift */; };
 		8D24F7C1A4E96B13C05D7AF2 /* Phase35ContextLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9215C36E7F4B812D08C49E1 /* Phase35ContextLayer.swift */; };
+		623A9D3424213E4F65A8958C /* ActionTargetContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA46F701A46EE760967C1E86 /* ActionTargetContract.swift */; };
+		58048F17F01F30C6C60CBBE2 /* MediaAwarenessModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0880D5E44BCB325D6FE325B6 /* MediaAwarenessModel.swift */; };
+		788B3B6AB7550A2C1C84431B /* ActionUsefulnessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34E373307608FECD1E5B64BA /* ActionUsefulnessPolicy.swift */; };
+		E28373E80129784BA249D31A /* ActionUsefulnessRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76A04C78B8FCE7679B21CA71 /* ActionUsefulnessRegistry.swift */; };
+		C1942FDD764255B26D3FA44E /* Phase36SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57082A291DB3B2E8831179FC /* Phase36SelfTest.swift */; };
+		7CAF83F005DD5390EC06363B /* LivePathEnforcement.swift in Sources */ = {isa = PBXBuildFile; fileRef = A29BF0249B0E1D1FD13521CE /* LivePathEnforcement.swift */; };
+		6492EE9395DF3AAE03D909FA /* Phase361LivePathSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15BE882B9F0698DCF6837AE /* Phase361LivePathSelfTest.swift */; };
+		F5F6A175F118F39B17553956 /* RuntimeWorkspaceFriction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D25D79EF5CC6CDE533CEDA5 /* RuntimeWorkspaceFriction.swift */; };
+		C2E1F1BE27D20EB7C23BB14E /* Phase362SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76FEE9AAEAB60331C063E0B /* Phase362SelfTest.swift */; };
+		4391863FAE41DE66FB754F7C /* SuggestionCooldownArbiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B9F04B939FD4047A9953A95 /* SuggestionCooldownArbiter.swift */; };
+		B6512690A8288133D47C327C /* FinalSurfaceArbiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D99F0B7DC81D36529E964B93 /* FinalSurfaceArbiter.swift */; };
+		D73892C6E7F341374CFFEF98 /* Phase363SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9596ED6617C84237F7BC7DC2 /* Phase363SelfTest.swift */; };
 		F5B001C100000000000001B1 /* OpportunityEngineSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */; };
 		F5C001D100000000000001C1 /* OpportunityExecutionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */; };
 		F5D001E100000000000001D1 /* CompartmentTransitionSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */; };
@@ -53,6 +65,9 @@
 		AA2300130000000000000100 /* FrictionOpportunityReasoner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300140000000000000100 /* FrictionOpportunityReasoner.swift */; };
 		AA2300150000000000000100 /* FrictionEngineSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300160000000000000100 /* FrictionEngineSelfTest.swift */; };
 		AA2300170000000000000100 /* ActionPortfolioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300180000000000000100 /* ActionPortfolioEngine.swift */; };
+		AA23001B0000000000000100 /* LogVerbosity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23001C0000000000000100 /* LogVerbosity.swift */; };
+		AA3900020000000000000100 /* Phase39ProductResetSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3900010000000000000100 /* Phase39ProductResetSelfTest.swift */; };
+
 		AA2300190000000000000100 /* ProposalQualityFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23001A0000000000000100 /* ProposalQualityFilter.swift */; };
 		AA2600010000000000000100 /* SemanticGroundingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2600020000000000000100 /* SemanticGroundingEngine.swift */; };
 		AA2633000000000000000100 /* CheapAlwaysOnPortfolio.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2633010000000000000100 /* CheapAlwaysOnPortfolio.swift */; };
@@ -513,6 +528,18 @@
 		A40C2813758BC8FE2B19433F /* Phase32Hardening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase32Hardening.swift; sourceTree = "<group>"; };
 		909E51B034FFB42B98689D18 /* Phase31LocalActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase31LocalActions.swift; sourceTree = "<group>"; };
 		A9215C36E7F4B812D08C49E1 /* Phase35ContextLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase35ContextLayer.swift; sourceTree = "<group>"; };
+		FA46F701A46EE760967C1E86 /* ActionTargetContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionTargetContract.swift; sourceTree = "<group>"; };
+		0880D5E44BCB325D6FE325B6 /* MediaAwarenessModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAwarenessModel.swift; sourceTree = "<group>"; };
+		34E373307608FECD1E5B64BA /* ActionUsefulnessPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionUsefulnessPolicy.swift; sourceTree = "<group>"; };
+		76A04C78B8FCE7679B21CA71 /* ActionUsefulnessRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionUsefulnessRegistry.swift; sourceTree = "<group>"; };
+		57082A291DB3B2E8831179FC /* Phase36SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase36SelfTest.swift; sourceTree = "<group>"; };
+		A29BF0249B0E1D1FD13521CE /* LivePathEnforcement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePathEnforcement.swift; sourceTree = "<group>"; };
+		A15BE882B9F0698DCF6837AE /* Phase361LivePathSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase361LivePathSelfTest.swift; sourceTree = "<group>"; };
+		0D25D79EF5CC6CDE533CEDA5 /* RuntimeWorkspaceFriction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeWorkspaceFriction.swift; sourceTree = "<group>"; };
+		E76FEE9AAEAB60331C063E0B /* Phase362SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase362SelfTest.swift; sourceTree = "<group>"; };
+		4B9F04B939FD4047A9953A95 /* SuggestionCooldownArbiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionCooldownArbiter.swift; sourceTree = "<group>"; };
+		D99F0B7DC81D36529E964B93 /* FinalSurfaceArbiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalSurfaceArbiter.swift; sourceTree = "<group>"; };
+		9596ED6617C84237F7BC7DC2 /* Phase363SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase363SelfTest.swift; sourceTree = "<group>"; };
 		F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityEngineSelfTest.swift; sourceTree = "<group>"; };
 		F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpportunityExecutionSelfTest.swift; sourceTree = "<group>"; };
 		F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompartmentTransitionSelfTest.swift; sourceTree = "<group>"; };
@@ -535,6 +562,9 @@
 		AA2300140000000000000100 /* FrictionOpportunityReasoner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrictionOpportunityReasoner.swift; sourceTree = "<group>"; };
 		AA2300160000000000000100 /* FrictionEngineSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrictionEngineSelfTest.swift; sourceTree = "<group>"; };
 		AA2300180000000000000100 /* ActionPortfolioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionPortfolioEngine.swift; sourceTree = "<group>"; };
+		AA23001C0000000000000100 /* LogVerbosity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogVerbosity.swift; sourceTree = "<group>"; };
+		AA3900010000000000000100 /* Phase39ProductResetSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase39ProductResetSelfTest.swift; sourceTree = "<group>"; };
+
 		AA23001A0000000000000100 /* ProposalQualityFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalQualityFilter.swift; sourceTree = "<group>"; };
 		AA2633010000000000000100 /* CheapAlwaysOnPortfolio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheapAlwaysOnPortfolio.swift; sourceTree = "<group>"; };
 		AA2633030000000000000100 /* CheapAlwaysOnPortfolioSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheapAlwaysOnPortfolioSelfTest.swift; sourceTree = "<group>"; };
@@ -1319,6 +1349,18 @@
 				A40C2813758BC8FE2B19433F /* Phase32Hardening.swift */,
 				909E51B034FFB42B98689D18 /* Phase31LocalActions.swift */,
 				A9215C36E7F4B812D08C49E1 /* Phase35ContextLayer.swift */,
+				FA46F701A46EE760967C1E86 /* ActionTargetContract.swift */,
+				0880D5E44BCB325D6FE325B6 /* MediaAwarenessModel.swift */,
+				34E373307608FECD1E5B64BA /* ActionUsefulnessPolicy.swift */,
+				76A04C78B8FCE7679B21CA71 /* ActionUsefulnessRegistry.swift */,
+				57082A291DB3B2E8831179FC /* Phase36SelfTest.swift */,
+				A29BF0249B0E1D1FD13521CE /* LivePathEnforcement.swift */,
+				A15BE882B9F0698DCF6837AE /* Phase361LivePathSelfTest.swift */,
+				0D25D79EF5CC6CDE533CEDA5 /* RuntimeWorkspaceFriction.swift */,
+				E76FEE9AAEAB60331C063E0B /* Phase362SelfTest.swift */,
+				4B9F04B939FD4047A9953A95 /* SuggestionCooldownArbiter.swift */,
+				D99F0B7DC81D36529E964B93 /* FinalSurfaceArbiter.swift */,
+				9596ED6617C84237F7BC7DC2 /* Phase363SelfTest.swift */,
 				F5B002C100000000000001B1 /* OpportunityEngineSelfTest.swift */,
 				F5C002D100000000000001C1 /* OpportunityExecutionSelfTest.swift */,
 				F5D002E100000000000001D1 /* CompartmentTransitionSelfTest.swift */,
@@ -1479,6 +1521,8 @@
 				D5A1C5E4B0A64F0A1B2C3D4E /* ProposalCapabilityValidator.swift */,
 
 				AA000231000000000000002F /* OCRProcessor.swift */,
+				AA23001C0000000000000100 /* LogVerbosity.swift */,
+				AA3900010000000000000100 /* Phase39ProductResetSelfTest.swift */,
 			);
 			path = Intelligence;
 			sourceTree = "<group>";
@@ -1660,6 +1704,8 @@
 				AA00017D00000000000000A7 /* RichContextProposalSelfTest.swift in Sources */,
 				AA00017E00000000000000A9 /* ContextAwareActionEligibility.swift in Sources */,
 				AA00017F00000000000000AB /* RichAnalyzeScreenPromptBuilder.swift in Sources */,
+				AA23001B0000000000000100 /* LogVerbosity.swift in Sources */,
+				AA3900020000000000000100 /* Phase39ProductResetSelfTest.swift in Sources */,
 				AA0001B40000000000000D4 /* ScreenSituation.swift in Sources */,
 				AA00018000000000000000AD /* ContextConfidenceArbitrator.swift in Sources */,
 				AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */,
@@ -1891,6 +1937,18 @@
 				7880D8B9AE9789AD1C280C44 /* Phase32Hardening.swift in Sources */,
 				F6366A8EB0C55F3B52AFFF2D /* Phase31LocalActions.swift in Sources */,
 				8D24F7C1A4E96B13C05D7AF2 /* Phase35ContextLayer.swift in Sources */,
+				623A9D3424213E4F65A8958C /* ActionTargetContract.swift in Sources */,
+				58048F17F01F30C6C60CBBE2 /* MediaAwarenessModel.swift in Sources */,
+				788B3B6AB7550A2C1C84431B /* ActionUsefulnessPolicy.swift in Sources */,
+				E28373E80129784BA249D31A /* ActionUsefulnessRegistry.swift in Sources */,
+				C1942FDD764255B26D3FA44E /* Phase36SelfTest.swift in Sources */,
+				7CAF83F005DD5390EC06363B /* LivePathEnforcement.swift in Sources */,
+				6492EE9395DF3AAE03D909FA /* Phase361LivePathSelfTest.swift in Sources */,
+				F5F6A175F118F39B17553956 /* RuntimeWorkspaceFriction.swift in Sources */,
+				C2E1F1BE27D20EB7C23BB14E /* Phase362SelfTest.swift in Sources */,
+				4391863FAE41DE66FB754F7C /* SuggestionCooldownArbiter.swift in Sources */,
+				B6512690A8288133D47C327C /* FinalSurfaceArbiter.swift in Sources */,
+				D73892C6E7F341374CFFEF98 /* Phase363SelfTest.swift in Sources */,
 				F5B001C100000000000001B1 /* OpportunityEngineSelfTest.swift in Sources */,
 				F5C001D100000000000001C1 /* OpportunityExecutionSelfTest.swift in Sources */,
 				F5D001E100000000000001D1 /* CompartmentTransitionSelfTest.swift in Sources */,

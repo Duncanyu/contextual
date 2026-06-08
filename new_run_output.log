@@ -1,0 +1,1098 @@
+[ExpensiveContext] ocr_auto_enabled=false
+[ExpensiveContext] visual_auto_enabled=false
+[VisualGrounding] skipped reason=automatic_disabled
+[ContextCapability] registered id=activeApp
+[ContextDebug] stage=capability event=registered source=activeApp cost=cheap privacy=low latency=instant permission=notRequired mode=automatic
+[ContextCapability] registered id=windowTitle
+[ContextDebug] stage=capability event=registered source=windowTitle cost=cheap privacy=moderate latency=instant permission=unknown mode=automatic
+[ContextCapability] registered id=selectedText
+[ContextDebug] stage=capability event=registered source=selectedText cost=cheap privacy=high latency=fast permission=unknown mode=automatic
+[ContextCapability] registered id=clipboardText
+[ContextDebug] stage=capability event=registered source=clipboardText cost=cheap privacy=moderate latency=instant permission=notRequired mode=automatic
+[ContextCapability] registered id=axWindowContent
+[ContextDebug] stage=capability event=registered source=axWindowContent cost=medium privacy=high latency=fast permission=unknown mode=manual
+[ContextCapability] registered id=activeWindowSnapshot
+[ContextDebug] stage=capability event=registered source=activeWindowSnapshot cost=medium privacy=high latency=fast permission=unknown mode=manual
+[ContextCapability] registered id=visualDescriptor
+[ContextDebug] stage=capability event=registered source=visualDescriptor cost=medium privacy=high latency=fast permission=unknown mode=manual
+[ContextCapability] registered id=screenOCR
+[ContextDebug] stage=capability event=registered source=screenOCR cost=expensive privacy=high latency=slow permission=unknown mode=manual
+[ContextCapability] registered id=screenVision
+[ContextDebug] stage=capability event=registered source=screenVision cost=expensive privacy=high latency=slow permission=unavailable mode=manual
+[ContextCapability] registered id=typingActivity
+[ContextDebug] stage=capability event=registered source=typingActivity cost=cheap privacy=high latency=instant permission=unknown mode=automatic
+[ContextCapability] registered id=cursorActivity
+[ContextDebug] stage=capability event=registered source=cursorActivity cost=cheap privacy=moderate latency=instant permission=unknown mode=automatic
+[ContextCapability] registered id=audioInput
+[ContextDebug] stage=capability event=registered source=audioInput cost=expensive privacy=high latency=slow permission=unavailable mode=manual
+[ContextCapability] updated id=windowTitle availability=false
+[ContextDebug] stage=capability event=updated source=windowTitle reason=availability_refresh cost=cheap privacy=moderate latency=instant permission=denied mode=automatic
+[ContextCapability] updated id=selectedText availability=false
+[ContextDebug] stage=capability event=updated source=selectedText reason=availability_refresh cost=cheap privacy=high latency=fast permission=denied mode=automatic
+[ContextCapability] updated id=axWindowContent availability=false
+[ContextDebug] stage=capability event=updated source=axWindowContent reason=availability_refresh cost=medium privacy=high latency=fast permission=denied mode=manual
+[ContextCapability] updated id=screenOCR availability=false
+[ContextDebug] stage=capability event=updated source=screenOCR reason=availability_refresh cost=expensive privacy=high latency=slow permission=denied mode=manual
+[ContextCapability] updated id=activeWindowSnapshot availability=false
+[ContextDebug] stage=capability event=updated source=activeWindowSnapshot reason=availability_refresh cost=medium privacy=high latency=fast permission=denied mode=manual
+[ContextCapability] updated id=visualDescriptor availability=false
+[ContextDebug] stage=capability event=updated source=visualDescriptor reason=availability_refresh cost=medium privacy=high latency=fast permission=denied mode=manual
+[ValidationConfig] day1_behavior_validation=true
+[ValidationConfig] phase_b_validation=false
+[ValidationConfig] workflow_intelligence=true
+[ValidationConfig] proposal_generation=true
+[AmbientMVPMode] enabled=yes
+[Day1ValidationMode] enabled=yes source=debug_default
+[UsefulActionOpportunityRegistry] family=layout capability=arrange_side_by_side required_evidence=runtime_workspace_friction execution=local verification=ax_frame_check
+[UsefulActionOpportunityRegistry] family=coding capability=diagnose_error required_evidence=selected_text execution=generated verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=communication capability=draft_reply required_evidence=selected_text execution=generated verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=research capability=explicit_visible_capture_summary required_evidence=visible_capture execution=acquisition verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=research capability=extract_action_items required_evidence=visible_capture execution=acquisition verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=media capability=pause_media required_evidence=foreground_media_active execution=local verification=player_state_check
+[UsefulActionOpportunityRegistry] family=media capability=play_focus_media required_evidence=work_context execution=local verification=player_state_check
+[UsefulActionOpportunityRegistry] family=layout capability=restore_workspace required_evidence=durable_workspace_record execution=local verification=app_presence_check
+[UsefulActionOpportunityRegistry] family=writing capability=rewrite_text required_evidence=selected_text execution=generated verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=layout capability=switch_to_paired_app required_evidence=work_pair_alternation execution=local verification=frontmost_app_check
+[Phase18C] compiled=yes context_execution_engine=yes ambient_mvp_mode=yes
+[HookCatalog] active=empty reason=hook_library_reset
+[ExecutionModeAudit] one_shot=0 observe_once=0 interactive_loop=0 external_control=0 confirmation_required=0
+[AXPermission] trusted=no prompt_available=yes reason=startup
+[Phase36SelfTest] starting
+[Phase36SelfTest] case=test_a_partial_layout_not_success
+[CapabilityRegistry] loaded count=54
+[Capability] id=arrange_side_by_side mode=local_action risk=light_action confirmation=yes
+[Capability] id=collect_references mode=local_action risk=light_action confirmation=no
+[Capability] id=compare_listing_platforms mode=preview_only risk=read_only confirmation=no
+[Capability] id=compare_options mode=preview_only risk=read_only confirmation=no
+[Capability] id=compare_rental_options mode=preview_only risk=read_only confirmation=no
+[Capability] id=copy_all_related_links mode=local_action risk=light_action confirmation=no
+[Capability] id=copy_current_url mode=local_action risk=light_action confirmation=no
+[Capability] id=copy_result_to_clipboard mode=local_action risk=light_action confirmation=no
+[Capability] id=create_checklist mode=preview_only risk=read_only confirmation=no
+[Capability] id=create_game_design_checklist mode=preview_only risk=read_only confirmation=no
+[Capability] id=create_listing_checklist mode=preview_only risk=read_only confirmation=no
+[Capability] id=create_next_steps mode=preview_only risk=read_only confirmation=no
+[Capability] id=create_outline mode=preview_only risk=read_only confirmation=no
+[Capability] id=create_questions_to_ask_landlord mode=preview_only risk=read_only confirmation=no
+[Capability] id=create_review_plan mode=preview_only risk=read_only confirmation=no
+[Capability] id=create_study_outline mode=preview_only risk=read_only confirmation=no
+[Capability] id=debug_performance mode=preview_only risk=read_only confirmation=no
+[Capability] id=decision_matrix mode=preview_only risk=read_only confirmation=no
+[Capability] id=diagnose_error mode=preview_only risk=read_only confirmation=no
+[Capability] id=draft_listing_ad mode=preview_only risk=read_only confirmation=no
+[Capability] id=draft_reply mode=preview_only risk=read_only confirmation=yes
+[Capability] id=enable_reduce_interruptions mode=local_action risk=light_action confirmation=yes
+[Capability] id=explain_context mode=preview_only risk=read_only confirmation=no
+[Capability] id=explain_how_to_make_faster mode=preview_only risk=read_only confirmation=no
+[Capability] id=extract_action_items mode=preview_only risk=read_only confirmation=no
+[Capability] id=extract_and_organize mode=local_action risk=light_action confirmation=no
+[Capability] id=extract_pricing_guidance mode=preview_only risk=read_only confirmation=no
+[Capability] id=generate_quiz mode=preview_only risk=read_only confirmation=no
+[Capability] id=generate_test_checklist mode=preview_only risk=read_only confirmation=no
+[Capability] id=identify_missing_listing_details mode=preview_only risk=read_only confirmation=no
+[Capability] id=improve_project mode=preview_only risk=read_only confirmation=no
+[Capability] id=improve_text mode=preview_only risk=read_only confirmation=no
+[Capability] id=launch_recent_workspace mode=local_action risk=light_action confirmation=yes
+[Capability] id=open_current_task_panel mode=local_action risk=light_action confirmation=no
+[Capability] id=open_related_app_set mode=local_action risk=light_action confirmation=yes
+[Capability] id=open_relevant_app mode=local_action risk=light_action confirmation=yes
+[Capability] id=pause_media mode=local_action risk=light_action confirmation=no
+[Capability] id=pin_reference_tabs mode=local_action risk=light_action confirmation=yes
+[Capability] id=play_focus_media mode=local_action risk=light_action confirmation=yes
+[Capability] id=precompute_answer mode=preview_only risk=read_only confirmation=no
+[Capability] id=remember_workspace mode=local_action risk=light_action confirmation=no
+[Capability] id=restore_research_tabs mode=local_action risk=light_action confirmation=yes
+[Capability] id=restore_workspace mode=local_action risk=light_action confirmation=yes
+[Capability] id=resume_focus_media mode=local_action risk=light_action confirmation=yes
+[Capability] id=rewrite_text mode=preview_only risk=read_only confirmation=no
+[Capability] id=split_research_setup mode=local_action risk=light_action confirmation=yes
+[Capability] id=start_focus_timer mode=local_action risk=light_action confirmation=yes
+[Capability] id=suggest_focus_playlist mode=preview_only risk=light_action confirmation=yes
+[Capability] id=summarize_context mode=preview_only risk=read_only confirmation=no
+[Capability] id=summarize_reference mode=preview_only risk=read_only confirmation=no
+[Capability] id=summarize_thread mode=preview_only risk=read_only confirmation=no
+[Capability] id=switch_to_paired_app mode=local_action risk=light_action confirmation=yes
+[Capability] id=synthesize_advice mode=preview_only risk=read_only confirmation=no
+[Capability] id=synthesize_sources mode=preview_only risk=read_only confirmation=no
+[CapabilityExecution] started id=arrange_side_by_side source_surface=unknown
+[CapabilityExecution] proposal_id=unknown id=arrange_side_by_side
+[CapabilityExecution] mode=local_action id=arrange_side_by_side
+[CapabilityExecution] confirmation_satisfied=yes source=user_click
+[ActionExecution] capability=arrange_side_by_side
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[LiveActionPath] capability=arrange_side_by_side route=environment executor=IntentExecutor snapshot_age=0s has_targets=no has_urls=no will_execute=yes reason=runtime_discovery
+[WindowArrange] targetA=unknown
+[WindowArrange] targetB=unknown
+[WindowArrange] layout=left_right
+[WindowArrange] status=partial
+[ActionFailure] capability=arrange_side_by_side reason=move_verify_failed
+[ActionVerification] capability=arrange_side_by_side status=partial
+[CapabilityExecution] completed status=partial id=arrange_side_by_side reason=move_verify_failed
+[Phase36SelfTest] pass case=test_a_partial_not_success
+[Phase36SelfTest] pass case=test_a_partial_is_partial
+[Phase36SelfTest] case=test_b_bound_target_missing
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[ActionPreflight] capability=arrange_side_by_side contract_id=ctc:test:b_missing status=blocked reason=target_missing target=primary_work/NonExistentApp36A
+[ActionPreflight] target_check=missing
+[ActionPreflight] blocked capability=arrange_side_by_side reason=target_contract_failed
+[ActionPreflight] blocked capability=arrange_side_by_side reason=substitution_not_allowed
+[Phase36SelfTest] pass case=test_b_bound_target_missing_blocked
+[Phase36SelfTest] pass case=test_b_no_substitution
+[Phase36SelfTest] case=test_c_already_arranged
+[ActionPreflight] capability=arrange_side_by_side status=blocked reason=already_satisfied
+[ActionPreflight] target_check=already_satisfied
+[ActionPreflight] blocked capability=arrange_side_by_side reason=already_satisfied
+[Phase36SelfTest] pass case=test_c_already_satisfied_blocked
+[Phase36SelfTest] pass case=test_c_already_satisfied_reason
+[Phase36SelfTest] case=test_d_foreground_media_no_music
+[MusicSuggestion] suppressed reason=foreground_media_no_music_needed
+[MediaUsefulness] capability=play_focus_media eligible=no reason=foreground_media_no_music_needed
+[Phase36SelfTest] pass case=test_d_music_suppressed_foreground_no_music
+[Phase36SelfTest] pass case=test_d_reason_correct
+[Phase36SelfTest] case=test_e_foreground_plus_music_conflict
+[MusicSuggestion] suppressed reason=already_playing
+[MediaUsefulness] capability=pause_media eligible=no reason=already_playing
+[MusicSuggestion] suppressed reason=already_playing
+[MediaUsefulness] capability=play_focus_media eligible=no reason=already_playing
+[Phase36SelfTest] pass case=test_e_play_not_eligible_when_music_playing
+[Phase36SelfTest] pass case=test_e_conflict_awareness_detected
+[Phase36SelfTest] case=test_f_metadata_panel_only
+[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulness] capability=copy_current_url target_present=yes already_satisfied=no time_saved=low interruption_cost=low eligible=yes surface=panel_only reason=metadata_utility_low_interrupt
+[UtilityAction] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[Phase36SelfTest] pass case=test_f_copy_url_panel_only
+[ActionUsefulness] capability=collect_references surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulness] capability=collect_references target_present=yes already_satisfied=no time_saved=low interruption_cost=low eligible=yes surface=panel_only reason=metadata_utility_low_interrupt
+[UtilityAction] capability=collect_references surface=panel_only reason=metadata_utility_low_interrupt
+[Phase36SelfTest] pass case=test_f_collect_refs_panel_only
+[Phase36SelfTest] case=test_g_target_disappears
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[ActionPreflight] capability=arrange_side_by_side contract_id=ctc:test:g_disappeared status=blocked reason=target_missing target=primary_work/DisappearedApp36X
+[ActionPreflight] target_check=missing
+[ActionPreflight] blocked capability=arrange_side_by_side reason=target_contract_failed
+[ActionPreflight] blocked capability=arrange_side_by_side reason=substitution_not_allowed
+[Phase36SelfTest] pass case=test_g_disappeared_blocked
+[Phase36SelfTest] pass case=test_g_no_fallback
+[Phase36SelfTest] case=test_h_panel_labels
+[Phase36SelfTest] pass case=test_h_copy_url_label
+[Phase36SelfTest] pass case=test_h_related_links_label
+[Phase36SelfTest] pass case=test_h_remember_workspace_label
+[Phase36SelfTest] case=test_i_no_evidence
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=no time_saved=low interruption_cost=low eligible=no surface=suppressed reason=insufficient_evidence
+[Phase36SelfTest] pass case=test_i_no_evidence_suppressed
+[Phase36SelfTest] case=test_j_panel_contract_integration
+[ProposalTargetBinding] capability=arrange_side_by_side path=panel_integration_test contract_id=ctc:arrange_side_by_side:C18FB6A7 primary=primary_work/WindowAPhase36X secondary=secondary_work/WindowBPhase36X source=active_window_pair fallback_allowed=no expires_in_s=120
+[SuggestionTitleRewrite] capability=arrange_side_by_side after="Arrange WindowA and WindowB"
+[CapabilityExecution] started id=arrange_side_by_side source_surface=panel
+[CapabilityExecution] proposal_id=panel:phase36:arrange_side_by_side id=arrange_side_by_side
+[CapabilityExecution] mode=local_action id=arrange_side_by_side
+[LivePathEnforcement] capability=arrange_side_by_side path=executor contract_required=yes contract_present=yes allowed=yes surface=executor reason=contract_present
+[CapabilityExecution] confirmation_required=yes
+[ActionExecution] capability=arrange_side_by_side
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[LiveActionPath] capability=arrange_side_by_side route=environment executor=IntentExecutor snapshot_age=0s has_targets=yes has_urls=no will_execute=yes reason=runtime_discovery
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[ActionPreflight] capability=arrange_side_by_side contract_id=ctc:arrange_side_by_side:C18FB6A7 status=blocked reason=target_missing target=primary_work/WindowAPhase36X
+[ActionPreflight] target_check=missing
+[ActionPreflight] blocked capability=arrange_side_by_side reason=target_contract_failed
+[ActionPreflight] blocked capability=arrange_side_by_side reason=substitution_not_allowed
+[ActionVerification] capability=arrange_side_by_side status=failed reason=target_contract_failed
+[CapabilityExecution] completed status=unavailable id=arrange_side_by_side reason=target_contract_failed
+[Phase36SelfTest] pass case=test_j_panel_integration_blocked
+[Phase36SelfTest] test_j_correlation_contract_id=ctc:arrange_side_by_side:C18FB6A7
+[Phase36SelfTest] case=test_k_already_satisfied_layout
+[ActionPreflight] capability=arrange_side_by_side status=blocked reason=already_satisfied
+[ActionPreflight] target_check=already_satisfied
+[ActionPreflight] blocked capability=arrange_side_by_side reason=already_satisfied
+[Phase36SelfTest] pass case=test_k_already_satisfied_status
+[Phase36SelfTest] pass case=test_k_already_satisfied_target_check
+[ProposalFreshness] capability=arrange_side_by_side fresh=no age_s=200 context_shift=no target_valid=yes
+[ProposalFunnelAudit] not_generated capability=arrange_side_by_side reason=low_usefulness
+[Phase36SelfTest] pass case=test_k_stale_proposal_not_fresh
+[ActionTargetContractSelfTest] starting
+[ActionPreflight] capability=arrange_side_by_side contract_id=ctc:test:expired status=blocked reason=contract_expired age_s=200
+[ActionPreflight] target_check=stale
+[ActionPreflight] blocked capability=arrange_side_by_side reason=target_contract_failed
+[ActionTargetContractSelfTest] pass case=expired_contract_blocked
+[ActionTargetContractSelfTest] pass case=expired_contract_stale
+[ActionPreflight] capability=arrange_side_by_side status=blocked reason=already_satisfied
+[ActionPreflight] target_check=already_satisfied
+[ActionPreflight] blocked capability=arrange_side_by_side reason=already_satisfied
+[ActionTargetContractSelfTest] pass case=already_satisfied_blocked
+[ActionTargetContractSelfTest] pass case=already_satisfied_check
+[ActionPreflight] capability=arrange_side_by_side status=ok reason=generic_mode_no_contract
+[ActionPreflight] target_check=ok
+[ActionTargetContractSelfTest] pass case=no_contract_ok
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[ActionPreflight] capability=arrange_side_by_side contract_id=ctc:test:bound status=blocked reason=target_missing target=primary_work/NonExistentApp12345
+[ActionPreflight] target_check=missing
+[ActionPreflight] blocked capability=arrange_side_by_side reason=target_contract_failed
+[ActionPreflight] blocked capability=arrange_side_by_side reason=substitution_not_allowed
+[ActionTargetContractSelfTest] pass case=missing_target_no_fallback_blocked
+[ActionTargetContractSelfTest] pass case=missing_target_check
+[ActionTargetContractSelfTest] completed ok=true failures=0
+[Phase36SelfTest] pass case=contract_self_test
+[ActionUsefulnessPolicySelfTest] starting
+[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulness] capability=copy_current_url target_present=yes already_satisfied=no time_saved=low interruption_cost=low eligible=yes surface=panel_only reason=metadata_utility_low_interrupt
+[UtilityAction] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulnessPolicySelfTest] pass case=copy_url_panel_only_by_default
+[ActionUsefulness] capability=remember_workspace surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulness] capability=remember_workspace target_present=yes already_satisfied=no time_saved=low interruption_cost=low eligible=yes surface=panel_only reason=metadata_utility_low_interrupt
+[UtilityAction] capability=remember_workspace surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulnessPolicySelfTest] pass case=remember_workspace_panel_only
+[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulness] capability=copy_current_url target_present=yes already_satisfied=no time_saved=medium interruption_cost=low eligible=yes surface=floating reason=metadata_utility_explicit_signal
+[UtilityAction] capability=copy_current_url surface=floating reason=metadata_utility_explicit_signal
+[ActionUsefulnessPolicySelfTest] pass case=copy_url_explicit_signal_floats
+[ActionUsefulness] capability=arrange_side_by_side target_present=no already_satisfied=no time_saved=low interruption_cost=low eligible=no surface=suppressed reason=target_missing
+[ActionUsefulnessPolicySelfTest] pass case=missing_target_suppressed
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=yes time_saved=low interruption_cost=low eligible=no surface=suppressed reason=already_satisfied
+[ActionUsefulnessPolicySelfTest] pass case=already_satisfied_suppressed
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=no time_saved=high interruption_cost=low eligible=yes surface=floating reason=high_usefulness_low_cost
+[ActionUsefulnessPolicySelfTest] pass case=layout_high_value_floating
+[ProposalFreshness] capability=arrange_side_by_side fresh=no age_s=200 context_shift=no target_valid=yes
+[ProposalFunnelAudit] not_generated capability=arrange_side_by_side reason=low_usefulness
+[ActionUsefulnessPolicySelfTest] pass case=old_proposal_not_fresh
+[ProposalFreshness] capability=arrange_side_by_side fresh=no age_s=0 context_shift=yes target_valid=yes
+[ProposalFunnelAudit] not_generated capability=arrange_side_by_side reason=context_shifted
+[ActionUsefulnessPolicySelfTest] pass case=context_shift_not_fresh
+[ActionUsefulnessPolicySelfTest] completed ok=true failures=0
+[Phase36SelfTest] pass case=usefulness_policy_self_test
+[Phase36SelfTest] completed ok=true failures=0
+[LivePathEnforcementSelfTest] starting
+[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[LivePathEnforcementSelfTest] pass case=a_copy_url_panel_only
+[LivePathEnforcementSelfTest] pass case=a_copy_url_not_floating
+[ActionUsefulness] capability=pin_reference_tabs surface=panel_only reason=unverified_browser_state_change
+[LivePathEnforcementSelfTest] pass case=b_pin_panel_only
+[LivePathEnforcementSelfTest] pass case=b_pin_not_floating
+[LivePathEnforcementSelfTest] pass case=b_pin_reason
+[ActionUsefulness] capability=arrange_side_by_side target_present=no eligible=no surface=panel_only reason=missing_target_contract
+[LivePathEnforcementSelfTest] pass case=c_arrange_no_contract_panel_only
+[LivePathEnforcementSelfTest] pass case=c_arrange_no_contract_reason
+[LivePathEnforcementSelfTest] pass case=c_arrange_no_contract_not_floating
+[WorkspaceMemory] used_as=hint reason=no_durable_pattern_matched
+[WorkPairMemory] pair=Firefox/Rental Postings <-> Preview/Lease Document switches=3 confidence=0.75
+[FreshnessCalibration] capability=arrange_side_by_side live_evidence=high durable_memory=no recent_interaction=yes current_session_support=yes confidence=0.85 surface=floating
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=no time_saved=high surface=floating reason=high_usefulness_low_cost
+[LivePathEnforcementSelfTest] pass case=d_arrange_contract_synthesized
+[LivePathEnforcementSelfTest] pass case=d_arrange_can_float
+[MusicSuggestion] suppressed reason=weak_or_transient_context
+[ActionUsefulness] capability=play_focus_media eligible=no surface=suppressed reason=weak_or_transient_context
+[LivePathEnforcementSelfTest] pass case=e_music_weak_suppressed
+[LivePathEnforcementSelfTest] pass case=e_music_weak_reason
+[MusicSuggestion] suppressed reason=task_action_preferred
+[ActionUsefulness] capability=play_focus_media eligible=no surface=suppressed reason=task_action_preferred
+[LivePathEnforcementSelfTest] pass case=f_music_task_preferred
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=yes eligible=no surface=suppressed reason=already_satisfied
+[LivePathEnforcementSelfTest] pass case=g_arrange_satisfied_suppressed
+[LivePathEnforcementSelfTest] pass case=g_arrange_satisfied_reason
+[LivePathEnforcementSelfTest] completed ok=true failures=0
+[Phase361LivePathSelfTest] starting
+[Phase361LivePathSelfTest] case=a_metadata_highest_score_panel_only
+[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[Phase361LivePathSelfTest] pass case=a_copy_url_surface_panel_only
+[Phase361LivePathSelfTest] pass case=a_copy_url_not_floating
+[Phase361LivePathSelfTest] pass case=a_copy_url_reason_metadata
+[ActionUsefulness] capability=collect_references surface=panel_only reason=metadata_utility_low_interrupt
+[Phase361LivePathSelfTest] pass case=a_collect_refs_panel_only
+[Phase361LivePathSelfTest] pass case=a_collect_refs_not_floating
+[Phase361LivePathSelfTest] case=b_pin_reference_tabs_panel_only
+[ActionUsefulness] capability=pin_reference_tabs surface=panel_only reason=unverified_browser_state_change
+[Phase361LivePathSelfTest] pass case=b_pin_surface_panel_only
+[Phase361LivePathSelfTest] pass case=b_pin_never_floating
+[Phase361LivePathSelfTest] pass case=b_pin_reason_unverified
+[Phase361LivePathSelfTest] case=c_arrange_without_contract_blocked_at_executor
+[CapabilityExecution] started id=arrange_side_by_side source_surface=unknown
+[CapabilityExecution] proposal_id=unknown id=arrange_side_by_side
+[CapabilityExecution] mode=local_action id=arrange_side_by_side
+[LivePathEnforcement] capability=arrange_side_by_side path=executor contract_required=yes contract_present=no allowed=no surface=executor reason=missing_target_contract
+[ActionPreflight] capability=arrange_side_by_side contract_id=missing status=blocked reason=missing_target_contract
+[CapabilityExecution] completed status=unavailable id=arrange_side_by_side reason=missing_target_contract
+[Phase361LivePathSelfTest] pass case=c_executor_blocks_without_contract
+[Phase361LivePathSelfTest] case=d_arrange_with_contract_missing_target_blocked
+[CapabilityExecution] started id=arrange_side_by_side source_surface=unknown
+[CapabilityExecution] proposal_id=unknown id=arrange_side_by_side
+[CapabilityExecution] mode=local_action id=arrange_side_by_side
+[LivePathEnforcement] capability=arrange_side_by_side path=executor contract_required=yes contract_present=yes allowed=yes surface=executor reason=contract_present
+[CapabilityExecution] confirmation_satisfied=yes source=user_click
+[ActionExecution] capability=arrange_side_by_side
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[LiveActionPath] capability=arrange_side_by_side route=environment executor=IntentExecutor snapshot_age=0s has_targets=yes has_urls=no will_execute=yes reason=runtime_discovery
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[ActionPreflight] capability=arrange_side_by_side contract_id=ctc:arrange_side_by_side:9EEA67A8 status=blocked reason=target_missing target=primary_work/DefinitelyMissing361A
+[ActionPreflight] target_check=missing
+[ActionPreflight] blocked capability=arrange_side_by_side reason=target_contract_failed
+[ActionPreflight] blocked capability=arrange_side_by_side reason=substitution_not_allowed
+[ActionVerification] capability=arrange_side_by_side status=failed reason=target_contract_failed
+[CapabilityExecution] completed status=unavailable id=arrange_side_by_side reason=target_contract_failed
+[Phase361LivePathSelfTest] pass case=d_with_contract_missing_target_blocked
+[Phase361LivePathSelfTest] case=e_music_weak_context_suppressed
+[MusicSuggestion] suppressed reason=weak_or_transient_context
+[ActionUsefulness] capability=play_focus_media eligible=no surface=suppressed reason=weak_or_transient_context
+[Phase361LivePathSelfTest] pass case=e_music_weak_surface_suppressed
+[Phase361LivePathSelfTest] pass case=e_music_weak_not_floating
+[Phase361LivePathSelfTest] pass case=e_music_weak_reason
+[MusicSuggestion] suppressed reason=weak_or_transient_context
+[ActionUsefulness] capability=play_focus_media eligible=no surface=suppressed reason=weak_or_transient_context
+[Phase361LivePathSelfTest] pass case=e_music_transient_not_floating
+[Phase361LivePathSelfTest] case=f_final_selection_skips_panel_only
+[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[FinalSelection] candidate=copy_current_url surface=panel_only eligible_for_floating=no
+[FinalSelection] rejected_floating capability=copy_current_url reason=panel_only_surface
+[ActionUsefulness] capability=collect_references surface=panel_only reason=metadata_utility_low_interrupt
+[FinalSelection] candidate=collect_references surface=panel_only eligible_for_floating=no
+[FinalSelection] rejected_floating capability=collect_references reason=panel_only_surface
+[ActionUsefulness] capability=pin_reference_tabs surface=panel_only reason=unverified_browser_state_change
+[FinalSelection] candidate=pin_reference_tabs surface=panel_only eligible_for_floating=no
+[FinalSelection] rejected_floating capability=pin_reference_tabs reason=panel_only_surface
+[WorkspaceMemory] used_as=hint reason=no_durable_pattern_matched
+[WorkPairMemory] pair=Firefox/Rental Postings <-> Preview/Lease Document switches=7 confidence=1.0
+[FreshnessCalibration] capability=arrange_side_by_side live_evidence=high durable_memory=no recent_interaction=yes current_session_support=yes confidence=0.85 surface=floating
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=no time_saved=high surface=floating reason=high_usefulness_low_cost
+[FinalSelection] candidate=arrange_side_by_side surface=floating eligible_for_floating=yes
+[Phase361LivePathSelfTest] pass case=f_metadata_not_floating_winner
+[Phase361LivePathSelfTest] pass case=f_pin_not_floating_winner
+[WorkspaceMemory] used_as=hint reason=no_durable_pattern_matched
+[WorkPairMemory] pair=Firefox/Rental Postings <-> Preview/Lease Document switches=7 confidence=1.0
+[FreshnessCalibration] capability=arrange_side_by_side live_evidence=high durable_memory=no recent_interaction=yes current_session_support=yes confidence=0.85 surface=floating
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=no time_saved=high surface=floating reason=high_usefulness_low_cost
+[Phase361LivePathSelfTest] pass case=f_arrange_with_apps_eligible
+[Phase361LivePathSelfTest] pass case=f_arrange_contract_synthesized
+[Phase361LivePathSelfTest] completed ok=true failures=0
+[RuntimeWorkspaceFrictionSelfTest] starting
+[WorkPairMemory] pair=Firefox/182 Montreal St - Le <-> Preview/_182_montreal_street switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=no semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=11.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=27.50 reason=work_pair_match
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=overlapping
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] selected_pair=Firefox,Preview reason=work_pair_match
+[RuntimeFriction] capability=arrange_side_by_side eligible=yes reason=runtime_work_pair_friction apps=Firefox,Preview windows=2 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_pair_eligible
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_pair_apps
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_pair_apps_preview
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_layout_not_arranged
+[WorkPairMemory] pair=Firefox/182 Montreal St - Le <-> Preview/_182_montreal_street switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=ChatGPT active_screen=no workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=yes score=-3.00
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=no semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=11.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionCandidateScore] app=Xcode active_screen=no workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=yes score=-3.00
+[RuntimeFrictionPairScore] primary=ChatGPT secondary=Firefox score=6.50 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=ChatGPT secondary=Preview score=3.50 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=ChatGPT secondary=Xcode score=-8.00 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=27.50 reason=work_pair_match
+[RuntimeFrictionPairScore] primary=Firefox secondary=Xcode score=6.50 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=Preview secondary=Xcode score=3.50 reason=visible_runtime_pair
+[RuntimeFriction] rejected_pair=ChatGPT,Firefox reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=Firefox,Xcode reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=ChatGPT,Preview reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=Preview,Xcode reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=ChatGPT,Xcode reason=background_or_debug_context_mismatch
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=overlapping
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] selected_pair=Firefox,Preview reason=work_pair_match
+[RuntimeFriction] capability=arrange_side_by_side eligible=yes reason=runtime_work_pair_friction apps=Firefox,Preview windows=4 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=debug_context_pair_prefers_workspace_windows
+[WorkPairMemory] pair=Firefox/182 Montreal St - Le <-> Preview/_182_montreal_street switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=24.50 reason=work_pair_match
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=already_arranged
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] capability=arrange_side_by_side eligible=no reason=already_arranged apps=Firefox,Preview windows=2 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=already_arranged_not_eligible
+[RuntimeWorkspaceFrictionSelfTest] pass case=already_arranged_layout_state
+[RuntimeFrictionCandidateScore] app=Finder active_screen=no workspace_match=no semantic_match=no present_not_arranged=no debug_context_penalty=no score=0.50
+[RuntimeFriction] capability=arrange_side_by_side eligible=no reason=no_related_pair apps=Finder windows=0 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=no_pair_not_eligible
+[RuntimeWorkspaceFrictionSelfTest] pass case=no_pair_reason
+[RuntimeWorkspaceFrictionSelfTest] completed ok=true failures=0
+[Phase362SelfTest] starting
+[Phase362SelfTest] case=1_runtime_workspace_friction
+[WorkPairMemory] pair=Firefox/Lease Doc <-> Preview/Lease PDF switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=no semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=11.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=no semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=11.50
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=32.50 reason=work_pair_match
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=overlapping
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] selected_pair=Firefox,Preview reason=work_pair_match
+[RuntimeFriction] capability=arrange_side_by_side eligible=yes reason=runtime_work_pair_friction apps=Firefox,Preview windows=2 workspace_id=none
+[Phase362SelfTest] pass case=1_runtime_friction_eligible
+[Phase362SelfTest] pass case=1_runtime_pair_present
+[Phase362SelfTest] pass case=1_runtime_layout_not_arranged
+[Phase362SelfTest] pass case=1_contract_id_present
+[Phase362SelfTest] pass case=1_contract_two_targets
+[Phase362SelfTest] case=2_music_suppressed_arrange_backfills
+[MusicSuggestion] suppressed reason=task_action_preferred
+[ActionUsefulness] capability=play_focus_media eligible=no surface=suppressed reason=task_action_preferred
+[Phase362SelfTest] pass case=2_music_not_eligible_when_task_action
+[Phase362SelfTest] pass case=2_music_reason_task_action_preferred
+[WorkspaceMemory] used_as=hint reason=no_durable_pattern_matched
+[WorkPairMemory] pair=Firefox/Lease Doc <-> Preview/Lease PDF switches=11 confidence=1.0
+[FreshnessCalibration] capability=arrange_side_by_side live_evidence=high durable_memory=no recent_interaction=yes current_session_support=yes confidence=0.85 surface=floating
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=no time_saved=high surface=floating reason=high_usefulness_low_cost
+[Phase362SelfTest] pass case=2_arrange_backfill_eligible
+[Phase362SelfTest] pass case=2_arrange_backfill_contract
+[Phase362SelfTest] case=3_live_path_logs_emitted
+[CheapAlwaysOnPortfolio] evaluated=yes reason=phase362_test
+[ModelAvailability] ready=yes
+[MediaAwareness] foreground_media=no confidence=high background_music=stopped conflict=no
+[MediaUsefulness] capability=pause_media eligible=no reason=no_conflict
+[MediaAwareness] foreground_media=no confidence=high background_music=stopped conflict=no
+[MediaUsefulness] capability=play_focus_media eligible=yes reason=stable_work_context
+[MusicSuggestion] generated capability=play_focus_media reason=stable_work_context
+[WorkPairMemory] pair=Firefox/Lease Doc <-> Preview/Lease PDF switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=yes semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=16.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=yes semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=16.50
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=46.50 reason=workspace_semantic_pair
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=overlapping
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] selected_pair=Firefox,Preview reason=workspace_semantic_pair
+[RuntimeFriction] capability=arrange_side_by_side eligible=yes reason=runtime_workspace_friction apps=Firefox,Preview windows=2 workspace_id=researching/rental
+[WorkspaceMissingCheck] item=Firefox type=app present=yes visible=yes reason=matching_window_frontmost
+[WorkspaceItemState] item=Firefox state=present_visible
+[WorkspaceMissingCheck] item=Preview type=app present=yes visible=yes reason=running_app_window_visible
+[WorkspaceItemState] item=Preview state=present_backgrounded
+[WorkspaceRestoreGate] can_restore=no reason=items_present_backgrounded
+[WorkspacePatternMemory] missing_check id=ba5946c89443af87 missing_apps= missing_urls=0 can_restore=no
+[ProposalFunnelAudit] not_generated capability=restore_workspace reason=workspace_items_present
+[ActionPortfolio] lanes=friction,music
+[CandidateIdentity] capability=play_focus_media lane=music source=portfolio candidate_id=play_focus_media|music|portfolio|no_contract|806BEB8CA3D5215B|9CA372A6096DDD54
+[CheapAlwaysOnPortfolio] candidate=play_focus_media score=0.283
+[ActionPortfolio] candidate lane=music capability=play_focus_media score=0.283 usefulness=0.45 executability=0.90 confidence=0.70 novelty=1.00
+[CandidateIdentity] capability=arrange_side_by_side lane=friction source=runtime_workspace_friction candidate_id=arrange_side_by_side|friction|runtime_workspace_friction|ctc:arrange_side_by_side:412DF803|6C3F8FB62EDB9FBA|AB788AF2017E974E
+[CheapAlwaysOnPortfolio] candidate=arrange_side_by_side score=0.669
+[ActionPortfolio] candidate lane=friction capability=arrange_side_by_side score=0.669 usefulness=0.80 executability=0.88 confidence=0.95 novelty=1.00
+[LocalActionPayload] capability=arrange_side_by_side valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe urls=none reason=payload_complete
+[PanelCandidate] capability=arrange_side_by_side lane=friction valid_payload=yes reason=valid_payload
+[LocalActionPayload] capability=play_focus_media valid=yes missing=none targets=Music urls=none reason=payload_complete
+[PanelCandidate] capability=play_focus_media lane=music valid_payload=yes reason=valid_payload
+[LocalActionPayload] capability=arrange_side_by_side valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe urls=none reason=payload_complete
+[LocalActionPayload] capability=split_research_setup valid=no missing=target_url targets=Firefox:d098fa,Preview:f8ebfe urls=none reason=missing_target_url
+[LocalActionPayload] capability=restore_workspace valid=no missing=compartment_label targets=Firefox:d098fa,Preview:f8ebfe,Music:218b07 urls=none reason=missing_compartment_label
+[LocalActionPayload] capability=switch_to_paired_app valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe urls=none reason=payload_complete
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[LocalActionPayload] capability=copy_current_url valid=no missing=current_url targets=none urls=none reason=missing_current_url
+[LocalActionPayload] capability=remember_workspace valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe,Music:218b07 urls=none reason=payload_complete
+[LocalActionPayload] capability=open_current_task_panel valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe urls=none reason=payload_complete
+[LocalActionPayload] capability=enable_reduce_interruptions valid=yes missing=none targets=Firefox,Preview,Music urls=none reason=payload_complete
+[LocalActionSanity] arrange_side_by_side=valid split_research_setup=invalid:target_url restore_workspace=invalid:compartment_label switch_to_paired_app=valid copy_current_url=invalid:current_url remember_workspace=valid open_current_task_panel=valid focus=valid music=valid
+[WorkPairMemory] pair=Firefox/Lease Doc <-> Preview/Lease PDF switches=11 confidence=1.0
+[WorkspaceMemory] used_as=supporting_evidence reason=durable_pattern_supported_by_recent_interaction
+[WorkPairMemory] pair=Firefox/Lease Doc <-> Preview/Lease PDF switches=11 confidence=1.0
+[FreshnessCalibration] capability=arrange_side_by_side live_evidence=high durable_memory=yes recent_interaction=yes current_session_support=yes confidence=0.95 surface=floating
+[ActionUsefulness] capability=arrange_side_by_side target_present=yes already_satisfied=no time_saved=high surface=floating reason=high_usefulness_low_cost
+[LivePathEnforcement] capability=arrange_side_by_side candidate_id=arrange_side_by_side|friction|runtime_workspace_friction|ctc:arrange_side_by_side:412DF803|6C3F8FB62EDB9FBA|AB788AF2017E974E lane=friction path=cheap_portfolio contract_required=yes contract_present=yes allowed=yes surface=floating reason=high_usefulness_low_cost
+[MusicSuggestion] suppressed reason=task_action_preferred
+[ActionUsefulness] capability=play_focus_media eligible=no surface=suppressed reason=task_action_preferred
+[LivePathEnforcement] capability=play_focus_media candidate_id=play_focus_media|music|portfolio|no_contract|806BEB8CA3D5215B|9CA372A6096DDD54 lane=music path=cheap_portfolio contract_required=no contract_present=no allowed=no surface=suppressed reason=task_action_preferred
+[UsefulActionInventory] total=2 friction=1 metadata=0 music=1 workspace=0
+[UsefulActionInventory] utility_count=0 non_utility_count=2
+[UsefulActionInventory] capability=arrange_side_by_side eligible=yes surface=floating reason=high_usefulness_low_cost
+[FinalSelection] candidate=arrange_side_by_side usefulness=high surface=floating reason=high_usefulness_low_cost
+[UsefulActionInventory] capability=play_focus_media eligible=no surface=suppressed reason=task_action_preferred
+[FinalSelection] candidate=play_focus_media usefulness=medium surface=suppressed reason=task_action_preferred
+[CheapAlwaysOnPortfolio] floating_selected=arrange_side_by_side panel_count=2 reason=floating_candidate_available
+[ActionPortfolio] selected lane=friction capability=arrange_side_by_side title="Put Firefox and Preview side by side?" score=0.669
+[FinalSelection] winner=arrange_side_by_side reason=task_friction_preferred_over_comfort
+[ActionPortfolioResult] floating=arrange_side_by_side panel_count=2 suppressed_count=0
+[UsefulActionInventory] chosen=arrange_side_by_side visible_count=2
+[VisibleActionPath] candidate_id=arrange_side_by_side|friction|runtime_workspace_friction|ctc:arrange_side_by_side:412DF803|6C3F8FB62EDB9FBA|AB788AF2017E974E capability=arrange_side_by_side lane=friction surface=floating source=cheap_portfolio execution_path=contract_bound contract_required=yes contract_present=yes
+[VisibleActionPath] candidate_id=play_focus_media|music|portfolio|no_contract|806BEB8CA3D5215B|9CA372A6096DDD54 capability=play_focus_media lane=music surface=suppressed source=cheap_portfolio execution_path=music contract_required=no contract_present=no
+[Phase362SelfTest] pass case=3_portfolio_produced_candidates
+[Phase362SelfTest] pass case=3_arrange_generated_from_runtime_friction
+[Phase362SelfTest] pass case=3_arrange_involved_apps_typed
+[Phase362SelfTest] case=4_payload_typed_targets
+[LocalActionPayload] capability=arrange_side_by_side valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe urls=https://youtube.com/watch,https://mail.google.com reason=payload_complete
+[Phase362SelfTest] pass case=4_arrange_targets_only_window_pair
+[Phase362SelfTest] pass case=4_arrange_targets_two
+[LocalActionPayload] capability=play_focus_media valid=yes missing=none targets=Music urls=https://docs.google.com/lease reason=payload_complete
+[Phase362SelfTest] pass case=4_music_target_only_music
+[LocalActionPayload] capability=copy_current_url valid=yes missing=none targets=none urls=docs.google.com_465bc3 reason=current_url_available
+[Phase362SelfTest] pass case=4_copy_url_no_app_targets
+[Phase362SelfTest] pass case=4_copy_url_url_present
+[Phase362SelfTest] case=5_no_useful_friction
+[RuntimeFrictionCandidateScore] app=Finder active_screen=no workspace_match=no semantic_match=no present_not_arranged=no debug_context_penalty=no score=0.50
+[RuntimeFriction] capability=arrange_side_by_side eligible=no reason=no_related_pair apps=Finder windows=0 workspace_id=none
+[Phase362SelfTest] pass case=5_no_pair_no_eligible
+[Phase362SelfTest] pass case=5_no_pair_reason
+[RuntimeWorkspaceFrictionSelfTest] starting
+[WorkPairMemory] pair=Firefox/182 Montreal St - Le <-> Preview/_182_montreal_street switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=no semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=11.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=27.50 reason=work_pair_match
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=overlapping
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] selected_pair=Firefox,Preview reason=work_pair_match
+[RuntimeFriction] capability=arrange_side_by_side eligible=yes reason=runtime_work_pair_friction apps=Firefox,Preview windows=2 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_pair_eligible
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_pair_apps
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_pair_apps_preview
+[RuntimeWorkspaceFrictionSelfTest] pass case=dogfood_layout_not_arranged
+[WorkPairMemory] pair=Firefox/182 Montreal St - Le <-> Preview/_182_montreal_street switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=ChatGPT active_screen=no workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=yes score=-3.00
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=no semantic_match=yes present_not_arranged=yes debug_context_penalty=no score=11.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionCandidateScore] app=Xcode active_screen=no workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=yes score=-3.00
+[RuntimeFrictionPairScore] primary=ChatGPT secondary=Firefox score=6.50 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=ChatGPT secondary=Preview score=3.50 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=ChatGPT secondary=Xcode score=-8.00 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=27.50 reason=work_pair_match
+[RuntimeFrictionPairScore] primary=Firefox secondary=Xcode score=6.50 reason=visible_runtime_pair
+[RuntimeFrictionPairScore] primary=Preview secondary=Xcode score=3.50 reason=visible_runtime_pair
+[RuntimeFriction] rejected_pair=ChatGPT,Firefox reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=Firefox,Xcode reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=ChatGPT,Preview reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=Preview,Xcode reason=background_or_debug_context_mismatch
+[RuntimeFriction] rejected_pair=ChatGPT,Xcode reason=background_or_debug_context_mismatch
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=overlapping
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] selected_pair=Firefox,Preview reason=work_pair_match
+[RuntimeFriction] capability=arrange_side_by_side eligible=yes reason=runtime_work_pair_friction apps=Firefox,Preview windows=4 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=debug_context_pair_prefers_workspace_windows
+[WorkPairMemory] pair=Firefox/182 Montreal St - Le <-> Preview/_182_montreal_street switches=11 confidence=1.0
+[RuntimeFrictionCandidateScore] app=Firefox active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionCandidateScore] app=Preview active_screen=yes workspace_match=no semantic_match=no present_not_arranged=yes debug_context_penalty=no score=8.50
+[RuntimeFrictionPairScore] primary=Firefox secondary=Preview score=24.50 reason=work_pair_match
+[RuntimeFriction] target_state primary=present secondary=present
+[RuntimeFriction] layout_state=already_arranged
+[RuntimeFriction] expected_time_saved=high
+[RuntimeFriction] capability=arrange_side_by_side eligible=no reason=already_arranged apps=Firefox,Preview windows=2 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=already_arranged_not_eligible
+[RuntimeWorkspaceFrictionSelfTest] pass case=already_arranged_layout_state
+[RuntimeFrictionCandidateScore] app=Finder active_screen=no workspace_match=no semantic_match=no present_not_arranged=no debug_context_penalty=no score=0.50
+[RuntimeFriction] capability=arrange_side_by_side eligible=no reason=no_related_pair apps=Finder windows=0 workspace_id=none
+[RuntimeWorkspaceFrictionSelfTest] pass case=no_pair_not_eligible
+[RuntimeWorkspaceFrictionSelfTest] pass case=no_pair_reason
+[RuntimeWorkspaceFrictionSelfTest] completed ok=true failures=0
+[Phase362SelfTest] pass case=runtime_friction_self_test
+[Phase362SelfTest] completed ok=true failures=0
+[Phase363SelfTest] starting
+[Phase363SelfTest] case=a_cooldown_unrelated_bypasses
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=no bypass=yes reason=high_usefulness_runtime_state_changed
+[SuggestionCooldown] bypassed capability=arrange_side_by_side reason=high_usefulness_runtime_state_changed
+[Phase363SelfTest] pass case=a_cooldown_bypasses_for_unrelated_prior
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=bypassed final=floating reason=useful_and_live_path_floating
+[Phase363SelfTest] pass case=a_arbiter_final_floating
+[Phase363SelfTest] case=b_same_targets_recent_panel_only
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=yes bypass=no reason=same_action_same_targets_recently_shown
+[SuggestionCooldown] applied capability=arrange_side_by_side reason=same_action_same_targets_recently_shown
+[Phase363SelfTest] pass case=b_cooldown_panel_only
+[SurfaceFallback] capability=arrange_side_by_side floating_suppressed=yes fallback=panel reason=useful_action_preserved
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=active_panel_only final=panel_only reason=floating_cooldown_preserved_panel
+[Phase363SelfTest] pass case=b_arbiter_final_panel_only
+[Phase363SelfTest] pass case=b_arbiter_reason_panel_fallback
+[Phase363SelfTest] case=c_task_cooldown_not_empty
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=yes bypass=no reason=same_action_same_targets_recently_shown
+[SuggestionCooldown] applied capability=arrange_side_by_side reason=same_action_same_targets_recently_shown
+[SurfaceFallback] capability=arrange_side_by_side floating_suppressed=yes fallback=panel reason=useful_action_preserved
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=active_panel_only final=panel_only reason=floating_cooldown_preserved_panel
+[Phase363SelfTest] pass case=c_arrange_visible_as_panel
+[MusicSuggestion] suppressed reason=task_action_preferred
+[ActionUsefulness] capability=play_focus_media eligible=no surface=suppressed reason=task_action_preferred
+[Phase363SelfTest] pass case=c_music_still_suppressed_task_preferred
+[Phase363SelfTest] pass case=c_music_reason
+[BackfillAfterSurface] primary=arrange_side_by_side final_surface=panel_only reconsidered=play_focus_media result=suppressed reason=task_action_still_visible_in_panel
+[Phase363SelfTest] case=d_runtime_recheck_overrides_stale
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=inactive final=floating reason=useful_and_live_path_floating
+[Phase363SelfTest] pass case=d_recheck_not_suppressed
+[Phase363SelfTest] pass case=d_recheck_floats
+[Phase363SelfTest] case=e_panel_fallback_highlighted
+[SuggestionTitleRewrite] capability=arrange_side_by_side after="Put Firefox and Preview side by side?"
+[RecentActionCache] stored proposal_id=panel:phase363:arrange_side_by_side candidate_id=phase363:arrange_side_by_side contract_id=ctc:arrange_side_by_side:3F2EE997
+[PanelVisibility] capability=arrange_side_by_side visible=yes highlighted=yes reason=high_usefulness_panel_fallback
+[Phase363SelfTest] pass case=e_panel_highlighted
+[Phase363SelfTest] pass case=e_panel_indicator_visible
+[Phase363SelfTest] case=f_panel_click_recent_valid
+[RecentActionCache] stored proposal_id=panel:phase363:arrange_side_by_side candidate_id=phase363:arrange_side_by_side contract_id=ctc:arrange_side_by_side:3F2EE997
+[LocalActionPayload] capability=arrange_side_by_side valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe urls=none reason=payload_complete
+[Phase363SelfTest] pass case=f_recent_candidate_resolved
+[Phase363SelfTest] pass case=f_recent_candidate_reason
+[Phase363SelfTest] pass case=f_recent_candidate_contract_valid
+[Phase363SelfTest] case=g_arrange_kind_mapping
+[Phase363SelfTest] pass case=g_arrange_kind_is_friction
+[Phase363SelfTest] pass case=g_arrange_kind_not_comfort
+[SuggestionCooldownArbiterSelfTest] starting
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=no bypass=no reason=no_prior_show
+[SuggestionCooldownArbiterSelfTest] pass case=no_prior_inactive
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=yes bypass=no reason=anti_flicker_window
+[SuggestionCooldown] applied capability=arrange_side_by_side reason=anti_flicker_window
+[SuggestionCooldownArbiterSelfTest] pass case=anti_flicker_active
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=yes bypass=no reason=same_action_same_targets_recently_shown
+[SuggestionCooldown] applied capability=arrange_side_by_side reason=same_action_same_targets_recently_shown
+[SuggestionCooldownArbiterSelfTest] pass case=recent_panel_only
+[SuggestionCooldownArbiterSelfTest] pass case=recent_panel_only_reason
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=no bypass=yes reason=runtime_friction_persists
+[SuggestionCooldown] bypassed capability=arrange_side_by_side reason=runtime_friction_persists
+[SuggestionCooldownArbiterSelfTest] pass case=persistent_bypass
+[SuggestionCooldownArbiterSelfTest] pass case=persistent_bypass_reason
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=no bypass=yes reason=high_usefulness_runtime_state_changed
+[SuggestionCooldown] bypassed capability=arrange_side_by_side reason=high_usefulness_runtime_state_changed
+[SuggestionCooldownArbiterSelfTest] pass case=state_change_bypass
+[SuggestionCooldownArbiterSelfTest] pass case=state_change_reason
+[SuggestionCooldown] capability=arrange_side_by_side cooldown_key=arrange_side_by_side|Firefox+Preview|present_not_arranged|runtime_workspace_friction|lease active=yes bypass=no reason=same_action_same_targets_recently_dismissed
+[SuggestionCooldown] applied capability=arrange_side_by_side reason=same_action_same_targets_recently_dismissed
+[SuggestionCooldownArbiterSelfTest] pass case=dismissals_panel_only
+[SuggestionCooldownArbiterSelfTest] pass case=dismissals_reason
+[SuggestionCooldownArbiterSelfTest] pass case=key_target_order_independent
+[SuggestionCooldownArbiterSelfTest] completed ok=true failures=0
+[Phase363SelfTest] pass case=cooldown_arbiter_self_test
+[FinalSurfaceArbiterSelfTest] starting
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=inactive final=floating reason=useful_and_live_path_floating
+[FinalSurfaceArbiterSelfTest] pass case=useful_no_cooldown_floats
+[SurfaceFallback] capability=arrange_side_by_side floating_suppressed=yes fallback=panel reason=useful_action_preserved
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=active_panel_only final=panel_only reason=floating_cooldown_preserved_panel
+[FinalSurfaceArbiterSelfTest] pass case=cooldown_panel_only_fallback
+[FinalSurfaceArbiterSelfTest] pass case=cooldown_reason_preserves_panel
+[AlreadySatisfiedCheck] capability=arrange_side_by_side result=yes source=layout_verify reason=arbiter_runtime_recheck
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=inactive final=suppressed reason=already_satisfied
+[FinalSurfaceArbiterSelfTest] pass case=already_satisfied_suppressed
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=fresh cooldown=active final=suppressed reason=anti_flicker_cooldown
+[FinalSurfaceArbiterSelfTest] pass case=anti_flicker_suppressed
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=floating live_path=floating freshness=stale_context cooldown=inactive final=panel_only reason=stale_context
+[FinalSurfaceArbiterSelfTest] pass case=stale_panel_only
+[FinalSurfaceArbiter] capability=arrange_side_by_side usefulness=panel_only live_path=floating freshness=fresh cooldown=inactive final=panel_only reason=usefulness_panel_only
+[FinalSurfaceArbiterSelfTest] pass case=recheck_not_suppressed
+[FinalSurfaceArbiterSelfTest] completed ok=true failures=0
+[Phase363SelfTest] pass case=final_surface_arbiter_self_test
+[Phase363SelfTest] completed ok=true failures=0
+[Phase365SelfTest] starting
+[Phase365SelfTest] pass case=duplicate_capability_ids_are_distinct_candidates
+[Phase365SelfTest] pass case=duplicate_capability_identity_map_survives
+[SuggestionTitleRewrite] capability=arrange_side_by_side after="Put Firefox and Preview side by side?"
+[RecentActionCache] stored proposal_id=panel:phase365:arrange_side_by_side candidate_id=phase365:arrange_side_by_side contract_id=ctc:arrange_side_by_side:68290199
+[LocalActionPayload] capability=arrange_side_by_side valid=yes missing=none targets=Firefox:d098fa,Preview:f8ebfe urls=none reason=payload_complete
+[Phase365SelfTest] pass case=panel_contract_preserved_through_recent_cache
+[Phase365SelfTest] pass case=panel_candidate_id_preserved_through_recent_cache
+[SuggestionTitleRewrite] capability=arrange_side_by_side after="Arrange side by side"
+[RecentActionCache] stored proposal_id=panel:phase365:missing_contract candidate_id=phase365:missing_contract contract_id=missing
+[SuggestionFeedback] id=panel:phase365:missing_contract event=click_attempted capability=arrange_side_by_side
+[ActionClick] source_surface=panel proposal_id=panel:phase365:missing_contract candidate_id=phase365:missing_contract capability=arrange_side_by_side contract_id=missing
+[SuggestionFeedback] id=panel:phase365:missing_contract final_event=failed reason=missing_contract
+[Phase365SelfTest] pass case=missing_contract_never_records_accept
+[Phase365SelfTest] pass case=missing_contract_records_failed
+[RecentActionCache] stored proposal_id=panel:phase365:arrange_side_by_side candidate_id=phase365:arrange_side_by_side contract_id=ctc:arrange_side_by_side:68290199
+[SurfaceLayoutGuard] deferred reason=avoid_layout_recursion
+[PanelVisibility] capability=arrange_side_by_side visible=yes highlighted=yes reason=high_usefulness_panel_fallback
+[Phase365SelfTest] pass case=panel_highlight_defers_without_losing_state
+[Phase365SelfTest] completed ok=true failures=0
+[Phase37SelfTest] starting
+[UsefulActionOpportunityRegistry] family=layout capability=arrange_side_by_side required_evidence=runtime_workspace_friction execution=local verification=ax_frame_check
+[UsefulActionOpportunityRegistry] family=coding capability=diagnose_error required_evidence=selected_text execution=generated verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=communication capability=draft_reply required_evidence=selected_text execution=generated verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=research capability=explicit_visible_capture_summary required_evidence=visible_capture execution=acquisition verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=research capability=extract_action_items required_evidence=visible_capture execution=acquisition verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=media capability=pause_media required_evidence=foreground_media_active execution=local verification=player_state_check
+[UsefulActionOpportunityRegistry] family=media capability=play_focus_media required_evidence=work_context execution=local verification=player_state_check
+[UsefulActionOpportunityRegistry] family=layout capability=restore_workspace required_evidence=durable_workspace_record execution=local verification=app_presence_check
+[UsefulActionOpportunityRegistry] family=writing capability=rewrite_text required_evidence=selected_text execution=generated verification=output_presence_check
+[UsefulActionOpportunityRegistry] family=layout capability=switch_to_paired_app required_evidence=work_pair_alternation execution=local verification=frontmost_app_check
+[LayoutIntent] mode=generic_runtime_layout
+[ActionVerification] capability=arrange_side_by_side status=failed reason=accessibility_permission_required
+[Phase37SelfTest] pass case=test_1_layout_overlap_honesty
+[WorkspacePatternMemory] observed apps=Firefox,Preview windows=0 urls=0 documents=0 tabs=0
+[WorkspacePatternMemory] normalized id=ba5946c89443af87 apps=2 windows=0 urls=0 documents=0 tabs=0
+[DurableMemory] observed category=workspace key=ba5946c89443af87 confidence=0.75
+[WorkspacePatternMemory] candidate id=ba5946c89443af87 confidence=0.52 observations=1 durable=yes
+[DurableMemory] updated key=workspace:ba5946c89443af87 observations=1 durable=yes
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[WorkspaceRuntimeInventory] running_apps=Accessibility,Activity Monitor,AirPlay Screen Mirroring,Antigravity,Antigravity Helper,AquaAppearanceHelper,BackgroundTaskManagementAgent,Calendar,ChatGPT,ChatGPTHelper,Claude,Claude Helper,Codex,Contexts,Contextual,Control Center,CoreLocationAgent,CoreServicesUIAgent,Discord,Discord Helper (Plugin),Discord Helper (Renderer),Dock,Dock Extra,Finder,Firefox,GitHub Desktop,Keychain Circle Notification,LinearMouse,Maccy,Messages,Music,Notes,Notification Center,Passwords Extension Helper (Firefox),PasswordsMenuBarExtra,Preview,QuickTime Player,ScriptMonitor,Scroll Reverser,Shortcuts,Shortcuts Events,Siri,Spotlight,SystemUIServer,Terminal,TextEdit,TextInputMenuAgent,Universal Control,UserNotificationCenter,Wallpaper,Wi-Fi,WindowManager,Xcode,loginwindow,talagentd,universalAccessAuthWarn visible_windows=5 browser_tabs=0 urls=0
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[WorkspaceRuntimeInventory] running_apps=Accessibility,Activity Monitor,AirPlay Screen Mirroring,Antigravity,Antigravity Helper,AquaAppearanceHelper,BackgroundTaskManagementAgent,Calendar,ChatGPT,ChatGPTHelper,Claude,Claude Helper,Codex,Contexts,Contextual,Control Center,CoreLocationAgent,CoreServicesUIAgent,Discord,Discord Helper (Plugin),Discord Helper (Renderer),Dock,Dock Extra,Finder,Firefox,GitHub Desktop,Keychain Circle Notification,LinearMouse,Maccy,Messages,Music,Notes,Notification Center,Passwords Extension Helper (Firefox),PasswordsMenuBarExtra,Preview,QuickTime Player,ScriptMonitor,Scroll Reverser,Shortcuts,Shortcuts Events,Siri,Spotlight,SystemUIServer,Terminal,TextEdit,TextInputMenuAgent,Universal Control,UserNotificationCenter,Wallpaper,Wi-Fi,WindowManager,Xcode,loginwindow,talagentd,universalAccessAuthWarn visible_windows=5 browser_tabs=0 urls=0
+[WorkspaceMemory] used_as=hint reason=durable_pattern_alone
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[WorkspaceRuntimeInventory] running_apps=Accessibility,Activity Monitor,AirPlay Screen Mirroring,Antigravity,Antigravity Helper,AquaAppearanceHelper,BackgroundTaskManagementAgent,Calendar,ChatGPT,ChatGPTHelper,Claude,Claude Helper,Codex,Contexts,Contextual,Control Center,CoreLocationAgent,CoreServicesUIAgent,Discord,Discord Helper (Plugin),Discord Helper (Renderer),Dock,Dock Extra,Finder,Firefox,GitHub Desktop,Keychain Circle Notification,LinearMouse,Maccy,Messages,Music,Notes,Notification Center,Passwords Extension Helper (Firefox),PasswordsMenuBarExtra,Preview,QuickTime Player,ScriptMonitor,Scroll Reverser,Shortcuts,Shortcuts Events,Siri,Spotlight,SystemUIServer,Terminal,TextEdit,TextInputMenuAgent,Universal Control,UserNotificationCenter,Wallpaper,Wi-Fi,WindowManager,Xcode,loginwindow,talagentd,universalAccessAuthWarn visible_windows=5 browser_tabs=0 urls=0
+[FreshnessCalibration] capability=arrange_side_by_side live_evidence=low durable_memory=yes recent_interaction=no current_session_support=no confidence=0.55 surface=panel_only
+[Phase37SelfTest] pass case=test_2_durable_memory_alone_panel_only
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[WorkspaceRuntimeInventory] running_apps=Accessibility,Activity Monitor,AirPlay Screen Mirroring,Antigravity,Antigravity Helper,AquaAppearanceHelper,BackgroundTaskManagementAgent,Calendar,ChatGPT,ChatGPTHelper,Claude,Claude Helper,Codex,Contexts,Contextual,Control Center,CoreLocationAgent,CoreServicesUIAgent,Discord,Discord Helper (Plugin),Discord Helper (Renderer),Dock,Dock Extra,Finder,Firefox,GitHub Desktop,Keychain Circle Notification,LinearMouse,Maccy,Messages,Music,Notes,Notification Center,Passwords Extension Helper (Firefox),PasswordsMenuBarExtra,Preview,QuickTime Player,ScriptMonitor,Scroll Reverser,Shortcuts,Shortcuts Events,Siri,Spotlight,SystemUIServer,Terminal,TextEdit,TextInputMenuAgent,Universal Control,UserNotificationCenter,Wallpaper,Wi-Fi,WindowManager,Xcode,loginwindow,talagentd,universalAccessAuthWarn visible_windows=5 browser_tabs=0 urls=0
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[WorkspaceRuntimeInventory] running_apps=Accessibility,Activity Monitor,AirPlay Screen Mirroring,Antigravity,Antigravity Helper,AquaAppearanceHelper,BackgroundTaskManagementAgent,Calendar,ChatGPT,ChatGPTHelper,Claude,Claude Helper,Codex,Contexts,Contextual,Control Center,CoreLocationAgent,CoreServicesUIAgent,Discord,Discord Helper (Plugin),Discord Helper (Renderer),Dock,Dock Extra,Finder,Firefox,GitHub Desktop,Keychain Circle Notification,LinearMouse,Maccy,Messages,Music,Notes,Notification Center,Passwords Extension Helper (Firefox),PasswordsMenuBarExtra,Preview,QuickTime Player,ScriptMonitor,Scroll Reverser,Shortcuts,Shortcuts Events,Siri,Spotlight,SystemUIServer,Terminal,TextEdit,TextInputMenuAgent,Universal Control,UserNotificationCenter,Wallpaper,Wi-Fi,WindowManager,Xcode,loginwindow,talagentd,universalAccessAuthWarn visible_windows=5 browser_tabs=0 urls=0
+[WorkPairMemory] pair=Firefox/Rental Postings <-> Preview/Lease Document switches=3 confidence=0.75
+[WorkspaceMemory] used_as=supporting_evidence reason=durable_pattern_supported_by_recent_interaction
+[WorkPairMemory] pair=Firefox/Rental Postings <-> Preview/Lease Document switches=3 confidence=0.75
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=958,0,34,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1168,-1080,34,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1296,0,42,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=992,0,40,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1032,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1070,0,37,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1265,0,31,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1145,0,44,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1107,0,38,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1338,0,134,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1189,0,76,33 layer=25 visible=yes active_screen=yes reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1202,-1080,40,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1242,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1280,-1080,37,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1317,-1080,38,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1355,-1080,44,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1399,-1080,76,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1475,-1080,31,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1506,-1080,42,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=1068 app=Control Center title="" bounds=1548,-1080,134,30 layer=25 visible=yes active_screen=no reason=rejected_layer_25
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=-238,-1080,1920,30 layer=24 visible=yes active_screen=no reason=rejected_layer_24
+[WindowDiscovery] candidate pid=598 app=Window Server title="Menubar" bounds=0,0,1470,33 layer=24 visible=yes active_screen=yes reason=rejected_layer_24
+[WindowDiscovery] candidate pid=1783 app=Spotlight title="" bounds=415,190,640,56 layer=23 visible=yes active_screen=yes reason=rejected_layer_23
+[WindowDiscovery] candidate pid=1242 app=Firefox title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] candidate pid=7375 app=Antigravity title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1253 app=ChatGPT title="" bounds=-238,-1050,1920,1050 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1255 app=TextEdit title="" bounds=-25,-1003,658,428 layer=0 visible=yes active_screen=no reason=kept
+[WindowDiscovery] candidate pid=1252 app=Xcode title="" bounds=0,33,1470,923 layer=0 visible=yes active_screen=yes reason=kept
+[WindowDiscovery] discovered=5 total_candidates=28
+[BrowserContextExtractor] started app=Firefox pid=1242
+[BrowserContextExtractor] current_url_found=no source=none reason=ax_not_trusted
+[WorkspaceRuntimeInventory] running_apps=Accessibility,Activity Monitor,AirPlay Screen Mirroring,Antigravity,Antigravity Helper,AquaAppearanceHelper,BackgroundTaskManagementAgent,Calendar,ChatGPT,ChatGPTHelper,Claude,Claude Helper,Codex,Contexts,Contextual,Control Center,CoreLocationAgent,CoreServicesUIAgent,Discord,Discord Helper (Plugin),Discord Helper (Renderer),Dock,Dock Extra,Finder,Firefox,GitHub Desktop,Keychain Circle Notification,LinearMouse,Maccy,Messages,Music,Notes,Notification Center,Passwords Extension Helper (Firefox),PasswordsMenuBarExtra,Preview,QuickTime Player,ScriptMonitor,Scroll Reverser,Shortcuts,Shortcuts Events,Siri,Spotlight,SystemUIServer,Terminal,TextEdit,TextInputMenuAgent,Universal Control,UserNotificationCenter,Wallpaper,Wi-Fi,WindowManager,Xcode,loginwindow,talagentd,universalAccessAuthWarn visible_windows=5 browser_tabs=0 urls=0
+[FreshnessCalibration] capability=arrange_side_by_side live_evidence=medium durable_memory=yes recent_interaction=yes current_session_support=yes confidence=0.95 surface=floating
+[Phase37SelfTest] pass case=test_3_live_plus_durable_floats
+[GeneratedActionEvidenceGate] blocked capability=synthesize_sources reason=content_unavailable
+[ResearchActionGate] capability=synthesize_sources required_evidence=full_content current_evidence=metadata_rich allowed=no reason=content_unavailable
+[ActionRegistry] capability=synthesize_sources required_evidence=full_content current_evidence=metadata_rich eligible=no reason=insufficient_context
+[ActionRegistry] blocked capability=synthesize_sources reason=insufficient_context required=full_content current=metadata_rich
+[Phase37SelfTest] pass case=test_4_no_fake_synthesis
+[GeneratedActionEvidenceGate] allowed capability=explicit_visible_capture_summary reason=user_initiated_acquisition_available
+[AcquisitionAction] capability=explicit_visible_capture_summary acquisition_type=visible_capture user_initiated=yes
+[ResearchActionGate] capability=explicit_visible_capture_summary required_evidence=visible_capture current_evidence=metadata_rich allowed=yes reason=user_initiated_acquisition_available
+[ActionRegistry] capability=explicit_visible_capture_summary required_evidence=visible_content current_evidence=metadata_rich eligible=yes reason=user_initiated_acquisition_available
+[Phase37SelfTest] pass case=test_4_explicit_acquisition_eligible
+[ResearchActionGate] capability=rewrite_text required_evidence=selected_text current_evidence=selected_content allowed=yes reason=ok
+[AcquisitionAction] capability=rewrite_text acquisition_type=selected_text user_initiated=yes
+[ActionRegistry] capability=rewrite_text required_evidence=selected_content current_evidence=selected_content eligible=yes reason=ok
+[Phase37SelfTest] pass case=test_5_rewrite_eligible
+[ResearchActionGate] capability=explain_context required_evidence=visible_capture current_evidence=selected_content allowed=yes reason=ok
+[AcquisitionAction] capability=explain_context acquisition_type=selected_text user_initiated=yes
+[ActionRegistry] capability=explain_context required_evidence=visible_content current_evidence=selected_content eligible=yes reason=ok
+[Phase37SelfTest] pass case=test_5_explain_eligible
+[MediaAwareness] foreground_media=yes confidence=high background_music=stopped conflict=no
+[MediaUsefulness] capability=play_focus_media eligible=no reason=foreground_media_active
+[MusicSuggestion] suppressed reason=foreground_media_no_music_needed
+[Phase37SelfTest] pass case=test_6_no_play_music
+[MediaAwareness] foreground_media=yes confidence=high background_music=playing conflict=yes
+[MediaUsefulness] capability=pause_media eligible=yes reason=conflict_detected
+[MusicSuggestion] generated capability=pause_media reason=foreground_media_active
+[Phase37SelfTest] pass case=test_7_pause_music_eligible
+[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[ActionUsefulness] capability=copy_current_url target_present=yes already_satisfied=no time_saved=low interruption_cost=low eligible=yes surface=panel_only reason=metadata_utility_low_interrupt
+[UtilityAction] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt
+[Phase37SelfTest] pass case=test_8_utility_panel_only
+[Phase37SelfTest] pass case=test_9_non_utility_high_usefulness
+[Phase37SelfTest] pass case=test_9_utility_low_usefulness
+[Phase37SelfTest] completed ok=true failures=0
+[Phase36SelfTest] env selftest ok=true

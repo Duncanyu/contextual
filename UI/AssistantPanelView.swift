@@ -134,12 +134,29 @@ struct AssistantPanelView: View {
 				if hasStatic {
 					VStack(alignment: .leading, spacing: 8) {
 						ForEach(appState.availableActions, id: \.id) { action in
-							Button(action.name) {
-								appState.invokeAction(id: action.id)
+							VStack(alignment: .leading, spacing: 4) {
+								Button(action.name) {
+									appState.invokeAction(id: action.id)
+								}
+								.buttonStyle(.borderedProminent)
+								.frame(maxWidth: .infinity, alignment: .leading)
+								.disabled(appState.isActionExecuting)
+
+								if appState.highlightedPanelActionID == action.id {
+									Text("Suggested")
+										.font(.caption2.weight(.medium))
+										.foregroundStyle(.orange)
+								}
 							}
-							.buttonStyle(.borderedProminent)
-							.frame(maxWidth: .infinity, alignment: .leading)
-							.disabled(appState.isActionExecuting)
+							.padding(8)
+							.background(
+								RoundedRectangle(cornerRadius: 10, style: .continuous)
+									.fill(appState.highlightedPanelActionID == action.id ? Color.orange.opacity(0.08) : Color.clear)
+							)
+							.overlay(
+								RoundedRectangle(cornerRadius: 10, style: .continuous)
+									.stroke(appState.highlightedPanelActionID == action.id ? Color.orange.opacity(0.35) : Color.clear, lineWidth: 1)
+							)
 						}
 					}
 				}

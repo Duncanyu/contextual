@@ -23,6 +23,8 @@ struct ActionRouter {
 }
 
 struct DeterministicCapabilityActionSeed {
+	let candidateID: String
+	let proposalID: String
 	let capabilityId: String
 	let title: String
 	let involvedApps: [String]
@@ -34,17 +36,20 @@ struct DeterministicCapabilityActionSeed {
 	let windowTitle: String?
 	let entity: String?
 	let compartment: TaskCompartment?
+	let targetContract: ActionTargetContract?
 }
 
 struct DeterministicCapabilityPanelAction: ActionProtocol {
 	let id: String
 	let name: String
 	private let seed: DeterministicCapabilityActionSeed
+	let proposalID: String
 
 	init(seed: DeterministicCapabilityActionSeed) {
-		self.id = seed.capabilityId
+		self.id = seed.candidateID
 		self.name = SuggestionTitleRewriter.rewrite(title: seed.title, capabilityId: seed.capabilityId)
 		self.seed = seed
+		self.proposalID = seed.proposalID
 	}
 
 	func canExecute(context: ContextModel) -> Bool {
@@ -62,13 +67,17 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 	}
 
 	func execute(context: ContextModel) async -> ActionResult {
+		return await execute(context: context, sourceSurface: "panel")
+	}
+
+	func execute(context: ContextModel, sourceSurface: String) async -> ActionResult {
 		guard let capability = CognitiveCapabilityRegistry.shared.get(seed.capabilityId) else {
 			return ActionResult(actionId: id, outputText: "Capability unavailable.")
 		}
 
 		let status = await CapabilityExecutor.shared.execute(
 			capability: capability,
-			context: capabilityContext()
+			context: capabilityContext(sourceSurface: sourceSurface)
 		)
 		let outputText: String
 		switch status {
@@ -84,11 +93,20 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 			outputText = "\(name) was cancelled."
 		case .openedSearch:
 			outputText = "\(name) opened a search instead."
+		case .partial:
+			outputText = "\(name) completed with partial results."
+		case .alreadySatisfied:
+			outputText = "\(name) was already done."
 		}
-		return ActionResult(actionId: id, outputText: outputText)
+		return ActionResult(actionId: id, outputText: outputText, executionStatus: status)
 	}
 
-	private func capabilityContext() -> [String: Any] {
+	var capabilityId: String { seed.capabilityId }
+	var candidateID: String { seed.candidateID }
+	var targetContract: ActionTargetContract? { seed.targetContract }
+	var contractID: String? { seed.targetContract?.contractID }
+
+	private func capabilityContext(sourceSurface: String) -> [String: Any] {
 		[
 			"apps": seed.involvedApps,
 			"tabURLs": seed.involvedURLs,
@@ -101,7 +119,11 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 			"windowTitle": seed.windowTitle as Any,
 			"entity": seed.entity as Any,
 			"compartment": seed.compartment as Any,
-			"suggestionTitle": seed.title
+			"suggestionTitle": seed.title,
+			"targetContract": seed.targetContract as Any,
+			"candidate_id": seed.candidateID,
+			"source_surface": sourceSurface,
+			"proposal_id": proposalID
 		]
 	}
 }

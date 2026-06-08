@@ -17,9 +17,14 @@ struct PortfolioCandidate: Sendable {
     }
 
 	enum Family: String, Sendable, CaseIterable {
-		case text
-		case action
-		case friction
+		case media
+		case research
+		case writing
+		case coding
+		case communication
+		case workspace
+		case utility
+		case comfort
 	}
 
     let lane: Lane
@@ -37,15 +42,73 @@ struct PortfolioCandidate: Sendable {
     let frictionOpportunity: FrictionOpportunityReasoner.FrictionOpportunity?
     let musicIntent: MusicIntent?
     let generatedAction: GeneratedActionProposal?
+    let sourcePath: String
+    let targetContract: ActionTargetContract?
+
+	init(
+		lane: Lane,
+		title: String,
+		capabilityId: String,
+		executionMode: ExecutionMode,
+		confidence: Double,
+		usefulness: Double,
+		executability: Double,
+		novelty: Double,
+		reason: String,
+		requiredEvidence: String,
+		requiresConfirmation: Bool,
+		involvedApps: [String],
+		frictionOpportunity: FrictionOpportunityReasoner.FrictionOpportunity?,
+		musicIntent: MusicIntent?,
+		generatedAction: GeneratedActionProposal?,
+		sourcePath: String = "portfolio",
+		targetContract: ActionTargetContract? = nil
+	) {
+		self.lane = lane
+		self.title = title
+		self.capabilityId = capabilityId
+		self.executionMode = executionMode
+		self.confidence = confidence
+		self.usefulness = usefulness
+		self.executability = executability
+		self.novelty = novelty
+		self.reason = reason
+		self.requiredEvidence = requiredEvidence
+		self.requiresConfirmation = requiresConfirmation
+		self.involvedApps = involvedApps
+		self.frictionOpportunity = frictionOpportunity
+		self.musicIntent = musicIntent
+		self.generatedAction = generatedAction
+		self.sourcePath = sourcePath
+		self.targetContract = targetContract
+	}
 
 	var family: Family {
-		switch lane {
-		case .music, .workspace, .metadata, .comfort:
-			return .action
-		case .friction:
-			return .friction
-		case .research, .cognitive:
-			return .text
+		switch capabilityId {
+		case "play_focus_media", "pause_media", "resume_focus_media":
+			return .media
+		case "collect_references", "pin_reference_tabs", "restore_research_tabs", "extract_and_organize", "explicit_visible_capture_summary", "summarize_visible_content":
+			return .research
+		case "rewrite_text", "draft_reply":
+			return .writing
+		case "diagnose_error", "suggest_refactor", "plan_next_steps":
+			return .coding
+		case "summarize_thread":
+			return .communication
+		case "restore_workspace", "remember_workspace", "arrange_side_by_side", "switch_to_paired_app", "split_research_setup":
+			return .workspace
+		case "copy_current_url", "copy_all_related_links", "open_current_task_panel":
+			return .utility
+		case "enable_reduce_interruptions", "start_focus_timer":
+			return .comfort
+		default:
+			switch lane {
+			case .research, .cognitive: return .research
+			case .music: return .media
+			case .workspace: return .workspace
+			case .comfort: return .comfort
+			default: return .utility
+			}
 		}
 	}
 
@@ -103,23 +166,24 @@ struct PortfolioCandidate: Sendable {
 
 	var expectedResult: String {
 		switch family {
-		case .text:
-			return "Produces a grounded artifact or comparison from the current context."
-		case .action:
-			return "Executes a concrete local action and verifies the result."
-		case .friction:
-			return "Reduces repeated switching or setup work in the current workflow."
+		case .media: return "Controls music and background media."
+		case .research: return "Produces a grounded artifact or comparison from the current context."
+		case .writing: return "Drafts or improves text based on context."
+		case .coding: return "Assists with coding, errors, and refactoring."
+		case .communication: return "Summarizes or drafts messages."
+		case .workspace: return "Arranges windows or manages your workspace."
+		case .utility: return "Quick utilities like copying URLs."
+		case .comfort: return "Reduces distractions and improves focus."
 		}
 	}
 
 	var failureMode: String {
 		switch family {
-		case .text:
-			return "Insufficient structured context to produce a grounded artifact."
-		case .action:
-			return "Target app or local executor is unavailable."
-		case .friction:
-			return "Observed pattern is too weak or the environment action is not wired."
+		case .media: return "No suitable media player detected."
+		case .research, .writing, .coding, .communication: return "Insufficient context to produce a grounded result."
+		case .workspace: return "No related windows or apps found to arrange."
+		case .utility: return "No relevant metadata available."
+		case .comfort: return "No active distractions detected."
 		}
 	}
 
@@ -127,6 +191,22 @@ struct PortfolioCandidate: Sendable {
     var score: Double {
         usefulness * executability * confidence * novelty
     }
+
+	var candidateID: String {
+		let contractPart = targetContract?.contractID ?? "no_contract"
+		let titleHash = Self.stableHash(title)
+		let appsHash = Self.stableHash(involvedApps.joined(separator: "|"))
+		return "\(capabilityId)|\(lane.rawValue)|\(sourcePath)|\(contractPart)|\(titleHash)|\(appsHash)"
+	}
+
+	private static func stableHash(_ text: String) -> String {
+		var hash: UInt64 = 0xcbf29ce484222325
+		for byte in text.utf8 {
+			hash ^= UInt64(byte)
+			hash &*= 0x100000001b3
+		}
+		return String(hash, radix: 16, uppercase: true)
+	}
 }
 
 // MARK: - ActionPortfolioEngine
@@ -155,6 +235,21 @@ struct PortfolioCandidate: Sendable {
 enum ActionPortfolioEngine {
 
     static let qualityThreshold: Double = 0.12
+
+	private static func logCandidateIdentity(_ candidate: PortfolioCandidate) {
+		print("[CandidateIdentity] capability=\(candidate.capabilityId) lane=\(candidate.lane.rawValue) source=\(candidate.sourcePath) candidate_id=\(candidate.candidateID)")
+	}
+
+	private static func logDuplicateCapabilities(_ candidates: [PortfolioCandidate], context: String) {
+		let duplicates = Dictionary(grouping: candidates, by: \.capabilityId)
+			.filter { $0.value.count > 1 }
+		for (capability, grouped) in duplicates {
+			let lanes = grouped.map(\.lane.rawValue).sorted().joined(separator: ",")
+			let kept = grouped.map(\.candidateID).sorted().joined(separator: ",")
+			print("[CrashGuard] duplicate_key_prevented key=\(capability) context=\(context)")
+			print("[CandidateDedup] duplicate capability=\(capability) lanes=\(lanes) policy=grouped kept=\(kept) dropped=none")
+		}
+	}
 
     // MARK: - Public API
 
@@ -296,6 +391,7 @@ enum ActionPortfolioEngine {
         print("[ActionPortfolio] lanes=\(laneNames.isEmpty ? "none" : laneNames)")
 
         for c in candidates {
+			logCandidateIdentity(c)
 			lifecycleAudit?.noteGenerated(
 				candidate: lifecycleName(for: c.capabilityId, title: c.title),
 				bucket: lifecycleBucket(for: c)
@@ -316,8 +412,13 @@ enum ActionPortfolioEngine {
 				+ " failure_mode=\"\(c.failureMode)\"")
         }
 
-        // ── Rank by composite score ─────────────────────────────────────
-        candidates.sort { $0.score > $1.score }
+        // ── Rank by composite score and usefulness ──────────────────────
+        candidates.sort { a, b in
+			ActionUsefulnessPolicy.compareUsefulnessAndScore(
+				capA: a.capabilityId, laneA: a.lane.rawValue, scoreA: a.score,
+				capB: b.capabilityId, laneB: b.lane.rawValue, scoreB: b.score
+			)
+		}
 
         // ── Suppress below threshold ────────────────────────────────────
         let viable = candidates.filter { $0.score >= qualityThreshold }
@@ -352,18 +453,106 @@ enum ActionPortfolioEngine {
 			print("[PanelCandidate] capability=\(candidate.capabilityId) lane=\(candidate.lane.rawValue) valid_payload=yes reason=\(panelReason)")
 		}
 
-		let familyWinners = familyWinners(from: viable)
+		let preGateFamilyWinners = familyWinners(from: viable)
 		for family in PortfolioCandidate.Family.allCases {
-			if let winner = familyWinners[family] {
+			if let winner = preGateFamilyWinners[family] {
 				print("[FamilyWinner] family=\(family.rawValue) candidate=\(winner.capabilityId) title=\"\(winner.title.prefix(60))\" score=\(String(format: "%.3f", winner.score))")
 			} else {
 				print("[FamilyWinner] family=\(family.rawValue) candidate=none")
 			}
 		}
 
-		let finalCandidates = orderedCandidatesForFinalSelection(viable: viable, familyWinners: familyWinners)
+		// Phase 36.1 — Live path enforcement gate.
+		// Surface policy decides what may float. Family winner by score alone is not sufficient.
+		let contextStability: String = {
+			if compartment != nil && !memory.currentEntity.isEmpty { return "stable" }
+			if memory.currentEntity.isEmpty && compartment == nil { return "weak" }
+			return "transient"
+		}()
+		let hasHigherPriorityTaskAction = viable.contains { c in
+			let isTaskFamily = (c.family == .workspace || c.family == .media || c.family == .writing || c.family == .coding)
+			let isNotExcludedMedia = c.capabilityId != "play_focus_media" && c.capabilityId != "resume_focus_media"
+			let isNotMetadata = !LivePathEnforcer.metadataUtilities.contains(c.capabilityId)
+			let isNotPinTabs = c.capabilityId != "pin_reference_tabs"
+			let isHighQuality = c.score >= qualityThreshold
+			return isTaskFamily && isNotExcludedMedia && isNotMetadata && isNotPinTabs && isHighQuality
+		}
+		logDuplicateCapabilities(viable, context: "action_portfolio_live_path")
+		let enforcedSurface: [String: LivePathDecision] = Dictionary(uniqueKeysWithValues: viable.map { c in
+			let ctx = LivePathEvaluationContext(
+				sourcePath: c.sourcePath,
+				contextStability: contextStability,
+				isMusicAlreadyPlaying: mediaState.isMusicPlaying,
+				hasHigherPriorityTaskAction: hasHigherPriorityTaskAction,
+				recentFeedbackCooldownActive: false,
+				userFeedbackHistory: "neutral",
+				alreadySatisfied: false,
+				evidenceAvailable: c.usefulness > 0.0,
+				hasExplicitUsageSignal: false,
+				activityMatch: true,
+				compartmentLabel: compartment?.label,
+				currentEntity: memory.currentEntity,
+				workflow: compartment?.workflow.rawValue ?? ""
+			)
+			let (decision, _) = LivePathEnforcer.evaluate(
+				capabilityID: c.capabilityId,
+				involvedApps: c.involvedApps,
+				attachedContract: c.targetContract,
+				confidence: c.confidence,
+				evaluationContext: ctx
+			)
+			decision.logEnforcement(candidateID: c.candidateID, lane: c.lane.rawValue)
+			return (c.candidateID, decision)
+		})
 
-        if let selected = finalCandidates.first {
+		let floatingEligible = viable.filter { c in
+			(enforcedSurface[c.candidateID]?.eligibleForFloating ?? false)
+		}
+		
+		// Log FinalSelection for each candidate
+		for c in viable {
+			let decision = enforcedSurface[c.candidateID]
+			let surface = decision?.surface.rawValue ?? "unknown"
+			let usefulness = ActionUsefulnessPolicy.getUsefulnessLevel(capabilityID: c.capabilityId, lane: c.lane.rawValue)
+			let reason = decision?.reason ?? "unknown"
+			print("[FinalSelection] candidate=\(c.capabilityId) usefulness=\(usefulness) surface=\(surface) reason=\(reason)")
+		}
+
+		let postGateFamilyWinners = familyWinners(from: floatingEligible)
+		let finalCandidates = orderedCandidatesForFinalSelection(viable: floatingEligible, familyWinners: postGateFamilyWinners)
+
+		var selectedCandidate: PortfolioCandidate? = finalCandidates.first
+		let topScored = viable.first
+		
+		if let top = topScored,
+		   enforcedSurface[top.candidateID]?.eligibleForFloating != true {
+			print("[FinalSelection] candidate_id=\(top.candidateID) capability=\(top.capabilityId) lane=\(top.lane.rawValue) surface=\(enforcedSurface[top.candidateID]?.surface.rawValue ?? "unknown") eligible_for_floating=no reason=\(enforcedSurface[top.candidateID]?.reason ?? "policy")")
+			print("[FinalSelection] backfill_attempt started reason=winner_suppressed")
+			if let backfill = finalCandidates.first {
+				if backfill.capabilityId == "arrange_side_by_side" {
+					print("[FinalSelection] backfill_candidate=arrange_side_by_side requirement_pass=yes")
+				}
+				print("[FinalSelection] backfill_winner=\(backfill.capabilityId) reason=winner_suppressed_backfill")
+				selectedCandidate = backfill
+			} else {
+				let wasArrangeCandidate = viable.first(where: { $0.capabilityId == "arrange_side_by_side" })
+				if let arrangeCandidate = wasArrangeCandidate, enforcedSurface[arrangeCandidate.candidateID]?.eligibleForFloating != true {
+					let decisionReason = enforcedSurface[arrangeCandidate.candidateID]?.reason ?? "unknown"
+					print("[FinalSelection] backfill_candidate=arrange_side_by_side requirement_pass=no reason=\(decisionReason)")
+					print("[FinalSelection] backfill_rejected capability=arrange_side_by_side reason=requirements_failed")
+				}
+				print("[FinalSelection] backfill_winner=none reason=winner_suppressed_no_backfill_available")
+				print("[FinalSelection] no_floating_winner reason=no_action_requirements_passed")
+			}
+		}
+
+		let visibleCount = (selectedCandidate != nil ? 1 : 0) + panelCandidates.filter({ $0.candidateID != selectedCandidate?.candidateID }).count
+		let totalEligible = viable.count
+		let utilityCount = viable.filter { LivePathEnforcer.metadataUtilities.contains($0.capabilityId) }.count
+		let nonUtilityCount = totalEligible - utilityCount
+		print("[UsefulActionInventory] total=\(totalEligible) utility_count=\(utilityCount) non_utility_count=\(nonUtilityCount)")
+
+        if let selected = selectedCandidate {
             print("[ActionPortfolio] selected"
                 + " lane=\(selected.lane.rawValue)"
                 + " family=\(selected.family.rawValue)"
@@ -373,6 +562,7 @@ enum ActionPortfolioEngine {
 			print("[FinalSelection] winner=\(selected.capabilityId)"
 				+ " family=\(selected.family.rawValue)"
 				+ " reason=highest_family_winner_score")
+			print("[FinalSelection] candidate_id=\(selected.candidateID) capability=\(selected.capabilityId) lane=\(selected.lane.rawValue) surface=\(enforcedSurface[selected.candidateID]?.surface.rawValue ?? "unknown") eligible_for_floating=\(enforcedSurface[selected.candidateID]?.eligibleForFloating == true ? "yes" : "no")")
             
             for v in viable {
                 if v.capabilityId == selected.capabilityId {
@@ -380,13 +570,20 @@ enum ActionPortfolioEngine {
                 } else {
                     funnelAudit?.recordSelection(v.capabilityId, lane: v.lane.rawValue, survived: false, reason: "lost_to_\(selected.capabilityId)")
                 }
-            }
+			}
 			print("[ActionPortfolioResult] floating=\(selected.capabilityId) panel_count=\(panelCandidates.count) suppressed_count=\(suppressed.count)")
+			print("[UsefulActionInventory] chosen=\(selected.capabilityId) visible_count=\(visibleCount)")
+			enforcedSurface[selected.candidateID]?.logVisible(candidateID: selected.candidateID, lane: selected.lane.rawValue)
         } else {
-            print("[ActionPortfolio] selected=none reason=no_viable_candidates")
-			print("[FinalSelection] winner=none reason=no_viable_candidates")
+            print("[ActionPortfolio] selected=none reason=no_viable_floating_candidates")
+			print("[FinalSelection] winner=none reason=no_viable_floating_candidates")
 			print("[ActionPortfolioResult] floating=none panel_count=\(panelCandidates.count) suppressed_count=\(suppressed.count)")
+			print("[UsefulActionInventory] chosen=none visible_count=\(visibleCount)")
         }
+		// Emit VisibleActionPath for every panel candidate so dogfood logs show the live path.
+		for pc in panelCandidates {
+			enforcedSurface[pc.candidateID]?.logVisible(candidateID: pc.candidateID, lane: pc.lane.rawValue)
+		}
 
         // ── Selection Audit ─────────────────────────────────────────────
         let allSorted = candidates
@@ -427,74 +624,32 @@ enum ActionPortfolioEngine {
         lifecycleAudit: CandidateLifecycleAudit? = nil,
         funnelAudit: ProposalFunnelAudit? = nil
     ) async -> PortfolioCandidate? {
-        // Don't suggest music if already playing or watching video
-        guard !mediaState.isMusicPlaying else {
-			lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "music_already_playing")
-            print("[MusicAudit]\n"
-                + "eligible=no\n"
-                + "reason=music_already_playing\n"
-                + "\n"
-                + "media_playing=yes\n"
-                + "\n"
-                + "playlist_memory_match=no\n"
-                + "playlist=none\n"
-                + "\n"
-                + "candidate_generated=no")
-            funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: true, reason: "music_already_playing")
-			return nil
-		}
-        if mediaState.visualMediaKind != .none {
-			lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "visual_media_active")
-            print("[MusicAudit]\n"
-                + "eligible=no\n"
-                + "reason=visual_media_active\n"
-                + "\n"
-                + "media_playing=no\n"
-                + "\n"
-                + "playlist_memory_match=no\n"
-                + "playlist=none\n"
-                + "\n"
-                + "candidate_generated=no")
-            funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: true, reason: "visual_media_active")
-			return nil
-		}
-
-        // Phase 26.4 — Suppress music lane when domain/grounding is watching or entertainment
         let isWatching = (semanticState?.domain == .watching)
             || (entityGrounding?.isEntertainment == true)
             || (compartment?.workflow == .watching)
             || (groundingResult?.domain.lowercased().contains("watching") == true)
             || (groundingResult?.domain.lowercased().contains("entertainment") == true)
-        if isWatching {
-			lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "watching_or_entertainment")
-            print("[MusicLane] suppressed reason=watching_or_entertainment")
-            print("[MusicAudit]\n"
-                + "eligible=no\n"
-                + "reason=watching_or_entertainment\n"
-                + "\n"
-                + "media_playing=no\n"
-                + "\n"
-                + "playlist_memory_match=no\n"
-                + "playlist=none\n"
-                + "\n"
-                + "candidate_generated=no")
-            funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: true, reason: "watching_or_entertainment")
-            return nil
-        }
+
+        let eligible = ActionUsefulnessPolicy.evaluateMediaUsefulness(
+            capabilityID: "play_focus_media",
+            mediaState: mediaState,
+            isWatching: isWatching
+        )
+        guard eligible else {
+			lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "foreground_media_or_playing")
+            if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
+                print("[MusicAudit] eligible=no reason=foreground_media_or_playing media_playing=no candidate_generated=no")
+            }
+            funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: true, reason: "foreground_media_or_playing")
+			return nil
+		}
 
         // Need some work context (not idle/empty)
         guard !memory.currentEntity.isEmpty || compartment != nil || groundingResult != nil else {
 			lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "no_work_context")
-            print("[MusicAudit]\n"
-                + "eligible=no\n"
-                + "reason=no_work_context\n"
-                + "\n"
-                + "media_playing=no\n"
-                + "\n"
-                + "playlist_memory_match=no\n"
-                + "playlist=none\n"
-                + "\n"
-                + "candidate_generated=no")
+            if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
+                print("[MusicAudit] eligible=no reason=no_work_context media_playing=no candidate_generated=no")
+            }
             funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: true, reason: "no_work_context")
 			return nil
 		}
@@ -538,31 +693,15 @@ enum ActionPortfolioEngine {
             return 0.40
         }()
 
-        print("[MusicIntent] domain_source=\(domain.source)")
-        print("[MusicIntent] selected_domain=\(domain.name)")
-        print("[MusicTitle] title=\"\(title)\"")
-        print("[MusicActionIdentity] title_action=\(action.rawValue) executor_action=\(action.rawValue) ok=yes")
-		switch action {
-		case .resume:
-			print("[MusicAction] action=resume executable=yes")
-		case .playPlaylist:
-			print("[MusicAction] action=play_known_playlist playlist=\(playlist ?? "unknown") executable=yes")
-		case .search:
-			print("[MusicAction] action=play_first_local_playlist executable=yes")
-		}
+        if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .trace) {
+            print("[MusicIntent] domain_source=\(domain.source) selected_domain=\(domain.name)")
+            print("[MusicTitle] title=\"\(title)\"")
+            print("[MusicActionIdentity] title_action=\(action.rawValue) executor_action=\(action.rawValue) ok=yes")
+        }
 
-        print("[MusicAudit]\n"
-            + "eligible=yes\n"
-            + "reason=none\n"
-            + "\n"
-            + "media_playing=no\n"
-            + "\n"
-            + "playlist_memory_match=\(playlist != nil ? "yes" : "no")\n"
-            + "playlist=\(playlist ?? "none")\n"
-            + "\n"
-            + "candidate_generated=yes\n"
-            + "action=\(action.rawValue)"
-        )
+        if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
+            print("[MusicAudit] eligible=yes reason=none media_playing=no playlist_memory_match=\(playlist != nil ? "yes" : "no") playlist=\(playlist ?? "none") candidate_generated=yes action=\(action.rawValue)")
+        }
         funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: false, reason: "generated")
 
         let involvedApps: [String] = {
@@ -1359,7 +1498,9 @@ enum ActionPortfolioEngine {
                 musicIntent: nil,
                 generatedAction: nil
             ))
-            print("[CognitiveLane] eligible=yes reason=editor_deep_dwell capability=plan_next_steps")
+            if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+                print("[CognitiveLane] eligible=yes reason=editor_deep_dwell capability=plan_next_steps")
+            }
             funnelAudit?.record(capabilityId: "plan_next_steps", lane: "cognitive", isSuppressed: false, reason: "generated")
         } else {
             funnelAudit?.record(capabilityId: "plan_next_steps", lane: "cognitive", isSuppressed: true, reason: "insufficient_dwell_time")
@@ -1390,7 +1531,9 @@ enum ActionPortfolioEngine {
                 musicIntent: nil,
                 generatedAction: nil
             ))
-            print("[CognitiveLane] eligible=yes reason=editor_revisited_files capability=suggest_refactor")
+            if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+                print("[CognitiveLane] eligible=yes reason=editor_revisited_files capability=suggest_refactor")
+            }
             funnelAudit?.record(capabilityId: "suggest_refactor", lane: "cognitive", isSuppressed: false, reason: "generated")
         } else {
             funnelAudit?.record(capabilityId: "suggest_refactor", lane: "cognitive", isSuppressed: true, reason: "insufficient_revisited_files")
@@ -1484,14 +1627,49 @@ enum ActionPortfolioEngine {
 		return winners
 	}
 
+    private static func logPanelInventory(_ candidates: [PortfolioCandidate], viable: [PortfolioCandidate]) {
+        var surfacedCounts: [PortfolioCandidate.Family: Int] = [:]
+        for c in candidates {
+            surfacedCounts[c.family, default: 0] += 1
+        }
+        var candidateCounts: [PortfolioCandidate.Family: Int] = [:]
+        for c in viable {
+            candidateCounts[c.family, default: 0] += 1
+        }
+        
+        let families: [PortfolioCandidate.Family] = [.media, .research, .writing, .coding, .communication, .workspace, .comfort]
+        for family in families {
+            let candidateCount = candidateCounts[family] ?? 0
+            let surfaced = surfacedCounts[family] ?? 0
+            let suppressed = candidateCount - surfaced
+            
+            if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+                print("[UsefulActionInventory] family=\(family.rawValue) candidate_count=\(candidateCount) surfaced=\(surfaced) suppressed=\(suppressed)")
+            }
+            if LogControl.shared.shouldLog(category: .panel_inventory, level: .dogfood) {
+                print("[PanelInventory] family=\(family.rawValue) count=\(surfaced)")
+            }
+        }
+        
+        if let dominant = surfacedCounts.max(by: { $0.value < $1.value }), dominant.value > 0 {
+            let total = candidates.count
+            let isDominant = Double(dominant.value) / Double(total) > 0.7 && total > 2
+            if LogControl.shared.shouldLog(category: .panel_inventory, level: .dogfood) {
+                print("[PanelInventory] dominant_family=\(dominant.key.rawValue) blocked=\(isDominant ? "yes" : "no") reason=\(isDominant ? "single_family_overdominance" : "diverse_portfolio")")
+            }
+        }
+    }
+
 	private static func orderedCandidatesForFinalSelection(
 		viable: [PortfolioCandidate],
 		familyWinners: [PortfolioCandidate.Family: PortfolioCandidate]
 	) -> [PortfolioCandidate] {
 		let winners = familyWinners.values.sorted { $0.score > $1.score }
-		let winnerIds = Set(winners.map(\.capabilityId))
-		let remainder = viable.filter { !winnerIds.contains($0.capabilityId) }.sorted { $0.score > $1.score }
-		return winners + remainder
+		let winnerIds = Set(winners.map(\.candidateID))
+		let remainder = viable.filter { !winnerIds.contains($0.candidateID) }.sorted { $0.score > $1.score }
+		let final = winners + remainder
+        logPanelInventory(final, viable: viable)
+        return final
 	}
 
 	private static func heuristicFrictionCandidates(
@@ -1787,10 +1965,15 @@ enum ActionPortfolioEngine {
 			hasSelection: evidenceLevel == .selected_content
 		)
 		if eligibility.eligible {
-			print("[CognitiveLane] allowed capability=\(capabilityId) evidence_level=\(evidenceLevel.rawValue) scope=\(entry.scope)")
+		    if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
+		        print("[CognitiveLane] allowed capability=\(capabilityId) evidence_level=\(evidenceLevel.rawValue) scope=\(entry.scope)")
+		    }
 		} else {
-			print("[CognitiveLane] suppressed reason=evidence_level_requires_content evidence_level=\(evidenceLevel.rawValue)")
+		    if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
+		        print("[CognitiveLane] suppressed reason=evidence_level_requires_content evidence_level=\(evidenceLevel.rawValue)")
+		    }
 		}
+
 		let adjustedExecutability: Double = {
 			guard eligibility.eligible else { return 0.0 }
 			switch evidenceLevel {
@@ -1844,16 +2027,24 @@ enum ActionPortfolioEngine {
 public final class ProposalFunnelAudit: Sendable {
     public init() {}
     public func recordNotGenerated(_ capId: String, lane: String, reason: String) {
-        print("[ProposalFunnelAudit] not_generated capability=\(capId) lane=\(lane) reason=\(reason)")
+        if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .trace) {
+            print("[ProposalFunnelAudit] not_generated capability=\(capId) lane=\(lane) reason=\(reason)")
+        }
     }
     public func recordGenerated(_ capId: String, lane: String, reason: String) {
-        print("[ProposalFunnelAudit] generated capability=\(capId) lane=\(lane) reason=\(reason)")
+        if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+            print("[ProposalFunnelAudit] generated capability=\(capId) lane=\(lane) reason=\(reason)")
+        }
     }
     public func recordRanking(_ capId: String, lane: String, survived: Bool, reason: String) {
-        print("[ProposalFunnelAudit] ranking capability=\(capId) lane=\(lane) survived=\(survived) reason=\(reason)")
+        if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
+            print("[ProposalFunnelAudit] ranking capability=\(capId) lane=\(lane) survived=\(survived) reason=\(reason)")
+        }
     }
     public func recordSelection(_ capId: String, lane: String, survived: Bool, reason: String) {
-        print("[ProposalFunnelAudit] selection capability=\(capId) lane=\(lane) survived=\(survived) reason=\(reason)")
+        if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+            print("[ProposalFunnelAudit] selection capability=\(capId) lane=\(lane) survived=\(survived) reason=\(reason)")
+        }
     }
     public func record(capabilityId: String, lane: String, isSuppressed: Bool = false, reason: String) {
         if isSuppressed {

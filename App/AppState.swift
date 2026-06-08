@@ -12,6 +12,49 @@ struct ActiveFloatingLifecycleBinding: Equatable {
 	let primaryActionId: String
 }
 
+enum ActionSourceSurface: String {
+	case floating
+	case panel
+	case unknown
+}
+
+struct PendingActionClickContext {
+	let sourceSurface: ActionSourceSurface
+	let proposalID: String
+	let candidateID: String
+	let capabilityID: String
+	let contractID: String?
+	let durableContext: DurableMemoryContext?
+	let restoreKey: String?
+}
+
+private struct RecentAvailableActionEntry {
+	let action: any ActionProtocol
+	let cachedAt: Date
+}
+
+struct StoredActionResolution {
+	let action: (any ActionProtocol)?
+	let proposalID: String
+	let candidateID: String
+	let capabilityID: String
+	let contractID: String?
+	let resolved: Bool
+	let reason: String
+	let preservedRecentCandidate: Bool
+	let contractValid: Bool
+}
+
+private struct FloatingVisibilityState {
+	let proposalID: String
+	let capabilityID: String
+	let shownAt: Date
+	let dwellRequiredMs: Int
+	var proofVisible: Bool = false
+	var proofAttempted: Bool = false
+	var feedbackRecorded: Bool = false
+}
+
 @MainActor
 final class AppState: ObservableObject {
 	@Published var isPaused: Bool = false
@@ -66,7 +109,11 @@ final class AppState: ObservableObject {
 	private var lastWorkflowContinuityLogAt: Date?
 
 	/// Actions eligible at last trigger — populated by app lifecycle when a `TriggerPacket` is produced.
-	@Published var availableActions: [any ActionProtocol] = []
+	@Published var availableActions: [any ActionProtocol] = [] {
+		didSet {
+			cacheAvailableActions()
+		}
+	}
 	/// Callable tools (e.g. analyze screen) kept for debug/inline use — not shown as default panel actions (T18.3.2).
 	@Published var registeredToolActions: [any ActionProtocol] = []
 	@Published private(set) var generatedProposalDebugStatus: GeneratedProposalDebugStatus = .idle
@@ -91,6 +138,8 @@ final class AppState: ObservableObject {
 	/// T16.X — Snapshot of all reusable/seeded action records for the Action Library debug view.
 	/// Populated on demand when the library view expands; never auto-refreshed.
 	@Published private(set) var actionLibrarySnapshot: [ReusableGeneratedActionRecord] = []
+	@Published private(set) var highlightedPanelActionID: String?
+	@Published private(set) var panelAttentionIndicatorVisible: Bool = false
 
 	/// Loads the latest action library snapshot from the persistence manager. Call when the
 	/// library debug view expands; safe to call repeatedly (actor-isolated, non-blocking).
@@ -105,6 +154,39 @@ final class AppState: ObservableObject {
 			}
 			await MainActor.run { self.actionLibrarySnapshot = sorted }
 		}
+	}
+
+	private func cacheAvailableActions(now: Date = Date()) {
+		pruneRecentAvailableActions(now: now)
+		for action in availableActions {
+			recentAvailableActions[action.id] = RecentAvailableActionEntry(action: action, cachedAt: now)
+			if let panelAction = action as? DeterministicCapabilityPanelAction {
+				if LogControl.shared.shouldLog(category: .selection_reasoning, level: .trace) {
+					print("[RecentActionCache] stored proposal_id=\(panelAction.proposalID) candidate_id=\(panelAction.candidateID) contract_id=\(panelAction.contractID ?? "missing")")
+				}
+			}
+		}
+	}
+
+	private func pruneRecentAvailableActions(now: Date = Date()) {
+		recentAvailableActions = recentAvailableActions.filter { _, entry in
+			now.timeIntervalSince(entry.cachedAt) <= recentAvailableActionRetentionSeconds
+		}
+	}
+
+	private func requiresTargetContract(_ capabilityID: String) -> Bool {
+		[
+			"arrange_side_by_side",
+			"switch_to_paired_app",
+			"restore_workspace",
+			"split_research_setup"
+		].contains(capabilityID)
+	}
+
+	private func hasValidContract(capabilityID: String, contract: ActionTargetContract?) -> Bool {
+		guard requiresTargetContract(capabilityID) else { return true }
+		guard let contract else { return false }
+		return !contract.isExpired
 	}
 
 	// MARK: - Task inference perf stats (debug panel)
@@ -302,26 +384,42 @@ final class AppState: ObservableObject {
 	private var loggedFeedbackEvents: [String: String] = [:]
 	private var pendingAutoDismissDurableFeedback: [String: Task<Void, Never>] = [:]
 
-	func recordSuggestionFeedback(id: String, event: String) {
+	func recordSuggestionFeedback(id: String, event: String, reason: String? = nil) {
 		let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
 		if event == "accepted" {
 			cancelPendingDurableFeedback(for: normalizedId)
 		}
+		let suffix = reason.map { " reason=\($0)" } ?? ""
 		if let oldEvent = loggedFeedbackEvents[normalizedId] {
 			if oldEvent == "accepted" {
-				print("[SuggestionFeedback] suppressed_duplicate_event id=\(normalizedId) old=\(oldEvent) new=\(event)")
+				if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+					print("[SuggestionFeedback] suppressed_duplicate_event id=\(normalizedId) old=\(oldEvent) new=\(event)\(suffix)")
+				}
 				return
 			}
 			if event == "accepted" {
 				loggedFeedbackEvents[normalizedId] = event
-				print("[SuggestionFeedback] id=\(normalizedId) final_event=\(event)")
+				if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+					print("[SuggestionFeedback] id=\(normalizedId) final_event=\(event)\(suffix)")
+				}
 				return
 			}
-			print("[SuggestionFeedback] suppressed_duplicate_event id=\(normalizedId) old=\(oldEvent) new=\(event)")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+				print("[SuggestionFeedback] suppressed_duplicate_event id=\(normalizedId) old=\(oldEvent) new=\(event)\(suffix)")
+			}
 			return
 		}
 		loggedFeedbackEvents[normalizedId] = event
-		print("[SuggestionFeedback] id=\(normalizedId) final_event=\(event)")
+		if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+			print("[SuggestionFeedback] id=\(normalizedId) final_event=\(event)\(suffix)")
+		}
+	}
+
+	func recordSuggestionClickAttempt(id: String, capabilityId: String) {
+		let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
+		if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+			print("[SuggestionFeedback] id=\(normalizedId) event=click_attempted capability=\(capabilityId)")
+		}
 	}
 
 	func wasSuggestionFeedbackLogged(id: String, event: String) -> Bool {
@@ -345,6 +443,40 @@ final class AppState: ObservableObject {
 		DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: event, context: context)
 		if let restoreKey {
 			DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: event)
+		}
+	}
+
+	func finalizeActionFeedback(actionID: String, status: CapabilityExecutionStatus?, reason: String? = nil) {
+		guard let click = pendingActionClickContext.removeValue(forKey: actionID) else { return }
+		let finalReason = reason ?? {
+			switch status {
+			case .alreadySatisfied: return "already_satisfied"
+			case .success: return "execution_success"
+			case .partial: return "partial"
+			case .previewGenerated: return "preview_generated"
+			case .blocked: return "blocked"
+			case .cancelled: return "cancelled"
+			case .openedSearch: return "opened_search"
+			case .unavailable, .none: return requiresTargetContract(click.capabilityID) && click.contractID == nil ? "missing_contract" : "execution_not_verified"
+			}
+		}()
+		let accepted = status == .success || status == .alreadySatisfied
+		if accepted {
+			recordSuggestionFeedback(id: click.proposalID, event: "accepted", reason: "execution_success")
+			if let context = click.durableContext {
+				commitDurableFeedback(
+					id: click.proposalID.replacingOccurrences(of: "ambient_jarvis:", with: ""),
+					capabilityId: click.capabilityID,
+					event: .accepted,
+					context: context,
+					restoreKey: click.restoreKey
+				)
+			}
+			return
+		}
+		recordSuggestionFeedback(id: click.proposalID, event: "failed", reason: finalReason)
+		if click.durableContext != nil {
+			print("[DurableMemory] action_feedback skipped capability=\(click.capabilityID) reason=execution_not_verified")
 		}
 	}
 
@@ -407,9 +539,67 @@ final class AppState: ObservableObject {
 		return DurableMemory.restoreCooldownKey(apps: apps, urls: urls, compartment: compartment)
 	}
 
+	private func durableFeedbackAllowedForFloatingSuggestion(_ suggestionID: String?) -> Bool {
+		guard let suggestionID else { return false }
+		return floatingVisibilityState?.proposalID == suggestionID && floatingVisibilityState?.proofVisible == true
+	}
+
+	private func recordNotVisibleFeedbackIfNeeded(
+		for proposalID: String,
+		capabilityID: String,
+		ambientSuggestion: AmbientJarvisSuggestion?
+	) {
+		guard floatingVisibilityState?.feedbackRecorded != true else { return }
+		recordSuggestionFeedback(id: proposalID, event: "not_visible", reason: "visibility_proof_failed")
+		print("[DurableMemory] action_feedback skipped capability=\(capabilityID) reason=not_visible_not_user_feedback")
+		if let workflow = AmbientWorkflowType(rawValue: ambientSuggestion?.workflow ?? "") {
+			let actionable = workflow != .unknown && workflow != .idle
+			SuggestionTickSummaryLog.log(
+				modelReady: true,
+				startupQuiet: true,
+				workflow: workflow,
+				workflowActionable: actionable,
+				determinerActionable: actionable,
+				cheapPortfolioRan: true,
+				heavyPlannerRan: false,
+				candidatesCount: max(1, availableActions.count),
+				selected: capabilityID,
+				surfaceResult: "not_visible",
+				suppressionReason: "visibility_proof_failed",
+				panelCount: availableActions.count
+			)
+		}
+		floatingVisibilityState?.feedbackRecorded = true
+	}
+
+	private func finalizePriorAmbientSuggestionIfNeeded(
+		_ previous: AmbientJarvisSuggestion,
+		replacement: AmbientJarvisSuggestion?
+	) {
+		let proposalID = "ambient_jarvis:\(previous.id)"
+		let capabilityID = ambientCapabilityId(for: previous)
+		if durableFeedbackAllowedForFloatingSuggestion(proposalID) {
+			recordSuggestionFeedback(id: previous.id, event: "ignored")
+			if let context = durableContext(for: previous) {
+				DurableMemory.shared.recordActionFeedback(capabilityId: capabilityID, event: .ignored, context: context)
+				if let restoreKey = restoreCooldownKey(for: previous) {
+					DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: .ignored)
+				}
+				DurableMemory.shared.recordScheduleObservation(context: context, accepted: false, activityState: "active")
+			}
+		} else {
+			recordNotVisibleFeedbackIfNeeded(for: proposalID, capabilityID: capabilityID, ambientSuggestion: previous)
+		}
+		if replacement?.id != previous.id {
+			floatingVisibilityState = nil
+		}
+	}
+
 	func invalidateAmbientJarvisSuggestion(reason: String, oldEntity: String, newEntity: String) {
 		guard activeAmbientJarvisSuggestion != nil else { return }
-		print("[AmbientSuggestionSurface] invalidated reason=\(reason) old_entity=\(oldEntity.prefix(120)) new_entity=\(newEntity.prefix(120))")
+		if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+			print("[AmbientSuggestionSurface] invalidated reason=\(reason) old_entity=\(oldEntity.prefix(120)) new_entity=\(newEntity.prefix(120))")
+		}
 		activeAmbientJarvisSuggestion = nil
 		currentProposal = nil
 		currentProposalKey = nil
@@ -420,24 +610,18 @@ final class AppState: ObservableObject {
 	func publishAmbientJarvisSuggestion(_ suggestion: AmbientJarvisSuggestion?) {
 		if let previous = activeAmbientJarvisSuggestion,
 		   previous.id != suggestion?.id {
-			recordSuggestionFeedback(id: previous.id, event: "ignored")
-			if let context = durableContext(for: previous) {
-				let capabilityId = ambientCapabilityId(for: previous)
-				DurableMemory.shared.recordActionFeedback(capabilityId: capabilityId, event: .ignored, context: context)
-				if let restoreKey = restoreCooldownKey(for: previous) {
-					DurableMemory.shared.recordRestoreFeedback(restoreKey: restoreKey, event: .ignored)
-				}
-				DurableMemory.shared.recordScheduleObservation(context: context, accepted: false, activityState: "active")
-			}
+			finalizePriorAmbientSuggestionIfNeeded(previous, replacement: suggestion)
 		}
 		self.activeAmbientJarvisSuggestion = suggestion
 		if let suggestion = suggestion {
-			print("[AmbientSuggestionSurface] visible=yes kind=\(suggestion.kind.rawValue)")
-			print("[JarvisRouting] route=ambient_context_only")
-			// Phase 20D — kind is now display metadata only; intent + judgment
-			// are the semantic drivers of execution.
-			print("[JarvisRouting] kind=\(suggestion.kind.rawValue) semantic_driver=intent+judgment")
-			print("[JarvisRouting] blocked_agentic reason=ambient_context_only")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+				print("[AmbientSuggestionSurface] visible=yes kind=\(suggestion.kind.rawValue)")
+				print("[JarvisRouting] route=ambient_context_only")
+				// Phase 20D — kind is now display metadata only; intent + judgment
+				// are the semantic drivers of execution.
+				print("[JarvisRouting] kind=\(suggestion.kind.rawValue) semantic_driver=intent+judgment")
+				print("[JarvisRouting] blocked_agentic reason=ambient_context_only")
+			}
 			
 			// Build ActionProposal to match the existing proposal UI card
 			let proposal = ActionProposal(
@@ -506,6 +690,7 @@ final class AppState: ObservableObject {
 	@Published var isFloatingSuggestionVisible: Bool = false
     @Published var isPanelVisible: Bool = false
     @Published var ambientSuggestionDogfoodMode: Bool = true // Default to true for Phase 20I
+	@Published var activeResearchResultCard: ResearchResultCardState? = nil
 
 	/// Phase 4M: True between `ExecutionFocusHandoff.prepare()` and `finalize()`.
 	/// Views that contribute to OCR (panel chrome, processing overlays) should
@@ -521,6 +706,17 @@ final class AppState: ObservableObject {
 
 	let floatingSuggestionLifecycle = FloatingSuggestionLifecycle()
 	private var activeFloatingLifecycleBinding: ActiveFloatingLifecycleBinding?
+	private var floatingVisibilityState: FloatingVisibilityState?
+	private var recentAvailableActions: [String: RecentAvailableActionEntry] = [:]
+	private var pendingActionClickContext: [String: PendingActionClickContext] = [:]
+	private let floatingVisibilityDwellMilliseconds = 2500
+	private let recentAvailableActionRetentionSeconds: TimeInterval = 12
+	private let highUsefulnessPanelCapabilities: Set<String> = [
+		"arrange_side_by_side",
+		"switch_to_paired_app",
+		"restore_workspace",
+		"split_research_setup"
+	]
 
 	private var floatingAutoDismissWorkItem: DispatchWorkItem?
 	private let floatingAutoDismissSeconds: TimeInterval = 7
@@ -561,24 +757,125 @@ final class AppState: ObservableObject {
 	/// via the floating suggestion panel (legacy path remains unchanged).
 	var onAmbientJarvisFloatingSuggestionCandidate: ((ActionProposal) -> Void)?
 
-	func invokeAction(id: String) {
+	func updateHighUsefulnessPanelVisibility() {
+		let highlighted = availableActions.first {
+			(($0 as? DeterministicCapabilityPanelAction)?.capabilityId).map(highUsefulnessPanelCapabilities.contains) ?? highUsefulnessPanelCapabilities.contains($0.id)
+		}
+		let nextHighlightedID = (isFloatingSuggestionVisible || highlighted == nil) ? nil : highlighted?.id
+		let apply = { [weak self] in
+			guard let self else { return }
+			self.highlightedPanelActionID = nextHighlightedID
+			self.panelAttentionIndicatorVisible = nextHighlightedID != nil
+			if let action = highlighted, nextHighlightedID != nil {
+				let capability = (action as? DeterministicCapabilityPanelAction)?.capabilityId ?? action.id
+				print("[PanelVisibility] capability=\(capability) visible=yes highlighted=yes reason=high_usefulness_panel_fallback")
+			}
+		}
+		if isPanelVisible {
+			print("[SurfaceLayoutGuard] deferred reason=avoid_layout_recursion")
+			DispatchQueue.main.async(execute: apply)
+		} else {
+			apply()
+		}
+	}
+
+	func resolveStoredAction(id: String, context: ContextModel, now: Date = Date()) -> StoredActionResolution {
+		pruneRecentAvailableActions(now: now)
+		if let current = availableActions.first(where: { $0.id == id }) {
+			let capabilityID = (current as? DeterministicCapabilityPanelAction)?.capabilityId ?? id
+			let candidateID = (current as? DeterministicCapabilityPanelAction)?.candidateID ?? id
+			let proposalID = (current as? DeterministicCapabilityPanelAction)?.proposalID ?? id
+			let contract = (current as? DeterministicCapabilityPanelAction)?.targetContract
+			let contractValid = hasValidContract(capabilityID: capabilityID, contract: contract)
+			return StoredActionResolution(
+				action: current,
+				proposalID: proposalID,
+				candidateID: candidateID,
+				capabilityID: capabilityID,
+				contractID: contract?.contractID,
+				resolved: true,
+				reason: "current",
+				preservedRecentCandidate: false,
+				contractValid: contractValid
+			)
+		}
+		if let recent = recentAvailableActions[id] {
+			let capabilityID = (recent.action as? DeterministicCapabilityPanelAction)?.capabilityId ?? id
+			let candidateID = (recent.action as? DeterministicCapabilityPanelAction)?.candidateID ?? id
+			let proposalID = (recent.action as? DeterministicCapabilityPanelAction)?.proposalID ?? id
+			let contract = (recent.action as? DeterministicCapabilityPanelAction)?.targetContract
+			let contractValid = hasValidContract(capabilityID: capabilityID, contract: contract)
+			let canExecute = recent.action.canExecute(context: context)
+			if contractValid && canExecute {
+				return StoredActionResolution(
+					action: recent.action,
+					proposalID: proposalID,
+					candidateID: candidateID,
+					capabilityID: capabilityID,
+					contractID: contract?.contractID,
+					resolved: true,
+					reason: "recent_valid",
+					preservedRecentCandidate: true,
+					contractValid: true
+				)
+			}
+			return StoredActionResolution(
+				action: nil,
+				proposalID: proposalID,
+				candidateID: candidateID,
+				capabilityID: capabilityID,
+				contractID: contract?.contractID,
+				resolved: false,
+				reason: contractValid ? "stale" : "missing_contract",
+				preservedRecentCandidate: true,
+				contractValid: contractValid
+			)
+		}
+		return StoredActionResolution(
+			action: nil,
+			proposalID: id,
+			candidateID: id,
+			capabilityID: id,
+			contractID: nil,
+			resolved: false,
+			reason: "stale",
+			preservedRecentCandidate: false,
+			contractValid: false
+		)
+	}
+
+	func pendingClickContext(for actionID: String) -> PendingActionClickContext? {
+		pendingActionClickContext[actionID]
+	}
+
+	func invokeAction(id: String, sourceSurface: ActionSourceSurface = .panel) {
 		if id.hasPrefix("ambient_jarvis:") {
-			print("[AmbientSuggestionSurface] accepted id=\(id)")
-			recordSuggestionFeedback(id: id, event: "accepted")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+				print("[AmbientSuggestionSurface] accepted id=\(id)")
+			}
 			Task {
 				if let suggestion = self.activeAmbientJarvisSuggestion {
-					if let context = self.durableContext(for: suggestion) {
-						let capabilityId = self.ambientCapabilityId(for: suggestion, actionId: id)
-						let normalizedId = id.replacingOccurrences(of: "ambient_jarvis:", with: "")
-						await MainActor.run {
-							self.commitDurableFeedback(
-								id: normalizedId,
-								capabilityId: capabilityId,
-								event: .accepted,
-								context: context
-							)
-						}
-						DurableMemory.shared.recordScheduleObservation(context: context, accepted: true, activityState: "active")
+					let capabilityId = self.ambientCapabilityId(for: suggestion, actionId: id)
+					let proposalID = suggestion.topOpportunity?.id ?? suggestion.id
+					let candidateID = suggestion.topOpportunity?.candidateID ?? proposalID
+					let targetContract = suggestion.topOpportunity?.targetContract
+					let durableContext = self.durableContext(for: suggestion)
+					let restoreKey = self.restoreCooldownKey(for: suggestion)
+					self.recordSuggestionClickAttempt(id: proposalID, capabilityId: capabilityId)
+					self.pendingActionClickContext[id] = PendingActionClickContext(
+						sourceSurface: sourceSurface,
+						proposalID: proposalID,
+						candidateID: candidateID,
+						capabilityID: capabilityId,
+						contractID: targetContract?.contractID,
+						durableContext: durableContext,
+						restoreKey: restoreKey
+					)
+					if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+						print("[ActionClick] source_surface=\(sourceSurface.rawValue) proposal_id=\(proposalID) candidate_id=\(candidateID) capability=\(capabilityId) contract_id=\(targetContract?.contractID ?? "missing")")
+					}
+					if let durableContext {
+						DurableMemory.shared.recordScheduleObservation(context: durableContext, accepted: true, activityState: "active")
 					}
 					let environmentActionIds: Set<String> = [
 						"play_focus_media",
@@ -638,7 +935,11 @@ final class AppState: ObservableObject {
 							"activeTerms": suggestion.contextPayload?.activeTerms ?? [],
 							"comparisonCandidates": suggestion.contextPayload?.comparisonCandidates ?? [],
 							"relatedEntities": suggestion.contextPayload?.relatedFocusEntities ?? [],
-							"suggestionTitle": suggestion.title
+							"suggestionTitle": suggestion.title,
+							"targetContract": targetContract as Any,
+							"candidate_id": candidateID,
+							"source_surface": sourceSurface.rawValue,
+							"proposal_id": proposalID
 						]
 						let action = EnvironmentAction(
 							type: type,
@@ -652,6 +953,9 @@ final class AppState: ObservableObject {
 							compartment: suggestion.contextPayload?.taskCompartmentSnapshot,
 							workflow: AmbientWorkflowType(rawValue: suggestion.workflow)
 						)
+						let requiresContract = ["arrange_side_by_side", "switch_to_paired_app", "restore_workspace", "split_research_setup"].contains(actionTypeStr)
+						let targetContract = supplementalContext["targetContract"] as? ActionTargetContract
+						print("[ActionPreflight] capability=\(actionTypeStr) contract_id=\(targetContract?.contractID ?? "missing") status=\(requiresContract && targetContract == nil ? "blocked" : "ok")")
 
 						// Phase 31 — Check action readiness before execution
 						let _ = LocalActionReadiness.check(
@@ -673,6 +977,9 @@ final class AppState: ObservableObject {
 
 						let status = await EnvironmentActionExecutor.previewOrExecute(action, supplementalContext: supplementalContext)
 						print("[EnvironmentActionExecution] completed status=\(status.rawValue)")
+						await MainActor.run {
+							self.finalizeActionFeedback(actionID: id, status: status)
+						}
 
 						if executionMode == .preview_only {
 							let previewText = suggestion.actionCard?.previewPayload.render() ?? "Preview for workspace action"
@@ -757,9 +1064,25 @@ final class AppState: ObservableObject {
 					let outputText = result.render()
 
 					await MainActor.run {
-						self.latestActionResult = outputText
-						self.latestActionTimestamp = Date()
-						self.latestActionId = id
+						let researchActions: Set<String> = [
+							"explicit_visible_capture_summary", "summarize_visible_content", "extract_action_items", "create_checklist",
+							"rewrite_text", "explain_context", "draft_reply", "diagnose_error", "synthesize_advice", "summarize_thread"
+						]
+						if researchActions.contains(capId) || suggestion.kind == .cognitive_action {
+							self.activeResearchResultCard = ResearchResultCardState(
+								capabilityID: capId,
+								title: suggestion.title,
+								text: outputText,
+								outputChars: outputText.count
+							)
+							if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+								print("[ResearchResultCard] shown capability=\(capId) output_chars=\(outputText.count) dismissible=yes open_panel_option=yes")
+							}
+						} else {
+							self.latestActionResult = outputText
+							self.latestActionTimestamp = Date()
+							self.latestActionId = id
+						}
 					}
 				}
 			}
@@ -770,7 +1093,19 @@ final class AppState: ObservableObject {
 			invokeGeneratedExecutionProposal(id: candidateId)
 			return
 		}
-		GeneratedActionInteractionTracker.shared.considerAcceptedProxy(staticActionId: id)
+		let resolution = resolveStoredAction(id: id, context: debugContext)
+		recordSuggestionClickAttempt(id: resolution.proposalID, capabilityId: resolution.capabilityID)
+		pendingActionClickContext[id] = PendingActionClickContext(
+			sourceSurface: sourceSurface,
+			proposalID: resolution.proposalID,
+			candidateID: resolution.candidateID,
+			capabilityID: resolution.capabilityID,
+			contractID: resolution.contractID,
+			durableContext: nil,
+			restoreKey: nil
+		)
+		print("[ActionClick] source_surface=\(sourceSurface.rawValue) proposal_id=\(resolution.proposalID) candidate_id=\(resolution.candidateID) capability=\(resolution.capabilityID) contract_id=\(resolution.contractID ?? "missing")")
+		GeneratedActionInteractionTracker.shared.considerAcceptedProxy(staticActionId: resolution.capabilityID)
 		onInvokeActionById?(id)
 	}
 
@@ -856,7 +1191,6 @@ final class AppState: ObservableObject {
 	func acceptCurrentProposal() {
 		guard let proposal = currentProposal else { return }
 		let id = proposal.primaryActionId
-		recordSuggestionFeedback(id: id, event: "accepted")
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		let redundancyKey = String(fnv1a64(text: suggestionKey), radix: 16)
 		print("[SuggestionCard] accepted proposal primary=\(id)")
@@ -905,7 +1239,9 @@ final class AppState: ObservableObject {
 		// Compute clear_check log values before the preserve decision
 		let existingCount = activatedGeneratedProposals.count
 		if existingCount > 0 {
-			print("[GeneratedProposalState] clear_check existing=\(existingCount) anchor_match=\(!bundleChanged) ttl_expired=\(ttlExpired) strong_context_change=\(bundleChanged)")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+				print("[GeneratedProposalState] clear_check existing=\(existingCount) anchor_match=\(!bundleChanged) ttl_expired=\(ttlExpired) strong_context_change=\(bundleChanged)")
+			}
 		}
 
 		let shouldPreserve: Bool = Self.preservationDecision(
@@ -923,7 +1259,9 @@ final class AppState: ObservableObject {
 			} else {
 				failureLabel = "policy_suppressed"
 			}
-			print("[GeneratedProposalState] preserving existing reason=\(failureLabel) existing=\(activatedGeneratedProposals.count)")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+				print("[GeneratedProposalState] preserving existing reason=\(failureLabel) existing=\(activatedGeneratedProposals.count)")
+			}
 
 			// T18.6B — Update metadata but KEEP previous context warnings so we don't lose the "where" anchor.
 			let lastWarnings = generatedProposalActivationResult.warnings.filter { $0.hasPrefix("bundle:") || $0.hasPrefix("title:") }
@@ -952,9 +1290,13 @@ final class AppState: ObservableObject {
 			if bundleChanged { clearReason = "strong_context_change" }
 			else if ttlExpired { clearReason = "ttl_expired" }
 			else { clearReason = "context_invalidated_or_expired" }
-			print("[GeneratedProposalState] clearing reason=\(clearReason)")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+				print("[GeneratedProposalState] clearing reason=\(clearReason)")
+			}
 		} else {
-			print("[GeneratedProposalState] replacing visible_generated=\(result.visibleProposals.count) reason=new_success")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+				print("[GeneratedProposalState] replacing visible_generated=\(result.visibleProposals.count) reason=new_success")
+			}
 		}
 
 		generatedProposalActivationResult = result
@@ -977,7 +1319,9 @@ final class AppState: ObservableObject {
 		if let debugStatus {
 			generatedProposalDebugStatus = debugStatus
 		}
-		print("[GeneratedProposalState] app_state_visible_generated=\(activatedGeneratedProposals.count)")
+		if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+			print("[GeneratedProposalState] app_state_visible_generated=\(activatedGeneratedProposals.count)")
+		}
 	}
 
 	/// Clear the activated generated proposals from the panel. Owned here so the
@@ -985,7 +1329,9 @@ final class AppState: ObservableObject {
 	/// Used by the Day 2 Ambient MVP suppression path in AppDelegate.
 	func clearActivatedGeneratedProposals(reason: String) {
 		guard !activatedGeneratedProposals.isEmpty else { return }
-		print("[GeneratedProposalState] cleared count=\(activatedGeneratedProposals.count) reason=\(reason)")
+		if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+			print("[GeneratedProposalState] cleared count=\(activatedGeneratedProposals.count) reason=\(reason)")
+		}
 		activatedGeneratedProposals = []
 	}
 
@@ -1241,10 +1587,14 @@ final class AppState: ObservableObject {
 		if let key = currentProposalKey {
 			lastDismissedProposalKey = key
 			lastDismissedProposalAt = Date()
-			print("[ProposalCooldown] recorded dismiss key=\(key)")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .trace) {
+				print("[ProposalCooldown] recorded dismiss key=\(key)")
+			}
 		}
 
-		print("[GeneratedProposalState] clearing reason=user_dismissed")
+		if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+			print("[GeneratedProposalState] clearing reason=user_dismissed")
+		}
 		currentProposal = nil
 		currentProposalKey = nil
 		refreshProposalContext(for: nil)
@@ -1306,6 +1656,88 @@ final class AppState: ObservableObject {
 
 	// MARK: - Floating suggestion controls
 
+	private func floatingCapabilityID(for proposal: SuggestionViewModel) -> String {
+		if proposal.primaryActionId.hasPrefix("ambient_jarvis:"),
+		   let suggestion = activeAmbientJarvisSuggestion {
+			return ambientCapabilityId(for: suggestion, actionId: proposal.primaryActionId)
+		}
+		return proposal.primaryActionId.replacingOccurrences(of: "ambient_jarvis:", with: "")
+	}
+
+	private func markFloatingSuggestionShownIfNeeded() {
+		guard let state = floatingVisibilityState,
+		      let bind = activeFloatingLifecycleBinding,
+		      !state.proofVisible else { return }
+		floatingSuggestionLifecycle.record(
+			.shown,
+			exactKey: bind.exactKey,
+			primaryActionId: bind.primaryActionId,
+			profile: bind.profile
+		)
+		floatingSuggestionLifecycle.logRecorded(state: .shown, safeKey: bind.safeKey)
+		redundancyMemory.record(event: .shown, key: bind.exactKey, actionId: bind.primaryActionId)
+		floatingVisibilityState?.proofVisible = true
+		if let workflow = AmbientWorkflowType(rawValue: activeAmbientJarvisSuggestion?.workflow ?? "") {
+			let actionable = workflow != .unknown && workflow != .idle
+			SuggestionTickSummaryLog.log(
+				modelReady: true,
+				startupQuiet: true,
+				workflow: workflow,
+				workflowActionable: actionable,
+				determinerActionable: actionable,
+				cheapPortfolioRan: true,
+				heavyPlannerRan: false,
+				candidatesCount: max(1, availableActions.count),
+				selected: state.capabilityID,
+				surfaceResult: "shown",
+				suppressionReason: "none",
+				panelCount: availableActions.count
+			)
+		}
+	}
+
+	func reportFloatingVisibilityProof(
+		attached: Bool,
+		onScreen: Bool,
+		alpha: Double,
+		frame: CGRect,
+		hiddenByPanel: Bool,
+		dwellMs: Int,
+		stillPresented: Bool
+	) {
+		guard var state = floatingVisibilityState else { return }
+		state.proofAttempted = true
+		let frameValid = frame.width > 0 && frame.height > 0
+		let visible = attached && onScreen && alpha > 0.05 && frameValid && !hiddenByPanel && stillPresented && dwellMs >= state.dwellRequiredMs
+		let frameText = "(\(Int(frame.origin.x)),\(Int(frame.origin.y)),\(Int(frame.size.width)),\(Int(frame.size.height)))"
+		print("[FloatingVisibilityProof] id=\(state.proposalID) capability=\(state.capabilityID) attached=\(attached ? "yes" : "no") on_screen=\(onScreen ? "yes" : "no") alpha=\(String(format: "%.2f", alpha)) frame=\(frameText) dwell_ms=\(dwellMs) visible=\(visible ? "yes" : "no")")
+		if visible {
+			floatingVisibilityState = state
+			markFloatingSuggestionShownIfNeeded()
+			return
+		}
+		let reason: String = {
+			if !attached { return "not_attached" }
+			if !stillPresented { return "replaced_or_detached_before_dwell" }
+			if !onScreen { return "off_screen" }
+			if alpha <= 0.05 { return "alpha_hidden" }
+			if !frameValid { return "invalid_frame" }
+			if hiddenByPanel { return "hidden_behind_panel" }
+			return "dwell_threshold_not_met"
+		}()
+		print("[FloatingVisibilityProof] failed id=\(state.proposalID) reason=\(reason)")
+		floatingVisibilityState = state
+		recordNotVisibleFeedbackIfNeeded(for: state.proposalID, capabilityID: state.capabilityID, ambientSuggestion: activeAmbientJarvisSuggestion)
+		floatingAutoDismissWorkItem?.cancel()
+		floatingAutoDismissWorkItem = nil
+		floatingSuggestion = nil
+		isFloatingSuggestionVisible = false
+		refreshFloatingProposalContext(for: nil)
+		updateHighUsefulnessPanelVisibility()
+		activeFloatingLifecycleBinding = nil
+		floatingVisibilityState = nil
+	}
+
 	func showFloatingSuggestion(_ suggestion: SuggestionViewModel, lifecycle: ActiveFloatingLifecycleBinding) {
 		if let old = floatingSuggestion, isFloatingSuggestionVisible, old.primaryActionId != suggestion.primaryActionId {
 			print("[AmbientSuggestionReplacement] old=\(old.primaryActionId) new=\(suggestion.primaryActionId) reason=better_candidate")
@@ -1316,21 +1748,33 @@ final class AppState: ObservableObject {
 
 		let logKey = floatingSuggestionLogKey(for: suggestion, context: debugContext)
 		print("[FloatingSuggestion] show key=\(logKey)")
-
-		floatingSuggestionLifecycle.record(
-			.shown,
-			exactKey: lifecycle.exactKey,
-			primaryActionId: lifecycle.primaryActionId,
-			profile: lifecycle.profile
-		)
-		floatingSuggestionLifecycle.logRecorded(state: .shown, safeKey: lifecycle.safeKey)
 		activeFloatingLifecycleBinding = lifecycle
+		
+		let capId = floatingCapabilityID(for: suggestion)
+		let acceptBehavior: String = {
+			let researchActions: Set<String> = [
+				"explicit_visible_capture_summary", "summarize_visible_content", "extract_action_items", "create_checklist",
+				"rewrite_text", "explain_context", "draft_reply", "diagnose_error"
+			]
+			if researchActions.contains(capId) {
+				return "run_and_show_floating_result"
+			} else {
+				return "execute_direct"
+			}
+		}()
+		print("[SuggestionSurfaceContract] capability=\(capId) suggestion_surface=floating_card accept_behavior=\(acceptBehavior)")
 
-		redundancyMemory.record(event: .shown, key: lifecycle.exactKey, actionId: lifecycle.primaryActionId)
+		floatingVisibilityState = FloatingVisibilityState(
+			proposalID: suggestion.primaryActionId,
+			capabilityID: floatingCapabilityID(for: suggestion),
+			shownAt: Date(),
+			dwellRequiredMs: floatingVisibilityDwellMilliseconds
+		)
 
 		floatingSuggestion = suggestion
 		isFloatingSuggestionVisible = true
 		refreshFloatingProposalContext(for: suggestion)
+		updateHighUsefulnessPanelVisibility()
 
 		let work = DispatchWorkItem { [weak self] in
 			Task { @MainActor in
@@ -1351,10 +1795,20 @@ final class AppState: ObservableObject {
 	func dismissFloatingSuggestion(reason: FloatingSuggestionDismissReason = .manual) {
 		let proposalSnapshot = floatingSuggestion
 		let ctx = debugContext
+		let hadFairVisibleChance = floatingVisibilityState?.proofVisible == true
 
 		if reason != .accepted, let p = proposalSnapshot {
-			let feedbackEvent = (reason == .auto || reason == .panelOpen) ? "auto_dismissed" : "dismissed"
-			recordSuggestionFeedback(id: p.primaryActionId, event: feedbackEvent)
+			if reason == .manual {
+				recordSuggestionFeedback(id: p.primaryActionId, event: "dismissed")
+			} else if hadFairVisibleChance {
+				recordSuggestionFeedback(id: p.primaryActionId, event: "auto_dismissed")
+			} else {
+				recordNotVisibleFeedbackIfNeeded(
+					for: p.primaryActionId,
+					capabilityID: floatingCapabilityID(for: p),
+					ambientSuggestion: activeAmbientJarvisSuggestion
+				)
+			}
 		}
 
 		if let ambient = activeAmbientJarvisSuggestion,
@@ -1362,7 +1816,9 @@ final class AppState: ObservableObject {
 		   reason != .accepted {
 			let capabilityId = ambientCapabilityId(for: ambient)
 			let normalizedId = proposalSnapshot?.primaryActionId.replacingOccurrences(of: "ambient_jarvis:", with: "") ?? capabilityId
-			if reason == .auto || reason == .panelOpen {
+			if !hadFairVisibleChance, reason != .manual {
+				print("[DurableMemory] action_feedback skipped capability=\(capabilityId) reason=not_visible_not_user_feedback")
+			} else if reason == .auto || reason == .panelOpen {
 				scheduleAutoDismissDurableFeedback(
 					id: normalizedId,
 					capabilityId: capabilityId,
@@ -1383,14 +1839,16 @@ final class AppState: ObservableObject {
 		if let bind = activeFloatingLifecycleBinding, reason != .accepted {
 			switch reason {
 			case .auto, .panelOpen:
-				floatingSuggestionLifecycle.record(
-					.autoDismissed,
-					exactKey: bind.exactKey,
-					primaryActionId: bind.primaryActionId,
-					profile: bind.profile
-				)
-				floatingSuggestionLifecycle.logRecorded(state: .autoDismissed, safeKey: bind.safeKey)
-				redundancyMemory.record(event: .autoDismissed, key: bind.exactKey, actionId: bind.primaryActionId)
+				if hadFairVisibleChance {
+					floatingSuggestionLifecycle.record(
+						.autoDismissed,
+						exactKey: bind.exactKey,
+						primaryActionId: bind.primaryActionId,
+						profile: bind.profile
+					)
+					floatingSuggestionLifecycle.logRecorded(state: .autoDismissed, safeKey: bind.safeKey)
+					redundancyMemory.record(event: .autoDismissed, key: bind.exactKey, actionId: bind.primaryActionId)
+				}
 			case .manual:
 				floatingSuggestionLifecycle.record(
 					.manuallyDismissed,
@@ -1406,12 +1864,14 @@ final class AppState: ObservableObject {
 		}
 
 		activeFloatingLifecycleBinding = nil
+		floatingVisibilityState = nil
 
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
 		floatingSuggestion = nil
 		isFloatingSuggestionVisible = false
 		refreshFloatingProposalContext(for: nil)
+		updateHighUsefulnessPanelVisibility()
 
 		if reason != .accepted, let p = proposalSnapshot {
 			let logKey = floatingSuggestionLogKey(for: p, context: ctx)
@@ -1419,10 +1879,33 @@ final class AppState: ObservableObject {
 		}
 	}
 
+	func dismissResearchResultCard(reason: String) {
+		guard let card = activeResearchResultCard else { return }
+		print("[ResearchResultCard] dismissed reason=\(reason)")
+		activeResearchResultCard = nil
+	}
+
 	func acceptFloatingProposal() {
 		guard let proposal = floatingSuggestion else { return }
 		let id = proposal.primaryActionId
-		recordSuggestionFeedback(id: id, event: "accepted")
+		let capId = floatingCapabilityID(for: proposal)
+		
+		let behavior: String = {
+			let researchActions: Set<String> = [
+				"explicit_visible_capture_summary", "summarize_visible_content", "extract_action_items", "create_checklist",
+				"rewrite_text", "explain_context", "draft_reply", "diagnose_error"
+			]
+			if researchActions.contains(capId) {
+				return "run_and_show_floating_result"
+			} else {
+				return "execute_direct"
+			}
+		}()
+		print("[SuggestionAccepted] capability=\(capId) behavior=\(behavior)")
+		
+		if floatingVisibilityState != nil {
+			markFloatingSuggestionShownIfNeeded()
+		}
 		let suggestionKey = suggestionKey(for: proposal, context: debugContext)
 		print("[FloatingSuggestion] accepted primary=\(id)")
 
@@ -1445,8 +1928,7 @@ final class AppState: ObservableObject {
 
 		dismissFloatingSuggestion(reason: .accepted)
 
-		onRevealAssistantPanel?()
-		invokeAction(id: id)
+		invokeAction(id: id, sourceSurface: .floating)
 	}
 
 	func floatingPrimaryButtonTitle(for proposal: ActionProposal) -> String {
@@ -1786,4 +2268,13 @@ final class AppState: ObservableObject {
 			"[DynamicActionUX] shown count=\(summary.previewItems.count) top=\(top) category=\(summary.previewItems.first?.category.rawValue ?? "nil")"
 		)
 	}
+}
+
+// MARK: - Research Result Card State
+
+struct ResearchResultCardState: Equatable, Sendable {
+	let capabilityID: String
+	let title: String
+	let text: String
+	let outputChars: Int
 }

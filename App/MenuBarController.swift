@@ -1,10 +1,13 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
 final class MenuBarController: NSObject, NSPopoverDelegate {
 	private let statusItem: NSStatusItem
 	private let popover: NSPopover
+	private let appState: AppState
+	private var cancellables = Set<AnyCancellable>()
 
 	var isPopoverShown: Bool { popover.isShown }
 
@@ -18,16 +21,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 		let popover = NSPopover()
 		self.statusItem = statusItem
 		self.popover = popover
+		self.appState = appState
 
         super.init()
         popover.delegate = self
 
-		let image = NSImage(
-			systemSymbolName: "sparkles",
-			accessibilityDescription: "Context Assistant"
-		)
-		image?.isTemplate = true
-		statusItem.button?.image = image
 		statusItem.button?.action = #selector(togglePopover(_:))
 		statusItem.button?.target = self
 
@@ -37,9 +35,51 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 			rootView: AssistantPanelView()
 				.environmentObject(appState)
 		)
+
+		// Initialize/heal the icon image at start
+		checkIconState(forceReapply: true)
+
+		appState.$panelAttentionIndicatorVisible
+			.removeDuplicates()
+			.sink { [weak self] _ in
+				self?.checkIconState(forceReapply: true)
+			}
+			.store(in: &cancellables)
+
+		if let btn = statusItem.button {
+			btn.publisher(for: \.effectiveAppearance)
+				.map { $0.name.rawValue }
+				.removeDuplicates()
+				.sink { [weak self] appearanceName in
+					guard let self else { return }
+					let mode = appearanceName.contains("Dark") ? "dark" : "light"
+					if LogControl.shared.shouldLog(category: .menu_bar_watchdog, level: .trace) {
+						print("[MenuBarIcon] appearance_changed mode=\(mode) image_reapplied=yes")
+					}
+					self.checkIconState(forceReapply: true)
+				}
+				.store(in: &cancellables)
+		}
+
+		Timer.publish(every: 10, on: .main, in: .common)
+			.autoconnect()
+			.sink { [weak self] _ in
+				self?.checkIconState()
+			}
+			.store(in: &cancellables)
 	}
 
-	func revealPopoverIfNeeded() {
+	func revealPopoverIfNeeded(source: PanelOpenSource = .menu_bar) {
+		if appState.activeResearchResultCard != nil {
+			print("[PanelOpen] blocked reason=research_result_uses_floating_card")
+			return
+		}
+		let allowed = (source != .suggestion_auto)
+		print("[PanelOpen] source=\(source.rawValue) allowed=\(allowed ? "yes" : "no")")
+		if !allowed {
+			print("[PanelOpen] blocked reason=suggestions_do_not_auto_open_panel")
+			return
+		}
 		guard !popover.isShown else { return }
 		guard let button = statusItem.button else { return }
 		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -52,6 +92,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 			return
 		}
 
+		print("[PanelOpen] source=menu_bar allowed=yes")
 		guard let button = statusItem.button else { return }
 		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 		onPopoverDidShow?()
@@ -60,5 +101,97 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     public func popoverDidClose(_ notification: Notification) {
         onPopoverDidClose?()
     }
+
+	private var healthyCheckCount = 0
+	private var lastAppliedSymbol: String? = nil
+	private var isReapplyingIcon = false
+
+	func checkIconState(forceReapply: Bool = false) {
+		guard !isReapplyingIcon else { return }
+		isReapplyingIcon = true
+		defer { isReapplyingIcon = false }
+
+		guard let button = statusItem.button else {
+			if LogControl.shared.shouldLog(category: .menu_bar_watchdog, level: .dogfood) {
+				print("[MenuBarIcon] state_check button_exists=no visible=no template=no length=\(statusItem.length) reason=problem_detected")
+			}
+			return
+		}
+		
+		let image = button.image
+		let imageExists = image != nil
+		let visible = button.window?.isVisible == true
+		let template = image?.isTemplate == true
+		let length = statusItem.length
+		
+		let highlighted = appState.panelAttentionIndicatorVisible
+		let symbol = highlighted ? "sparkles.circle.fill" : "sparkles"
+		
+		let needsHeal = forceReapply || !imageExists || !template || length != NSStatusItem.squareLength || lastAppliedSymbol != symbol
+		
+		if !needsHeal && !forceReapply {
+			healthyCheckCount += 1
+			if LogControl.shared.shouldLog(category: .menu_bar_watchdog, level: .trace) {
+				print("[MenuBarIcon] state_check button_exists=yes image_exists=yes visible=\(visible ? "yes" : "no") template=yes length=\(length)")
+			}
+			return
+		}
+		
+		// Break potential infinite loop from setting the same image
+		if imageExists && template && length == NSStatusItem.squareLength && lastAppliedSymbol == symbol && !forceReapply {
+			return
+		}
+
+		if LogControl.shared.shouldLog(category: .menu_bar_watchdog, level: .trace) {
+			let reason = forceReapply ? "appearance_changed" : "problem_detected"
+			print("[MenuBarIcon] state_check button_exists=yes image_exists=\(imageExists ? "yes" : "no") visible=\(visible ? "yes" : "no") template=\(template ? "yes" : "no") length=\(length) reason=\(reason)")
+		}
+		
+		let newImage = NSImage(
+			systemSymbolName: symbol,
+			accessibilityDescription: "Context Assistant"
+		)
+		newImage?.isTemplate = true
+		button.image = newImage
+		statusItem.length = NSStatusItem.squareLength
+		lastAppliedSymbol = symbol
+		
+		let restorationReason: String
+		var isProblem = false
+		if forceReapply {
+			restorationReason = "appearance_changed"
+		} else if !imageExists {
+			restorationReason = "missing_image"
+			isProblem = true
+		} else if !template {
+			restorationReason = "lost_template"
+			isProblem = true
+		} else if length != NSStatusItem.squareLength {
+			restorationReason = "collapsed_length"
+			isProblem = true
+		} else {
+			restorationReason = "state_mismatch"
+			isProblem = true
+		}
+		
+		if isProblem || LogControl.shared.shouldLog(category: .menu_bar_watchdog, level: .debug) {
+			print("[MenuBarIcon] restored reason=\(restorationReason)")
+		}
+		
+		if healthyCheckCount > 0 {
+			if LogControl.shared.shouldLog(category: .menu_bar_watchdog, level: .dogfood) {
+				print("[MenuBarIcon] healthy_suppressed_checks=\(healthyCheckCount)")
+			}
+			healthyCheckCount = 0
+		}
+	}
 }
 
+// MARK: - Panel Open Source
+
+enum PanelOpenSource: String, Sendable {
+	case menu_bar
+	case shortcut
+	case explicit_button
+	case suggestion_auto
+}

@@ -105,16 +105,45 @@ enum LocalActionPayloadValidator {
             return valid ? "payload_complete" : "missing_\(missing.joined(separator: "+"))"
         }()
 
+        // Phase 36.2 — Capability-typed targets. Each capability publishes only the targets
+        // it actually operates on; we no longer mix windows, music, urls, and tab titles
+        // into one polluted bag.
+        let typedTargets: [String] = {
+            switch capabilityId {
+            case "arrange_side_by_side", "switch_to_paired_app", "split_research_setup":
+                return apps.prefix(2).map { "\($0):\(stableHash($0))" }
+            case "restore_workspace":
+                return apps.prefix(4).map { "\($0):\(stableHash($0))" }
+            case "play_focus_media", "pause_media", "resume_focus_media":
+                return ["Music"]
+            case "copy_current_url":
+                return [] // typed targets are URLs, surfaced via the `urls` field
+            case "collect_references", "copy_all_related_links":
+                return [] // typed targets are URLs/tab titles, surfaced via `urls`
+            case "remember_workspace":
+                return apps.prefix(4).map { "\($0):\(stableHash($0))" }
+            case "open_current_task_panel", "open_paired_app", "restore_research_tabs":
+                return apps.prefix(2).map { "\($0):\(stableHash($0))" }
+            default:
+                return apps + Array(tabs.prefix(4))
+            }
+        }()
+
         let result = ValidationResult(
             capabilityId: capabilityId,
             valid: valid,
             missing: missing,
-            targets: apps + tabs.prefix(4),
+            targets: typedTargets,
             urls: urls,
             reason: reason
         )
         emit(result)
         return result
+    }
+
+    private static func stableHash(_ s: String) -> String {
+        let h = abs(s.hashValue)
+        return String(format: "%06x", h % 0xFFFFFF)
     }
 
     private static func redactedOrDomainHash(_ urlString: String) -> String {
@@ -596,10 +625,12 @@ enum SuggestionSurfacePolicy: Sendable {
             // - no recent dismiss/ignore for music
             // - user is idle or transitioning (not typing check passed above)
             // - current task context is compatible (not suppressed check passed above)
+            // Phase 40 — first-time users still need to see music as a usable panel action.
+            // `no_prior_music_acceptance` keeps it surfaced as panel_only, never suppressed.
             if userAcceptedMusicBefore {
                 return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "music_idle_context_match", expectedFriction: .medium)
             } else {
-                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "no_prior_music_acceptance", expectedFriction: .low)
+                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "first_time_panel_safe", expectedFriction: .low)
             }
             
         case "restore_workspace", "restore_research_tabs":

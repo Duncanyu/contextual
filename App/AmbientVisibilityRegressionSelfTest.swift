@@ -117,6 +117,39 @@ enum AmbientVisibilityRegressionSelfTest {
 			print("[AmbientFloatingSuggestion] shown=yes reason=ambient_jarvis")
 		}
 
+		// 1c. Detached before dwell threshold → not_visible, no ignored/auto-dismissed feedback.
+		let appStateDetached = AppState()
+		appStateDetached.showFloatingSuggestion(dummyProposal, lifecycle: bind)
+		appStateDetached.dismissFloatingSuggestion(reason: .auto)
+		check("detached_before_dwell_not_visible",
+			  appStateDetached.wasSuggestionFeedbackLogged(id: dummyProposal.primaryActionId, event: "not_visible"))
+		check("detached_before_dwell_not_ignored",
+			  !appStateDetached.wasSuggestionFeedbackLogged(id: dummyProposal.primaryActionId, event: "ignored"))
+		check("detached_before_dwell_not_auto_dismissed",
+			  !appStateDetached.wasSuggestionFeedbackLogged(id: dummyProposal.primaryActionId, event: "auto_dismissed"))
+
+		// 1d. Visibility proof passes after dwell → shown, later auto-dismiss is valid feedback.
+		let appStateVisible = AppState()
+		appStateVisible.showFloatingSuggestion(dummyProposal, lifecycle: bind)
+		appStateVisible.reportFloatingVisibilityProof(
+			attached: true,
+			onScreen: true,
+			alpha: 1.0,
+			frame: CGRect(x: 20, y: 20, width: 320, height: 200),
+			hiddenByPanel: false,
+			dwellMs: 2500,
+			stillPresented: true
+		)
+		let shownSuppression = appStateVisible.floatingSuggestionLifecycle.shouldSuppressNewFloating(
+			triggerType: packet.triggerType,
+			primaryActionId: dummyProposal.primaryActionId,
+			profile: profile
+		)
+		check("visible_after_dwell_records_shown", shownSuppression.suppressed && shownSuppression.reason == "recently_shown")
+		appStateVisible.dismissFloatingSuggestion(reason: .auto)
+		check("visible_after_dwell_auto_dismissed",
+			  appStateVisible.wasSuggestionFeedbackLogged(id: dummyProposal.primaryActionId, event: "auto_dismissed"))
+
 		// ──────────────────────────────────────────────────────────────────
 		// BLOCK 2 — Scratch / TurboWarp / Gemini not shopping
 		// ──────────────────────────────────────────────────────────────────

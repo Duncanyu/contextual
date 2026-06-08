@@ -39,9 +39,11 @@ enum GeneratedExecutionProposalActivator {
 			// Day1 gate blocks LLM-generated floating proposals but allows:
 			// - deterministic panel actions (friction, metadata-safe local actions)
 			// - SurfacePolicy-approved deterministic friction actions
-			print("[ProposalRouting] day1_gate_applied target=llm_floating allowed=no reason=day1_behavior_validation")
-			print("[ProposalRouting] day1_gate_applied target=panel allowed=yes reason=deterministic_panel_exempt")
-			print("[ProposalRouting] day1_gate_applied target=deterministic allowed=yes reason=friction_actions_exempt")
+			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+				print("[ProposalRouting] day1_gate_applied target=llm_floating allowed=no reason=day1_behavior_validation")
+				print("[ProposalRouting] day1_gate_applied target=panel allowed=yes reason=deterministic_panel_exempt")
+				print("[ProposalRouting] day1_gate_applied target=deterministic allowed=yes reason=friction_actions_exempt")
+			}
 			return GeneratedExecutionProposalActivationResult(
 				visibleProposals: [],
 				visibleStaticActionIds: input.staticActionIds,
@@ -310,7 +312,9 @@ enum GeneratedExecutionProposalActivator {
 				let hasPlan = candidate.agenticPlan != nil
 				let explContains = candidate.explainabilitySummary.contains("hook_composer_agentic")
 				if idHasPrefix || hasPlan || explContains {
-					print("[ProposalRouting] quarantined_agentic reason=ambient_validation")
+					if LogControl.shared.shouldLog(category: .selection_reasoning, level: .debug) {
+						print("[ProposalRouting] quarantined_agentic reason=ambient_validation")
+					}
 					suppressed = true
 				}
 			}

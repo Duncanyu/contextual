@@ -465,13 +465,13 @@ enum CheapAlwaysOnPortfolioSelfTest {
 				appCategory: .browser,
 				groundingResult: nil
 			)
-			let text = candidates.filter { $0.family == .text }
-			let ids = Set(text.map(\.capabilityId))
+			let research = candidates.filter { $0.family == .research }
+			let ids = Set(research.map(\.capabilityId))
 			check("rental_research_generates_more_than_summarize",
-				  text.count >= 3 && ids.contains("compare_rental_options") && ids.contains("create_listing_checklist"))
+				  research.count >= 3 && ids.contains("compare_rental_options") && ids.contains("create_listing_checklist"))
 		}
 
-		// ── Phase 29: text_family_outputs_multiple_candidate_types ──
+		// ── Phase 29: research_family_outputs_multiple_candidate_types ──
 		do {
 			let input = GeneratedActionInput(
 				currentEntity: "Student rental listing",
@@ -491,13 +491,13 @@ enum CheapAlwaysOnPortfolioSelfTest {
 			)
 			let actions = GeneratedActionGenerator.generate(input: input)
 			let titles = actions.map(\.title)
-			check("text_family_outputs_multiple_candidate_types",
+			check("research_family_outputs_multiple_candidate_types",
 				  actions.count >= 3
 					&& titles.contains("Compare the rental advice from these posts?")
 					&& titles.contains("Draft a checklist for your rental ad?"))
 		}
 
-		// ── Phase 29: action_family_generates_resume_music_not_search_by_default ──
+		// ── Phase 29: media_family_generates_resume_music_not_search_by_default ──
 		do {
 			resetSharedState()
 			let memory = WorkingMemorySnapshot(
@@ -526,7 +526,7 @@ enum CheapAlwaysOnPortfolioSelfTest {
 				groundingResult: nil
 			)
 			let music = candidates.first { $0.capabilityId == "play_focus_media" }
-			check("action_family_generates_resume_music_not_search_by_default",
+			check("media_family_generates_resume_music_not_search_by_default",
 				  music?.musicIntent?.action == .resume && music?.hookChain == ["detect_player", "resume_player", "verify_playing"])
 		}
 
@@ -559,7 +559,7 @@ enum CheapAlwaysOnPortfolioSelfTest {
 					&& music?.hookChain == ["lookup_playlist_memory", "play_playlist", "verify_playing"])
 		}
 
-		// ── Phase 29: friction_family_generates_workspace_or_layout_candidates_when_patterns_exist ──
+		// ── Phase 29: workspace_family_generates_workspace_or_layout_candidates_when_patterns_exist ──
 		do {
 			resetSharedState()
 			let memory = WorkingMemorySnapshot(
@@ -582,8 +582,8 @@ enum CheapAlwaysOnPortfolioSelfTest {
 				appCategory: .browser,
 				groundingResult: nil
 			)
-			check("friction_family_generates_workspace_or_layout_candidates_when_patterns_exist",
-				  candidates.contains { $0.family == .friction && $0.capabilityId == "arrange_side_by_side" })
+			check("workspace_family_generates_workspace_or_layout_candidates_when_patterns_exist",
+				  candidates.contains { $0.family == .workspace && $0.capabilityId == "arrange_side_by_side" })
 		}
 
 		// ── Phase 29: family_winners_and_hook_metadata_present ──
@@ -612,8 +612,8 @@ enum CheapAlwaysOnPortfolioSelfTest {
 			)
 			let families = Set(candidates.prefix(3).map(\.family))
 			let hasHooks = candidates.contains { !$0.hookChain.isEmpty && !$0.expectedResult.isEmpty && !$0.failureMode.isEmpty }
-			check("family_winners_logged_for_text_action_friction",
-				  families.contains(.text) && families.contains(.action) && families.contains(.friction) && hasHooks)
+			check("family_winners_logged_for_research_media_workspace",
+				  families.contains(.research) && families.contains(.media) && families.contains(.workspace) && hasHooks)
 		}
 
 		// ── Dogfood scenario: Preview PDF + Firefox Google Docs → compare candidates ──
@@ -651,9 +651,9 @@ enum CheapAlwaysOnPortfolioSelfTest {
 			let hasCompare = candidates.contains { $0.capabilityId == "compare_options" || $0.capabilityId == "compare_rental_options" }
 			let hasSynthesize = candidates.contains { $0.capabilityId == "synthesize_sources" }
 			check("dogfood_pdf_plus_gdocs_produces_compare_candidates", hasCompare || hasSynthesize)
-			let textCandidates = candidates.filter { $0.family == PortfolioCandidate.Family.text }
+			let researchCandidates = candidates.filter { $0.family == PortfolioCandidate.Family.research }
 			check("dogfood_pdf_plus_gdocs_not_only_synthesize",
-				  textCandidates.count >= 1)
+				  researchCandidates.count >= 1)
 		}
 
 		// ── Dogfood scenario: arrange_side_by_side title names apps ──
@@ -738,12 +738,12 @@ enum CheapAlwaysOnPortfolioSelfTest {
 				appCategory: .browser,
 				groundingResult: nil
 			)
-			let friction = candidates.first { $0.family == PortfolioCandidate.Family.friction }
+			let workspace = candidates.first { $0.family == PortfolioCandidate.Family.workspace }
 			check("p1_friction_from_compartment_tabs",
-				  friction != nil && friction?.capabilityId == "arrange_side_by_side")
-			let frictionTitle = friction?.title.lowercased() ?? ""
+				  workspace != nil && workspace?.capabilityId == "arrange_side_by_side")
+			let workspaceTitle = workspace?.title.lowercased() ?? ""
 			check("p3_friction_title_names_targets",
-				  frictionTitle.contains("montreal") || frictionTitle.contains("queen") || frictionTitle.contains("beside"))
+				  workspaceTitle.contains("montreal") || workspaceTitle.contains("queen") || workspaceTitle.contains("beside"))
 		}
 
 		// ── P4: Comparison from compartment tabs + stale entities ──
@@ -817,12 +817,12 @@ enum CheapAlwaysOnPortfolioSelfTest {
 				appCategory: .browser,
 				groundingResult: nil
 			)
-			let titleText = titleOnly.first { $0.family == PortfolioCandidate.Family.text }
-			let selectionText = browserCtx.first { $0.family == PortfolioCandidate.Family.text }
+			let titleResearch = titleOnly.first { $0.family == PortfolioCandidate.Family.research }
+			let selectionResearch = browserCtx.first { $0.family == PortfolioCandidate.Family.research }
 			check("p5_title_only_text_lower_executability",
-				  (titleText?.executability ?? 1.0) <= 0.40)
+				  (titleResearch?.executability ?? 1.0) <= 0.40)
 			check("p5_selection_text_normal_executability",
-				  (selectionText?.executability ?? 0.0) >= 0.55)
+				  (selectionResearch?.executability ?? 0.0) >= 0.55)
 		}
 
 		let ok = failures.isEmpty

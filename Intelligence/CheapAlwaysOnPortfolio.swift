@@ -29,6 +29,10 @@ struct CheapAlwaysOnPortfolioResult: Sendable {
 enum CheapAlwaysOnPortfolio {
 	static let qualityThreshold: Double = 0.12
 
+	private static func logCandidateIdentity(_ candidate: PortfolioCandidate) {
+		print("[CandidateIdentity] capability=\(candidate.capabilityId) lane=\(candidate.lane.rawValue) source=\(candidate.sourcePath) candidate_id=\(candidate.candidateID)")
+	}
+
 	static func evaluate(_ input: CheapAlwaysOnPortfolioInput) -> [PortfolioCandidate] {
 		evaluateDetailed(input).allCandidates
 	}
@@ -78,6 +82,7 @@ enum CheapAlwaysOnPortfolio {
 		let laneNames = Set(candidates.map { $0.lane.rawValue }).sorted().joined(separator: ",")
 		print("[ActionPortfolio] lanes=\(laneNames.isEmpty ? "none" : laneNames)")
 		for c in candidates {
+			logCandidateIdentity(c)
 			print("[CheapAlwaysOnPortfolio] candidate=\(c.capabilityId) score=\(String(format: "%.3f", c.score))")
 			print("[ActionPortfolio] candidate"
 				+ " lane=\(c.lane.rawValue)"
@@ -89,7 +94,12 @@ enum CheapAlwaysOnPortfolio {
 				+ " novelty=\(String(format: "%.2f", c.novelty))")
 		}
 
-		candidates.sort { $0.score > $1.score }
+		candidates.sort { a, b in
+			ActionUsefulnessPolicy.compareUsefulnessAndScore(
+				capA: a.capabilityId, laneA: a.lane.rawValue, scoreA: a.score,
+				capB: b.capabilityId, laneB: b.lane.rawValue, scoreB: b.score
+			)
+		}
 		var validated: [PortfolioCandidate] = []
 		var suppressedCount = 0
 		for candidate in candidates {
@@ -135,9 +145,104 @@ enum CheapAlwaysOnPortfolio {
 		)
 
 		let panelCandidates = validated.filter { $0.executionMode == .local_action }
-		let floatingCandidate = validated.first {
-			$0.score >= qualityThreshold && $0.lane != .metadata
+
+		// Phase 36.2 — Live path enforcement + useful action inventory + backfill.
+		// Surface policy decides what may float. Floating winner must be eligible_for_floating=yes.
+		// If the top-scored candidate is suppressed/panel-only, backfill with the next eligible.
+		let contextStability: String = {
+			if input.compartment != nil && !input.memory.currentEntity.isEmpty { return "stable" }
+			if input.memory.currentEntity.isEmpty && input.compartment == nil { return "weak" }
+			return "transient"
+		}()
+		let hasTaskOrFrictionAction = validated.contains { c in
+			(c.lane == .friction || c.lane == .workspace)
+				&& c.capabilityId != "play_focus_media"
+				&& c.capabilityId != "resume_focus_media"
+				&& !LivePathEnforcer.metadataUtilities.contains(c.capabilityId)
+				&& c.capabilityId != "pin_reference_tabs"
 		}
+		var decisions: [String: LivePathDecision] = [:]
+		for c in validated {
+			let ctx = LivePathEvaluationContext(
+				sourcePath: "cheap_portfolio",
+				contextStability: contextStability,
+				isMusicAlreadyPlaying: input.mediaState.isMusicPlaying,
+				hasHigherPriorityTaskAction: hasTaskOrFrictionAction,
+				recentFeedbackCooldownActive: false,
+				userFeedbackHistory: "neutral",
+				alreadySatisfied: false,
+				evidenceAvailable: c.usefulness > 0.0,
+				hasExplicitUsageSignal: false,
+				activityMatch: true,
+				compartmentLabel: input.compartment?.label,
+				currentEntity: input.memory.currentEntity,
+				workflow: input.workflow.rawValue
+			)
+			let (decision, _) = LivePathEnforcer.evaluate(
+				capabilityID: c.capabilityId,
+				involvedApps: c.involvedApps,
+				attachedContract: c.targetContract,
+				confidence: c.confidence,
+				evaluationContext: ctx
+			)
+			decision.logEnforcement(candidateID: c.candidateID, lane: c.lane.rawValue)
+			decisions[c.candidateID] = decision
+		}
+
+		// Useful action inventory — visible accounting of what was possible
+		let totalEligible = validated.count
+		let frictionCount = validated.filter { $0.lane == .friction }.count
+		let metadataCount = validated.filter { $0.lane == .metadata }.count
+		let musicCount = validated.filter { $0.lane == .music }.count
+		let workspaceCount = validated.filter { $0.lane == .workspace }.count
+		print("[UsefulActionInventory] total=\(totalEligible) friction=\(frictionCount) metadata=\(metadataCount) music=\(musicCount) workspace=\(workspaceCount)")
+		
+		let utilityCount = validated.filter { LivePathEnforcer.metadataUtilities.contains($0.capabilityId) }.count
+		let nonUtilityCount = totalEligible - utilityCount
+		print("[UsefulActionInventory] utility_count=\(utilityCount) non_utility_count=\(nonUtilityCount)")
+
+		for c in validated {
+			let d = decisions[c.candidateID]
+			let surface = d?.surface.rawValue ?? "unknown"
+			let eligible = (d?.eligibleForFloating == true) ? "yes" : "no"
+			print("[UsefulActionInventory] capability=\(c.capabilityId) eligible=\(eligible) surface=\(surface) reason=\(d?.reason ?? "unknown")")
+			
+			// Print FinalSelection logs
+			let usefulness = ActionUsefulnessPolicy.getUsefulnessLevel(capabilityID: c.capabilityId, lane: c.lane.rawValue)
+			print("[FinalSelection] candidate=\(c.capabilityId) usefulness=\(usefulness) surface=\(surface) reason=\(d?.reason ?? "unknown")")
+		}
+
+		// Floating selection — only consider eligible candidates. Backfill if winner suppressed.
+		let topScored = validated.first
+		let eligibleByScore = validated
+			.filter { (decisions[$0.candidateID]?.eligibleForFloating == true) }
+		var floatingCandidate: PortfolioCandidate? = eligibleByScore.first
+
+		if let top = topScored,
+		   decisions[top.candidateID]?.eligibleForFloating != true {
+			print("[FinalSelection] candidate_id=\(top.candidateID) capability=\(top.capabilityId) lane=\(top.lane.rawValue) surface=\(decisions[top.candidateID]?.surface.rawValue ?? "unknown") eligible_for_floating=no reason=\(decisions[top.candidateID]?.reason ?? "policy")")
+			print("[FinalSelection] backfill_attempt started reason=winner_suppressed")
+			if let backfill = eligibleByScore.first {
+				if backfill.capabilityId == "arrange_side_by_side" {
+					print("[FinalSelection] backfill_candidate=arrange_side_by_side requirement_pass=yes")
+				}
+				print("[FinalSelection] backfill_winner=\(backfill.capabilityId) reason=winner_suppressed_backfill")
+				floatingCandidate = backfill
+			} else {
+				let wasArrangeCandidate = validated.first(where: { $0.capabilityId == "arrange_side_by_side" })
+				if let arrangeCandidate = wasArrangeCandidate, decisions[arrangeCandidate.candidateID]?.eligibleForFloating != true {
+					let decisionReason = decisions[arrangeCandidate.candidateID]?.reason ?? "unknown"
+					print("[FinalSelection] backfill_candidate=arrange_side_by_side requirement_pass=no reason=\(decisionReason)")
+					print("[FinalSelection] backfill_rejected capability=arrange_side_by_side reason=requirements_failed")
+				}
+				print("[FinalSelection] backfill_winner=none reason=winner_suppressed_no_backfill_available")
+				print("[FinalSelection] no_floating_winner reason=no_action_requirements_passed")
+			}
+		}
+
+		let visibleCount = (floatingCandidate != nil ? 1 : 0) + panelCandidates.filter({ $0.candidateID != floatingCandidate?.candidateID }).count
+		let chosenId = floatingCandidate?.capabilityId ?? "none"
+
 		if let selected = floatingCandidate {
 			print("[CheapAlwaysOnPortfolio] floating_selected=\(selected.capabilityId) panel_count=\(panelCandidates.count) reason=floating_candidate_available")
 			print("[ActionPortfolio] selected"
@@ -145,12 +250,25 @@ enum CheapAlwaysOnPortfolio {
 				+ " capability=\(selected.capabilityId)"
 				+ " title=\"\(selected.title.prefix(60))\""
 				+ " score=\(String(format: "%.3f", selected.score))")
+			let winnerReason: String = {
+				if selected.lane == .friction { return "task_friction_preferred_over_comfort" }
+				return "highest_eligible_floating"
+			}()
+			print("[FinalSelection] winner=\(selected.capabilityId) reason=\(winnerReason)")
 			print("[ActionPortfolioResult] floating=\(selected.capabilityId) panel_count=\(panelCandidates.count) suppressed_count=\(suppressedCount)")
+			print("[UsefulActionInventory] chosen=\(selected.capabilityId) visible_count=\(visibleCount)")
+			decisions[selected.candidateID]?.logVisible(candidateID: selected.candidateID, lane: selected.lane.rawValue)
 		} else {
 			let reason = panelCandidates.isEmpty ? "no_candidates" : "no_floating_candidate"
 			print("[CheapAlwaysOnPortfolio] floating_selected=none panel_count=\(panelCandidates.count) reason=\(reason)")
 			print("[ActionPortfolio] selected=none reason=\(reason)")
+			print("[FinalSelection] winner=none reason=\(reason)")
 			print("[ActionPortfolioResult] floating=none panel_count=\(panelCandidates.count) suppressed_count=\(suppressedCount)")
+			print("[UsefulActionInventory] chosen=none visible_count=\(visibleCount)")
+		}
+		// Emit VisibleActionPath for each panel candidate
+		for pc in panelCandidates where pc.capabilityId != floatingCandidate?.capabilityId {
+			decisions[pc.candidateID]?.logVisible(candidateID: pc.candidateID, lane: pc.lane.rawValue)
 		}
 		return CheapAlwaysOnPortfolioResult(
 			floatingCandidate: floatingCandidate,
@@ -205,10 +323,18 @@ enum CheapAlwaysOnPortfolio {
 		input: CheapAlwaysOnPortfolioInput,
 		noveltyTracker: OpportunityNoveltyTracker
 	) -> PortfolioCandidate? {
-		guard input.mediaState.isMusicPlaying else { return nil }
-		guard input.mediaState.visualMediaKind == .youtubeVideo
-			|| input.mediaState.visualMediaKind == .movieOrShow
-			|| input.mediaState.visualMediaKind == .genericVideo else { return nil }
+		let isWatching = (input.semanticState?.domain == .watching)
+			|| (input.entityGrounding?.isEntertainment == true)
+			|| (input.compartment?.workflow == .watching)
+			|| (input.groundingResult?.domain.lowercased().contains("watching") == true)
+		
+		let eligible = ActionUsefulnessPolicy.evaluateMediaUsefulness(
+			capabilityID: "pause_media",
+			mediaState: input.mediaState,
+			isWatching: isWatching
+		)
+		guard eligible else { return nil }
+
 		let novelty = noveltyTracker.noveltyScore(capabilityId: "pause_media", entityKey: input.entityKey)
 		return PortfolioCandidate(
 			lane: .comfort,
@@ -248,14 +374,19 @@ enum CheapAlwaysOnPortfolio {
 			DurableMemory.shared.recordMusicSuppression(reason: suppression, context: memoryContext)
 			return nil
 		}
-		guard input.mediaState.visualMediaKind == .none else { return nil }
-		guard input.activityState?.isActive == true || input.compartment != nil || !input.memory.currentEntity.isEmpty || input.groundingResult != nil else { return nil }
 		
 		let isWatching = (input.semanticState?.domain == .watching)
 			|| (input.entityGrounding?.isEntertainment == true)
 			|| (input.compartment?.workflow == .watching)
 			|| (input.groundingResult?.domain.lowercased().contains("watching") == true)
-		if isWatching { return nil }
+		
+		let eligible = ActionUsefulnessPolicy.evaluateMediaUsefulness(
+			capabilityID: "play_focus_media",
+			mediaState: input.mediaState,
+			isWatching: isWatching
+		)
+		guard eligible else { return nil }
+		guard input.activityState?.isActive == true || input.compartment != nil || !input.memory.currentEntity.isEmpty || input.groundingResult != nil else { return nil }
 
 		let domainName: String = {
 			if let gr = input.groundingResult, gr.confidence >= 0.70 {
@@ -328,7 +459,63 @@ enum CheapAlwaysOnPortfolio {
 		input: CheapAlwaysOnPortfolioInput,
 		noveltyTracker: OpportunityNoveltyTracker
 	) -> [PortfolioCandidate] {
-		guard !input.frictionSignals.isEmpty else { return [] }
+		var out: [PortfolioCandidate] = []
+
+		// Phase 36.2 — Runtime workspace friction evaluator.
+		// Detects layout friction from runtime/workspace inventory (Firefox + Preview both
+		// present, same compartment, not arranged). Independent of active/browser transitions.
+		let inventory = WorkspaceRuntimeInventoryProvider.snapshot()
+		let runtimeDecision = RuntimeWorkspaceFrictionEvaluator.evaluate(
+			inventory: inventory,
+			workflow: input.workflow.rawValue,
+			compartmentLabel: input.compartment?.label,
+			compartmentTrust: input.compartment?.compartmentTrust ?? 0.0,
+			currentEntity: input.memory.currentEntity
+		)
+		if runtimeDecision.eligible, let pair = runtimeDecision.pair {
+			let contract = ActionTargetContract.forLayoutApps(
+				capabilityID: "arrange_side_by_side",
+				appNames: [pair.primaryApp, pair.secondaryApp],
+				evidenceType: pair.evidenceType,
+				confidence: pair.confidence,
+				fallbackAllowed: false
+			)
+			let usefulness: Double = {
+				switch runtimeDecision.expectedTimeSaved {
+				case "high": return 0.80
+				case "medium": return 0.65
+				default: return 0.50
+				}
+			}()
+			let title: String = {
+				let a = pair.primaryApp
+				let b = pair.secondaryApp
+				return "Put \(a) and \(b) side by side?"
+			}()
+			let novelty = noveltyTracker.noveltyScore(capabilityId: "arrange_side_by_side", entityKey: input.entityKey)
+			out.append(PortfolioCandidate(
+				lane: .friction,
+				title: title,
+				capabilityId: "arrange_side_by_side",
+				executionMode: .local_action,
+				confidence: pair.confidence,
+				usefulness: usefulness,
+				executability: 0.88,
+				novelty: novelty,
+				reason: runtimeDecision.reason,
+				requiredEvidence: "runtime_workspace_friction",
+				requiresConfirmation: true,
+				involvedApps: [pair.primaryApp, pair.secondaryApp],
+				frictionOpportunity: nil,
+				musicIntent: nil,
+				generatedAction: nil,
+				sourcePath: "runtime_workspace_friction",
+				targetContract: contract
+			))
+		}
+
+		// Legacy active/browser-transition-driven friction signals
+		guard !input.frictionSignals.isEmpty else { return out }
 		let workspacePatterns = WorkspacePatternTracker.shared.knownPatterns()
 		let currentApps = Set(([input.currentApp] + input.memory.recentEntities).filter { !$0.isEmpty })
 		let opportunities = FrictionOpportunityReasoner.reason(
@@ -338,7 +525,7 @@ enum CheapAlwaysOnPortfolio {
 		        currentEntity: input.memory.currentEntity,
 		        compartmentLabel: input.compartment?.label ?? ""
 		)
-		return opportunities.compactMap { opp in
+		out.append(contentsOf: opportunities.compactMap { opp in
 		        if opp.capabilityId == "collect_references" {
 		                let hasReferenceSignal = input.frictionSignals.contains { $0.type == .repeated_reference_lookup }
 		                if !hasReferenceSignal {
@@ -365,6 +552,14 @@ enum CheapAlwaysOnPortfolio {
 				musicIntent: nil,
 				generatedAction: nil
 			)
+		})
+
+		// Deduplicate capability ids — runtime friction may have already generated arrange_side_by_side.
+		var seen = Set<String>()
+		return out.filter { c in
+			if seen.contains(c.capabilityId) { return false }
+			seen.insert(c.capabilityId)
+			return true
 		}
 	}
 
@@ -590,19 +785,25 @@ enum SuggestionTickSummaryLog {
 		suppressionReason: String,
 		panelCount: Int = 0
 	) {
-		print(line(
-			modelReady: modelReady,
-			startupQuiet: startupQuiet,
-			workflow: workflow,
-			workflowActionable: workflowActionable,
-			determinerActionable: determinerActionable,
-			cheapPortfolioRan: cheapPortfolioRan,
-			heavyPlannerRan: heavyPlannerRan,
-			candidatesCount: candidatesCount,
-			selected: selected,
-			surfaceResult: surfaceResult,
-			suppressionReason: suppressionReason,
-			panelCount: panelCount
-		))
+		if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .dogfood) {
+			print("[UsefulActionInventory] workflow=\(workflow.rawValue) actionable=\(workflowActionable ? "yes" : "no") candidates=\(candidatesCount) selected=\(selected ?? "none") surface=\(surfaceResult) panel=\(panelCount)")
+		}
+
+		if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .trace) {
+			print(line(
+				modelReady: modelReady,
+				startupQuiet: startupQuiet,
+				workflow: workflow,
+				workflowActionable: workflowActionable,
+				determinerActionable: determinerActionable,
+				cheapPortfolioRan: cheapPortfolioRan,
+				heavyPlannerRan: heavyPlannerRan,
+				candidatesCount: candidatesCount,
+				selected: selected,
+				surfaceResult: surfaceResult,
+				suppressionReason: suppressionReason,
+				panelCount: panelCount
+			))
+		}
 	}
 }

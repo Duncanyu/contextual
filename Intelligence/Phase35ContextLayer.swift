@@ -296,7 +296,8 @@ enum ActionRegistry {
             .init(capabilityId: "synthesize_sources", requiredEvidence: .full_content, executionMode: .preview_only, scope: "full", fallback: "Need source text or extracted content."),
             .init(capabilityId: "create_questions_to_ask_landlord", requiredEvidence: .visible_content, executionMode: .preview_only, scope: "visible", fallback: "Need visible listing facts first."),
             .init(capabilityId: "draft_listing_ad", requiredEvidence: .visible_content, executionMode: .preview_only, scope: "visible", fallback: "Need visible listing facts first."),
-            .init(capabilityId: "create_listing_checklist", requiredEvidence: .visible_content, executionMode: .preview_only, scope: "visible", fallback: "Need visible listing facts first.")
+            .init(capabilityId: "create_listing_checklist", requiredEvidence: .visible_content, executionMode: .preview_only, scope: "visible", fallback: "Need visible listing facts first."),
+            .init(capabilityId: "explicit_visible_capture_summary", requiredEvidence: .visible_content, executionMode: .preview_only, scope: "visible", fallback: "Need visible content to summarize.")
         ]
         return Dictionary(uniqueKeysWithValues: all.map { ($0.capabilityId, $0) })
     }()
@@ -320,9 +321,62 @@ enum ActionRegistry {
         hasSelection: Bool = false
     ) -> ActionEligibility {
         let entry = entry(for: capabilityId)
-        let eligibleByLevel = currentEvidence.rank >= entry.requiredEvidence.rank
-        let extraGuard: Bool
-        let reason: String
+        var eligibleByLevel = currentEvidence.rank >= entry.requiredEvidence.rank
+        var extraGuard = true
+        var reason = eligibleByLevel ? "ok" : "insufficient_context"
+
+        // Let's identify the required evidence category for research action logs
+        let logReqEvidence: String = {
+            if entry.requiredEvidence == .selected_content { return "selected_text" }
+            if entry.requiredEvidence == .visible_content { return "visible_capture" }
+            if entry.requiredEvidence == .full_content { return "full_content" }
+            return "metadata_plus_user_acquisition"
+        }()
+
+        var allowedByGate = eligibleByLevel
+        var gateReason = eligibleByLevel ? "ok" : "insufficient_context"
+
+        // Rule C1: Do not allow fake "Synthesize findings" (synthesize_sources) from metadata-only.
+        if capabilityId == "synthesize_sources" && currentEvidence.rank < ProgressiveEvidenceLevel.visible_content.rank {
+            allowedByGate = false
+            gateReason = "content_unavailable_metadata_only"
+            eligibleByLevel = false
+            extraGuard = false
+            reason = "content_unavailable_metadata_only"
+            print("[GeneratedActionEvidenceGate] blocked capability=\(capabilityId) reason=content_unavailable_metadata_only")
+        }
+
+        // Rule C2: Explicit acquisition-based actions are allowed if user-initiated acquisition is available
+        let acquisitionCapabilities: Set<String> = [
+            "explicit_visible_capture_summary", "extract_action_items", "create_checklist"
+        ]
+        if acquisitionCapabilities.contains(capabilityId) && currentEvidence.rank < ProgressiveEvidenceLevel.visible_content.rank {
+            allowedByGate = true
+            gateReason = "user_initiated_acquisition"
+            eligibleByLevel = true
+            extraGuard = true
+            reason = "user_initiated_acquisition"
+            print("[GeneratedActionEvidenceGate] allowed capability=\(capabilityId) reason=user_initiated_acquisition")
+            print("[AcquisitionAction] capability=\(capabilityId) acquisition_type=visible_capture user_initiated=yes")
+            
+            let prompt: String = {
+                if capabilityId == "explicit_visible_capture_summary" { return "Read visible page and summarize" }
+                if capabilityId == "extract_action_items" { return "Extract action items from visible page" }
+                return "Capture visible text and make checklist"
+            }()
+            print("[AcquisitionSuggestion] capability=\(capabilityId) prompt=\"\(prompt)\" acquisition=visible_capture output_surface=floating_result_card")
+        }
+
+        // Print research action log if applicable
+        let isResearchAction = ["synthesize_sources", "compare_options", "summarize_visible_content", "extract_action_items", "create_checklist", "rewrite_text", "explain_context", "draft_reply", "explicit_visible_capture_summary"].contains(capabilityId)
+        if isResearchAction {
+            print("[ResearchActionGate] capability=\(capabilityId) allowed=\(allowedByGate ? "yes" : "no") evidence=\(logReqEvidence) reason=\(gateReason)")
+        }
+
+        if hasSelection && ["rewrite_text", "explain_context", "draft_reply"].contains(capabilityId) {
+            print("[AcquisitionAction] capability=\(capabilityId) acquisition_type=selected_text user_initiated=yes")
+        }
+
         if isTyping && capabilityId == "restore_workspace" {
             extraGuard = false
             reason = "user_typing"
@@ -335,8 +389,9 @@ enum ActionRegistry {
         } else if capabilityId == "rewrite_text" && !hasSelection {
             extraGuard = false
             reason = "missing_selection"
-        } else {
-            extraGuard = true
+        } else if reason == "insufficient_context" || reason == "content_unavailable_metadata_only" || reason == "user_initiated_acquisition" {
+            // keep it as is
+        } else if reason != "user_initiated_acquisition_available" {
             if eligibleByLevel,
                ["copy_current_url", "collect_references", "remember_workspace", "open_current_task_panel"].contains(capabilityId),
                currentEvidence.rank >= ProgressiveEvidenceLevel.metadata_rich.rank {
@@ -345,6 +400,7 @@ enum ActionRegistry {
                 reason = eligibleByLevel ? "ok" : "insufficient_context"
             }
         }
+
         let eligible = eligibleByLevel && extraGuard
         let next = eligible ? "none" : EvidenceQualityModel.nextContextNeeded(for: currentEvidence, required: entry.requiredEvidence)
         print("[ActionRegistry] capability=\(capabilityId) required_evidence=\(entry.requiredEvidence.rawValue) current_evidence=\(currentEvidence.rawValue) eligible=\(eligible ? "yes" : "no") reason=\(reason)")
@@ -404,6 +460,8 @@ struct DeterministicPanelCandidate: Sendable {
     let windowTitle: String?
     let entity: String?
     let compartment: TaskCompartment?
+    // Phase 36: proposal-time target contract — set for layout actions
+    let targetContract: ActionTargetContract?
 }
 
 struct DeterministicPanelPlannerResult: Sendable {
@@ -467,6 +525,21 @@ enum DeterministicPanelActionPlanner {
                 return
             }
 
+            // Phase 36: build target contract for layout actions at proposal time
+            let layoutCapabilities: Set<String> = ["arrange_side_by_side", "switch_to_paired_app", "split_research_setup"]
+            let proposalContract: ActionTargetContract? = layoutCapabilities.contains(capabilityId) && involvedApps.count >= 2
+                ? ActionTargetContract.forLayoutApps(
+                    capabilityID: capabilityId,
+                    appNames: involvedApps,
+                    evidenceType: .active_window_pair,
+                    confidence: confidence,
+                    fallbackAllowed: false
+                )
+                : nil
+            if let contract = proposalContract {
+                print("[ProposalTargetBinding] capability=\(capabilityId) contract_id=\(contract.contractID) primary=\(contract.targets.first.map { "\($0.role)/\($0.appName ?? "?")" } ?? "none") secondary=\(contract.targets.dropFirst().first.map { "\($0.role)/\($0.appName ?? "?")" } ?? "none") source=\(contract.evidenceType.rawValue) fallback_allowed=no expires_in_s=\(Int(contract.expirySeconds))")
+            }
+
             validCandidates.append(
                 DeterministicPanelCandidate(
                     candidate: PortfolioCandidate(
@@ -484,7 +557,9 @@ enum DeterministicPanelActionPlanner {
                         involvedApps: involvedApps,
                         frictionOpportunity: nil,
                         musicIntent: nil,
-                        generatedAction: nil
+                        generatedAction: nil,
+                        sourcePath: "deterministic_panel",
+                        targetContract: proposalContract
                     ),
                     involvedApps: involvedApps,
                     involvedURLs: payload.urls,
@@ -494,7 +569,8 @@ enum DeterministicPanelActionPlanner {
                     compartmentLabel: input.compartmentLabel,
                     windowTitle: input.windowTitle,
                     entity: input.windowTitle,
-                    compartment: input.compartment
+                    compartment: input.compartment,
+                    targetContract: proposalContract
                 )
             )
         }

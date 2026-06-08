@@ -369,8 +369,9 @@ public final class CognitiveCapabilityRegistry: Sendable {
             CognitiveCapability(id: "copy_current_url", label: "Copy current URL", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
             CognitiveCapability(id: "copy_all_related_links", label: "Copy all related links", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
             CognitiveCapability(id: "copy_result_to_clipboard", label: "Copy to clipboard", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
-            CognitiveCapability(id: "remember_workspace", label: "Remember workspace", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
-            CognitiveCapability(id: "open_current_task_panel", label: "Open current task panel", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action)
+            // Part I: clearer user-facing labels
+            CognitiveCapability(id: "remember_workspace", label: "Save current app/window setup", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
+            CognitiveCapability(id: "open_current_task_panel", label: "Open task panel", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action)
         ]
         
         for c in localList { caps[c.id] = c }
@@ -624,10 +625,13 @@ import ApplicationServices
 public enum CapabilityExecutionStatus: String, Codable, Sendable {
     case previewGenerated = "preview_generated"
     case success = "success"
+    // Part D: honest status — partial and alreadySatisfied must not collapse to success
+    case partial = "partial"
+    case alreadySatisfied = "already_satisfied"
     case unavailable = "unavailable"
     case cancelled = "cancelled"
     case blocked = "blocked"
-	case openedSearch = "opened_search"
+    case openedSearch = "opened_search"
 }
 
 @MainActor
@@ -656,6 +660,16 @@ public final class CapabilityExecutor {
 
     private init() {}
 
+    private func hasTestHook(for capabilityID: String) -> Bool {
+        switch capabilityID {
+        case "arrange_side_by_side": return Self.testHooks.arrangeSideBySide != nil
+        case "switch_to_paired_app": return Self.testHooks.switchToPairedApp != nil
+        case "restore_workspace": return Self.testHooks.restoreWorkspace != nil
+        case "split_research_setup": return Self.testHooks.splitResearchSetup != nil
+        default: return false
+        }
+    }
+
     public func isFocusShortcutAvailable() async -> Bool {
         if let override = Self.testHooks.focusShortcutAvailable {
             return override()
@@ -664,9 +678,26 @@ public final class CapabilityExecutor {
     }
     
     public func execute(capability: CognitiveCapability, context: [String: Any]) async -> CapabilityExecutionStatus {
-        print("[CapabilityExecution] started id=\(capability.id)")
+        let sourceSurface = (context["source_surface"] as? String) ?? "unknown"
+        let proposalID = (context["proposal_id"] as? String) ?? "unknown"
+        print("[CapabilityExecution] started id=\(capability.id) source_surface=\(sourceSurface)")
+        print("[CapabilityExecution] proposal_id=\(proposalID) id=\(capability.id)")
         print("[CapabilityExecution] mode=\(capability.executionMode.rawValue) id=\(capability.id)")
-        
+
+        // Phase 36.1 — Live path enforcement at execution time.
+        // Proposal-bound capabilities that arrive here without a target contract are blocked.
+        // No runtime-discovery fallback. No silent app substitution.
+        // (Test hooks bypass this gate so hook-based tests can still drive the capability code directly.)
+        if LivePathEnforcer.requiresContract(capability.id) && !hasTestHook(for: capability.id) {
+            let hasContract = context["targetContract"] is ActionTargetContract
+            print("[LivePathEnforcement] capability=\(capability.id) path=executor contract_required=yes contract_present=\(hasContract ? "yes" : "no") allowed=\(hasContract ? "yes" : "no") surface=executor reason=\(hasContract ? "contract_present" : "missing_target_contract")")
+            if !hasContract {
+                print("[ActionPreflight] capability=\(capability.id) contract_id=missing status=blocked reason=missing_target_contract")
+                print("[CapabilityExecution] completed status=unavailable id=\(capability.id) reason=missing_target_contract")
+                return .unavailable
+            }
+        }
+
         if capability.requiresConfirmation {
             if context["confirmation_satisfied"] as? Bool == true {
                 print("[CapabilityExecution] confirmation_satisfied=yes source=user_click")
@@ -804,6 +835,7 @@ public final class CapabilityExecutor {
     }
 
     private func rememberWorkspace(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[PanelActionDescription] capability=remember_workspace label=\"Save current app/window setup\" description=\"Remembers the current app/window/tab setup for future restore/switch/arrange suggestions.\"")
         print("[ActionExecution] capability=remember_workspace")
         let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
         let runtimeVisibleApps = Array(Set(runtime.visibleWindows.map(\.appName) + [runtime.frontmostAppName])).filter { !$0.isEmpty }
@@ -840,6 +872,7 @@ public final class CapabilityExecutor {
     }
 
     private func openCurrentTaskPanel() -> CapabilityExecutionStatus {
+        print("[PanelActionDescription] capability=open_current_task_panel label=\"Open task panel\" description=\"Opens the Contextual assistant panel focused on the current inferred task.\"")
         print("[ActionExecution] capability=open_current_task_panel")
         NotificationCenter.default.post(name: .contextualOpenTaskPanel, object: nil)
         print("[ActionVerification] capability=open_current_task_panel status=success")
@@ -1124,8 +1157,22 @@ public final class CapabilityExecutor {
             return outcome.status
         }
 
+        // Part B: click-time preflight — check contract before moving anything
+        let contract = context["targetContract"] as? ActionTargetContract
+        let preflight = ActionPreflight.check(contract: contract, capabilityID: "arrange_side_by_side")
+        guard preflight.status == .ok else {
+            let normalizedReason: String
+            if preflight.targetCheck == .alreadySatisfied {
+                normalizedReason = "already_satisfied"
+            } else {
+                normalizedReason = "target_contract_failed"
+            }
+            print("[ActionVerification] capability=arrange_side_by_side status=\(preflight.targetCheck == .alreadySatisfied ? "already_satisfied" : "failed") reason=\(normalizedReason)")
+            print("[CapabilityExecution] completed status=\(preflight.targetCheck == .alreadySatisfied ? CapabilityExecutionStatus.alreadySatisfied.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=arrange_side_by_side reason=\(normalizedReason)")
+            return preflight.targetCheck == .alreadySatisfied ? .alreadySatisfied : .unavailable
+        }
+
         // Phase 34: Intent-driven execution via LayoutEngine with runtime window discovery.
-        // No payload required — discovers actual windows on screen.
         let compartment = context["compartment"] as? TaskCompartment
         let result = IntentExecutor.execute(
             intent: "arrange_side_by_side",
@@ -1135,9 +1182,9 @@ public final class CapabilityExecutor {
             titleHintA: titles.first,
             titleHintB: titles.dropFirst().first
         )
-        let status: CapabilityExecutionStatus = (result == .success) ? .success : .unavailable
-        print("[CapabilityExecution] completed status=\(status.rawValue) id=arrange_side_by_side reason=intent_executor")
-        return status
+        // Part D: propagate partial status honestly
+        print("[CapabilityExecution] completed status=\(result.rawValue) id=arrange_side_by_side reason=intent_executor")
+        return result
     }
 
     private func switchToPairedApp(context: [String: Any]) -> CapabilityExecutionStatus {
@@ -1155,6 +1202,16 @@ public final class CapabilityExecutor {
             print("[ActionVerification] capability=switch_to_paired_app status=\(outcome.verificationStatus)")
             print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=switch_to_paired_app reason=\(outcome.reason)")
             return outcome.status
+        }
+
+        // Part B: click-time preflight
+        let contract = context["targetContract"] as? ActionTargetContract
+        let preflight = ActionPreflight.check(contract: contract, capabilityID: "switch_to_paired_app")
+        guard preflight.status == .ok else {
+            let normalizedReason = preflight.targetCheck == .alreadySatisfied ? "already_satisfied" : "target_contract_failed"
+            print("[ActionVerification] capability=switch_to_paired_app status=\(preflight.targetCheck == .alreadySatisfied ? "already_satisfied" : "failed") reason=\(normalizedReason)")
+            print("[CapabilityExecution] completed status=\(preflight.targetCheck == .alreadySatisfied ? CapabilityExecutionStatus.alreadySatisfied.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=switch_to_paired_app reason=\(normalizedReason)")
+            return preflight.targetCheck == .alreadySatisfied ? .alreadySatisfied : .unavailable
         }
 
         // Phase 34: Intent-driven execution with runtime discovery

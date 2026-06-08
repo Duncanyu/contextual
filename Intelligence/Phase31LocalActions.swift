@@ -50,6 +50,7 @@ enum Phase31LocalActions {
     /// Copies the selected browser URL to clipboard.
     /// "Copy this page link?" / "Copy housing page link?"
     static func copyCurrentURL(url: String?, title: String?) -> CapabilityExecutionStatus {
+        print("[PanelActionDescription] capability=copy_current_url label=\"Copy current page URL\" description=\"Copies the active browser page URL to clipboard.\"")
         print("[LocalActionExecution] started capability=copy_current_url")
         guard let url = url, !url.isEmpty else {
             print("[LocalActionExecution] completed capability=copy_current_url status=unavailable reason=no_url_available")
@@ -72,6 +73,7 @@ enum Phase31LocalActions {
     /// Copies all known related URLs from browser tabs / compartment.
     /// "Copy links for the housing pages?" / "Copy all research links?"
     static func copyAllRelatedLinks(urls: [String], titles: [String]) -> CapabilityExecutionStatus {
+        print("[PanelActionDescription] capability=copy_all_related_links label=\"Copy relevant open links\" description=\"Copies a small list of relevant open browser links.\"")
         print("[LocalActionExecution] started capability=copy_all_related_links count=\(urls.count)")
         guard !urls.isEmpty else {
             // Fallback: copy titles if we have them
@@ -148,9 +150,10 @@ extension CognitiveCapabilityRegistry {
             requiresConfirmation: true,
             executionMode: .local_action
         ),
+        // Part I: clearer user-facing labels and descriptions
         "copy_current_url": CognitiveCapability(
             id: "copy_current_url",
-            label: "Copy current URL",
+            label: "Copy current page URL",
             inputRequirements: [],
             outputType: "system_action",
             evidenceThreshold: "none",
@@ -160,7 +163,7 @@ extension CognitiveCapabilityRegistry {
         ),
         "copy_all_related_links": CognitiveCapability(
             id: "copy_all_related_links",
-            label: "Copy all related links",
+            label: "Copy relevant open links",
             inputRequirements: [],
             outputType: "system_action",
             evidenceThreshold: "none",
