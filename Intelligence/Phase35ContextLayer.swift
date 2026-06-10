@@ -138,21 +138,63 @@ enum BrowserContextStrategy {
         }
 
         let contentAvailable = hasAXText || hasOCR
-        let safeActions: [String]
+        var safeActions: [String]
         let blockedActions: [String]
+        // Phase 40 — When content is unavailable, add acquisition variants instead of only blocking.
+        // Acquisition actions (explicit_visible_capture_summary, extract_action_items,
+        // create_checklist) are gated by ActionRegistry with user_initiated_acquisition
+        // and trigger a visible-capture pass when clicked — so they do not need AX/OCR upfront.
         switch kind {
         case .google_docs:
-            safeActions = ["open_current_task_panel", "remember_workspace", "copy_current_url", "collect_references"]
-            blockedActions = contentAvailable ? [] : ["summarize_visible_content", "create_checklist", "generate_quiz", "summarize_full_document"]
-        case .gmail, .chatgpt, .article, .listing, .pdf_in_browser, .generic_page:
-            safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url"]
-            blockedActions = contentAvailable ? [] : ["summarize_visible_content", "extract_action_items", "create_checklist", "generate_quiz", "summarize_full_document"]
+            if contentAvailable {
+                safeActions = ["open_current_task_panel", "remember_workspace", "copy_current_url", "collect_references"]
+                blockedActions = []
+            } else {
+                safeActions = ["open_current_task_panel", "remember_workspace", "copy_current_url", "collect_references",
+                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
+            }
+        case .gmail:
+            if contentAvailable {
+                safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url"]
+                blockedActions = []
+            } else {
+                safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url",
+                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
+            }
+        case .chatgpt:
+            if contentAvailable {
+                safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url"]
+                blockedActions = []
+            } else {
+                safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url",
+                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
+            }
+        case .article, .listing, .pdf_in_browser, .generic_page:
+            if contentAvailable {
+                safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url"]
+                blockedActions = []
+            } else {
+                safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url",
+                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
+            }
         case .youtube:
             safeActions = ["reduce_interruptions", "pause_media"]
             blockedActions = ["summarize_visible_content", "create_checklist", "generate_quiz"]
         case .unknown:
             safeActions = ["remember_workspace"]
             blockedActions = ["summarize_visible_content", "create_checklist", "generate_quiz", "summarize_full_document"]
+        }
+
+        let acquisitionCount = safeActions.filter { $0 == "explicit_visible_capture_summary" || $0 == "extract_action_items" || $0 == "create_checklist" }.count
+        if acquisitionCount > 0 {
+            print("[BrowserContextStrategy] converted_blocked_to_acquisition count=\(acquisitionCount)")
+            for cap in ["explicit_visible_capture_summary", "extract_action_items", "create_checklist"] where safeActions.contains(cap) {
+                print("[AcquisitionSuggestion] capability=\(cap) reason=content_unavailable_but_visible_capture_available output_surface=floating_result_card")
+            }
         }
 
         let assessment = BrowserContextAssessment(
@@ -640,31 +682,62 @@ enum DeterministicPanelActionPlanner {
         }
 
         if safeActions.contains("arrange_side_by_side") {
-            let frictionUsefulness = activeSwitching ? 0.42 : 0.18
-            let frictionConfidence = activeSwitching ? 0.70 : 0.58
-            let arrangeTitle: String = {
-                let primaryRaw = input.browserAssessment?.kind == .google_docs
-                    ? "Google Doc"
-                    : (input.windowTitle ?? input.tabTitles.first ?? "this page")
-                let secondaryRaw: String = {
-                    if visibleApps.contains("Preview") { return "lease PDF" }
-                    if input.tabTitles.count >= 2 { return input.tabTitles[1] }
-                    return "the other window"
+            // Phase 41 — deterministic panel must respect the same ArrangeRequirement gate as
+            // floating path. Visibility-only (two apps open but no repeated user switching) is
+            // not sufficient. Only add to panel when activeSwitching is proven.
+            if activeSwitching {
+                print("[ArrangeRequirement] source=deterministic_panel target_validity=pass active_friction=pass layout_reliability=pass allowed=yes")
+                let arrangeTitle: String = {
+                    let primaryRaw = input.browserAssessment?.kind == .google_docs
+                        ? "Google Doc"
+                        : (input.windowTitle ?? input.tabTitles.first ?? "this page")
+                    let secondaryRaw: String = {
+                        if visibleApps.contains("Preview") { return "the PDF" }
+                        if input.tabTitles.count >= 2 { return input.tabTitles[1] }
+                        return "the other window"
+                    }()
+                    let primary = SuggestionTitleRewriter.semanticRoleLabel(for: primaryRaw)
+                    let secondary = SuggestionTitleRewriter.semanticRoleLabel(for: secondaryRaw)
+                    print("[SuggestionTitleContext] capability=arrange_side_by_side source=work_pair primary=\"\(primary)\" secondary=\"\(secondary)\"")
+                    return "Put \(primary) beside \(secondary)?"
                 }()
-                let primary = SuggestionTitleRewriter.semanticRoleLabel(for: primaryRaw)
-                let secondary = SuggestionTitleRewriter.semanticRoleLabel(for: secondaryRaw)
-                print("[SuggestionTitleContext] capability=arrange_side_by_side source=work_pair primary=\"\(primary)\" secondary=\"\(secondary)\"")
-                return "Put \(primary) beside \(secondary)?"
-            }()
+                makeCandidate(
+                    lane: .friction,
+                    capabilityId: "arrange_side_by_side",
+                    title: arrangeTitle,
+                    confidence: 0.70,
+                    usefulness: 0.42,
+                    executability: 0.88,
+                    reason: "layout_friction_proven",
+                    involvedApps: visibleApps,
+                    involvedURLs: urls,
+                    browserTabTitles: metadataTabs
+                )
+            } else {
+                print("[ArrangeRequirement] source=deterministic_panel target_validity=pass active_friction=fail allowed=no reason=no_active_user_friction")
+                print("[PanelAction] hidden capability=arrange_side_by_side reason=requirements_failed active_friction=no")
+                suppressedCount += 1
+            }
+        }
+
+        // Phase 40/43 — Research/cognitive acquisition candidates for document/browser contexts.
+        // Phase 43: Product-quality titles — raw capability IDs must never appear in UI.
+        let acquisitionCapabilities: [(String, String, Double)] = [
+            ("explicit_visible_capture_summary", "Summarize this page", 0.72),
+            ("extract_action_items", "Extract action items", 0.68),
+            ("create_checklist", "Make a checklist from this page", 0.65)
+        ]
+        for (capId, title, usefulness) in acquisitionCapabilities where safeActions.contains(capId) {
+            print("[ResearchLane] generated capability=\(capId) evidence=metadata_rich acquisition=visible_capture surface=panel_or_floating")
             makeCandidate(
-                lane: .friction,
-                capabilityId: "arrange_side_by_side",
-                title: arrangeTitle,
-                confidence: frictionConfidence,
-                usefulness: frictionUsefulness,
-                executability: 0.88,
-                reason: activeSwitching ? "layout_friction_proven" : "weak_friction_panel_safe",
-                involvedApps: visibleApps,
+                lane: .research,
+                capabilityId: capId,
+                title: title,
+                confidence: 0.68,
+                usefulness: usefulness,
+                executability: 0.80,
+                reason: "document_context_acquisition_available",
+                involvedApps: [],
                 involvedURLs: urls,
                 browserTabTitles: metadataTabs
             )

@@ -72,12 +72,13 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 
 	func execute(context: ContextModel, sourceSurface: String) async -> ActionResult {
 		guard let capability = CognitiveCapabilityRegistry.shared.get(seed.capabilityId) else {
+			print("[ExecutorAvailability] capability=\(seed.capabilityId) available=no executor=missing reason=not_in_registry")
 			return ActionResult(actionId: id, outputText: "Capability unavailable.")
 		}
 
 		let status = await CapabilityExecutor.shared.execute(
 			capability: capability,
-			context: capabilityContext(sourceSurface: sourceSurface)
+			context: capabilityContext(sourceSurface: sourceSurface, contextModel: context)
 		)
 		let outputText: String
 		switch status {
@@ -106,8 +107,8 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 	var targetContract: ActionTargetContract? { seed.targetContract }
 	var contractID: String? { seed.targetContract?.contractID }
 
-	private func capabilityContext(sourceSurface: String) -> [String: Any] {
-		[
+	private func capabilityContext(sourceSurface: String, contextModel: ContextModel? = nil) -> [String: Any] {
+		var ctx: [String: Any] = [
 			"apps": seed.involvedApps,
 			"tabURLs": seed.involvedURLs,
 			"urls": seed.involvedURLs,
@@ -125,5 +126,11 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 			"source_surface": sourceSurface,
 			"proposal_id": proposalID
 		]
+		// Phase 42 — Include selection availability from ContextModel so executors can decide strategy.
+		if let cm = contextModel {
+			ctx["selectedTextAvailable"] = cm.selectedTextAvailable
+			ctx["selectedTextLength"] = cm.selectedTextLength
+		}
+		return ctx
 	}
 }

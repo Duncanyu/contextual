@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastFinishedActionKey: String?
 	private var lastFinishedAt: Date?
 
+	/// Phase 43 — Per-capability timestamp for cognitive floating cooldown (90s window).
+	private var lastCognitiveFloatShownAt: [String: Date] = [:]
+
 	private var lastReasonedActions: [any ActionProtocol] = []
 	private var lastReasonedActionsAt: Date?
 	private var lastReasonedTriggerType: TriggerType?
@@ -834,6 +837,16 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			}
 		}
 
+		// Phase 41 — Suppress work-pair friction counting after monitor reconnects.
+		NotificationCenter.default.addObserver(
+			forName: NSApplication.didChangeScreenParametersNotification,
+			object: nil,
+			queue: .main
+		) { _ in
+			print("[MonitorRestore] screen_params_changed suppressing_friction=yes duration=10s")
+			WorkPairMemory.shared.suppressForSystemRestore(seconds: 10)
+		}
+
 		let manager = SourceManager { event in
 			self.processSourceEvent(event)
 		}
@@ -1392,6 +1405,11 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 		let proposalGateResult = ProposalGenerationGate.evaluate(context: context)
 		let deterministicPanel = buildDeterministicPanelPublication(context: context)
+
+		// Phase 43 — Proactively surface cognitive preparation action as a floating pill.
+		if let cogAct = deterministicPanel.cognitiveFloatingAction {
+			maybeShowCognitiveFloatingSuggestion(panelAction: cogAct, context: context)
+		}
 
 		// Compute features + type once for relevance scoring (no AI, metadata only).
 		let sourceText = ActionInputCapture.primaryText(for: context, minimumLength: 0, preference: .automatic) ?? ""
@@ -2280,6 +2298,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		print("[FloatingSuggestionDebug] chime_result allows_float=\(chimeFilteredActivation.timingDecision.allowsFloatingGenerated) proposal_survives=\(chimeFilteredProposal != nil)")
 
 		let deterministicPanel = buildDeterministicPanelPublication(context: context)
+
+		// Phase 43 — Proactively surface cognitive preparation action as a floating pill.
+		if let cogAct = deterministicPanel.cognitiveFloatingAction {
+			maybeShowCognitiveFloatingSuggestion(panelAction: cogAct, context: context)
+		}
+
 		let toolActions = registeredToolActions(for: packet, context: context)
 		publishDynamicOnlyReasonedActions(
 			panelActions: deterministicPanel.actions,
@@ -2656,6 +2680,10 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		let floatingCandidate: PortfolioCandidate?
 		let panelCount: Int
 		let suppressedCount: Int
+		/// Phase 43 — The panel action for the cognitive floating candidate (if any).
+		/// Set when a cognitive action is eligible to float and has a real executor.
+		/// The action is also included in `actions` so clicking the floating pill can resolve it.
+		let cognitiveFloatingAction: DeterministicCapabilityPanelAction?
 	}
 
 	private struct DynamicGeneratedEvidenceContext {
@@ -2744,6 +2772,14 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		var panelActions: [any ActionProtocol] = []
 		var floatingCandidates: [PortfolioCandidate] = []
 		var suppressedCount = plannerResult.suppressedCount
+		// Phase 43 — Track panel actions for cognitive floating candidates by capabilityId.
+		// These are used to build the floating pill's primaryActionId so click → execute works.
+		var cognitiveFloatingPanelActions: [String: DeterministicCapabilityPanelAction] = [:]
+		// Phase 43 — Cognitive capabilities that can float proactively.
+		let cognitiveCapabilityIDs: Set<String> = [
+			"explicit_visible_capture_summary", "extract_action_items", "create_checklist",
+			"summarize_visible_content", "rewrite_text", "improve_text", "draft_reply", "explain_context"
+		]
 
 		for candidate in plannerResult.validCandidates {
 			let recentFeedback: String? = {
@@ -2766,15 +2802,29 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				userAcceptedMusicBefore: DurableMemory.shared.hasAcceptedMusicPreference(),
 				isLayoutAlreadyGood: !hasActiveSwitching
 			)
+			let capId = candidate.candidate.capabilityId
+			let family = candidate.candidate.family.rawValue
+			print("[PanelBridge] input capability=\(capId) family=\(family) surface=\(evaluation.surface.rawValue) allowed=\(evaluation.surface != .suppressed ? "yes" : "no")")
 			switch evaluation.surface {
 			case .suppressed:
 				suppressedCount += 1
-				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=panel_only actual=suppressed reason=\(evaluation.reason)")
+				print("[PanelBridge] dropped capability=\(capId) reason=\(evaluation.reason)")
+				print("[SurfaceResult] capability=\(capId) requested=panel_only actual=suppressed reason=\(evaluation.reason)")
 			case .panelOnly:
+				// Phase 42 — Executor availability gate: never surface actions that will fail.
+				let registeredCapability = CognitiveCapabilityRegistry.shared.get(capId)
+				let executorAvailable = registeredCapability != nil && registeredCapability?.executionMode == .local_action
+				print("[ExecutorAvailability] capability=\(capId) available=\(executorAvailable ? "yes" : "no") executor=\(registeredCapability != nil ? "registered" : "missing") reason=\(executorAvailable ? "local_action_executor" : registeredCapability == nil ? "not_in_registry" : "preview_only_not_real")")
+				guard executorAvailable else {
+					suppressedCount += 1
+					print("[PanelAction] hidden capability=\(capId) reason=executor_unavailable")
+					print("[PanelBridge] dropped capability=\(capId) reason=executor_unavailable")
+					break
+				}
 				let seed = DeterministicCapabilityActionSeed(
 					candidateID: candidate.candidate.candidateID,
 					proposalID: "panel:\(candidate.candidate.candidateID)",
-					capabilityId: candidate.candidate.capabilityId,
+					capabilityId: capId,
 					title: candidate.candidate.title,
 					involvedApps: candidate.involvedApps,
 					involvedURLs: candidate.involvedURLs,
@@ -2789,24 +2839,283 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				)
 				let panelAction = DeterministicCapabilityPanelAction(seed: seed)
 				panelActions.append(panelAction)
+				print("[PanelBridge] kept capability=\(capId) reason=panel_eligible")
 				print("[PanelFallback] stored proposal_id=\(panelAction.proposalID) candidate_id=\(panelAction.candidateID) contract_id=\(panelAction.contractID ?? "missing")")
-				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=panel_only actual=panel_added reason=\(evaluation.reason)")
-				print("[PanelAction] added capability=\(candidate.candidate.capabilityId) reason=\(evaluation.reason)")
+				print("[SurfaceResult] capability=\(capId) requested=panel_only actual=panel_added reason=\(evaluation.reason)")
+				print("[PanelAction] added capability=\(capId) reason=\(evaluation.reason)")
 			case .floatingInterrupt:
 				floatingCandidates.append(candidate.candidate)
-				print("[SurfaceResult] capability=\(candidate.candidate.capabilityId) requested=floating actual=shown reason=\(evaluation.reason)")
+				// Phase 43 — Cognitive actions go to BOTH panel (for click resolution) and floating (for popup).
+				// Non-cognitive floating (e.g. arrange_side_by_side) does NOT go to panel from this path.
+				if cognitiveCapabilityIDs.contains(capId) {
+					let floatSeed = DeterministicCapabilityActionSeed(
+						candidateID: candidate.candidate.candidateID,
+						proposalID: "cognitive:\(candidate.candidate.candidateID)",
+						capabilityId: capId,
+						title: candidate.candidate.title,
+						involvedApps: candidate.involvedApps,
+						involvedURLs: candidate.involvedURLs,
+						browserTabTitles: candidate.browserTabTitles,
+						browserAppName: candidate.browserAppName,
+						workflow: candidate.workflow,
+						compartmentLabel: candidate.compartmentLabel,
+						windowTitle: candidate.windowTitle,
+						entity: candidate.entity,
+						compartment: candidate.compartment,
+						targetContract: nil  // cognitive actions have no layout contract
+					)
+					let cognitiveAction = DeterministicCapabilityPanelAction(seed: floatSeed)
+					panelActions.append(cognitiveAction)
+					cognitiveFloatingPanelActions[capId] = cognitiveAction
+					print("[PanelBridge] kept capability=\(capId) reason=cognitive_float_also_in_panel")
+					print("[SurfaceResult] capability=\(capId) requested=floating actual=shown_and_in_panel reason=\(evaluation.reason)")
+				} else {
+					print("[PanelBridge] dropped capability=\(capId) reason=routed_to_floating")
+					print("[SurfaceResult] capability=\(capId) requested=floating actual=shown reason=\(evaluation.reason)")
+				}
+			}
+		}
+
+		// Phase 40 — Add music candidate to the panel when not already playing.
+		// The planner does not generate music (it has no media state); we inject it here
+		// where MediaStateSource is already available, then let SuggestionSurfacePolicy
+		// decide the surface (panelOnly vs floatingInterrupt vs suppressed).
+		if !mediaState.isMusicPlaying && !isUserTyping {
+			let musicRecentFeedback: String? = {
+				if appState.wasSuggestionFeedbackLogged(id: "play_focus_media", event: "dismissed") { return "dismissed" }
+				if appState.wasSuggestionFeedbackLogged(id: "play_focus_media", event: "ignored") { return "ignored" }
+				if appState.wasSuggestionFeedbackLogged(id: "play_focus_media", event: "accepted") { return "accepted" }
+				return nil
+			}()
+			let musicMemCtx = DurableMemoryContext.build(
+				workflow: workflow,
+				compartment: nil,
+				app: activeAppName,
+				activity: "active",
+				browserType: browserContext?.appName
+			)
+			let musicSuppressed = DurableMemory.shared.shouldSuppressMusicSuggestion(
+				context: musicMemCtx,
+				isPlaying: false
+			) != nil
+			let musicEval = SuggestionSurfacePolicy.evaluate(
+				capabilityId: "play_focus_media",
+				context: context,
+				isMusicPlaying: false,
+				isMusicSuppressed: musicSuppressed,
+				isUserTyping: isUserTyping,
+				missing: missing,
+				recentFeedback: musicRecentFeedback,
+				frictionSignals: frictionSignals,
+				hasDurablePattern: hasDurablePattern,
+				involvedURLs: [],
+				userAcceptedMusicBefore: DurableMemory.shared.hasAcceptedMusicPreference(),
+				isLayoutAlreadyGood: !hasActiveSwitching
+			)
+			switch musicEval.surface {
+			case .suppressed:
+				suppressedCount += 1
+				print("[SurfaceResult] capability=play_focus_media requested=panel actual=suppressed reason=\(musicEval.reason)")
+			case .panelOnly:
+				let musicSeed = DeterministicCapabilityActionSeed(
+					candidateID: "play_focus_media|panel|music",
+					proposalID: "panel:play_focus_media:music",
+					capabilityId: "play_focus_media",
+					title: "Start your focus music?",
+					involvedApps: [],
+					involvedURLs: [],
+					browserTabTitles: [],
+					browserAppName: nil,
+					workflow: workflow,
+					compartmentLabel: nil,
+					windowTitle: context.activeWindowTitle,
+					entity: nil,
+					compartment: nil,
+					targetContract: nil
+				)
+				let musicAction = DeterministicCapabilityPanelAction(seed: musicSeed)
+				panelActions.append(musicAction)
+				print("[MusicSuggestion] generated capability=play_focus_media reason=stable_work_context")
+				print("[SurfaceResult] capability=play_focus_media requested=panel actual=panel_added reason=\(musicEval.reason)")
+				print("[PanelAction] added capability=play_focus_media family=media reason=\(musicEval.reason)")
+			case .floatingInterrupt:
+				let musicCandidate = PortfolioCandidate(
+					lane: .music,
+					title: "Start your focus music?",
+					capabilityId: "play_focus_media",
+					executionMode: .local_action,
+					confidence: 0.70,
+					usefulness: 0.52,
+					executability: 0.90,
+					novelty: 1.0,
+					reason: "music_idle_context_match",
+					requiredEvidence: "metadata_rich",
+					requiresConfirmation: false,
+					involvedApps: [],
+					frictionOpportunity: nil,
+					musicIntent: nil,
+					generatedAction: nil,
+					sourcePath: "deterministic_panel",
+					targetContract: nil
+				)
+				floatingCandidates.append(musicCandidate)
+				print("[MusicSuggestion] generated capability=play_focus_media reason=floating_interrupt")
+				print("[SurfaceResult] capability=play_focus_media requested=floating actual=shown reason=\(musicEval.reason)")
+			}
+		}
+
+		// Phase 41 — Selected text writing candidates
+		if context.selectedTextAvailable && context.selectedTextLength >= 5 {
+			let writingCaps: [(String, String)] = [
+				("rewrite_text", "Rewrite selected text"),
+				("explain_context", "Explain this"),
+				("draft_reply", "Draft a reply")
+			]
+			for (capId, title) in writingCaps {
+				let seed = DeterministicCapabilityActionSeed(
+					candidateID: "\(capId)|panel|selected_text",
+					proposalID: "panel:\(capId):selected_text",
+					capabilityId: capId,
+					title: title,
+					involvedApps: [],
+					involvedURLs: [],
+					browserTabTitles: [],
+					browserAppName: nil,
+					workflow: workflow,
+					compartmentLabel: nil,
+					windowTitle: context.activeWindowTitle,
+					entity: nil,
+					compartment: nil,
+					targetContract: nil
+				)
+				let panelAction = DeterministicCapabilityPanelAction(seed: seed)
+				panelActions.append(panelAction)
+				print("[SelectedTextLane] generated capability=\(capId) length=\(context.selectedTextLength)")
+				print("[PanelAction] added capability=\(capId) family=writing reason=selected_text")
+				print("[PanelBridge] kept capability=\(capId) reason=panel_eligible")
 			}
 		}
 
 		let mergedActions = dedupeActions(panelActions)
 		let floatingCandidate = floatingCandidates.sorted { $0.score > $1.score }.first
-		print("[ActionPortfolioResult] floating=\(floatingCandidate?.capabilityId ?? "none") panel_count=\(mergedActions.count) suppressed_count=\(suppressedCount)")
+
+		// Phase 43 — Find the panel action for the winning cognitive floating candidate.
+		let cognitiveFloatingAction: DeterministicCapabilityPanelAction? = {
+			guard let fc = floatingCandidate, cognitiveCapabilityIDs.contains(fc.capabilityId) else { return nil }
+			return cognitiveFloatingPanelActions[fc.capabilityId]
+		}()
+
+		// Phase 40 — Panel inventory log: per-family count for observability.
+		let familyBuckets: [(String, [String])] = [
+			("research", ["explicit_visible_capture_summary", "extract_action_items", "create_checklist", "summarize_visible_content"]),
+			("friction",  ["arrange_side_by_side", "split_research_setup", "switch_to_paired_app"]),
+			("media",     ["play_focus_media", "pause_media", "resume_focus_media"]),
+			("metadata",  ["copy_current_url", "collect_references", "remember_workspace", "open_current_task_panel"]),
+			("workspace", ["restore_workspace", "restore_research_tabs"]),
+		]
+		let panelCapabilityIDs: [String] = mergedActions.compactMap { ($0 as? DeterministicCapabilityPanelAction)?.capabilityId }
+		for (family, caps) in familyBuckets {
+			let count = panelCapabilityIDs.filter { caps.contains($0) }.count
+			if count > 0 {
+				print("[PanelInventory] family=\(family) count=\(count)")
+			}
+		}
+		print("[PanelInventory] shown_total=\(mergedActions.count) suppressed_total=\(suppressedCount)")
+		let panelCapabilityList = panelCapabilityIDs.joined(separator: ",")
+
+		// Phase 43 — Floating eligibility log reflects actual decision.
+		if let cogAct = cognitiveFloatingAction {
+			let capId = cogAct.capabilityId
+			print("[FloatingEligibility] capability=\(capId) allowed=yes reason=safe_cognitive_preparation_no_better_action surface=floating_card")
+			print("[SuggestionSurfaceContract] capability=\(capId) suggestion_surface=floating_card accept_behavior=run_and_show_floating_result")
+			print("[ActionPortfolioResult] floating=\(capId) panel_count=\(mergedActions.count)")
+		} else if let fc = floatingCandidate {
+			print("[FloatingEligibility] capability=\(fc.capabilityId) allowed=yes reason=highest_eligible_floating surface=floating_card")
+		} else {
+			// No cognitive float; log for any acquisition action in panel
+			let acquisitionInPanel = panelCapabilityIDs.first(where: { ["explicit_visible_capture_summary","extract_action_items","create_checklist"].contains($0) })
+			if let acqCap = acquisitionInPanel {
+				print("[FloatingEligibility] capability=\(acqCap) allowed=no reason=no_higher_priority_action_chose_panel surface=panel")
+				print("[SuggestionSurfaceContract] capability=\(acqCap) suggestion_surface=panel accept_behavior=run_and_show_floating_result")
+			}
+		}
+
+		print("[PanelModel] received actions=\(mergedActions.count) floating=\(cognitiveFloatingAction?.capabilityId ?? floatingCandidate?.capabilityId ?? "none") capabilities=[\(panelCapabilityList)]")
+		print("[PanelComposition] total=\(mergedActions.count) capabilities=[\(panelCapabilityList)]")
+		print("[PanelRender] action_count=\(mergedActions.count) capabilities=[\(panelCapabilityList)]")
+
 		return DeterministicPanelPublication(
 			actions: mergedActions,
 			floatingCandidate: floatingCandidate,
 			panelCount: mergedActions.count,
-			suppressedCount: suppressedCount
+			suppressedCount: suppressedCount,
+			cognitiveFloatingAction: cognitiveFloatingAction
 		)
+	}
+
+	// Phase 43 — Show a deterministic cognitive action as a floating pill.
+	// Bypasses TES (no text analysis needed for cognitive preparation).
+	// Day1 gate does not apply — these are safe, executor-backed deterministic actions.
+	@MainActor
+	private func maybeShowCognitiveFloatingSuggestion(
+		panelAction: DeterministicCapabilityPanelAction,
+		context: ContextModel
+	) {
+		let capId = panelAction.capabilityId
+
+		// Do not show while another action is executing.
+		guard !appState.isActionExecuting else { return }
+		// Do not show while assistant is paused.
+		guard !appState.isPaused else { return }
+
+		let cogKey = "cognitive_float|\(capId)|\(context.activeWindowTitle?.prefix(40) ?? "")"
+
+		if appState.isPanelVisible {
+			// Panel is open: highlight the cognitive action in the panel instead of floating.
+			print("[SuggestionWhilePanelOpen] capability=\(capId) behavior=highlight_panel_card reason=panel_open")
+			print("[PanelResultCard] shown capability=\(capId) output_chars=0")
+			// Phase 43: cognitive capability is in highUsefulnessPanelCapabilities, so
+			// updateHighUsefulnessPanelVisibility() will find and highlight it automatically.
+			appState.updateHighUsefulnessPanelVisibility()
+			return
+		}
+
+		// Do not show if a floating suggestion is already visible.
+		guard !appState.isFloatingSuggestionVisible else { return }
+
+		// Simple per-capability cooldown: do not re-show the same cognitive action within 90 seconds.
+		let now = Date()
+		if let lastAt = lastCognitiveFloatShownAt[capId], now.timeIntervalSince(lastAt) < 90 {
+			print("[CognitiveAutoRun] capability=\(capId) allowed=no reason=cooldown_active")
+			return
+		}
+
+		// Build the floating proposal. primaryActionId = panelAction.id so click → resolveStoredAction finds it.
+		let productTitle = SuggestionTitleRewriter.cognitiveProductTitle(for: capId) ?? panelAction.name
+		let proposal = ActionProposal(
+			title: productTitle,
+			sourceCaption: "Prepared for this page",
+			primaryActionId: panelAction.id,
+			secondaryActionIds: [],
+			confidence: 0.70,
+			reason: "cognitive_preparation_proactive"
+		)
+
+		let profile = ContentSimilarityProfile.make(from: cogKey)
+		let bind = ActiveFloatingLifecycleBinding(
+			exactKey: cogKey,
+			safeKey: "cognitive|\(capId)",
+			profile: profile,
+			primaryActionId: panelAction.id
+		)
+
+		print("[Day1Gate] target=deterministic_cognitive_floating allowed=yes reason=safe_executor_backed")
+		print("[ProposalRouting] deterministic_cognitive_exempt=yes")
+		print("[CognitiveAutoRun] capability=\(capId) allowed=yes reason=idle_reading acquisition=metadata")
+		print("[ResearchResultCard] shown capability=\(capId) trigger=suggestion_accept output_chars=0")
+
+		lastCognitiveFloatShownAt[capId] = now
+		appState.showFloatingSuggestion(proposal, lifecycle: bind)
 	}
 
 	private func dynamicGeneratedEvidenceContext(
@@ -2934,7 +3243,16 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 		appState.applyGeneratedProposalActivation(generatedProposalActivation, debugStatus: debugStatus)
 		let publishedActions = mergeActions(primary: panelActions, secondary: toolActions)
-		appState.availableActions = publishedActions
+		// Phase 42 — Defer panel availableActions update when panel is open to avoid AppKit layout recursion.
+		if appState.isPanelVisible {
+			print("[PanelLayout] deferred_layout=yes reason=avoid_layout_recursion")
+			DispatchQueue.main.async { [weak self] in
+				guard let self else { return }
+				self.appState.availableActions = publishedActions
+			}
+		} else {
+			appState.availableActions = publishedActions
+		}
 		appState.registeredToolActions = toolActions
 		// Phase 4S — replace stale weak proposal when stronger context arrives.
 		// Detected by comparing the previous proposal's title to the new one
@@ -2984,7 +3302,17 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		guard generation == contextPipelineGeneration else { return }
 
 		appState.applyGeneratedProposalActivation(generatedProposalActivation)
-		appState.availableActions = ordered
+		// Phase 43 (Part I) — Defer panel availableActions update when panel is open
+		// to avoid AppKit layout recursion (same fix as publishDynamicOnlyReasonedActions).
+		if appState.isPanelVisible {
+			print("[PanelLayout] recursion_warning_fixed=yes deferred_layout=yes reason=avoid_layout_recursion")
+			DispatchQueue.main.async { [weak self] in
+				guard let self else { return }
+				self.appState.availableActions = ordered
+			}
+		} else {
+			appState.availableActions = ordered
+		}
 		// Phase 4S — replacement signal (same rule as the dynamic-only path).
 		emitProposalReplacementLogIfStrongerContextArrived(
 			previous: appState.currentProposal,
@@ -4197,22 +4525,42 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[ActionExecution] Finished action \(actionId)")
 				
 				let cleanActionId = actionId.replacingOccurrences(of: "ambient_jarvis:", with: "")
-				let researchActions: Set<String> = [
-					"explicit_visible_capture_summary", "summarize_visible_content", "extract_action_items", "create_checklist",
-					"rewrite_text", "explain_context", "draft_reply", "diagnose_error"
+				let acquisitionActions: Set<String> = [
+					"explicit_visible_capture_summary", "extract_action_items", "create_checklist"
 				]
+				let writingActions: Set<String> = [
+					"summarize_visible_content", "rewrite_text", "improve_text", "explain_context", "draft_reply", "diagnose_error"
+				]
+				let researchActions = acquisitionActions.union(writingActions)
 				if researchActions.contains(cleanActionId) {
-					let outputText = result.outputText
+					let isRealSuccess = result.executionStatus == .success
+					let isClipboardAction = acquisitionActions.contains(cleanActionId) || writingActions.contains(cleanActionId)
+					// Phase 42 executors write result to clipboard — read it back as the canonical output.
+					let clipboardText = isClipboardAction && isRealSuccess
+						? (NSPasteboard.general.string(forType: .string) ?? "")
+						: result.outputText
+					let outputText = clipboardText.trimmingCharacters(in: .whitespacesAndNewlines)
 					let chars = outputText.count
-					appState.activeResearchResultCard = ResearchResultCardState(
-						capabilityID: cleanActionId,
-						title: "Research Result", // Generic title since suggestion isn't available here
-						text: outputText,
-						outputChars: chars
-					)
-					print("[ResearchResultCard] shown capability=\(cleanActionId) output_chars=\(chars) dismissible=yes open_panel_option=yes")
+					if isRealSuccess && chars > 0 {
+						appState.activeResearchResultCard = ResearchResultCardState(
+							capabilityID: cleanActionId,
+							title: acquisitionActions.contains(cleanActionId) ? "Page Summary" : "Result",
+							text: outputText,
+							outputChars: chars
+						)
+						print("[ResearchResultCard] shown capability=\(cleanActionId) output_chars=\(chars) dismissible=yes open_panel_option=yes")
+						print("[ActionResultUI] shown=yes type=floating_result_card capability=\(cleanActionId) chars=\(chars)")
+					} else {
+						let statusStr = result.executionStatus?.rawValue ?? "unknown"
+						print("[ResearchResultCard] suppressed capability=\(cleanActionId) reason=\(isRealSuccess ? "empty_output" : "execution_failed") status=\(statusStr)")
+						print("[ActionResultUI] shown=no type=error_card capability=\(cleanActionId) reason=\(statusStr)")
+					}
+				} else if result.executionStatus == .success {
+					print("[ActionResultUI] shown=yes type=toast capability=\(cleanActionId)")
+				} else if result.executionStatus == .unavailable {
+					print("[ActionResultUI] shown=no type=error_card capability=\(cleanActionId) reason=executor_unavailable")
 				}
-				
+
 				appState.finalizeActionFeedback(actionID: actionId, status: result.executionStatus)
 			case .timedOut:
 				print("[ActionExecution] Action timed out")
@@ -4655,7 +5003,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 					print("[Phase39SelfTest] FAIL: menuBarController is nil")
 				}
 				
-				let ok = phase36 && livePath && phase361 && runtimeFriction && phase362 && phase363 && phase365 && phase37 && phase38 && phase39
+				let phase40 = await Phase40SelfTest.run()
+				let phase41 = await Phase41SelfTest.run()
+				let phase42 = await Phase42SelfTest.run()
+				let phase43 = await Phase43SelfTest.run()
+
+				let ok = phase36 && livePath && phase361 && runtimeFriction && phase362 && phase363 && phase365 && phase37 && phase38 && phase39 && phase40 && phase41 && phase42 && phase43
 				print("[Phase36SelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}

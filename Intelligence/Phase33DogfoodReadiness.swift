@@ -579,13 +579,19 @@ enum SuggestionSurfacePolicy: Sendable {
             if capabilityId == "play_focus_media" {
                 print("[MusicSuggestion] suppressed reason=typing_active")
             }
+            // Phase 41: layout actions (arrange/split) are NOT panel-safe during typing
+            // because the user is actively engaged in text input.
+            // Research and writing acquisition actions ARE safe because a user
+            // selecting text + typing context is exactly when they want them.
             let panelSafeDuringTyping: Set<String> = [
-                // Friction actions
-                "arrange_side_by_side", "split_research_setup",
-                "switch_to_paired_app", "open_paired_app",
+                // Writing / acquisition actions
+                "explicit_visible_capture_summary", "extract_action_items", "create_checklist",
+                "rewrite_text", "improve_text", "draft_reply", "explain_context",
                 // Metadata-safe actions
                 "copy_current_url", "copy_all_related_links",
-                "collect_references", "remember_workspace", "open_current_task_panel"
+                "collect_references", "remember_workspace", "open_current_task_panel",
+                // Paired-app switch is OK (user may want to jump to a reference)
+                "switch_to_paired_app", "open_paired_app",
             ]
             if panelSafeDuringTyping.contains(capabilityId) {
                 return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "typing_active_panel_safe", expectedFriction: .medium)
@@ -610,9 +616,12 @@ enum SuggestionSurfacePolicy: Sendable {
                 print("[MusicSuggestion] suppressed reason=recently_accepted")
                 return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "recently_accepted", expectedFriction: .low)
             }
+            // Phase 40 — Music should remain visible in the panel even when task/layout actions
+            // are present. Suppressing it completely here caused music to vanish in nearly
+            // every real working context (browser + doc open = "not layout_already_good").
             if isUserActivelySwitching || !isLayoutAlreadyGood || hasDurablePattern {
-                print("[MusicSuggestion] suppressed reason=task_action_preferred")
-                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "task_action_preferred", expectedFriction: .low)
+                print("[MusicSuggestion] surface=panel reason=secondary_to_active_task")
+                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "secondary_to_active_task", expectedFriction: .low)
             }
             if isMusicSuppressed {
                 print("[MusicSuggestion] suppressed reason=context_mismatch")
@@ -655,37 +664,23 @@ enum SuggestionSurfacePolicy: Sendable {
             }
             
         case "copy_current_url":
-            // Can float only if user is clearly in a URL-sharing/citation/copying flow.
-            let activeApp = (context.activeAppName ?? "").lowercased()
-            let activeTitle = (context.activeWindowTitle ?? "").lowercased()
-            let isSharingFlow = activeApp.contains("slack") || activeApp.contains("messages") || 
-                                activeApp.contains("teams") || activeApp.contains("whatsapp") || 
-                                activeApp.contains("mail") || activeTitle.contains("compose") || 
-                                activeTitle.contains("draft") || activeTitle.contains("chat") || 
-                                activeTitle.contains("message") || activeTitle.contains("share")
-            
-            if isSharingFlow {
-                return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "sharing_flow_active", expectedFriction: .high)
-            } else {
-                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
-            }
-            
+            // Phase 43: Utility action — demoted below cognitive preparation.
+            print("[ActionClass] capability=\(capabilityId) class=utility default_surface=panel_only")
+            print("[UtilityDemotion] capability=copy_current_url surface=panel_only reason=low_value_utility")
+            print("[PrimaryActionPreference] preferred_family=cognitive_preparation over=utility reason=higher_user_value")
+            return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
+
         case "collect_references":
-            // Can float only if there are multiple relevant URLs and the user is clearly collecting sources/references.
-            let isCollecting = involvedURLs.count >= 2 && (context.lastSourceTrigger == .activeAppChanged || context.lastSourceTrigger == .windowTitleChanged || context.selectedTextLength > 0)
-            if isCollecting {
-                return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "collecting_sources_active", expectedFriction: .high)
-            } else {
-                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
-            }
-            
+            // Phase 43: Utility action — demoted to panel-only.
+            print("[ActionClass] capability=\(capabilityId) class=utility default_surface=panel_only")
+            print("[UtilityDemotion] capability=collect_references surface=panel_only reason=low_value_utility")
+            return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
+
         case "remember_workspace":
-            // Can float only after repeated successful manual workspace use or explicit workspace setup behavior.
-            if hasDurablePattern {
-                return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "workspace_setup_detected", expectedFriction: .medium)
-            } else {
-                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
-            }
+            // Phase 43: Utility action — demoted to panel-only.
+            print("[ActionClass] capability=\(capabilityId) class=utility default_surface=panel_only")
+            print("[UtilityDemotion] capability=remember_workspace surface=panel_only reason=low_value_utility")
+            return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
             
         case "open_current_task_panel":
             // Can float only as a rare fallback after stable context + idle + no higher-value action.
@@ -696,9 +691,29 @@ enum SuggestionSurfacePolicy: Sendable {
                 return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
             }
             
+        case "explicit_visible_capture_summary", "extract_action_items", "create_checklist",
+             "summarize_visible_content", "rewrite_text", "improve_text", "draft_reply", "explain_context":
+            // Phase 43 — Cognitive preparation actions are the primary product value.
+            // They should proactively float (not be buried in the panel) when safe conditions are met.
+            // Conditions: not typing, real local_action executor available.
+            print("[ActionClass] capability=\(capabilityId) class=cognitive_preparation default_surface=floating_card")
+            if isUserTyping {
+                print("[CognitiveActionPolicy] capability=\(capabilityId) proactive_allowed=no reason=user_typing")
+                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "typing_active_panel_safe", expectedFriction: .medium)
+            }
+            let hasRealExecutor = CognitiveCapabilityRegistry.shared.get(capabilityId)?.executionMode == .local_action
+            if !hasRealExecutor {
+                print("[CognitiveActionPolicy] capability=\(capabilityId) proactive_allowed=no reason=no_local_executor")
+                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "no_local_executor", expectedFriction: .low)
+            }
+            print("[CognitiveActionPolicy] capability=\(capabilityId) proactive_allowed=yes reason=safe_executor_backed")
+            // Safe cognitive action — eligible to float proactively.
+            return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "safe_cognitive_preparation_proactive", expectedFriction: .medium)
+
         default:
-            // Generic fallback for any other capability
-            return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "default_allow", expectedFriction: .medium)
+            // Generic fallback for any other capability — panel-safe by default.
+            // floatingInterrupt as default caused unknown capabilities to bypass the panel.
+            return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "default_panel_safe", expectedFriction: .low)
         }
     }
 }

@@ -147,14 +147,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 			print("[MenuBarIcon] state_check button_exists=yes image_exists=\(imageExists ? "yes" : "no") visible=\(visible ? "yes" : "no") template=\(template ? "yes" : "no") length=\(length) reason=\(reason)")
 		}
 		
-		let newImage = NSImage(
-			systemSymbolName: symbol,
-			accessibilityDescription: "Context Assistant"
-		)
+		let resolvedSymbol = symbol
+		var newImage = NSImage(systemSymbolName: resolvedSymbol, accessibilityDescription: "Context Assistant")
+		if newImage == nil {
+			// Fallback: "sparkles.circle.fill" may not exist on older macOS; use "sparkles" to preserve icon visibility.
+			newImage = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Context Assistant")
+			print("[MenuBarIcon] symbol_fallback requested=\(resolvedSymbol) used=sparkles reason=nil_image")
+		}
 		newImage?.isTemplate = true
 		button.image = newImage
 		statusItem.length = NSStatusItem.squareLength
 		lastAppliedSymbol = symbol
+		print("[MenuBarIcon] applied symbol=\(resolvedSymbol) highlighted=\(highlighted ? "yes" : "no")")
 		
 		let restorationReason: String
 		var isProblem = false

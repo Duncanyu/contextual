@@ -67,6 +67,10 @@
 		AA2300170000000000000100 /* ActionPortfolioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2300180000000000000100 /* ActionPortfolioEngine.swift */; };
 		AA23001B0000000000000100 /* LogVerbosity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23001C0000000000000100 /* LogVerbosity.swift */; };
 		AA3900020000000000000100 /* Phase39ProductResetSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3900010000000000000100 /* Phase39ProductResetSelfTest.swift */; };
+		AA4000020000000000000100 /* Phase40SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4000010000000000000100 /* Phase40SelfTest.swift */; };
+		AA4100020000000000000100 /* Phase41SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4100010000000000000100 /* Phase41SelfTest.swift */; };
+		AA4200020000000000000100 /* Phase42SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4200010000000000000100 /* Phase42SelfTest.swift */; };
+		AA4300020000000000000100 /* Phase43SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4300010000000000000100 /* Phase43SelfTest.swift */; };
 
 		AA2300190000000000000100 /* ProposalQualityFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23001A0000000000000100 /* ProposalQualityFilter.swift */; };
 		AA2600010000000000000100 /* SemanticGroundingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2600020000000000000100 /* SemanticGroundingEngine.swift */; };
@@ -564,6 +568,10 @@
 		AA2300180000000000000100 /* ActionPortfolioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionPortfolioEngine.swift; sourceTree = "<group>"; };
 		AA23001C0000000000000100 /* LogVerbosity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogVerbosity.swift; sourceTree = "<group>"; };
 		AA3900010000000000000100 /* Phase39ProductResetSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase39ProductResetSelfTest.swift; sourceTree = "<group>"; };
+		AA4000010000000000000100 /* Phase40SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase40SelfTest.swift; sourceTree = "<group>"; };
+		AA4100010000000000000100 /* Phase41SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase41SelfTest.swift; sourceTree = "<group>"; };
+		AA4200010000000000000100 /* Phase42SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase42SelfTest.swift; sourceTree = "<group>"; };
+		AA4300010000000000000100 /* Phase43SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase43SelfTest.swift; sourceTree = "<group>"; };
 
 		AA23001A0000000000000100 /* ProposalQualityFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalQualityFilter.swift; sourceTree = "<group>"; };
 		AA2633010000000000000100 /* CheapAlwaysOnPortfolio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheapAlwaysOnPortfolio.swift; sourceTree = "<group>"; };
@@ -1523,6 +1531,10 @@
 				AA000231000000000000002F /* OCRProcessor.swift */,
 				AA23001C0000000000000100 /* LogVerbosity.swift */,
 				AA3900010000000000000100 /* Phase39ProductResetSelfTest.swift */,
+				AA4000010000000000000100 /* Phase40SelfTest.swift */,
+				AA4100010000000000000100 /* Phase41SelfTest.swift */,
+				AA4200010000000000000100 /* Phase42SelfTest.swift */,
+				AA4300010000000000000100 /* Phase43SelfTest.swift */,
 			);
 			path = Intelligence;
 			sourceTree = "<group>";
@@ -1706,6 +1718,10 @@
 				AA00017F00000000000000AB /* RichAnalyzeScreenPromptBuilder.swift in Sources */,
 				AA23001B0000000000000100 /* LogVerbosity.swift in Sources */,
 				AA3900020000000000000100 /* Phase39ProductResetSelfTest.swift in Sources */,
+				AA4000020000000000000100 /* Phase40SelfTest.swift in Sources */,
+				AA4100020000000000000100 /* Phase41SelfTest.swift in Sources */,
+				AA4200020000000000000100 /* Phase42SelfTest.swift in Sources */,
+				AA4300020000000000000100 /* Phase43SelfTest.swift in Sources */,
 				AA0001B40000000000000D4 /* ScreenSituation.swift in Sources */,
 				AA00018000000000000000AD /* ContextConfidenceArbitrator.swift in Sources */,
 				AA00018100000000000000AF /* AdaptiveContextSampler.swift in Sources */,

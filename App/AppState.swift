@@ -715,7 +715,17 @@ final class AppState: ObservableObject {
 		"arrange_side_by_side",
 		"switch_to_paired_app",
 		"restore_workspace",
-		"split_research_setup"
+		"split_research_setup",
+		// Phase 43 — Cognitive preparation actions can be highlighted in panel
+		// when a floating suggestion would have been shown but the panel is open.
+		"explicit_visible_capture_summary",
+		"extract_action_items",
+		"create_checklist",
+		"summarize_visible_content",
+		"rewrite_text",
+		"improve_text",
+		"draft_reply",
+		"explain_context",
 	]
 
 	private var floatingAutoDismissWorkItem: DispatchWorkItem?
@@ -769,6 +779,9 @@ final class AppState: ObservableObject {
 			if let action = highlighted, nextHighlightedID != nil {
 				let capability = (action as? DeterministicCapabilityPanelAction)?.capabilityId ?? action.id
 				print("[PanelVisibility] capability=\(capability) visible=yes highlighted=yes reason=high_usefulness_panel_fallback")
+				print("[PanelAttention] indicator=on capability=\(capability) floating_gating=\(isFloatingSuggestionVisible ? "yes" : "no")")
+			} else {
+				print("[PanelAttention] indicator=off reason=\(highlighted == nil ? "no_high_usefulness_action" : "floating_visible")")
 			}
 		}
 		if isPanelVisible {

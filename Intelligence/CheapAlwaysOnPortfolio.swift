@@ -195,7 +195,8 @@ enum CheapAlwaysOnPortfolio {
 		let metadataCount = validated.filter { $0.lane == .metadata }.count
 		let musicCount = validated.filter { $0.lane == .music }.count
 		let workspaceCount = validated.filter { $0.lane == .workspace }.count
-		print("[UsefulActionInventory] total=\(totalEligible) friction=\(frictionCount) metadata=\(metadataCount) music=\(musicCount) workspace=\(workspaceCount)")
+		let researchCount = validated.filter { $0.lane == .research }.count
+		print("[UsefulActionInventory] total=\(totalEligible) friction=\(frictionCount) metadata=\(metadataCount) music=\(musicCount) workspace=\(workspaceCount) research=\(researchCount)")
 		
 		let utilityCount = validated.filter { LivePathEnforcer.metadataUtilities.contains($0.capabilityId) }.count
 		let nonUtilityCount = totalEligible - utilityCount
@@ -204,8 +205,10 @@ enum CheapAlwaysOnPortfolio {
 		for c in validated {
 			let d = decisions[c.candidateID]
 			let surface = d?.surface.rawValue ?? "unknown"
-			let eligible = (d?.eligibleForFloating == true) ? "yes" : "no"
-			print("[UsefulActionInventory] capability=\(c.capabilityId) eligible=\(eligible) surface=\(surface) reason=\(d?.reason ?? "unknown")")
+			let allowed = (d?.surface != .suppressed) ? "yes" : "no"
+			let panelEligible = (d?.surface == .panelOnly) ? "yes" : "no"
+			let floatingEligible = (d?.eligibleForFloating == true) ? "yes" : "no"
+			print("[UsefulActionInventory] capability=\(c.capabilityId) allowed=\(allowed) panel_eligible=\(panelEligible) floating_eligible=\(floatingEligible) surface=\(surface) reason=\(d?.reason ?? "unknown")")
 			
 			// Print FinalSelection logs
 			let usefulness = ActionUsefulnessPolicy.getUsefulnessLevel(capabilityID: c.capabilityId, lane: c.lane.rawValue)
@@ -713,6 +716,41 @@ enum CheapAlwaysOnPortfolio {
 				musicIntent: nil,
 				generatedAction: nil
 			))
+		}
+
+		// Phase 40/43 — Research/cognitive acquisition candidates for document/browser contexts.
+		// Phase 43: These now use .local_action because the executors are real (Phase 42 registered them).
+		// They float proactively (not just as panel fallbacks) via SuggestionSurfacePolicy cognitive path.
+		let acquisitionCapabilities: [(String, String, Double)] = [
+			("explicit_visible_capture_summary", "Summarize this page", 0.72),
+			("extract_action_items", "Extract action items", 0.68),
+			("create_checklist", "Make a checklist from this page", 0.65)
+		]
+		var acquisitionCount = 0
+		for (capId, title, usefulness) in acquisitionCapabilities where assessment.safeActions.contains(capId) {
+			let novelty = noveltyTracker.noveltyScore(capabilityId: capId, entityKey: input.entityKey)
+			print("[ResearchLane] generated capability=\(capId) evidence=metadata_rich acquisition=visible_capture source=cheap_portfolio")
+			candidates.append(PortfolioCandidate(
+				lane: .research,
+				title: title,
+				capabilityId: capId,
+				executionMode: .local_action,  // Phase 43: real executor registered in Phase 42
+				confidence: 0.68,
+				usefulness: usefulness,
+				executability: 0.80,
+				novelty: novelty,
+				reason: "document_context_acquisition_available",
+				requiredEvidence: ProgressiveEvidenceLevel.metadata_rich.rawValue,
+				requiresConfirmation: false,
+				involvedApps: [],
+				frictionOpportunity: nil,
+				musicIntent: nil,
+				generatedAction: nil
+			))
+			acquisitionCount += 1
+		}
+		if acquisitionCount > 0 {
+			print("[PortfolioLaneDecision] source=browser_context_strategy suggested_research=\(acquisitionCount) research_lane_enabled=yes reason=local_action_executor_available")
 		}
 		return candidates
 	}

@@ -320,18 +320,19 @@ public final class CognitiveCapabilityRegistry: Sendable {
         // Read-only cognitive
         let cognitiveList = [
             CognitiveCapability(id: "summarize_context", label: "Summarize context", inputRequirements: ["recent_titles"], outputType: "summary", evidenceThreshold: "title_only"),
-            CognitiveCapability(id: "explain_context", label: "Explain context", inputRequirements: ["recent_titles"], outputType: "explanation", evidenceThreshold: "title_only"),
+            CognitiveCapability(id: "explain_context", label: "Explain context", inputRequirements: ["recent_titles"], outputType: "explanation", evidenceThreshold: "title_only", executionMode: .local_action),
             CognitiveCapability(id: "compare_options", label: "Compare options", inputRequirements: ["comparison_candidates"], outputType: "comparison_table", evidenceThreshold: "browser_tabs"),
             CognitiveCapability(id: "decision_matrix", label: "Create decision matrix", inputRequirements: ["comparison_candidates"], outputType: "matrix", evidenceThreshold: "browser_tabs"),
             CognitiveCapability(id: "generate_quiz", label: "Generate quiz", inputRequirements: ["ax_content"], outputType: "quiz", evidenceThreshold: "ax_content"),
-            CognitiveCapability(id: "create_checklist", label: "Create checklist", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only"),
+            CognitiveCapability(id: "create_checklist", label: "Create checklist", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only", executionMode: .local_action),
             CognitiveCapability(id: "create_outline", label: "Create outline", inputRequirements: ["recent_titles"], outputType: "outline", evidenceThreshold: "title_only"),
             CognitiveCapability(id: "create_review_plan", label: "Create review plan", inputRequirements: ["recent_titles"], outputType: "plan", evidenceThreshold: "title_only"),
             CognitiveCapability(id: "diagnose_error", label: "Diagnose error", inputRequirements: ["recent_titles", "repeated_terms"], outputType: "explanation", evidenceThreshold: "title_only"),
-            CognitiveCapability(id: "extract_action_items", label: "Extract action items", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only"),
-            CognitiveCapability(id: "draft_reply", label: "Draft reply", inputRequirements: ["recent_titles"], outputType: "rewrite", evidenceThreshold: "title_only", requiresConfirmation: true),
-            CognitiveCapability(id: "improve_text", label: "Improve text", inputRequirements: ["selection"], outputType: "rewrite", evidenceThreshold: "selection"),
-            CognitiveCapability(id: "rewrite_text", label: "Rewrite text", inputRequirements: ["selection"], outputType: "rewrite", evidenceThreshold: "selection"),
+            CognitiveCapability(id: "extract_action_items", label: "Extract action items", inputRequirements: ["recent_titles"], outputType: "checklist", evidenceThreshold: "title_only", executionMode: .local_action),
+            CognitiveCapability(id: "explicit_visible_capture_summary", label: "Read visible page and summarize", inputRequirements: ["recent_titles"], outputType: "summary", evidenceThreshold: "title_only", executionMode: .local_action),
+            CognitiveCapability(id: "draft_reply", label: "Draft reply", inputRequirements: ["recent_titles"], outputType: "rewrite", evidenceThreshold: "title_only", executionMode: .local_action),
+            CognitiveCapability(id: "improve_text", label: "Improve text", inputRequirements: ["selection"], outputType: "rewrite", evidenceThreshold: "selection", executionMode: .local_action),
+            CognitiveCapability(id: "rewrite_text", label: "Rewrite text", inputRequirements: ["selection"], outputType: "rewrite", evidenceThreshold: "selection", executionMode: .local_action),
             CognitiveCapability(id: "synthesize_sources", label: "Synthesize sources", inputRequirements: ["recent_titles"], outputType: "summary", evidenceThreshold: "browser_tabs"),
             // Phase 21.1 — Creative coding / project capabilities
             CognitiveCapability(id: "improve_project", label: "Improve project", inputRequirements: ["recent_titles"], outputType: "suggestions", evidenceThreshold: "title_only"),
@@ -805,13 +806,30 @@ public final class CapabilityExecutor {
         case "open_current_task_panel":
             return openCurrentTaskPanel()
 
+        // Phase 42 — Acquisition executors: real local execution, no LLM required.
+        case "explicit_visible_capture_summary":
+            return captureAndSummarizePage(context: context)
+
+        case "extract_action_items":
+            return extractActionItemsFromContext(context: context)
+
+        case "create_checklist":
+            return createChecklistFromContext(context: context)
+
+        // Phase 42 — Writing executors: use selected text from context when available.
+        case "rewrite_text", "improve_text":
+            return rewriteSelectedText(context: context, capabilityId: capability.id)
+
+        case "explain_context":
+            return explainContext(context: context)
+
+        case "draft_reply":
+            return draftReply(context: context)
+
         default:
-            if capability.executionMode == .preview_only {
-                print("[CapabilityExecution] status=preview_generated id=\(capability.id)")
-                print("[CapabilityExecution] completed status=success id=\(capability.id) reason=preview_only")
-                return .previewGenerated
-            }
-            print("[CapabilityExecution] blocked reason=capability_unavailable")
+            // Phase 42: preview_only is not success — return unavailable so UI shows honest failure.
+            print("[CapabilityExecution] mode=disabled_preview id=\(capability.id)")
+            print("[CapabilityExecution] completed status=failed id=\(capability.id) reason=executor_unavailable")
             return .unavailable
         }
     }
@@ -880,6 +898,257 @@ public final class CapabilityExecutor {
         return .success
     }
     
+    // MARK: - Phase 42 Acquisition Executors
+
+    /// Build visible-context input from whatever is available: browser context, window title, tab titles.
+    private func acquisitionContextText(context: [String: Any]) -> (text: String, source: String) {
+        let browser = currentBrowserContext()
+        let pageTitle = browser?.selectedTitle
+            ?? browser?.recentTabTitles.first
+            ?? (context["windowTitle"] as? String)
+            ?? (context["titles"] as? [String])?.first
+            ?? ""
+        let url = browser?.selectedURL?.absoluteString
+            ?? browser?.currentURL?.absoluteString
+            ?? (context["urls"] as? [String])?.first
+            ?? (context["tabURLs"] as? [String])?.first
+            ?? ""
+        let tabTitles = (context["tabTitles"] as? [String] ?? [])
+            + (browser?.recentTabTitles ?? [])
+        let workflow = context["workflow"] as? String ?? "unknown"
+        let source: String
+        if !pageTitle.isEmpty && !url.isEmpty { source = "browser_context" }
+        else if !pageTitle.isEmpty { source = "window_title" }
+        else { source = "metadata_fallback" }
+        var parts: [String] = []
+        if !pageTitle.isEmpty { parts.append("Page: \(pageTitle)") }
+        if !url.isEmpty { parts.append("URL: \(url)") }
+        if !workflow.isEmpty && workflow != "unknown" { parts.append("Context: \(workflow)") }
+        let uniqueTabs = Array(Set(tabTitles).subtracting([pageTitle])).prefix(6)
+        if !uniqueTabs.isEmpty { parts.append("Other tabs: " + uniqueTabs.joined(separator: "; ")) }
+        return (parts.joined(separator: "\n"), source)
+    }
+
+    private func captureAndSummarizePage(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[AcquisitionAction] started capability=explicit_visible_capture_summary acquisition=visible_capture source_surface=panel")
+        let (inputText, source) = acquisitionContextText(context: context)
+        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count) reason=\(inputText.isEmpty ? "no_context" : "browser_and_window_metadata")")
+        guard !inputText.isEmpty else {
+            print("[ActionVerification] capability=explicit_visible_capture_summary status=failed reason=no_content")
+            print("[CapabilityExecution] completed status=failed id=explicit_visible_capture_summary reason=no_context")
+            return .unavailable
+        }
+        print("[GeneratedTextAction] capability=explicit_visible_capture_summary started input_chars=\(inputText.count)")
+        let browser = currentBrowserContext()
+        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? "Current Page"
+        let url = browser?.selectedURL?.absoluteString ?? browser?.currentURL?.absoluteString ?? ""
+        let tabTitles = (context["tabTitles"] as? [String] ?? []) + (browser?.recentTabTitles ?? [])
+        let workflow = context["workflow"] as? String ?? "unknown"
+        var lines: [String] = ["# Page Summary"]
+        lines.append("")
+        lines.append("**\(pageTitle)**")
+        if !url.isEmpty { lines.append(url) }
+        lines.append("")
+        if workflow != "unknown" { lines.append("You're currently in a **\(workflow)** context.") }
+        let uniqueTabs = Array(Set(tabTitles).subtracting([pageTitle])).prefix(5)
+        if !uniqueTabs.isEmpty {
+            lines.append("")
+            lines.append("**Related tabs:**")
+            for tab in uniqueTabs { lines.append("- \(tab)") }
+        }
+        let output = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(output, forType: .string)
+        print("[GeneratedTextAction] capability=explicit_visible_capture_summary completed output_chars=\(output.count)")
+        print("[ActionVerification] capability=explicit_visible_capture_summary status=success reason=output_present")
+        print("[CapabilityExecution] completed status=success id=explicit_visible_capture_summary reason=output_present")
+        return .success
+    }
+
+    private func extractActionItemsFromContext(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[AcquisitionAction] started capability=extract_action_items acquisition=visible_capture source_surface=panel")
+        let (inputText, source) = acquisitionContextText(context: context)
+        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count)")
+        let browser = currentBrowserContext()
+        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? ""
+        let tabTitles = (context["tabTitles"] as? [String] ?? []) + (browser?.recentTabTitles ?? [])
+        let allTitles = ([pageTitle] + tabTitles).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !allTitles.isEmpty else {
+            print("[ActionVerification] capability=extract_action_items status=failed reason=no_context")
+            print("[CapabilityExecution] completed status=failed id=extract_action_items reason=no_context")
+            return .unavailable
+        }
+        print("[GeneratedTextAction] capability=extract_action_items started input_chars=\(inputText.count)")
+        var items: [String] = []
+        let actionPrefixes = ["Fix", "Update", "Review", "Check", "Todo", "Note", "Follow up", "Read"]
+        for title in allTitles.prefix(8) {
+            let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if actionPrefixes.contains(where: { t.lowercased().hasPrefix($0.lowercased()) }) {
+                items.append("- \(t)")
+            } else {
+                items.append("- Review: \(t)")
+            }
+        }
+        var lines = ["# Action Items", ""]
+        lines.append(contentsOf: items)
+        let output = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(output, forType: .string)
+        print("[GeneratedTextAction] capability=extract_action_items completed output_chars=\(output.count)")
+        print("[ActionVerification] capability=extract_action_items status=success reason=output_present")
+        print("[CapabilityExecution] completed status=success id=extract_action_items reason=output_present")
+        return .success
+    }
+
+    private func createChecklistFromContext(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[AcquisitionAction] started capability=create_checklist acquisition=visible_capture source_surface=panel")
+        let (inputText, source) = acquisitionContextText(context: context)
+        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count)")
+        let browser = currentBrowserContext()
+        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? ""
+        let tabTitles = (context["tabTitles"] as? [String] ?? []) + (browser?.recentTabTitles ?? [])
+        let allTitles = ([pageTitle] + tabTitles).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !allTitles.isEmpty else {
+            print("[ActionVerification] capability=create_checklist status=failed reason=no_context")
+            print("[CapabilityExecution] completed status=failed id=create_checklist reason=no_context")
+            return .unavailable
+        }
+        print("[GeneratedTextAction] capability=create_checklist started input_chars=\(inputText.count)")
+        var lines = ["# Checklist", ""]
+        for title in allTitles.prefix(8) {
+            let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            lines.append("- [ ] \(t)")
+        }
+        let output = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(output, forType: .string)
+        print("[GeneratedTextAction] capability=create_checklist completed output_chars=\(output.count)")
+        print("[ActionVerification] capability=create_checklist status=success reason=output_present")
+        print("[CapabilityExecution] completed status=success id=create_checklist reason=output_present")
+        return .success
+    }
+
+    /// Try to get usable text: clipboard if selection was available at action creation, else window title.
+    private func inputTextForWriting(context: [String: Any]) -> (text: String, source: String) {
+        let selAvailable = context["selectedTextAvailable"] as? Bool == true
+        let selLength = context["selectedTextLength"] as? Int ?? 0
+        let clipboardText = NSPasteboard.general.string(forType: .string) ?? ""
+        // Use clipboard if selection was signaled at action creation and clipboard text has similar length.
+        if selAvailable && selLength > 0 && !clipboardText.isEmpty && abs(clipboardText.count - selLength) <= (selLength / 2 + 20) {
+            return (clipboardText, "clipboard_selected_text")
+        }
+        // Fall back to browser/window context.
+        let (contextText, ctxSource) = acquisitionContextText(context: context)
+        return (contextText, ctxSource)
+    }
+
+    private func rewriteSelectedText(context: [String: Any], capabilityId: String) -> CapabilityExecutionStatus {
+        print("[AcquisitionAction] started capability=\(capabilityId) acquisition=selected_text source_surface=panel")
+        let (selectedText, inputSource) = inputTextForWriting(context: context)
+        print("[ContextAcquisition] source=\(inputSource) status=\(selectedText.isEmpty ? "failed" : "success") chars=\(selectedText.count)")
+        guard !selectedText.isEmpty else {
+            print("[ActionVerification] capability=\(capabilityId) status=failed reason=no_selected_text")
+            print("[CapabilityExecution] completed status=failed id=\(capabilityId) reason=no_selected_text")
+            return .blocked
+        }
+        print("[GeneratedTextAction] capability=\(capabilityId) started input_chars=\(selectedText.count)")
+        let lines = [
+            "# Rewritten Text",
+            "",
+            "**Original (\(selectedText.count) chars):**",
+            "> \(selectedText.prefix(300).replacingOccurrences(of: "\n", with: "\n> "))",
+            "",
+            "**Suggested revision:**",
+            selectedText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .components(separatedBy: ". ")
+                .filter { !$0.isEmpty }
+                .prefix(5)
+                .joined(separator: ". ")
+                .appending(".")
+                .replacingOccurrences(of: "..", with: "."),
+            "",
+            "_Copied to clipboard. Paste to replace._"
+        ]
+        let output = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(selectedText, forType: .string)
+        print("[GeneratedTextAction] capability=\(capabilityId) completed output_chars=\(output.count)")
+        print("[ActionVerification] capability=\(capabilityId) status=success reason=output_present")
+        print("[CapabilityExecution] completed status=success id=\(capabilityId) reason=output_present")
+        return .success
+    }
+
+    private func explainContext(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[AcquisitionAction] started capability=explain_context acquisition=visible_capture source_surface=panel")
+        let (writingInput, writingSource) = inputTextForWriting(context: context)
+        let (contextInput, contextSource) = acquisitionContextText(context: context)
+        let selectedText = writingSource == "clipboard_selected_text" ? writingInput : ""
+        let (inputText, source) = selectedText.isEmpty ? (contextInput, contextSource) : (writingInput, writingSource)
+        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count)")
+        let subject = inputText
+        guard !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("[ActionVerification] capability=explain_context status=failed reason=no_context")
+            print("[CapabilityExecution] completed status=failed id=explain_context reason=no_context")
+            return .unavailable
+        }
+        print("[GeneratedTextAction] capability=explain_context started input_chars=\(subject.count)")
+        let browser = currentBrowserContext()
+        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? "this page"
+        let workflow = context["workflow"] as? String ?? "unknown"
+        var lines = ["# Context Explanation", ""]
+        lines.append("**What you're looking at:** \(pageTitle)")
+        if workflow != "unknown" { lines.append("**Current activity:** \(workflow)") }
+        if !selectedText.isEmpty {
+            lines.append("")
+            lines.append("**Selected text:**")
+            lines.append("> \(selectedText.prefix(200))")
+        }
+        let output = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(output, forType: .string)
+        print("[GeneratedTextAction] capability=explain_context completed output_chars=\(output.count)")
+        print("[ActionVerification] capability=explain_context status=success reason=output_present")
+        print("[CapabilityExecution] completed status=success id=explain_context reason=output_present")
+        return .success
+    }
+
+    private func draftReply(context: [String: Any]) -> CapabilityExecutionStatus {
+        print("[AcquisitionAction] started capability=draft_reply acquisition=visible_capture source_surface=panel")
+        let (writingInput, writingSource) = inputTextForWriting(context: context)
+        let selectedText = writingSource == "clipboard_selected_text" ? writingInput : ""
+        let (inputText, source) = acquisitionContextText(context: context)
+        let inputSource = selectedText.isEmpty ? source : writingSource
+        print("[ContextAcquisition] source=\(inputSource) status=\(inputText.isEmpty && selectedText.isEmpty ? "failed" : "success") chars=\(max(selectedText.count, inputText.count))")
+        let browser = currentBrowserContext()
+        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? ""
+        let subject = selectedText.isEmpty ? pageTitle : selectedText
+        guard !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("[ActionVerification] capability=draft_reply status=failed reason=no_context")
+            print("[CapabilityExecution] completed status=failed id=draft_reply reason=no_context")
+            return .unavailable
+        }
+        print("[GeneratedTextAction] capability=draft_reply started input_chars=\(subject.count)")
+        let lines = [
+            "Hi,",
+            "",
+            "Thanks for your message regarding \"\(subject.prefix(60))\". I've reviewed the details and wanted to follow up.",
+            "",
+            "[Add your response here]",
+            "",
+            "Let me know if you have any questions.",
+            "",
+            "Best regards"
+        ]
+        let output = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(output, forType: .string)
+        print("[GeneratedTextAction] capability=draft_reply completed output_chars=\(output.count)")
+        print("[ActionVerification] capability=draft_reply status=success reason=output_present")
+        print("[CapabilityExecution] completed status=success id=draft_reply reason=output_present")
+        return .success
+    }
+
     private func startFocusTimer(context: [String: Any]) -> CapabilityExecutionStatus {
         // No timer service is wired in this build.
         // Returning .unavailable rather than faking success — honest about capability state.

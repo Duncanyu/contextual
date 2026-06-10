@@ -581,7 +581,7 @@ enum LivePathEnforcementSelfTest {
         check("d_arrange_contract_synthesized", contractOk != nil)
         check("d_arrange_can_float", arrangeOk.eligibleForFloating)
 
-        // Test E: play_focus_media in weak context → suppressed weak_or_transient_context
+        // Test E: play_focus_media in weak context → panelOnly weak_or_transient_context (Phase 40: not suppressed)
         let weakCtx = LivePathEvaluationContext(
             sourcePath: "cheap_portfolio",
             contextStability: "weak",
@@ -601,7 +601,8 @@ enum LivePathEnforcementSelfTest {
             confidence: 0.9,
             evaluationContext: weakCtx
         )
-        check("e_music_weak_suppressed", musicWeak.surface == .suppressed)
+        // Phase 40: weak context keeps music in panel (not suppressed) so it remains accessible.
+        check("e_music_weak_suppressed", musicWeak.surface == .panelOnly)
         check("e_music_weak_reason", musicWeak.reason == "weak_or_transient_context")
 
         // Test F: play_focus_media in stable context with higher-priority task → suppressed task_action_preferred

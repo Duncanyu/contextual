@@ -116,7 +116,8 @@ final class ContextEventProducer {
             WorkPairMemory.shared.recordSwitch(
                 app: snapshot.activeApp,
                 title: snapshot.windowTitle,
-                pid: NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
+                pid: NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1,
+                source: "user_switch"
             )
         }
 

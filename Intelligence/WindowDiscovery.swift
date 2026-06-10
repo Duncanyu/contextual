@@ -146,14 +146,27 @@ final class WorkPairMemory: @unchecked Sendable {
     private let lock = NSLock()
     private var switches: [(app: String, title: String, pid: pid_t, at: Date)] = []
     private let maxHistory = 30
+    private var suppressUntil: Date = .distantPast
 
     private init() {}
 
-    func recordSwitch(app: String, title: String, pid: pid_t) {
+    /// Suppress friction counting for the given number of seconds, used after monitor reconnects.
+    func suppressForSystemRestore(seconds: TimeInterval = 10) {
         lock.lock()
-        switches.append((app: app, title: title, pid: pid, at: Date()))
-        if switches.count > maxHistory { switches.removeFirst() }
+        suppressUntil = Date().addingTimeInterval(seconds)
         lock.unlock()
+        print("[WorkPairMemory] suppressed reason=system_restore duration=\(Int(seconds))s")
+    }
+
+    func recordSwitch(app: String, title: String, pid: pid_t, source: String = "user_switch") {
+        lock.lock()
+        let suppressed = Date() < suppressUntil
+        if !suppressed {
+            switches.append((app: app, title: title, pid: pid, at: Date()))
+            if switches.count > maxHistory { switches.removeFirst() }
+        }
+        lock.unlock()
+        print("[WorkPairMemory] transition source=\(source) counted_for_friction=\(suppressed ? "no" : "yes")")
     }
 
     /// Returns the highest-confidence recent work pair (two different apps alternated).
@@ -193,6 +206,7 @@ final class WorkPairMemory: @unchecked Sendable {
     func reset() {
         lock.lock()
         switches.removeAll()
+        suppressUntil = .distantPast
         lock.unlock()
     }
 }

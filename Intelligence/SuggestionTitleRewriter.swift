@@ -49,8 +49,34 @@ enum SuggestionTitleRewriter {
         return semanticRoleLabel(for: title)
     }
 
+    // Phase 43 — Product-quality titles for cognitive capabilities.
+    // Raw capability IDs must never appear in the UI.
+    private static let cognitiveProductTitles: [String: String] = [
+        "explicit_visible_capture_summary": "Summarize this page",
+        "extract_action_items": "Extract action items",
+        "create_checklist": "Make a checklist from this page",
+        "summarize_visible_content": "Summarize visible content",
+        "rewrite_text": "Rewrite selected text",
+        "improve_text": "Improve selected text",
+        "explain_context": "Explain this",
+        "draft_reply": "Draft a reply",
+        "diagnose_error": "Diagnose this error",
+    ]
+
+    /// Phase 43 — Public accessor for the canonical product title of a cognitive capability.
+    /// Returns nil for non-cognitive capabilities.
+    static func cognitiveProductTitle(for capabilityId: String) -> String? {
+        return cognitiveProductTitles[capabilityId]
+    }
+
     /// Rewrite a friction action title to be human-readable.
     static func rewrite(title: String, capabilityId: String) -> String {
+        // Phase 43: Cognitive preparation actions get canonical product titles.
+        if let productTitle = cognitiveProductTitles[capabilityId] {
+            print("[ActionTitle] capability=\(capabilityId) title=\"\(productTitle)\" source=product_title_map")
+            return productTitle
+        }
+
         var cleaned = title
 
         if capabilityId == "arrange_side_by_side" || capabilityId == "split_research_setup" {

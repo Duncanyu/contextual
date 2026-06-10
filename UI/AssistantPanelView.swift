@@ -107,10 +107,101 @@ struct AssistantPanelView: View {
 
 	// MARK: - Actions
 
+	// Phase 43 (Part J) — Panel section families.
+	private static let cognitiveCapabilityIds: Set<String> = [
+		"explicit_visible_capture_summary", "extract_action_items", "create_checklist",
+		"summarize_visible_content", "rewrite_text", "improve_text", "draft_reply", "explain_context",
+		"diagnose_error"
+	]
+	private static let workspaceCapabilityIds: Set<String> = [
+		"restore_workspace", "restore_research_tabs"
+	]
+	private static let frictionCapabilityIds: Set<String> = [
+		"arrange_side_by_side", "split_research_setup", "switch_to_paired_app"
+	]
+	private static let utilityCapabilityIds: Set<String> = [
+		"copy_current_url", "collect_references", "remember_workspace", "open_current_task_panel"
+	]
+
+	private func capabilityId(for action: any ActionProtocol) -> String {
+		(action as? DeterministicCapabilityPanelAction)?.capabilityId ?? action.id
+	}
+
+	@ViewBuilder
+	private func panelActionRow(_ action: any ActionProtocol) -> some View {
+		let capId = capabilityId(for: action)
+		let isHighlighted = appState.highlightedPanelActionID == action.id
+		let isEnabled = !appState.isActionExecuting
+		VStack(alignment: .leading, spacing: 4) {
+			Button(action.name) {
+				appState.invokeAction(id: action.id)
+			}
+			.buttonStyle(.borderedProminent)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.disabled(appState.isActionExecuting)
+
+			if isHighlighted {
+				Text("Suggested now")
+					.font(.caption2.weight(.medium))
+					.foregroundStyle(.orange)
+			}
+		}
+		.padding(8)
+		.background(
+			RoundedRectangle(cornerRadius: 10, style: .continuous)
+				.fill(isHighlighted ? Color.orange.opacity(0.08) : Color.clear)
+		)
+		.overlay(
+			RoundedRectangle(cornerRadius: 10, style: .continuous)
+				.stroke(isHighlighted ? Color.orange.opacity(0.35) : Color.clear, lineWidth: 1)
+		)
+		.onAppear {
+			print("[PanelRenderRow] capability=\(capId) visible=yes enabled=\(isEnabled ? "yes" : "no") title=\"\(action.name.prefix(40))\" click_handler=yes proposal_id=\(action.id)")
+		}
+	}
+
+	@ViewBuilder
+	private func panelSectionBlock(title: String, actions: [any ActionProtocol], sectionKey: String) -> some View {
+		if !actions.isEmpty {
+			VStack(alignment: .leading, spacing: 4) {
+				Text(title)
+					.font(.caption2.weight(.semibold))
+					.foregroundStyle(.secondary)
+					.padding(.horizontal, 8)
+					.padding(.top, 4)
+					.onAppear {
+						print("[PanelSection] section=\(sectionKey) count=\(actions.count)")
+					}
+				ForEach(actions, id: \.id) { action in
+					panelActionRow(action)
+				}
+			}
+		}
+	}
+
 	private var availableActionsSection: some View {
 		let visibleGenerated = appState.activatedGeneratedProposals.filter { !dismissedGeneratedProposalIds.contains($0.id) }
 		let hasVisibleGenerated = !visibleGenerated.isEmpty
 		let hasStatic = !appState.availableActions.isEmpty
+
+		// Phase 43 (Part J) — Group actions into named sections.
+		let allActions = appState.availableActions
+		let suggestedActions = allActions.filter { appState.highlightedPanelActionID == $0.id }
+		let cognitiveActions = allActions.filter {
+			let cap = capabilityId(for: $0)
+			return Self.cognitiveCapabilityIds.contains(cap) && appState.highlightedPanelActionID != $0.id
+		}
+		let frictionActions = allActions.filter { Self.frictionCapabilityIds.contains(capabilityId(for: $0)) }
+		let workspaceActions = allActions.filter { Self.workspaceCapabilityIds.contains(capabilityId(for: $0)) }
+		let utilityActions = allActions.filter { Self.utilityCapabilityIds.contains(capabilityId(for: $0)) }
+		let otherActions = allActions.filter { action in
+			let cap = capabilityId(for: action)
+			return !Self.cognitiveCapabilityIds.contains(cap)
+				&& !Self.workspaceCapabilityIds.contains(cap)
+				&& !Self.frictionCapabilityIds.contains(cap)
+				&& !Self.utilityCapabilityIds.contains(cap)
+				&& appState.highlightedPanelActionID != action.id
+		}
 
 		return VStack(alignment: .leading, spacing: 10) {
 			SectionHeader(title: "Contextual Assistance")
@@ -133,31 +224,39 @@ struct AssistantPanelView: View {
 
 				if hasStatic {
 					VStack(alignment: .leading, spacing: 8) {
-						ForEach(appState.availableActions, id: \.id) { action in
-							VStack(alignment: .leading, spacing: 4) {
-								Button(action.name) {
-									appState.invokeAction(id: action.id)
-								}
-								.buttonStyle(.borderedProminent)
-								.frame(maxWidth: .infinity, alignment: .leading)
-								.disabled(appState.isActionExecuting)
+						// Suggested now — highlighted cognitive actions at top
+						panelSectionBlock(title: "Suggested now", actions: suggestedActions, sectionKey: "suggested_now")
 
-								if appState.highlightedPanelActionID == action.id {
-									Text("Suggested")
-										.font(.caption2.weight(.medium))
-										.foregroundStyle(.orange)
-								}
+						// Research / Reading — summarize, checklist, extract
+						panelSectionBlock(title: "Research / Reading", actions: cognitiveActions.filter {
+							let c = capabilityId(for: $0)
+							return ["explicit_visible_capture_summary", "extract_action_items", "create_checklist", "summarize_visible_content", "explain_context", "diagnose_error"].contains(c)
+						}, sectionKey: "research_reading")
+
+						// Writing — rewrite, improve, draft
+						panelSectionBlock(title: "Writing", actions: cognitiveActions.filter {
+							let c = capabilityId(for: $0)
+							return ["rewrite_text", "improve_text", "draft_reply"].contains(c)
+						}, sectionKey: "writing")
+
+						// Communication — friction: switch to paired app
+						panelSectionBlock(title: "Communication", actions: frictionActions, sectionKey: "communication")
+
+						// Workspace — restore
+						panelSectionBlock(title: "Workspace", actions: workspaceActions, sectionKey: "workspace")
+
+						// Other (layout etc.)
+						if !otherActions.isEmpty {
+							ForEach(otherActions, id: \.id) { action in
+								panelActionRow(action)
 							}
-							.padding(8)
-							.background(
-								RoundedRectangle(cornerRadius: 10, style: .continuous)
-									.fill(appState.highlightedPanelActionID == action.id ? Color.orange.opacity(0.08) : Color.clear)
-							)
-							.overlay(
-								RoundedRectangle(cornerRadius: 10, style: .continuous)
-									.stroke(appState.highlightedPanelActionID == action.id ? Color.orange.opacity(0.35) : Color.clear, lineWidth: 1)
-							)
 						}
+
+						// Utilities — copy URL, collect references, remember workspace (at bottom)
+						panelSectionBlock(title: "Utilities", actions: utilityActions, sectionKey: "utilities")
+					}
+					.onAppear {
+						print("[PanelRenderVerification] rendered=\(allActions.count) visible=\(allActions.count) enabled=\(appState.isActionExecuting ? 0 : allActions.count) clickable=\(appState.isActionExecuting ? 0 : allActions.count)")
 					}
 				}
 
