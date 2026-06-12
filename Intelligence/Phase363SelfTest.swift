@@ -335,7 +335,9 @@ enum Phase365SelfTest {
 		missingState.invokeAction(id: missingContractAction.id)
 		missingState.finalizeActionFeedback(actionID: missingContractAction.id, status: .unavailable, reason: "missing_contract")
 		check("missing_contract_never_records_accept", !missingState.wasSuggestionFeedbackLogged(id: missingContractAction.proposalID, event: "accepted"))
-		check("missing_contract_records_failed", missingState.wasSuggestionFeedbackLogged(id: missingContractAction.proposalID, event: "failed"))
+		// Phase 51 — failure events carry visibility: a missing-contract click with no
+		// rendered card records "failed_silent" (it must never record "accepted").
+		check("missing_contract_records_failed", missingState.wasSuggestionFeedbackLogged(id: missingContractAction.proposalID, event: "failed_silent"))
 
 		let highlightState = AppState()
 		highlightState.isPanelVisible = true

@@ -108,9 +108,12 @@ enum AmbientVisibilityRegressionSelfTest {
 			primaryActionId: dummyProposal.primaryActionId
 		)
 		// This is the line that was previously unreachable because TES blocked first.
-		appState.showFloatingSuggestion(dummyProposal, lifecycle: bind)
+		let unifiedDummy = UnifiedSuggestionAdapters.from(liquidProposal: dummyProposal, isFloatingEligible: true)
+		appState.showUnifiedFloatingSuggestion(unifiedDummy, lifecycle: bind)
 		check("ambient_context_suggestion_bypasses_tes_and_renders",
 			  appState.isFloatingSuggestionVisible)
+		check("ambient_context_suggestion_uses_unified_surface",
+			  appState.unifiedSurfaceDecision?.floating?.id == dummyProposal.primaryActionId)
 
 		if appState.isFloatingSuggestionVisible {
 			print("[AmbientFloatingSuggestion] tes_bypassed reason=context_grounded_no_text_input_needed")
@@ -119,7 +122,7 @@ enum AmbientVisibilityRegressionSelfTest {
 
 		// 1c. Detached before dwell threshold → not_visible, no ignored/auto-dismissed feedback.
 		let appStateDetached = AppState()
-		appStateDetached.showFloatingSuggestion(dummyProposal, lifecycle: bind)
+		appStateDetached.showUnifiedFloatingSuggestion(unifiedDummy, lifecycle: bind)
 		appStateDetached.dismissFloatingSuggestion(reason: .auto)
 		check("detached_before_dwell_not_visible",
 			  appStateDetached.wasSuggestionFeedbackLogged(id: dummyProposal.primaryActionId, event: "not_visible"))
@@ -130,7 +133,7 @@ enum AmbientVisibilityRegressionSelfTest {
 
 		// 1d. Visibility proof passes after dwell → shown, later auto-dismiss is valid feedback.
 		let appStateVisible = AppState()
-		appStateVisible.showFloatingSuggestion(dummyProposal, lifecycle: bind)
+		appStateVisible.showUnifiedFloatingSuggestion(unifiedDummy, lifecycle: bind)
 		appStateVisible.reportFloatingVisibilityProof(
 			attached: true,
 			onScreen: true,
@@ -243,7 +246,8 @@ enum AmbientVisibilityRegressionSelfTest {
 			confidence: 0.80,
 			reason: "ambient_context_only"
 		)
-		appState2.showFloatingSuggestion(ambientProposal2, lifecycle: bind2)
+		let unifiedAmbient2 = UnifiedSuggestionAdapters.from(liquidProposal: ambientProposal2, isFloatingEligible: true)
+		appState2.showUnifiedFloatingSuggestion(unifiedAmbient2, lifecycle: bind2)
 		let storedVisible = appState2.activatedGeneratedProposals.count
 		let floatingVisible = appState2.isFloatingSuggestionVisible
 		check("ambient_floating_visible", floatingVisible)

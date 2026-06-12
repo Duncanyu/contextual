@@ -368,3 +368,21 @@ Suppress instead of falling back when the planner returns no usable candidates. 
 ## Phase 25 — Environment Actions
 
 Add an environment action route after generated actions so Jarvis can choose cognitive output, local/preview environment actions, hybrid actions, or silence. Environment actions cover focus media, Reduce Interruptions previews, workspace app-set memory, and passive-watching suppression with explicit logs and honest unavailable status for unwired system controls.
+
+## Phase 54 — Live Liquid Surface + Output Quality Proof
+
+Bridge typed liquid workflow actions into the proactive surface, with lease/document ranking ahead of browser research in Google Docs occupancy/lease contexts. Content-heavy actions must either produce grounded output with source labels and quoted lines or show an action-specific capture card. Add reactivity/surface decision logs and dogfood tests that validate clicked-action output quality, not just routing.
+
+## Phase 55 — Liquid Router Live Source of Truth
+
+Make deterministic rental/lease tab-cluster detection run before semantic fallback, and let `LiquidActionRouter` own live action selection when workflow-specific actions exist. Generic capture/setup actions are demoted to secondary capture/setup paths, lease actions reserve panel slots in occupancy-agreement contexts, and floating suggestions only count as shown/reactive after visibility proof succeeds.
+
+## Phase 56 — Compartment-Bound Liquid Actions + User-Readable Results
+
+Gate liquid actions by the current focused compartment before they can become live winners. Background tabs can support explicit cross-tab actions, but document/form/code actions require current or related focus, with stale/background mismatch logs. Liquid result cards now use human titles, sanitized copy, human source footers, and readability/importance gates before rendering.
+
+## Phase 62 — Composable Action Runtime
+
+Complete the first composable action runtime: register domain-neutral primitive tools with schemas/evidence, build `ComposedActionPlan` chains per content type, execute primitive steps sequentially, keep listing comparison honest through capture/extract/normalize/compare/question steps, and prevent background listing tabs from classifying the current browser strategy. Phase 62 preserves legacy mega-actions as wrappers while making primitive plans the primary product direction.
+
+Add the real composed click path: preserve composed plan identity through the panel/floating UI bridge, dispatch `composed_plan:*` clicks directly to `ComposedPlanExecutor`, render composed result/missing-context cards, and route composed follow-up buttons without falling back to legacy capability wrappers.

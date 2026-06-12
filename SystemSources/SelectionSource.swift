@@ -49,9 +49,11 @@ final class SelectionSource: SystemSource {
 
 		guard let app = NSWorkspace.shared.frontmostApplication else { return }
 		let pid = app.processIdentifier
+		let appName = app.localizedName ?? "unknown"
 		let bundleId = app.bundleIdentifier ?? "unknown"
 
 		let selectedText = fetchSelectedText(forPid: pid, bundleId: bundleId)
+		ContentTrustStore.shared.recordSelection(text: selectedText, appName: appName, bundleID: bundleId)
 		let fingerprint = fingerprintForText(selectedText)
 
 		guard fingerprint != lastFingerprint else { return }
@@ -293,4 +295,3 @@ final class SelectionSource: SystemSource {
 		return digest.map { String(format: "%02x", $0) }.joined()
 	}
 }
-

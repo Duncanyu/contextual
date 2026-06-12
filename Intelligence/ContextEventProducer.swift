@@ -729,7 +729,7 @@ final class ContextEventProducer {
 							)
 							if let cheapSuggestion = cheapFallback.suggestion {
 								suggestion = cheapSuggestion
-								print("[JarvisPipeline] decision=shown reason=cheap_always_on")
+								print("[JarvisPipeline] decision=pending_visibility_proof reason=cheap_always_on")
 							}
 						}
 					if focusShift && suggestion != nil {
@@ -1090,7 +1090,7 @@ final class ContextEventProducer {
 						)
 						if let cheapSuggestion = cheapFallback.suggestion {
 							suggestion = cheapSuggestion
-							print("[JarvisPipeline] decision=shown reason=cheap_always_on")
+							print("[JarvisPipeline] decision=pending_visibility_proof reason=cheap_always_on")
 						}
 					}
 					self.onAmbientJarvisSuggestionGenerated?(suggestion)
@@ -1380,6 +1380,70 @@ final class ContextEventProducer {
 			selectedTabTitle: selectedTitle
 		)
 		let entityKey = groundingURL?.absoluteString ?? memory.currentEntity
+		let liquidSignals = WorkflowSignals(
+			activeApp: currentAppName,
+			windowTitle: selectedTitle ?? self.lastObservedWindowTitle ?? "",
+			urlHost: groundingURL?.host ?? "",
+			urlPath: groundingURL?.path ?? "",
+			tabTitles: tabTitles,
+			selectedTextLength: 0,
+			contentAvailable: evidenceProfile.contentAvailable,
+			workflow: workflow.workflowType.rawValue,
+			visibleAppNames: observedApps
+		)
+		// Phase 59 — feedback learning: recently auto-dismissed/ignored floating
+		// actions get penalized; recently clicked actions get a similar-context
+		// boost. The feedback store finally feeds back into selection.
+		let floatingPenalized = DurableMemory.shared.floatingPenalizedActionIds()
+		let feedbackContextKey = [workflow.workflowType.rawValue, activeComp.label.lowercased(), currentAppName.lowercased()].joined(separator: "|")
+		let acceptedSimilar = DurableMemory.shared.recentlyAcceptedActionIds(contextKey: feedbackContextKey)
+		for id in floatingPenalized.sorted() {
+			print("[ActionFeedbackLearning] id=\(id) event=auto_dismissed adjustment=floating_penalty context=\(feedbackContextKey)")
+		}
+		for id in acceptedSimilar.sorted() {
+			print("[ActionFeedbackLearning] id=\(id) event=clicked adjustment=contextual_boost context=\(feedbackContextKey)")
+		}
+		let liquidSelection = LiquidActionRouter.route(
+			LiquidRoutingInput(
+				signals: liquidSignals,
+				recentlyAccepted: acceptedSimilar,
+				floatingPenalized: floatingPenalized
+			)
+		)
+		let liquidFloat = LiquidActionRouter.floatingCandidate(from: liquidSelection, signals: liquidSignals, floatingPenalized: floatingPenalized)
+		let liquidWorkflowSpecificCount = liquidSelection.panel.filter { id in
+			guard let action = WorkflowActionOntology.byId[id], action.isSpecificAction else { return false }
+			switch action.category {
+			case .formsApplications, .documentsLeases, .codeLogs, .browserResearch, .writingEditing, .communication:
+				return true
+			case .workspaceFriction, .mediaFocus, .memoryWorkflows, .setupAcquisition:
+				return false
+			}
+		}.count
+		let liquidWorkflowAvailable = liquidWorkflowSpecificCount >= 2
+		let liquidCandidate: PortfolioCandidate? = {
+			guard let id = liquidFloat.id, let action = WorkflowActionOntology.byId[id] else { return nil }
+			return PortfolioCandidate(
+				lane: .research,
+				title: LiquidActionRouter.displayTitle(for: action, signals: liquidSignals),
+				capabilityId: id,
+				executionMode: .local_action,
+				confidence: 0.78,
+				usefulness: 0.82,
+				executability: 0.80,
+				novelty: 1.0,
+				reason: "liquid_workflow_\(action.category.rawValue)",
+				requiredEvidence: evidenceProfile.level.rawValue,
+				requiresConfirmation: false,
+				involvedApps: [],
+				frictionOpportunity: nil,
+				musicIntent: nil,
+				generatedAction: nil,
+				sourcePath: "liquid_router",
+				targetContract: nil
+			)
+		}()
+		print("[LiquidSurfaceBridge] primary=\(liquidSelection.primary.joined(separator: ",")) floating_candidate=\(liquidFloat.id ?? "none") panel=\(liquidSelection.panel.joined(separator: ",")) reason=\(liquidFloat.reason)")
 		let portfolioResult = CheapAlwaysOnPortfolio.evaluateDetailed(
 			CheapAlwaysOnPortfolioInput(
 				reason: shouldRun.reason,
@@ -1399,7 +1463,62 @@ final class ContextEventProducer {
 				groundingResult: groundingResult
 			)
 		)
-		let candidates = portfolioResult.allCandidates
+		let cheapIds = portfolioResult.panelCandidates.map(\.capabilityId)
+		let finalPortfolioIds = (liquidSelection.panel + cheapIds).reduce(into: [String]()) { result, id in
+			if !result.contains(id) { result.append(id) }
+		}
+		print("[LiquidPortfolioMerge] liquid=\(liquidSelection.panel.joined(separator: ",")) cheap=\(cheapIds.joined(separator: ",")) final=\(finalPortfolioIds.joined(separator: ","))")
+		let cheapWinner = portfolioResult.floatingCandidate
+		let genericCaptureIds: Set<String> = ["capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint"]
+		let selectedCandidate: PortfolioCandidate? = {
+			// Phase 60 — Liquid may only override the cheap/default winner when
+			// its candidate actually passed the proposal-worthiness gate
+			// (liquidFloat.id is nil otherwise: floatingCandidate gates it).
+			// Existence of workflow actions is no longer enough.
+			if liquidWorkflowAvailable, let liquidCandidate {
+				print("[LiquidOverrideCheck] old=\(cheapWinner?.capabilityId ?? "none") new=\(liquidCandidate.capabilityId) allowed=yes reason=worthiness_passed")
+				if let old = cheapWinner, genericCaptureIds.contains(old.capabilityId) {
+					print("[LiveLiquidOverride] old_winner=\(old.capabilityId) new_winner=\(liquidCandidate.capabilityId) reason=worthy_workflow_action")
+					print("[CheapPortfolioDemotion] capability=\(old.capabilityId) reason=liquid_workflow_available")
+					print("[GenericCaptureDemotion] reason=specific_capture_available")
+				} else if cheapWinner == nil {
+					print("[LiveActionSource] selected_source=liquid_router reason=workflow_specific_actions_available")
+				}
+				return liquidCandidate
+			}
+			if liquidWorkflowAvailable && liquidCandidate == nil {
+				print("[LiquidOverrideBlocked] new=\(liquidFloat.id ?? "none") reason=low_worthiness")
+				print("[DefaultActionRetained] winner=\(cheapWinner?.capabilityId ?? "silence") reason=\(cheapWinner == nil ? "no_high_quality_liquid_action" : "liquid_not_worthy")")
+			}
+			// Phase 60 — silence-first: in communication/finance/normal-browsing
+			// contexts a bare capture/setup card is an interruption, not help.
+			// Panel keeps the utilities; floating stays quiet.
+			if let cheap = cheapWinner, genericCaptureIds.contains(cheap.capabilityId) {
+				let content = ContentTypeClassifier.classify(liquidSignals)
+				let cluster = ComparableCandidateDetector.detect(signals: liquidSignals, content: content)
+				let cheapActivity = BrowserActivityClassifier.classify(signals: liquidSignals, content: content, cluster: cluster)
+				if cheapActivity.forcesFloatingSilence {
+					let reason: String
+					switch cheapActivity.activity {
+					case .communication: reason = "communication_context"
+					case .financeSensitive: reason = "finance_sensitive"
+					default: reason = "normal_browsing"
+					}
+					print("[SilenceDecision] allowed=yes reason=\(reason)")
+					print("[FloatingSilence] previous_candidate=\(cheap.capabilityId) reason=\(reason)")
+					print("[PanelOnlySuggestionSet] actions=\(finalPortfolioIds.joined(separator: ",")) reason=floating_not_worthy")
+					return nil
+				}
+			}
+			return cheapWinner
+		}()
+		if let selectedCandidate {
+			let source = selectedCandidate.sourcePath == "liquid_router" ? "liquid_router" : "cheap_portfolio"
+			print("[LiveActionSource] selected_source=\(source) reason=\(source == "liquid_router" ? "workflow_specific_actions_available" : "no_liquid_workflow_override")")
+		} else {
+			print("[LiveActionSource] selected_source=fallback_capture reason=no_floating_candidate")
+		}
+		let candidates = ([liquidCandidate].compactMap { $0 } + portfolioResult.allCandidates)
 		// Phase 31 — Tick Reasoning Ledger
 		let (availCtx, missCtx) = TickReasoningLedger.contextInventory(
 			hasWindowTitle: !(self.lastObservedWindowTitle ?? "").isEmpty,
@@ -1426,11 +1545,11 @@ final class ContextEventProducer {
 			missingContext: missCtx,
 			candidateFamilies: tickFamilies,
 			familyWinners: tickWinners,
-			selected: portfolioResult.floatingCandidate?.capabilityId,
-			reason: portfolioResult.floatingCandidate != nil ? "portfolio_winner" : (portfolioResult.panelCandidates.isEmpty ? "no_candidates" : "no_floating_candidate")
+			selected: selectedCandidate?.capabilityId,
+			reason: selectedCandidate != nil ? (selectedCandidate?.sourcePath == "liquid_router" ? "liquid_router_winner" : "portfolio_winner") : (portfolioResult.panelCandidates.isEmpty ? "no_candidates" : "no_floating_candidate")
 		))
 
-		guard let selected = portfolioResult.floatingCandidate else {
+		guard let selected = selectedCandidate else {
 			let bestBlockedAction = evidenceProfile.level.rank < ProgressiveEvidenceLevel.visible_content.rank
 				? "summarize_visible_content"
 				: nil
@@ -1542,13 +1661,13 @@ final class ContextEventProducer {
 			evidenceProfile: evidenceProfile,
 			browserAssessment: browserAssessment
 		)
-		print("[JarvisPipeline] decision=shown reason=cheap_always_on")
+		print("[JarvisPipeline] decision=pending_visibility_proof reason=\(selected.sourcePath == "liquid_router" ? "liquid_router" : "cheap_always_on")")
 		return CheapPortfolioRun(
 			ran: true,
 			suggestion: suggestion,
 			candidatesCount: candidates.count,
 			selected: selected.capabilityId,
-			panelCount: portfolioResult.panelCandidates.count,
+			panelCount: max(portfolioResult.panelCandidates.count, finalPortfolioIds.count),
 			suppressionReason: "none",
 			determinerActionable: determiner.actionable
 		)
@@ -1637,7 +1756,9 @@ final class ContextEventProducer {
 		return AmbientJarvisSuggestion(
 			title: candidate.title,
 			subtitle: candidate.reason,
-			whyNow: "Cheap always-on portfolio selected \(candidate.capabilityId).",
+			whyNow: candidate.sourcePath == "liquid_router"
+				? "Liquid router selected \(candidate.capabilityId)."
+				: "Cheap always-on portfolio selected \(candidate.capabilityId).",
 			workflow: workflow.workflowType.rawValue,
 			behavior: behavior.state.rawValue,
 			confidence: candidate.confidence,

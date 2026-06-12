@@ -83,7 +83,7 @@ enum LocalActionPayloadValidator {
         case "remember_workspace":
             if apps.count < 2 && urls.isEmpty && tabs.count < 2 { missing.append("workspace_context") }
 
-        case "open_current_task_panel":
+        case "open_current_task_panel", "capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint":
             break
 
         case "enable_reduce_interruptions":
@@ -110,7 +110,10 @@ enum LocalActionPayloadValidator {
         // into one polluted bag.
         let typedTargets: [String] = {
             switch capabilityId {
-            case "arrange_side_by_side", "switch_to_paired_app", "split_research_setup":
+            case "arrange_side_by_side":
+                guard apps.count >= 2 else { return [] }
+                return apps.prefix(2).map { "\($0):\(stableHash($0))" }
+            case "switch_to_paired_app", "split_research_setup":
                 return apps.prefix(2).map { "\($0):\(stableHash($0))" }
             case "restore_workspace":
                 return apps.prefix(4).map { "\($0):\(stableHash($0))" }
@@ -122,7 +125,9 @@ enum LocalActionPayloadValidator {
                 return [] // typed targets are URLs/tab titles, surfaced via `urls`
             case "remember_workspace":
                 return apps.prefix(4).map { "\($0):\(stableHash($0))" }
-            case "open_current_task_panel", "open_paired_app", "restore_research_tabs":
+            case "open_current_task_panel", "capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint":
+                return []
+            case "open_paired_app", "restore_research_tabs":
                 return apps.prefix(2).map { "\($0):\(stableHash($0))" }
             default:
                 return apps + Array(tabs.prefix(4))
@@ -170,6 +175,12 @@ enum LocalActionPayloadValidator {
             + " targets=\(result.targets.isEmpty ? "none" : result.targets.prefix(4).joined(separator: ","))"
             + " urls=\(urlsStr)"
             + " reason=\(result.reason)")
+        if result.capabilityId == "arrange_side_by_side" {
+            let targetStr = result.targets.isEmpty ? "none" : result.targets.prefix(4).joined(separator: ",")
+            let source = result.targets.isEmpty ? "none" : "window_discovery"
+            print("[PayloadTargetSource] capability=arrange_side_by_side source=\(source) targets=\(targetStr)")
+            print("[PayloadSanity] capability=arrange_side_by_side valid=\(result.valid ? "yes" : "no") reason=\(result.reason)")
+        }
     }
 }
 
@@ -593,14 +604,27 @@ enum SuggestionSurfacePolicy: Sendable {
                 // Paired-app switch is OK (user may want to jump to a reference)
                 "switch_to_paired_app", "open_paired_app",
             ]
-            if panelSafeDuringTyping.contains(capabilityId) {
+            // Phase 53 — read-only liquid workflow actions stay panel-safe during
+            // typing: forms ARE a typing context, and form help must not vanish
+            // exactly when the user is filling fields.
+            let isReadOnlyLiquid = WorkflowActionOntology.byId[capabilityId]?.riskLevel == "read_only"
+            if panelSafeDuringTyping.contains(capabilityId) || isReadOnlyLiquid {
+                if WorkflowActionOntology.byId[capabilityId] != nil {
+                    print("[LiquidSurfaceSuppression] id=\(capabilityId) reason=typing")
+                }
                 return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "typing_active_panel_safe", expectedFriction: .medium)
+            }
+            if WorkflowActionOntology.byId[capabilityId] != nil {
+                print("[LiquidSurfaceSuppression] id=\(capabilityId) reason=typing")
             }
             return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "typing_active", expectedFriction: .low)
         }
         
         // 2. Recently Dismissed check
         if recentFeedback == "dismissed" || recentFeedback == "ignored" {
+            if WorkflowActionOntology.byId[capabilityId] != nil {
+                print("[LiquidSurfaceSuppression] id=\(capabilityId) reason=cooldown")
+            }
             return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "recently_dismissed", expectedFriction: .low)
         }
         
@@ -711,8 +735,25 @@ enum SuggestionSurfacePolicy: Sendable {
             return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "safe_cognitive_preparation_proactive", expectedFriction: .medium)
 
         default:
+            if let liquid = WorkflowActionOntology.byId[capabilityId],
+               liquid.isSpecificAction,
+               liquid.riskLevel == "read_only",
+               liquid.surfacePolicy == .panelPrimary {
+                let hasRealExecutor = CognitiveCapabilityRegistry.shared.get(capabilityId)?.executionMode == .local_action
+                if hasRealExecutor {
+                    print("[ActionClass] capability=\(capabilityId) class=liquid_specific default_surface=floating_card")
+                    print("[LiquidSurfaceSuppression] id=\(capabilityId) reason=none")
+                    return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "liquid_specific_proactive", expectedFriction: .medium)
+                } else {
+                    print("[LiquidSurfaceSuppression] id=\(capabilityId) reason=no_local_executor")
+                    return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "no_local_executor", expectedFriction: .low)
+                }
+            }
             // Generic fallback for any other capability — panel-safe by default.
             // floatingInterrupt as default caused unknown capabilities to bypass the panel.
+            if WorkflowActionOntology.byId[capabilityId] != nil {
+                print("[LiquidSurfaceSuppression] id=\(capabilityId) reason=panel_only_policy")
+            }
             return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "default_panel_safe", expectedFriction: .low)
         }
     }

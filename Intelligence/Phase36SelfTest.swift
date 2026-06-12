@@ -397,8 +397,19 @@ public enum Phase38SelfTest {
             confidence: 0.8,
             attachedContract: nil
         )
-        check("test_1_blocked_without_recent_pair", !gateNoPair.allowed)
-        check("test_1_blocked_reason_no_recent_pair", gateNoPair.reason == "visibility_only_no_friction")
+        // Phase 51 — no verified pair no longer hard-blocks the gate: arrange stays
+        // available as a MANUAL panel action (two cross-app windows exist), while
+        // proactive floating is suppressed via [ProactiveArrangeGate] + panel_only surface.
+        check("test_1_manual_available_without_recent_pair", gateNoPair.allowed)
+        check("test_1_manual_only_reason", gateNoPair.reason == "manual_arrange_available")
+        let noPairDecision = LivePathEnforcer.evaluate(
+            capabilityID: "arrange_side_by_side",
+            involvedApps: ["Firefox", "Preview"],
+            attachedContract: nil,
+            confidence: 0.8,
+            evaluationContext: ctxNoPair
+        ).0
+        check("test_1_no_pair_never_floats", !noPairDecision.eligibleForFloating)
 
         // 1b. Invisible secondary window, no alternation/comparison/source transfer:
         // Expected: blocked, reason=no_recent_pair
@@ -421,7 +432,8 @@ public enum Phase38SelfTest {
             attachedContract: nil
         )
         check("test_1b_blocked_one_visible", !gateOneVisible.allowed)
-        check("test_1b_blocked_reason_no_recent_pair", gateOneVisible.reason == "no_recent_pair")
+        // Phase 51 — with only one visible window there is no manual target either.
+        check("test_1b_blocked_reason_no_recent_pair", gateOneVisible.reason == "no_verified_work_pair")
 
         // 2. Two visible related windows with recent exact alternation >= 2:
         // Expected: arrange_side_by_side allowed
@@ -484,8 +496,17 @@ public enum Phase38SelfTest {
             confidence: 0.8,
             attachedContract: nil
         )
-        check("test_3b_shopping_page_blocked", !gateShopping.allowed)
-        check("test_3b_shopping_page_blocked_reason", gateShopping.reason == "unrelated_context")
+        // Phase 51 — shopping context suppresses PROACTIVE arrange (no verified pair →
+        // no floating), but manual panel arrange remains available on explicit click.
+        check("test_3b_shopping_page_manual_only", gateShopping.allowed && gateShopping.reason == "manual_arrange_available")
+        let shoppingDecision = LivePathEnforcer.evaluate(
+            capabilityID: "arrange_side_by_side",
+            involvedApps: ["Firefox", "Preview"],
+            attachedContract: nil,
+            confidence: 0.8,
+            evaluationContext: ctxNoPair
+        ).0
+        check("test_3b_shopping_page_never_floats", !shoppingDecision.eligibleForFloating)
 
         // 4. Helper process pollution in RuntimeFriction
         let steamHelperWindow = WindowSnapshot(windowID: 3, appName: "Steam Helper", bundleID: "com.valvesoftware.steam.helper", pid: 789, title: "Steam Helper", frame: .zero, layer: 0, isOnScreen: true, isOnActiveScreen: true)
@@ -533,14 +554,17 @@ public enum Phase38SelfTest {
         menuBarController.revealPopoverIfNeeded(source: .suggestion_auto)
         check("test_7_popover_not_shown_auto", !menuBarController.isPopoverShown)
 
-        // 8. Research result output floating card shown, panel blocked
-        appState.activeResearchResultCard = ResearchResultCardState(capabilityID: "explicit_visible_capture_summary", title: "Test Title", text: "Test summary output text", outputChars: 24)
-        check("test_8_result_card_populated", appState.activeResearchResultCard != nil)
+        // 8. Result surface can coexist with panel visibility
+        let resultCard = ResearchResultCardState(capabilityID: "explicit_visible_capture_summary", title: "Test Title", text: "Test summary output text", outputChars: 24)
+        _ = appState.requestResultSurface(resultCard, sourceSurface: .panel)
+        check("test_8_result_card_populated", appState.activePanelResultSurface != nil)
         
-        menuBarController.revealPopoverIfNeeded(source: .explicit_button)
-        check("test_8_popover_blocked_by_result_card", !menuBarController.isPopoverShown)
+        // Phase 51 — assert the reveal DECISION (allowed with a result surface active);
+        // NSPopover.isShown is unreliable in headless self-test runs.
+        let popoverAllowed = menuBarController.revealPopoverIfNeeded(source: .explicit_button)
+        check("test_8_popover_allowed_with_result_surface", popoverAllowed)
         
-        appState.activeResearchResultCard = nil
+        appState.dismissResultSurface(reason: "selftest")
 
         // 9. Menu bar icon persistence checks
         menuBarController.checkIconState()
@@ -636,4 +660,3 @@ public enum Phase38SelfTest {
         return ok
     }
 }
-

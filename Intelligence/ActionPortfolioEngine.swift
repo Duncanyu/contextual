@@ -121,7 +121,8 @@ struct PortfolioCandidate: Sendable {
 			if musicIntent?.action == .resume {
 				return ["detect_player", "resume_player", "verify_playing"]
 			}
-			return ["detect_player", "play_first_local_playlist", "verify_playing"]
+			// Phase 51 — no random first-playlist fallback; unnamed intents resume only.
+			return ["detect_player", "resume_player", "verify_playing"]
 		case "restore_workspace":
 			return ["load_workspace_pattern", "open_missing_apps", "verify_workspace"]
 		case "arrange_side_by_side":

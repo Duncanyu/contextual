@@ -52,8 +52,10 @@ enum AmbientFloatingSuggestionSelfTest {
 			primaryActionId: proposal.primaryActionId
 		)
 
-		appState.showFloatingSuggestion(proposal, lifecycle: bind)
+		let unified = UnifiedSuggestionAdapters.from(liquidProposal: proposal, isFloatingEligible: true)
+		appState.showUnifiedFloatingSuggestion(unified, lifecycle: bind)
 		check("ambient_floating_attaches", appState.isFloatingSuggestionVisible)
+		check("ambient_floating_uses_unified_surface", appState.unifiedSurfaceDecision?.floating?.id == proposal.primaryActionId)
 
 		// Dismiss should put it on cooldown.
 		appState.dismissFloatingSuggestion(reason: .manual)
@@ -70,4 +72,3 @@ enum AmbientFloatingSuggestionSelfTest {
 		return ok
 	}
 }
-

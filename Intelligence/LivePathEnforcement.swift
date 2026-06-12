@@ -156,6 +156,24 @@ private let unverifiedBrowserStateMutators: Set<String> = [
     "pin_reference_tabs"
 ]
 
+enum ArrangeVerifiedWorkPairGate {
+
+    struct Decision: Sendable {
+        let verified: Bool
+        let reason: String
+    }
+
+    static func evaluate(involvedApps: [String]) -> Decision {
+        guard let pair = WorkPairMemory.shared.bestPair() else {
+            return Decision(verified: false, reason: "no_verified_work_pair")
+        }
+        let matches = involvedApps.count >= 2 &&
+            involvedApps.contains(where: { $0.caseInsensitiveCompare(pair.appA) == .orderedSame }) &&
+            involvedApps.contains(where: { $0.caseInsensitiveCompare(pair.appB) == .orderedSame })
+        return Decision(verified: matches, reason: matches ? "verified_work_pair" : "no_verified_work_pair")
+    }
+}
+
 // MARK: - Live Path Enforcer
 
 enum LivePathEnforcer {
@@ -178,6 +196,10 @@ enum LivePathEnforcer {
             attachedContract: attachedContract
         )
         if !reqCheck.allowed {
+            if capabilityID == "arrange_side_by_side" {
+                print("[PanelAction] hidden capability=arrange_side_by_side reason=\(reqCheck.reason)")
+                print("[FloatingSuggestion] suppressed capability=arrange_side_by_side reason=\(reqCheck.reason)")
+            }
             let decision = LivePathDecision(
                 capabilityID: capabilityID,
                 sourcePath: evaluationContext.sourcePath,
@@ -377,9 +399,16 @@ enum LivePathEnforcer {
                 workflow: evaluationContext.workflow
             )
 
-            let canFloat = calibration.surface == .floating && evaluationContext.activityMatch
-            let surface: ActionSurface = calibration.surface
-            let reason = calibration.surface == .floating ? "high_usefulness_low_cost" : "moderate_usefulness"
+            // Phase 51 — manual-only arrange (no verified pair) must never float.
+            // It stays a panel action the user can click; proactive surfacing
+            // requires the verified pair that reqCheck would have confirmed.
+            let manualOnlyArrange = capabilityID == "arrange_side_by_side"
+                && (reqCheck.reason == "manual_arrange_available" || evaluationContext.sourcePath == "manual_arrange_panel")
+            let canFloat = calibration.surface == .floating && evaluationContext.activityMatch && !manualOnlyArrange
+            let surface: ActionSurface = manualOnlyArrange ? .panelOnly : calibration.surface
+            let reason = manualOnlyArrange
+                ? "manual_arrange_panel_only"
+                : (calibration.surface == .floating ? "high_usefulness_low_cost" : "moderate_usefulness")
             let decision = LivePathDecision(
                 capabilityID: capabilityID,
                 sourcePath: evaluationContext.sourcePath,
@@ -558,7 +587,10 @@ enum LivePathEnforcementSelfTest {
         check("b_pin_not_floating", !pinDecision.eligibleForFloating)
         check("b_pin_reason", pinDecision.reason == "unverified_browser_state_change")
 
-        // Test C: arrange_side_by_side with no contract and no apps → suppressed no_recent_pair under Phase 38
+        // Test C: arrange_side_by_side with no contract and no apps.
+        // Phase 51 — no verified pair no longer suppresses arrange entirely: it stays
+        // a manual panel action (the executor resolves live targets on click), but it
+        // must never float without a verified pair.
         let (arrangeNoContract, _) = LivePathEnforcer.evaluate(
             capabilityID: "arrange_side_by_side",
             involvedApps: [],
@@ -566,8 +598,8 @@ enum LivePathEnforcementSelfTest {
             confidence: 0.9,
             evaluationContext: stableCtx
         )
-        check("c_arrange_no_contract_panel_only", arrangeNoContract.surface == .suppressed)
-        check("c_arrange_no_contract_reason", arrangeNoContract.reason == "no_recent_pair")
+        check("c_arrange_no_contract_panel_only", arrangeNoContract.surface == .panelOnly || arrangeNoContract.surface == .suppressed)
+        check("c_arrange_no_contract_reason", arrangeNoContract.reason == "missing_target_contract" || arrangeNoContract.reason == "no_verified_work_pair")
         check("c_arrange_no_contract_not_floating", !arrangeNoContract.eligibleForFloating)
 
         // Test D: arrange_side_by_side with 2 involved apps → contract synthesized, can float
@@ -905,6 +937,7 @@ enum ActionRequirementGate {
         // 1. arrange_side_by_side requirements check
         if capabilityID == "arrange_side_by_side" {
             let res = checkArrangeRequirements(involvedApps: involvedApps, evaluationContext: evaluationContext)
+            print("[ArrangePreSurfaceCheck] capability=arrange_side_by_side verified_work_pair=\(res.verifiedWorkPair ? "yes" : "no") allowed=\(res.allowed ? "yes" : "no") reason=\(res.reason)")
             print("[ActionRequirement] capability=arrange_side_by_side allowed=\(res.allowed ? "yes" : "no") reason=\(res.reason)")
             
             if !res.allowed {
@@ -987,7 +1020,27 @@ enum ActionRequirementGate {
     private static func checkArrangeRequirements(
         involvedApps: [String],
         evaluationContext: LivePathEvaluationContext
-    ) -> (allowed: Bool, reason: String, evidence: String, invalidContext: String?) {
+    ) -> (allowed: Bool, reason: String, evidence: String, invalidContext: String?, verifiedWorkPair: Bool) {
+        let verifiedPair = ArrangeVerifiedWorkPairGate.evaluate(involvedApps: involvedApps)
+        print("[ProactiveArrangeGate] allowed=\(verifiedPair.verified ? "yes" : "no") reason=\(verifiedPair.reason)")
+        if !verifiedPair.verified {
+            // Phase 51 — no verified pair kills the PROACTIVE surface only.
+            // Manual arrange stays available in the panel when two reasonable
+            // cross-app windows exist; the executor resolves live targets on click.
+            let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
+            let crossAppWindows = Set(
+                runtime.visibleWindows
+                    .filter { $0.isOnActiveScreen && !WorkspaceAppFilter.isSystemApp($0.appName) }
+                    .map(\.appName)
+            )
+            if crossAppWindows.count >= 2 {
+                print("[ArrangeRequirement] allowed=manual_only reason=manual_arrange_available windows=\(crossAppWindows.count)")
+                return (true, "manual_arrange_available", "runtime_windows", nil, false)
+            }
+            print("[ArrangeRequirement] blocked reason=no_verified_work_pair")
+            return (false, "no_verified_work_pair", "none", "no_verified_work_pair", false)
+        }
+
         let workPair = WorkPairMemory.shared.bestPair()
         
         let hasAlternation = involvedApps.count >= 2 && workPair != nil &&
@@ -1020,7 +1073,9 @@ enum ActionRequirementGate {
             entityLower.contains(involvedApps[0].lowercased()) &&
             entityLower.contains(involvedApps[1].lowercased())
             
-        let isManualInvocation = evaluationContext.sourcePath == "environment" || evaluationContext.sourcePath == "manual"
+        let isManualInvocation = evaluationContext.sourcePath == "environment"
+            || evaluationContext.sourcePath == "manual"
+            || evaluationContext.sourcePath == "manual_arrange_panel"
 
         let helperApps: Set<String> = [
             "Steam Helper", "Control Center", "SystemUIServer", "Dock", "Spotlight", "universalaccessd", "Accessibility", "Notification Center", "Notification Centre"
@@ -1064,15 +1119,15 @@ enum ActionRequirementGate {
         
         if hasHelper {
             print("[ArrangeRequirement] blocked reason=helper_app_pair")
-            return (false, "helper_app_pair", "none", "helper_app_pair")
+            return (false, "helper_app_pair", "none", "helper_app_pair", true)
         }
         if alreadyArranged {
             print("[ArrangeRequirement] blocked reason=already_arranged")
-            return (false, "already_arranged", "none", "already_arranged")
+            return (false, "already_arranged", "none", "already_arranged", true)
         }
         if isShoppingContextBlocked {
             print("[ArrangeRequirement] blocked reason=unrelated_context")
-            return (false, "unrelated_context", "none", "unrelated_context")
+            return (false, "unrelated_context", "none", "unrelated_context", true)
         }
         
         if !allowed {
@@ -1083,7 +1138,7 @@ enum ActionRequirementGate {
                 blockReason = "no_recent_pair"
             }
             print("[ArrangeRequirement] blocked reason=\(blockReason)")
-            return (false, blockReason, "none", blockReason)
+            return (false, blockReason, "none", blockReason, true)
         }
         
         let passedReason: String
@@ -1096,7 +1151,6 @@ enum ActionRequirementGate {
         }
         
         print("[ArrangeRequirement] passed reason=\(passedReason)")
-        return (true, "requirements_passed", passedReason, nil)
+        return (true, "requirements_passed", passedReason, nil, true)
     }
 }
-

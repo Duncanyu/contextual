@@ -136,7 +136,13 @@ public enum Phase361LivePathSelfTest {
         check("c_executor_blocks_without_contract", executorResult == .unavailable)
 
         // ── D. arrange_side_by_side with contract and missing target → blocked, no runtime fallback ──
+        // Phase 51 — stage a verified work pair so the proactive gate passes and the
+        // CONTRACT preflight is what blocks (the behavior under test).
         print("[Phase361LivePathSelfTest] case=d_arrange_with_contract_missing_target_blocked")
+        WorkPairMemory.shared.reset()
+        WorkPairMemory.shared.recordSwitch(app: "DefinitelyMissing361A", title: "A", pid: 99101)
+        WorkPairMemory.shared.recordSwitch(app: "DefinitelyMissing361B", title: "B", pid: 99102)
+        WorkPairMemory.shared.recordSwitch(app: "DefinitelyMissing361A", title: "A", pid: 99101)
         let missingContract = ActionTargetContract.forLayoutApps(
             capabilityID: "arrange_side_by_side",
             appNames: ["DefinitelyMissing361A", "DefinitelyMissing361B"],
@@ -152,6 +158,7 @@ public enum Phase361LivePathSelfTest {
                 "targetContract": missingContract as Any
             ]
         )
+        WorkPairMemory.shared.reset()
         check("d_with_contract_missing_target_blocked", withContractResult == .unavailable)
 
         // ── E. play_focus_media in weak/unknown context → suppressed ──
@@ -234,7 +241,13 @@ public enum Phase361LivePathSelfTest {
         check("f_metadata_not_floating_winner", !anyMetadataFloating)
         check("f_pin_not_floating_winner", !anyPinFloating)
 
-        // The arrange with apps should be eligible (high time saved, contract synthesized)
+        // The arrange with apps should be eligible (high time saved, contract synthesized).
+        // Phase 51 — floating eligibility now requires a verified recent work pair;
+        // stage one so the proactive path is what's under test.
+        WorkPairMemory.shared.reset()
+        WorkPairMemory.shared.recordSwitch(app: "Firefox", title: "Rental Postings", pid: 88801)
+        WorkPairMemory.shared.recordSwitch(app: "Preview", title: "Lease Document", pid: 88802)
+        WorkPairMemory.shared.recordSwitch(app: "Firefox", title: "Rental Postings", pid: 88801)
         let (arrange, contract) = LivePathEnforcer.evaluate(
             capabilityID: "arrange_side_by_side",
             involvedApps: ["Firefox", "Preview"],

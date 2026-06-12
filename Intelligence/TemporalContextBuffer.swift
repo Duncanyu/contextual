@@ -94,9 +94,11 @@ public struct ContextShiftAnalysis: Sendable, Codable, Equatable {
         // high (e.g. browser chrome retains old terms).
         let titles = events.map { $0.windowTitle }.filter { !$0.isEmpty }
         let tail = Array(titles.suffix(6))
-        let split = max(1, tail.count / 2)
+        // Phase 64 — crash fix: with an empty tail, split=max(1,0) made
+        // prefix(-1) trap ("Can't take a prefix of negative length").
+        let split = min(tail.count, max(1, tail.count / 2))
         let recentTitles = tail.suffix(split)
-        let earlyTitles = tail.prefix(tail.count - split)
+        let earlyTitles = tail.prefix(max(0, tail.count - split))
         let earlyTitleTokens = Set(earlyTitles.flatMap { titleTokens($0) })
         let recentTitleTokens = Set(recentTitles.flatMap { titleTokens($0) })
         let titleInter = earlyTitleTokens.intersection(recentTitleTokens).count

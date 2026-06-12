@@ -84,15 +84,30 @@ final class PlaylistMemory: @unchecked Sendable {
     }
 
     func suggest(compartment: TaskCompartment?, workflow: AmbientWorkflowType) -> String? {
+        suggestWithConfidence(compartment: compartment, workflow: workflow)?.name
+    }
+
+    /// Phase 51 — suggestion with an explicit confidence so callers can refuse
+    /// to act on weakly-learned playlists. Confidence scales with how many times
+    /// the playlist was confirmed in the matching context.
+    func suggestWithConfidence(
+        compartment: TaskCompartment?,
+        workflow: AmbientWorkflowType
+    ) -> (name: String, confidence: Double, reason: String)? {
         lock.lock()
         defer { lock.unlock() }
+
+        func confidence(for name: String, in records: [PlaylistRecord], base: Double) -> Double {
+            let count = records.filter { $0.name == name }.count
+            return min(0.95, base + Double(min(count, 5)) * 0.08)
+        }
 
         // 1. Prefer current compartment match
         if let compId = compartment?.id {
             let compMatches = history.filter { $0.compartmentId == compId }
             if let best = mostFrequent(compMatches) {
                 print("[PlaylistMemory] selected=\(best) reason=compartment_history")
-                return best
+                return (best, confidence(for: best, in: compMatches, base: 0.55), "compartment_history")
             }
         }
 
@@ -100,7 +115,7 @@ final class PlaylistMemory: @unchecked Sendable {
         let workflowMatches = history.filter { $0.workflow == workflow }
         if let best = mostFrequent(workflowMatches) {
             print("[PlaylistMemory] selected=\(best) reason=workflow_history")
-            return best
+            return (best, confidence(for: best, in: workflowMatches, base: 0.45), "workflow_history")
         }
 
         // 3. Prefer time of day match (if similar workflow family)
@@ -108,7 +123,7 @@ final class PlaylistMemory: @unchecked Sendable {
         let timeMatches = history.filter { abs($0.timeOfDay - hour) <= 2 }
         if let best = mostFrequent(timeMatches) {
             print("[PlaylistMemory] selected=\(best) reason=time_history")
-            return best
+            return (best, confidence(for: best, in: timeMatches, base: 0.3), "time_history")
         }
 
         return nil
@@ -633,20 +648,34 @@ enum EnvironmentActionEngine {
             }
 
 			let mood: MusicIntent.Mood = (input.focusState.isDeepWork || input.mode == .building) ? .deepWork : .focus
-			let learnedPlaylist = PlaylistMemory.shared.suggest(compartment: input.taskCompartment, workflow: input.workflow)
+			// Phase 51 — learned playlist is only used when confidence is high.
+			// A weakly-learned playlist must not silently drive what gets played.
+			let learnedSuggestion = PlaylistMemory.shared.suggestWithConfidence(compartment: input.taskCompartment, workflow: input.workflow)
+			let learnedPlaylist: String?
+			if let suggestion = learnedSuggestion {
+				if suggestion.confidence >= 0.6 {
+					learnedPlaylist = suggestion.name
+				} else {
+					print("[MusicSuppression] reason=low_confidence detail=learned_playlist_confidence_\(String(format: "%.2f", suggestion.confidence))")
+					learnedPlaylist = nil
+				}
+			} else {
+				learnedPlaylist = nil
+			}
 			let query = learnedPlaylist ?? musicQuery(workflow: input.workflow, domain: input.domain, mood: mood)
-			
+
 			let canPlayDirectly: Bool
 			if learnedPlaylist != nil {
 				canPlayDirectly = true
 			} else {
 				canPlayDirectly = await MusicExecutor.checkLocalPlaylist(query: query)
 			}
-			
+
 			let actionType: MusicIntent.Action = {
 				if learnedPlaylist != nil { return .playPlaylist }
 				return .resume
 			}()
+			print("[MusicTarget] app=Music playlist=\(learnedPlaylist.map { "\"\($0)\"" } ?? "none") confidence=\(learnedSuggestion.map { String(format: "%.2f", $0.confidence) } ?? "0.00") learned=\(learnedPlaylist != nil ? "yes" : "no")")
 
 			let intent = MusicIntent(
 				taskDomain: input.domain.rawValue,
@@ -1092,20 +1121,23 @@ public enum MusicExecutor {
         localPlaylistMatchExists: Bool,
         hasFirstLocalPlaylist: Bool
     ) -> String {
+        // Phase 51 — no random "first local playlist" fallback. The executor only
+        // plays what the intent names (or plain resume). Anything else fails honestly.
         let action = intent?.action ?? .resume
         switch action {
-        case .playPlaylist:
+        case .playPlaylist, .search:
             if localPlaylistMatchExists { return "play_requested_playlist" }
-            if hasFirstLocalPlaylist { return "play_first_local_playlist" }
             return "unavailable"
         case .resume:
-            if hasFirstLocalPlaylist { return "resume_then_first_local_playlist" }
             return "resume_only"
-        case .search:
-            if localPlaylistMatchExists { return "play_requested_playlist" }
-            if hasFirstLocalPlaylist { return "play_first_local_playlist" }
-            return "unavailable"
         }
+    }
+
+    /// Phase 51 — Spotify scripting is only attempted when Spotify is actually
+    /// installed; otherwise osascript fails at terminology resolution
+    /// ("variable playpause is not defined").
+    static var isSpotifyInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client") != nil
     }
 
     @MainActor
@@ -1117,38 +1149,35 @@ public enum MusicExecutor {
 
 		if action == .resume {
             if let resumed = await tryResumeAnyPlayer() {
+                print("[MusicAction] action=resume status=success reason=\(resumed.reason)")
                 return resumed
             }
-            if let fallbackName = await firstLocalPlaylistName() {
-                print("[MusicExecutor] fallback_local_playlist=yes name=\"\(fallbackName)\"")
-                return await playLocalPlaylist(query: fallbackName, reason: "first_local_playlist_fallback")
-            }
-			return (false, .unavailable, "resume_failed_no_local_playlist", nil)
+            // Phase 51 — resume either resumes or fails visibly. It must never
+            // silently start a playlist the user did not ask for.
+            print("[MusicAction] action=resume status=failed reason=no_player_resumed")
+            print("[MusicSuppression] reason=low_confidence detail=resume_failed_no_named_playlist")
+			return (false, .unavailable, "resume_failed_no_player", nil)
 		}
 
         guard let requestedQuery = intent?.playlistName ?? intent?.query else {
-            if let fallbackName = await firstLocalPlaylistName() {
-                print("[MusicExecutor] fallback_local_playlist=yes name=\"\(fallbackName)\"")
-                return await playLocalPlaylist(query: fallbackName, reason: "first_local_playlist_fallback")
-            }
             print("[MusicExecutor] error=no_query_or_playlist_in_intent fallback_search=no")
+            print("[MusicAction] action=play status=failed reason=no_query_in_intent")
             return (false, .unavailable, "no_query_in_intent", nil)
         }
         let query = requestedQuery
+        let learned = intent?.playlistName != nil
         print("[MusicExecutor] intended_query=\"\(query)\"")
+        print("[MusicTarget] app=Music playlist=\"\(query)\" confidence=\(learned ? "learned" : "heuristic") learned=\(learned ? "yes" : "no")")
         if let p = intent?.playlistName { print("[MusicExecutor] playlist_name=\(p)") }
 
         let directPlay = await playLocalPlaylist(query: query, reason: "requested_playlist")
         if directPlay.success {
+            print("[MusicAction] action=play status=success reason=requested_playlist")
             return directPlay
         }
 
-        if let fallbackName = await firstLocalPlaylistName() {
-            print("[MusicExecutor] fallback_local_playlist=yes name=\"\(fallbackName)\"")
-            return await playLocalPlaylist(query: fallbackName, reason: "first_local_playlist_fallback")
-        }
-
-        return (false, .unavailable, "no_playlist_or_player_not_playing", nil)
+        print("[MusicAction] action=play status=failed reason=requested_playlist_not_found")
+        return (false, .unavailable, "requested_playlist_not_found", nil)
     }
 
 	@MainActor
@@ -1173,14 +1202,21 @@ public enum MusicExecutor {
     @MainActor
 	public static func pause() async -> (success: Bool, reason: String) {
         print("[MusicExecutor] started")
-        
+
         let musicScript = "tell application \"Music\" to pause"
         let (mSuccess, _, _, _) = await runAppleScript(musicScript, backend: "music")
-        
-        let spotifyScript = "tell application \"Spotify\" to pause"
-        let (sSuccess, _, _, _) = await runAppleScript(spotifyScript, backend: "spotify")
-        
-        if mSuccess || sSuccess {
+
+        var sSuccess = false
+        if isSpotifyInstalled {
+            let spotifyScript = "tell application \"Spotify\" to pause"
+            (sSuccess, _, _, _) = await runAppleScript(spotifyScript, backend: "spotify")
+        } else {
+            print("[MusicExecutor] backend=spotify skipped reason=not_installed")
+        }
+
+        let success = mSuccess || sSuccess
+        print("[MusicAction] action=pause status=\(success ? "success" : "failed") reason=\(success ? "player_paused" : "no_player_responded")")
+        if success {
             return (true, "music_paused")
         }
         return (false, "no_player_responded")
@@ -1199,9 +1235,20 @@ public enum MusicExecutor {
             return (true, .success, "music_resumed", nil)
         }
 
-        let spotifyResume = "tell application \"Spotify\" to playpause"
-        let (spotifySuccess, _, _, _) = await runAppleScript(spotifyResume, backend: "spotify")
-        if spotifySuccess {
+        // Phase 51 — `play` resumes; `playpause` would TOGGLE (pausing an already-
+        // playing player). Spotify is only scripted when actually installed.
+        guard isSpotifyInstalled else {
+            print("[MusicExecutor] backend=spotify skipped reason=not_installed")
+            return nil
+        }
+        let spotifyResume = """
+            tell application "Spotify"
+                play
+                return player state as string
+            end tell
+        """
+        let (spotifySuccess, spotifyOut, _, _) = await runAppleScript(spotifyResume, backend: "spotify")
+        if spotifySuccess && spotifyOut.lowercased().contains("playing") {
             return (true, .success, "spotify_resumed", nil)
         }
         return nil

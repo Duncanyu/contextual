@@ -398,7 +398,7 @@ enum Phase35_4SelfTest {
             var context = ContextModel()
             context.activeAppName = "Firefox"
             state.debugContext = context
-            state.floatingSuggestion = ActionProposal(
+            let proposal = ActionProposal(
                 title: "Resume your music?",
                 sourceCaption: "",
                 primaryActionId: "ambient_jarvis:play_focus_media",
@@ -406,6 +406,7 @@ enum Phase35_4SelfTest {
                 confidence: 0.72,
                 reason: "test"
             )
+            state.currentProposal = proposal
             state.activeAmbientJarvisSuggestion = AmbientJarvisSuggestion(
                 id: "ambient_jarvis:play_focus_media",
                 title: "Resume your music?",
@@ -448,6 +449,9 @@ enum Phase35_4SelfTest {
                     requiresConfirmation: true,
                     auxiliaryCapabilityIds: []
                 )
+            )
+            state.showUnifiedFloatingSuggestion(
+                UnifiedSuggestionAdapters.from(liquidProposal: proposal, isFloatingEligible: true)
             )
             state.dismissFloatingSuggestion(reason: .auto)
             let durableContext = DurableMemoryContext.build(
@@ -619,4 +623,3 @@ enum Phase35_6CompletionSelfTest {
         return ok
     }
 }
-

@@ -164,7 +164,7 @@ enum CheapAlwaysOnPortfolio {
 		var decisions: [String: LivePathDecision] = [:]
 		for c in validated {
 			let ctx = LivePathEvaluationContext(
-				sourcePath: "cheap_portfolio",
+				sourcePath: c.sourcePath,
 				contextStability: contextStability,
 				isMusicAlreadyPlaying: input.mediaState.isMusicPlaying,
 				hasHigherPriorityTaskAction: hasTaskOrFrictionAction,
@@ -515,6 +515,45 @@ enum CheapAlwaysOnPortfolio {
 				sourcePath: "runtime_workspace_friction",
 				targetContract: contract
 			))
+		} else if runtimeDecision.reason == "visibility_only_no_friction", let pair = runtimeDecision.pair {
+			let frontmost = inventory.frontmostAppName
+			let pairApps = [pair.primaryApp, pair.secondaryApp]
+			let containsInvalidMusic = pairApps.contains { app in
+				app.caseInsensitiveCompare("Music") == .orderedSame
+					&& frontmost.caseInsensitiveCompare("Music") != .orderedSame
+			}
+			if !containsInvalidMusic {
+				let novelty = noveltyTracker.noveltyScore(capabilityId: "arrange_side_by_side", entityKey: input.entityKey)
+				let contract = ActionTargetContract.forLayoutApps(
+					capabilityID: "arrange_side_by_side",
+					appNames: pairApps,
+					evidenceType: .active_window_pair,
+					confidence: min(pair.confidence, 0.62),
+					fallbackAllowed: false
+				)
+				print("[ManualArrangeCandidate] capability=arrange_side_by_side reason=visibility_only_manual_panel primary=\(pair.primaryApp) secondary=\(pair.secondaryApp)")
+				out.append(PortfolioCandidate(
+					lane: .friction,
+					title: "Put \(pair.primaryApp) and \(pair.secondaryApp) side by side?",
+					capabilityId: "arrange_side_by_side",
+					executionMode: .local_action,
+					confidence: min(pair.confidence, 0.62),
+					usefulness: 0.52,
+					executability: 0.88,
+					novelty: novelty,
+					reason: "manual_arrange_available",
+					requiredEvidence: "runtime_visible_pair",
+					requiresConfirmation: true,
+					involvedApps: pairApps,
+					frictionOpportunity: nil,
+					musicIntent: nil,
+					generatedAction: nil,
+					sourcePath: "manual_arrange_panel",
+					targetContract: contract
+				))
+			} else {
+				print("[ManualArrangeCandidate] suppressed capability=arrange_side_by_side reason=music_secondary_not_frontmost")
+			}
 		}
 
 		// Legacy active/browser-transition-driven friction signals
@@ -721,13 +760,64 @@ enum CheapAlwaysOnPortfolio {
 		// Phase 40/43 — Research/cognitive acquisition candidates for document/browser contexts.
 		// Phase 43: These now use .local_action because the executors are real (Phase 42 registered them).
 		// They float proactively (not just as panel fallbacks) via SuggestionSurfacePolicy cognitive path.
+		let sourceLabel = assessment.contentAvailable ? "visible_capture" : "metadata"
+		let scopeLabel = assessment.contentAvailable ? AcquiredContentScope.visibleViewport.rawValue : AcquiredContentScope.metadataOnly.rawValue
+		let availableChars = assessment.contentAvailable ? 1500 : 0
+		let contentInsufficient = !assessment.contentAvailable || availableChars < 1500
+		let setupCapability: String = {
+			if assessment.safeActions.contains("capture_full_document") { return "capture_full_document" }
+			if assessment.safeActions.contains("capture_visible_page") { return "capture_visible_page" }
+			if assessment.safeActions.contains("enable_browser_bridge") { return "enable_browser_bridge" }
+			return "select_text_hint"
+		}()
+		if contentInsufficient {
+			let reason = !assessment.contentAvailable ? "content_unavailable" : "short_visible_text"
+			print("[PrimaryContextAction] capability=\(setupCapability) reason=\(reason)")
+			print("[ActionTitle] capability=\(setupCapability) title=\"\(setupTitle(for: setupCapability))\" source=context_acquisition_need")
+		}
+		for capId in ["explicit_visible_capture_summary", "extract_action_items", "create_checklist"] {
+			let reason = !assessment.contentAvailable ? "metadata_only" : (availableChars < 1500 ? "too_short" : "actionable_content")
+			let allowed = (!contentInsufficient && assessment.safeActions.contains(capId)) ? "yes" : "no"
+			print("[CognitiveUsefulnessGate] capability=\(capId) source=\(sourceLabel) scope=\(scopeLabel) chars=\(availableChars) allowed=\(allowed) reason=\(reason)")
+			if allowed == "no" {
+				let suppressionReason = !assessment.contentAvailable ? "metadata_only" : "too_short_visible_context"
+				print("[PanelSuppression] capability=\(capId) reason=\(suppressionReason)")
+			}
+		}
+		if contentInsufficient {
+			for suppressed in ["extract_action_items", "create_checklist"] {
+				print("[CognitiveCloneSuppression] suppressed=\(suppressed) kept=\(setupCapability) reason=\(!assessment.contentAvailable ? "weak_same_input" : "short_context")")
+			}
+		}
+		for capId in ["capture_full_document", "capture_visible_page", "enable_browser_bridge", "select_text_hint"] where assessment.safeActions.contains(capId) {
+			let novelty = noveltyTracker.noveltyScore(capabilityId: capId, entityKey: input.entityKey)
+			print("[SetupActionSuggestion] capability=\(capId) reason=\(!assessment.contentAvailable ? "only_metadata" : "short_visible_text")")
+			candidates.append(PortfolioCandidate(
+				lane: capId == "select_text_hint" ? .metadata : .research,
+				title: setupTitle(for: capId),
+				capabilityId: capId,
+				executionMode: .local_action,
+				confidence: 0.70,
+				usefulness: capId == setupCapability ? 0.74 : 0.45,
+				executability: 0.80,
+				novelty: novelty,
+				reason: "context_acquisition_need",
+				requiredEvidence: ProgressiveEvidenceLevel.metadata_rich.rawValue,
+				requiresConfirmation: capId == "capture_full_document",
+				involvedApps: [],
+				frictionOpportunity: nil,
+				musicIntent: nil,
+				generatedAction: nil,
+				sourcePath: "context_acquisition_need"
+			))
+		}
 		let acquisitionCapabilities: [(String, String, Double)] = [
 			("explicit_visible_capture_summary", "Summarize this page", 0.72),
 			("extract_action_items", "Extract action items", 0.68),
 			("create_checklist", "Make a checklist from this page", 0.65)
 		]
 		var acquisitionCount = 0
-		for (capId, title, usefulness) in acquisitionCapabilities where assessment.safeActions.contains(capId) {
+		for (capId, title, usefulness) in acquisitionCapabilities where assessment.safeActions.contains(capId) && !contentInsufficient {
 			let novelty = noveltyTracker.noveltyScore(capabilityId: capId, entityKey: input.entityKey)
 			print("[ResearchLane] generated capability=\(capId) evidence=metadata_rich acquisition=visible_capture source=cheap_portfolio")
 			candidates.append(PortfolioCandidate(
@@ -753,6 +843,15 @@ enum CheapAlwaysOnPortfolio {
 			print("[PortfolioLaneDecision] source=browser_context_strategy suggested_research=\(acquisitionCount) research_lane_enabled=yes reason=local_action_executor_available")
 		}
 		return candidates
+	}
+
+	private static func setupTitle(for capabilityId: String) -> String {
+		switch capabilityId {
+		case "capture_full_document": return "Capture full document"
+		case "enable_browser_bridge": return "Enable page access"
+		case "select_text_hint": return "Select text to summarize"
+		default: return "Capture visible page"
+		}
 	}
 
 	private static func payloadURLs(for candidate: PortfolioCandidate, input: CheapAlwaysOnPortfolioInput) -> [String] {

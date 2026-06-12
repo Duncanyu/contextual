@@ -96,7 +96,7 @@ public struct ContextExecutionResult: Sendable, Codable, Equatable {
             return items.map { "- \($0)" }.joined(separator: "\n")
         }
         var sections: [String] = []
-        
+
         // 1. Intent & Goal
         sections.append("""
         Intent: \(intent.intent)
@@ -110,17 +110,17 @@ public struct ContextExecutionResult: Sendable, Codable, Equatable {
             Judgment: relationship=\(judgment.relationship.rawValue); comparison_validity=\(judgment.comparisonValidity.rawValue); decision_type=\(judgment.decisionType.rawValue)
             """)
         }
-        
+
         // 2. Cognitive Artifact
         sections.append(cognitiveArtifact.render())
-        
+
         // 3. Grounded Evidence (Secondary)
         sections.append("""
         ---
         Observed from screen:
         \(bullet(observed))
         """)
-        
+
         if let pm = publicPageMetadata {
             let pmStrings = pm.productFacts.map { "\($0.key): \($0.value)" }
             sections.append("""
@@ -136,7 +136,7 @@ public struct ContextExecutionResult: Sendable, Codable, Equatable {
             \(bullet(webStrings))
             """)
         }
-        
+
         sections.append("""
         Possibly inferred:
         \(bullet(inferred))
@@ -145,12 +145,12 @@ public struct ContextExecutionResult: Sendable, Codable, Equatable {
         Not enough information:
         \(bullet(unknown))
         """)
-        
+
         sections.append("""
         Useful next question:
         \(nextQuestion)
         """)
-        
+
         return sections.joined(separator: "\n\n")
     }
 }
@@ -159,7 +159,7 @@ import Foundation
 public struct ArtifactSection: Sendable, Codable, Equatable {
     public let header: String
     public let items: [String]
-    
+
     public init(header: String, items: [String]) {
         self.header = header
         self.items = items
@@ -170,7 +170,7 @@ public struct ArtifactCard: Sendable, Codable, Equatable {
     public let title: String
     public let description: String
     public let tags: [String]
-    
+
     public init(title: String, description: String, tags: [String]) {
         self.title = title
         self.description = description
@@ -188,7 +188,7 @@ public struct ArtifactResult: Sendable, Codable, Equatable {
     public let missingInfo: [String]
     public let confidence: Double
     public let nextActions: [String]
-    
+
     public init(
         type: String,
         title: String,
@@ -216,43 +216,43 @@ public struct ArtifactResult: Sendable, Codable, Equatable {
         print("[ArtifactRender] sections=\(sections.count)")
         print("[ArtifactRender] table=\(tableRows != nil ? "yes" : "no")")
         print("[ArtifactRender] readable=yes")
-        
+
         var out = [String]()
         out.append("# \(title)")
         if !subtitle.isEmpty { out.append("_\(subtitle)_") }
-        
+
         for card in primaryCards {
             out.append("### \(card.title)")
             out.append("\(card.description) [\(card.tags.joined(separator: ", "))]")
         }
-        
+
         if let rows = tableRows {
             for row in rows {
                 out.append("| " + row.joined(separator: " | ") + " |")
             }
         }
-        
+
         for sec in sections {
             out.append("## \(sec.header)")
             for item in sec.items {
                 out.append("- \(item)")
             }
         }
-        
+
         if !missingInfo.isEmpty {
             out.append("## Missing Info")
             for m in missingInfo {
                 out.append("- \(m)")
             }
         }
-        
+
         if !nextActions.isEmpty {
             out.append("## Next Actions")
             for a in nextActions {
                 out.append("- \(a)")
             }
         }
-        
+
         return out.joined(separator: "\n\n")
     }
 }
@@ -285,7 +285,7 @@ public struct CognitiveCapability: Sendable, Codable, Equatable, Identifiable {
     public let riskLevel: RiskLevel
     public let requiresConfirmation: Bool
     public let executionMode: ExecutionMode
-    
+
     public init(
         id: String,
         label: String,
@@ -311,12 +311,12 @@ public struct CognitiveCapability: Sendable, Codable, Equatable, Identifiable {
 
 public final class CognitiveCapabilityRegistry: Sendable {
     public static let shared = CognitiveCapabilityRegistry()
-    
+
     public let capabilities: [String: CognitiveCapability]
-    
+
     private init() {
         var caps = [String: CognitiveCapability]()
-        
+
         // Read-only cognitive
         let cognitiveList = [
             CognitiveCapability(id: "summarize_context", label: "Summarize context", inputRequirements: ["recent_titles"], outputType: "summary", evidenceThreshold: "title_only"),
@@ -356,7 +356,7 @@ public final class CognitiveCapabilityRegistry: Sendable {
         ]
 
         for c in cognitiveList { caps[c.id] = c }
-        
+
         // Light local system actions
         let localList = [
             CognitiveCapability(id: "play_focus_media", label: "Play focus media", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, requiresConfirmation: true, executionMode: .local_action),
@@ -370,11 +370,15 @@ public final class CognitiveCapabilityRegistry: Sendable {
             CognitiveCapability(id: "copy_current_url", label: "Copy current URL", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
             CognitiveCapability(id: "copy_all_related_links", label: "Copy all related links", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
             CognitiveCapability(id: "copy_result_to_clipboard", label: "Copy to clipboard", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
+            CognitiveCapability(id: "capture_visible_page", label: "Capture visible page", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .read_only, executionMode: .local_action),
+            CognitiveCapability(id: "capture_full_document", label: "Capture full document", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .read_only, requiresConfirmation: true, executionMode: .local_action),
+            CognitiveCapability(id: "enable_browser_bridge", label: "Enable page access", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .read_only, executionMode: .local_action),
+            CognitiveCapability(id: "select_text_hint", label: "Select text to summarize", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .read_only, executionMode: .local_action),
             // Part I: clearer user-facing labels
             CognitiveCapability(id: "remember_workspace", label: "Save current app/window setup", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action),
             CognitiveCapability(id: "open_current_task_panel", label: "Open task panel", inputRequirements: [], outputType: "system_action", evidenceThreshold: "none", riskLevel: .light_action, executionMode: .local_action)
         ]
-        
+
         for c in localList { caps[c.id] = c }
 
         // Phase 26.1 — Friction-reduction capabilities (environment actions, not text generation)
@@ -393,14 +397,31 @@ public final class CognitiveCapabilityRegistry: Sendable {
 
         for c in frictionList { caps[c.id] = c }
 
+        // Phase 53 — Liquid workflow actions: every ontology action is a real,
+        // executable local capability (Tier 1 executes, Tier 2 shows capture,
+        // Tier 3 shows setup — never decorative).
+        for action in WorkflowActionOntology.all where caps[action.id] == nil {
+            caps[action.id] = CognitiveCapability(
+                id: action.id,
+                label: action.resultCardTitle,
+                inputRequirements: [],
+                outputType: action.resultType,
+                evidenceThreshold: "none",
+                riskLevel: action.riskLevel == "light_action" ? .light_action : .read_only,
+                requiresConfirmation: false,
+                executionMode: .local_action
+            )
+        }
+        WorkflowActionOntology.logRegistration()
+
         self.capabilities = caps
-        
+
         print("[CapabilityRegistry] loaded count=\(caps.count)")
         for c in caps.values.sorted(by: { $0.id < $1.id }) {
             print("[Capability] id=\(c.id) mode=\(c.executionMode.rawValue) risk=\(c.riskLevel.rawValue) confirmation=\(c.requiresConfirmation ? "yes" : "no")")
         }
     }
-    
+
     public func get(_ id: String) -> CognitiveCapability? {
         capabilities[id]
     }
@@ -613,9 +634,9 @@ public enum CapabilitySelector {
                 reason: "General research/browsing"
             )
         }()
-        
+
         print("[CapabilitySelector] selected=\(result.primary.id) reason=\"\(result.reason)\" can_execute_now=\(result.primary.executionMode == .local_action ? "yes" : "no")")
-        
+
         return result
     }
 }
@@ -633,11 +654,17 @@ public enum CapabilityExecutionStatus: String, Codable, Sendable {
     case cancelled = "cancelled"
     case blocked = "blocked"
     case openedSearch = "opened_search"
+    /// Phase 44: content quality is too low to produce a useful result.
+    /// The action writes a "capture needed" explanation to clipboard/output.
+    case captureNeeded = "capture_needed"
+    case failedVisible = "failed_visible"
+    case failedSilent = "failed_silent"
 }
 
 @MainActor
 public final class CapabilityExecutor {
     public static let shared = CapabilityExecutor()
+    weak var appState: AppState?
 
 	struct LocalActionOutcome {
 		let status: CapabilityExecutionStatus
@@ -658,8 +685,429 @@ public final class CapabilityExecutor {
 
 	static var testHooks = TestHooks()
     private var cachedFocusShortcut: (name: String?, checkedAt: Date)?
+    private var pendingResultCards: [String: PendingResultCardPayload] = [:]
+
+    public struct PendingResultCardPayload: Sendable {
+        let capabilityID: String
+        let title: String
+        let text: String
+        let outputChars: Int
+        let cardType: ResultCardType
+        let contentQuality: ContentQualityLabel
+        let contentSource: String
+        let isCaptureNeeded: Bool
+        let acquiredChars: Int
+        let failureReason: String?
+        let nextStep: String?
+        let actions: [ResultCardAction]
+    }
+
+    enum CognitiveTextOutcome {
+        case success(String)
+        case failure(reason: String, message: String, nextStep: ContentNextStep?)
+    }
+
+    struct OutputQualityEvaluation {
+        let passed: Bool
+        let reason: String
+        let echoSimilarity: Double
+        let tooShort: Bool
+        let tooLong: Bool
+        let empty: Bool
+        let hallucinatedFormat: Bool
+        let modelRefusal: Bool
+        let lowQuality: Bool
+    }
 
     private init() {}
+
+    @discardableResult
+    public func presentCognitiveResultSurface(
+        capability: String,
+        status: String,
+        outputText: String,
+        source: String,
+        quality: String,
+        coverage: String,
+        sourceSurface: String,
+        preferredSurface: String,
+        scope: AcquiredContentScope? = nil
+    ) async -> Bool {
+        guard let appState = self.appState else {
+            print("[CognitiveResultPresenter] failed reason=appState_nil")
+            return false
+        }
+
+        print("[CognitiveResultPresenter] requested capability=\(capability) status=\(status) output_chars=\(outputText.count) source=\(source) quality=\(quality) preferred=\(preferredSurface)")
+        print("[ResultPresenterParity] dogfood_action_uses_presenter=yes real_cognitive_actions_use_presenter=yes")
+        print("[ResultPresenterParity] capability=explicit_visible_capture_summary presenter=shared")
+        print("[ResultPresenterParity] capability=extract_action_items presenter=shared")
+        print("[ResultPresenterParity] capability=create_checklist presenter=shared")
+
+        let trimmed = outputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            print("[ResultSurfaceValidation] type=invalid output_chars=0 message_chars=0 valid=no reason=empty_text")
+            return false
+        }
+
+        // Add dogfood-only preview logging if enabled
+        if UCRDogfoodMode.isEnabled {
+            let redacted = self.redactPreview(outputText)
+            let preview = String(redacted.prefix(300))
+            print("[GeneratedTextPreview] capability=\(capability) preview=\"\(preview)\" output_chars=\(outputText.count)")
+        }
+
+        // Determine title — Phase 51: summary titles come from scope truth, never
+        // from char-count or quality-string heuristics. "Page Summary" requires a
+        // proven full_page/full_document scope.
+        let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "this app"
+        var title = ""
+        if capability == "ucr_dogfood_test" {
+            title = "Content Acquisition: \(appName)"
+        } else if status == "needs_capture" {
+            if let liquid = WorkflowActionOntology.byId[capability], liquid.isSpecificAction {
+                title = LiquidActionRouter.specificCaptureTitle(
+                    for: liquid,
+                    signals: WorkflowSignals(activeApp: appName, windowTitle: "")
+                )
+            } else {
+                title = "Capture Needed"
+            }
+        } else if status == "failed" {
+            title = "Execution Failed"
+        } else {
+            switch capability {
+            case "explicit_visible_capture_summary", "summarize_visible_content":
+                title = ScopeTruthTitles.summaryCardTitle(for: scope ?? .visibleViewport)
+            case "extract_action_items":
+                title = "Action Items"
+            case "create_checklist":
+                title = "Checklist"
+            case "draft_reply":
+                title = "Draft Reply"
+            case "rewrite_text":
+                title = "Rewritten Text"
+            case "improve_text":
+                title = "Improved Text"
+            case "explain_context":
+                title = "Context Explanation"
+            case "diagnose_error":
+                title = "Error Diagnosis"
+            default:
+                // Phase 53 — liquid ontology actions carry their own card title.
+                title = WorkflowActionOntology.byId[capability]?.resultCardTitle ?? "Result"
+            }
+        }
+
+        let scopeLabel = scope?.rawValue ?? "unknown"
+        var displayTitle = title
+        var displayOutput = outputText
+        var floatingText = ""
+        var nextStepText: String? = nil
+        var missingContext: MissingContextCardModel? = nil
+        let liquidAction = WorkflowActionOntology.byId[capability]
+        let composedAction = ComposedActionUIRegistry.resolve(capability)
+        var sourceLabel = SourceScopePresenter.display(scope: scope, capability: capability, rawSource: source)
+
+        if let composed = composedAction {
+            displayTitle = composed.identity.title
+            sourceLabel = composed.identity.sourceScope == "capture_pending" ? "current page content" : composed.identity.sourceScope
+            if status == "needs_capture" {
+                displayTitle = "Capture needed: \(composed.identity.title)"
+                displayOutput = "This action needs page content before it can finish. Capture the visible page or document to continue."
+                floatingText = displayOutput
+                nextStepText = "Capture content to run the composed action."
+                print("[ComposedMissingContextCard] id=\(capability) missing=\(composed.plan.missingInputs.joined(separator: ",")) next=capture_visible_page")
+            } else {
+                displayOutput = outputText
+            }
+            print("[ResultDisplayMode] mode=user debug_visible=no")
+            print("[ResultHumanTitle] id=\(capability) title=\"\(displayTitle)\"")
+        } else if let liquid = liquidAction, status == "needs_capture" {
+            // Phase 58.6 — limitation cards say what's missing, why it matters,
+            // how to provide it, and the next best action. No char counts.
+            let model = MissingContextCardBuilder.build(capability: capability, scope: scope, reason: quality)
+            missingContext = model
+            displayTitle = model.title
+            displayOutput = model.body
+            floatingText = model.body
+            nextStepText = model.instruction
+            sourceLabel = model.sourceLabel
+            print("[ResultDisplayMode] mode=user debug_visible=no")
+            print("[ResultHumanTitle] id=\(capability) title=\"\(displayTitle)\"")
+            _ = liquid
+        } else if let liquid = liquidAction {
+            displayTitle = LiquidInsightFormatters.humanResultTitle(for: liquid, status: status)
+            displayOutput = LiquidInsightFormatters.sanitizeUserVisibleOutput(
+                action: liquid,
+                output: outputText,
+                status: status,
+                scope: scope
+            )
+            print("[ResultDisplayMode] mode=user debug_visible=no")
+            print("[ResultHumanTitle] id=\(capability) title=\"\(displayTitle)\"")
+            let readable = LiquidInsightFormatters.userReadableResultGate(action: liquid, title: displayTitle, output: displayOutput)
+            print("[UserReadableResultGate] id=\(capability) allowed=\(readable.allowed ? "yes" : "no") reason=\(readable.reason)")
+            guard readable.allowed else {
+                print("[OutputFallback] id=\(capability) fallback=suppress reason=\(readable.reason)")
+                return false
+            }
+            let important = LiquidInsightFormatters.outputImportanceGate(action: liquid, output: displayOutput)
+            print("[OutputImportanceGate] id=\(capability) allowed=\(important.allowed ? "yes" : "no") reason=\(important.reason)")
+            guard important.allowed else {
+                print("[OutputFallback] id=\(capability) fallback=suppress reason=\(important.reason)")
+                return false
+            }
+        }
+
+        print("[ResultCardSourceLabel] capability=\(capability) source=\(source) scope=\(scopeLabel) chars=\(displayOutput.count) coverage=\(coverage)")
+
+        // Phase 58.6 — follow-ups: generate → resolve → rank → cap (panel
+        // budget here; the floating surface trims further at render).
+        var rankedFollowUps: [RankedFollowUp] = []
+        if let liquid = liquidAction {
+            let candidates = missingContext?.followUpIDs
+                ?? CapabilityExecutor.generateFollowUps(action: liquid, status: status, scope: scope)
+            rankedFollowUps = FollowUpRanker.rank(
+                candidates: candidates,
+                sourceAction: capability,
+                status: status,
+                surface: .panel
+            )
+        }
+
+        // Phase 58.6 — per-surface presentation policy + compact summary.
+        let floatingBudget = ResultCardPresentationPolicy.logPolicy(capability: capability, surface: .floating)
+        _ = ResultCardPresentationPolicy.logPolicy(capability: capability, surface: .panel)
+        let floatingMode = ResultCardPresentationPolicy.decideMode(
+            capability: capability,
+            surface: .floating,
+            status: status,
+            isMissingContext: missingContext != nil,
+            outputChars: displayOutput.count
+        )
+        _ = ResultCardPresentationPolicy.decideMode(
+            capability: capability,
+            surface: .panel,
+            status: status,
+            isMissingContext: missingContext != nil,
+            outputChars: displayOutput.count
+        )
+
+        if status == "success" {
+            let summary = ResultSummaryCompressor.compress(
+                capability: capability,
+                title: displayTitle,
+                fullText: displayOutput,
+                budget: floatingBudget
+            )
+            floatingText = summary.text
+            if !summary.bullets.isEmpty {
+                displayTitle = summary.title
+            }
+            if nextStepText == nil, !rankedFollowUps.isEmpty {
+                nextStepText = Self.nextBestSentence(from: rankedFollowUps.map(\.label))
+            }
+        }
+        print("[ResultCardMode] capability=\(capability) mode=floating_summary actual_chars=\(floatingText.isEmpty ? displayOutput.count : floatingText.count)")
+        print("[ResultCardMode] capability=\(capability) mode=panel_detail actual_chars=\(displayOutput.count)")
+
+        var card = ResearchResultCardState(
+            capabilityID: capability,
+            title: displayTitle,
+            text: displayOutput,
+            outputChars: displayOutput.count
+        )
+        card.contentScope = scopeLabel
+        card.floatingText = floatingText
+        card.nextStepText = nextStepText
+        card.sourceLabel = sourceLabel
+
+        let capType = self.resultCardType(for: capability)
+        let qualityLabel = self.qualityFromLabel(quality)
+
+        if status == "success" {
+            card.cardType = capType
+            card.contentQuality = qualityLabel
+            card.contentSource = source
+            card.isCaptureNeeded = false
+        } else if status == "needs_capture" {
+            card.cardType = .captureNeeded
+            card.contentQuality = .metadataOnly
+            card.contentSource = source
+            card.isCaptureNeeded = true
+            card.failureReason = "too_little_text"
+            card.nextStep = "capture_visible"
+            if liquidAction == nil {
+                card.actions = self.defaultFailureActions(nextStep: .captureVisible, selectedTextAvailable: false)
+            }
+        } else { // "failed"
+            card.cardType = .error
+            card.contentQuality = qualityLabel
+            card.contentSource = source
+            card.isCaptureNeeded = false
+            card.failureReason = "low_quality"
+            card.nextStep = "capture_visible"
+            if liquidAction == nil {
+                card.actions = self.defaultFailureActions(nextStep: .captureVisible, selectedTextAvailable: false)
+            }
+        }
+
+        if !rankedFollowUps.isEmpty {
+            let dynamicActions = rankedFollowUps.map {
+                ResultCardAction(
+                    id: $0.rawID,
+                    title: $0.label,
+                    kind: .ontology,
+                    ontologyActionID: $0.executableID,
+                    sourceActionID: capability,
+                    requiredScope: "metadata",
+                    risk: "read_only",
+                    enabled: true
+                )
+            }
+            card.actions.append(contentsOf: dynamicActions)
+            for a in dynamicActions {
+                print("[FollowUpActionAttached] source_action=\(capability) result_id=\(a.id) action=\(a.ontologyActionID ?? a.id) label=\"\(a.title)\" payload_valid=yes")
+            }
+            print("[ContextExecutionResult] followups=\(dynamicActions.count) source_action=\(capability)")
+        }
+        if let composed = composedAction, status == "success" {
+            let composedActions = ComposedActionUIRegistry.registerFollowUps(for: ComposedPlanResult(
+                planID: composed.plan.id,
+                title: composed.plan.userVisibleTitle,
+                status: "success",
+                outputs: [],
+                renderedText: displayOutput,
+                outputQuality: quality,
+                suggestedNextPlan: composed.plan.followups.first
+            ), parentUIID: capability, plan: composed.plan)
+            card.actions.append(contentsOf: composedActions)
+            print("[ContextExecutionResult] composed_followups=\(composedActions.count) source_action=\(capability)")
+        }
+
+        // Phase 58.6 — final UI copy gate, per surface. A card that fails the
+        // floating gate can still present in the panel (and vice versa).
+        // The UCR diagnostic card is a developer tool and shows debug detail
+        // by design — it bypasses the user-copy gate.
+        if capability == "ucr_dogfood_test" {
+            print("[ResultCardPolicyDecision] capability=\(capability) surface=floating mode=debug_hidden reason=developer_diagnostic_card")
+            return await requestAndVerify(card: card, capability: capability, sourceSurface: sourceSurface)
+        }
+        let ontologyButtonLabels = card.actions.filter { $0.kind == .ontology }.map(\.title)
+        let ontologyButtonTargets = card.actions.filter { $0.kind == .ontology }.compactMap(\.ontologyActionID)
+        let floatingGate = UICopyGate.evaluate(
+            capabilityID: capability,
+            surface: .floating,
+            mode: floatingMode,
+            title: displayTitle,
+            body: floatingText.isEmpty ? displayOutput : floatingText,
+            sourceLabel: sourceLabel,
+            nextStep: nextStepText ?? card.nextStep,
+            buttonLabels: Array(ontologyButtonLabels.prefix(3)),
+            buttonExecutableIDs: Array(ontologyButtonTargets.prefix(3))
+        )
+        let panelGate = UICopyGate.evaluate(
+            capabilityID: capability,
+            surface: .panel,
+            mode: missingContext != nil ? .missingContext : .detail,
+            title: displayTitle,
+            body: displayOutput,
+            sourceLabel: sourceLabel,
+            nextStep: nextStepText ?? card.nextStep,
+            buttonLabels: ontologyButtonLabels,
+            buttonExecutableIDs: ontologyButtonTargets
+        )
+        card.floatingAllowed = floatingGate.allowed
+        card.panelAllowed = panelGate.allowed
+        guard floatingGate.allowed || panelGate.allowed else {
+            print("[OutputFallback] id=\(capability) fallback=suppress reason=ui_copy_gate_\(panelGate.reason)")
+            return false
+        }
+
+        return await requestAndVerify(card: card, capability: capability, sourceSurface: sourceSurface)
+    }
+
+    private func requestAndVerify(card: ResearchResultCardState, capability: String, sourceSurface: String) async -> Bool {
+        guard let appState = self.appState else { return false }
+        let sourceSurfaceEnum = ActionSourceSurface(rawValue: sourceSurface) ?? .panel
+        let requested = appState.requestResultSurface(card, sourceSurface: sourceSurfaceEnum)
+        guard requested else {
+            print("[ActionCompletionSurface] capability=\(capability) rendered=no reason=zero_output")
+            return false
+        }
+
+        // Wait for render verification
+        var verified = false
+        for _ in 0..<40 { // up to 2.0s
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            let floatState = appState.debugResultSurfaceState(for: .floating)
+            let panelState = appState.debugResultSurfaceState(for: .panel)
+            if floatState?.proofVisible == true || panelState?.proofVisible == true {
+                verified = true
+                break
+            }
+        }
+
+        return verified
+    }
+
+    /// "Extract dates and payments or generate landlord questions." —
+    /// one next-best-action sentence built from the top ranked follow-ups.
+    static func nextBestSentence(from labels: [String]) -> String? {
+        guard let first = labels.first else { return nil }
+        if labels.count == 1 { return "\(first)." }
+        let second = labels[1].prefix(1).lowercased() + labels[1].dropFirst()
+        return "\(first) or \(second)."
+    }
+
+    private func redactPreview(_ text: String) -> String {
+        var out = text
+        // Email pattern
+        let emailPattern = "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+        if let re = try? NSRegularExpression(pattern: emailPattern) {
+            let range = NSRange(out.startIndex..., in: out)
+            out = re.stringByReplacingMatches(in: out, range: range, withTemplate: "[email redacted]")
+        }
+        // URL pattern
+        let urlPattern = "https?://[A-Za-z0-9./?=&_-]+"
+        if let re = try? NSRegularExpression(pattern: urlPattern) {
+            let range = NSRange(out.startIndex..., in: out)
+            out = re.stringByReplacingMatches(in: out, range: range, withTemplate: "[url redacted]")
+        }
+        // Phone pattern
+        let phonePattern = "\\+?[0-9\\-\\s\\(\\)]{9,16}"
+        if let re = try? NSRegularExpression(pattern: phonePattern) {
+            let range = NSRange(out.startIndex..., in: out)
+            out = re.stringByReplacingMatches(in: out, range: range, withTemplate: "[phone redacted]")
+        }
+        // General secret tokens (long hex/base64 strings)
+        let tokenPattern = "(?<![a-zA-Z0-9])[A-Za-z0-9\\-_]{32,}(?![a-zA-Z0-9])"
+        if let re = try? NSRegularExpression(pattern: tokenPattern) {
+            let range = NSRange(out.startIndex..., in: out)
+            out = re.stringByReplacingMatches(in: out, range: range, withTemplate: "[redacted]")
+        }
+        return out
+    }
+
+    private func qualityFromLabel(_ label: String) -> ContentQualityLabel {
+        switch label.lowercased() {
+        case "full_text", "fulldocumenttext": return .fullText
+        case "partial_text", "partialdocumenttext", "selected_text": return .partialText
+        case "visible_text", "axvisibletext", "visibleocr": return .visibleText
+        case "metadata_only", "metadataonly": return .metadataOnly
+        case "failed", "none": return .failed
+        default: return .metadataOnly
+        }
+    }
+
+    func takePendingResultCard(for capabilityID: String) -> PendingResultCardPayload? {
+        pendingResultCards.removeValue(forKey: capabilityID)
+    }
+
+    private func storePendingResultCard(_ payload: PendingResultCardPayload) {
+        pendingResultCards[payload.capabilityID] = payload
+    }
 
     private func hasTestHook(for capabilityID: String) -> Bool {
         switch capabilityID {
@@ -677,7 +1125,7 @@ public final class CapabilityExecutor {
         }
         return focusShortcut(named: "Contextual Focus On") != nil
     }
-    
+
     public func execute(capability: CognitiveCapability, context: [String: Any]) async -> CapabilityExecutionStatus {
         let sourceSurface = (context["source_surface"] as? String) ?? "unknown"
         let proposalID = (context["proposal_id"] as? String) ?? "unknown"
@@ -693,9 +1141,42 @@ public final class CapabilityExecutor {
             let hasContract = context["targetContract"] is ActionTargetContract
             print("[LivePathEnforcement] capability=\(capability.id) path=executor contract_required=yes contract_present=\(hasContract ? "yes" : "no") allowed=\(hasContract ? "yes" : "no") surface=executor reason=\(hasContract ? "contract_present" : "missing_target_contract")")
             if !hasContract {
-                print("[ActionPreflight] capability=\(capability.id) contract_id=missing status=blocked reason=missing_target_contract")
-                print("[CapabilityExecution] completed status=unavailable id=\(capability.id) reason=missing_target_contract")
-                return .unavailable
+                if capability.id == "arrange_side_by_side" {
+                    let explicitApps = context["apps"] as? [String] ?? []
+                    // Phase 51 — manual panel arrange resolves its own live targets;
+                    // it does not depend on a (possibly stale) proposal contract.
+                    let isManualArrange = (context["arrange_mode"] as? String) == "manual"
+                        || (context["source_surface"] as? String) == "panel"
+                    if explicitApps.isEmpty || isManualArrange {
+                        print("[ActionPreflight] capability=\(capability.id) contract_id=missing status=\(isManualArrange ? "manual_mode_runtime_resolution" : "deferred_to_verified_pair_gate") reason=missing_target_contract")
+                    } else {
+                        let message = "I couldn’t arrange these windows because the required window targets were no longer available."
+                        storePendingResultCard(
+                            PendingResultCardPayload(
+                                capabilityID: "arrange_side_by_side",
+                                title: "Arrange Failed",
+                                text: message,
+                                outputChars: message.count,
+                                cardType: .blockedAction,
+                                contentQuality: .metadataOnly,
+                                contentSource: "target_contract",
+                                isCaptureNeeded: false,
+                                acquiredChars: 0,
+                                failureReason: "target_contract_failed",
+                                nextStep: "retry_arrange",
+                                actions: [ResultCardAction(id: .dismiss, title: "Dismiss")]
+                            )
+                        )
+                        print("[BlockedActionCard] shown capability=arrange_side_by_side reason=target_contract_failed")
+                        print("[ActionPreflight] capability=\(capability.id) contract_id=missing status=blocked reason=missing_target_contract")
+                        print("[CapabilityExecution] completed status=unavailable id=\(capability.id) reason=missing_target_contract")
+                        return .unavailable
+                    }
+                } else {
+                    print("[ActionPreflight] capability=\(capability.id) contract_id=missing status=blocked reason=missing_target_contract")
+                    print("[CapabilityExecution] completed status=unavailable id=\(capability.id) reason=missing_target_contract")
+                    return .unavailable
+                }
             }
         }
 
@@ -709,7 +1190,7 @@ public final class CapabilityExecutor {
         } else {
             print("[CapabilityExecution] confirmation_required=no")
         }
-        
+
         switch capability.id {
         case "suggest_focus_playlist":
             print("[CapabilityExecution] status=preview_generated id=\(capability.id)")
@@ -721,10 +1202,10 @@ public final class CapabilityExecutor {
 
         case "copy_result_to_clipboard":
             return copyToClipboard(context: context)
-            
+
         case "start_focus_timer":
             return startFocusTimer(context: context)
-            
+
         case "play_focus_media":
             return await playFocusMedia(context: context)
 
@@ -733,10 +1214,10 @@ public final class CapabilityExecutor {
 
         case "open_related_app_set":
             return openCommonAppPair(context: context)
-            
+
         case "pause_media":
             return await pauseMedia()
-            
+
         case "open_relevant_app":
             return openRelevantApp(context: context)
 
@@ -806,34 +1287,74 @@ public final class CapabilityExecutor {
         case "open_current_task_panel":
             return openCurrentTaskPanel()
 
+        case "capture_visible_page":
+            return showContextSetupCard(
+                capabilityId: capability.id,
+                title: "Capture Visible Page",
+                reason: "visible_capture_needed",
+                message: "I do not have enough readable page content yet.\n\nUse a visible capture or select the exact text you want summarized.",
+                nextStep: "capture_visible"
+            )
+
+        case "capture_full_document":
+            return showContextSetupCard(
+                capabilityId: capability.id,
+                title: "Capture Full Document",
+                reason: "full_document_capture_needed",
+                message: "Full document capture needs explicit access to the focused document.\n\nUse the capture button from a result card when you are ready to approve that route.",
+                nextStep: "capture_full_document"
+            )
+
+        case "enable_browser_bridge":
+            return showContextSetupCard(
+                capabilityId: capability.id,
+                title: "Enable Page Access",
+                reason: "browser_bridge_not_wired",
+                message: "This browser page only exposes metadata right now.\n\nA native page-access bridge is not wired in this build, so I cannot honestly summarize the full page yet.",
+                nextStep: "enable_page_access"
+            )
+
+        case "select_text_hint":
+            return showContextSetupCard(
+                capabilityId: capability.id,
+                title: "Select Text",
+                reason: "selection_needed",
+                message: "Select the specific text you want summarized or transformed, then open the panel again.",
+                nextStep: "select_text"
+            )
+
         // Phase 42 — Acquisition executors: real local execution, no LLM required.
         case "explicit_visible_capture_summary":
-            return captureAndSummarizePage(context: context)
+            return await captureAndSummarizePage(context: context)
 
         case "extract_action_items":
-            return extractActionItemsFromContext(context: context)
+            return await extractActionItemsFromContext(context: context)
 
         case "create_checklist":
-            return createChecklistFromContext(context: context)
+            return await createChecklistFromContext(context: context)
 
         // Phase 42 — Writing executors: use selected text from context when available.
         case "rewrite_text", "improve_text":
-            return rewriteSelectedText(context: context, capabilityId: capability.id)
+            return await rewriteSelectedText(context: context, capabilityId: capability.id)
 
         case "explain_context":
-            return explainContext(context: context)
+            return await explainContext(context: context)
 
         case "draft_reply":
-            return draftReply(context: context)
+            return await draftReply(context: context)
 
         default:
+            // Phase 53 — Liquid workflow actions execute through the ontology.
+            if let liquidAction = WorkflowActionOntology.byId[capability.id] {
+                return await executeLiquidAction(liquidAction, context: context)
+            }
             // Phase 42: preview_only is not success — return unavailable so UI shows honest failure.
             print("[CapabilityExecution] mode=disabled_preview id=\(capability.id)")
             print("[CapabilityExecution] completed status=failed id=\(capability.id) reason=executor_unavailable")
             return .unavailable
         }
     }
-    
+
     private func copyToClipboard(context: [String: Any]) -> CapabilityExecutionStatus {
         guard let text = context["text"] as? String else {
             print("[ActionExecution] capability=copy_result_to_clipboard")
@@ -897,10 +1418,40 @@ public final class CapabilityExecutor {
         print("[CapabilityExecution] completed status=success id=open_current_task_panel reason=panel_requested")
         return .success
     }
-    
-    // MARK: - Phase 42 Acquisition Executors
 
-    /// Build visible-context input from whatever is available: browser context, window title, tab titles.
+    func showContextSetupCard(
+        capabilityId: String,
+        title: String,
+        reason: String,
+        message: String,
+        nextStep: String
+    ) -> CapabilityExecutionStatus {
+        print("[PanelActionDescription] capability=\(capabilityId) label=\"\(title)\" description=\"Shows the honest next step for acquiring enough context.\"")
+        print("[ActionExecution] capability=\(capabilityId)")
+        storePendingResultCard(
+            PendingResultCardPayload(
+                capabilityID: capabilityId,
+                title: title,
+                text: message,
+                outputChars: message.count,
+                cardType: .captureNeeded,
+                contentQuality: .metadataOnly,
+                contentSource: "context_acquisition_need",
+                isCaptureNeeded: true,
+                acquiredChars: 0,
+                failureReason: reason,
+                nextStep: nextStep,
+                actions: [ResultCardAction(id: .dismiss, title: "Dismiss")]
+            )
+        )
+        print("[ActionVerification] capability=\(capabilityId) status=blocked reason=\(reason)")
+        print("[CapabilityExecution] completed status=capture_needed id=\(capabilityId) reason=\(reason)")
+        return .captureNeeded
+    }
+
+    // MARK: - Phase 44 Acquisition Executors (real content, not metadata-only)
+
+    /// Legacy metadata-only helper — kept for writing actions that can work with partial context.
     private func acquisitionContextText(context: [String: Any]) -> (text: String, source: String) {
         let browser = currentBrowserContext()
         let pageTitle = browser?.selectedTitle
@@ -929,103 +1480,243 @@ public final class CapabilityExecutor {
         return (parts.joined(separator: "\n"), source)
     }
 
-    private func captureAndSummarizePage(context: [String: Any]) -> CapabilityExecutionStatus {
-        print("[AcquisitionAction] started capability=explicit_visible_capture_summary acquisition=visible_capture source_surface=panel")
-        let (inputText, source) = acquisitionContextText(context: context)
-        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count) reason=\(inputText.isEmpty ? "no_context" : "browser_and_window_metadata")")
-        guard !inputText.isEmpty else {
-            print("[ActionVerification] capability=explicit_visible_capture_summary status=failed reason=no_content")
-            print("[CapabilityExecution] completed status=failed id=explicit_visible_capture_summary reason=no_context")
-            return .unavailable
-        }
-        print("[GeneratedTextAction] capability=explicit_visible_capture_summary started input_chars=\(inputText.count)")
-        let browser = currentBrowserContext()
-        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? "Current Page"
-        let url = browser?.selectedURL?.absoluteString ?? browser?.currentURL?.absoluteString ?? ""
-        let tabTitles = (context["tabTitles"] as? [String] ?? []) + (browser?.recentTabTitles ?? [])
-        let workflow = context["workflow"] as? String ?? "unknown"
-        var lines: [String] = ["# Page Summary"]
-        lines.append("")
-        lines.append("**\(pageTitle)**")
-        if !url.isEmpty { lines.append(url) }
-        lines.append("")
-        if workflow != "unknown" { lines.append("You're currently in a **\(workflow)** context.") }
-        let uniqueTabs = Array(Set(tabTitles).subtracting([pageTitle])).prefix(5)
-        if !uniqueTabs.isEmpty {
-            lines.append("")
-            lines.append("**Related tabs:**")
-            for tab in uniqueTabs { lines.append("- \(tab)") }
-        }
-        let output = lines.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(output, forType: .string)
-        print("[GeneratedTextAction] capability=explicit_visible_capture_summary completed output_chars=\(output.count)")
-        print("[ActionVerification] capability=explicit_visible_capture_summary status=success reason=output_present")
-        print("[CapabilityExecution] completed status=success id=explicit_visible_capture_summary reason=output_present")
-        return .success
-    }
+    /// Phase 44 — Gate a cognitive action if content quality is too low.
+    /// Returns the capture-needed message text if gated, nil if OK to proceed.
+    // MARK: - Phase 45: Cognitive executors backed by UniversalContentReader
 
-    private func extractActionItemsFromContext(context: [String: Any]) -> CapabilityExecutionStatus {
-        print("[AcquisitionAction] started capability=extract_action_items acquisition=visible_capture source_surface=panel")
-        let (inputText, source) = acquisitionContextText(context: context)
-        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count)")
-        let browser = currentBrowserContext()
-        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? ""
-        let tabTitles = (context["tabTitles"] as? [String] ?? []) + (browser?.recentTabTitles ?? [])
-        let allTitles = ([pageTitle] + tabTitles).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !allTitles.isEmpty else {
-            print("[ActionVerification] capability=extract_action_items status=failed reason=no_context")
-            print("[CapabilityExecution] completed status=failed id=extract_action_items reason=no_context")
-            return .unavailable
+    /// Shared executor logic: acquire content, gate, format, and stage a verified result card payload.
+    func executeWithUniversalContent(
+        capabilityId: String,
+        context: [String: Any],
+        format: (_ ucr: UniversalContentResult, _ scope: ActionScopeResolution) async -> CognitiveTextOutcome
+    ) async -> CapabilityExecutionStatus {
+        let sourceSurface = (context["source_surface"] as? String) ?? "panel"
+        // Phase 51 — clipboard capture is allowed only when this execution carries
+        // explicit user approval (e.g. "Capture full document" card button).
+        let allowClipboardCapture = context["allow_clipboard_capture"] as? Bool == true
+        print("[AcquisitionAction] started capability=\(capabilityId) source_surface=\(sourceSurface) user_approved_capture=\(allowClipboardCapture ? "yes" : "no")")
+        let ucr = UniversalContentReader.readForCapability(capabilityId, allowClipboardCapture: allowClipboardCapture)
+        let goal = UniversalContentReader.contentGoalPublic(for: capabilityId)
+        let baseAllowed = UniversalContentReader.gate(capabilityId: capabilityId, goal: goal, result: ucr)
+        let scopeResolution = UniversalContentReader.resolveActionScope(capabilityId: capabilityId, result: ucr)
+        let scopeGate = ContentScopeGate.evaluate(
+            capabilityId: capabilityId,
+            requested: ContentScopeModel.requestedScope(for: capabilityId),
+            actual: ucr.actualScope,
+            chars: UniversalContentReader.meaningfulCharacterCount(ucr.text)
+        )
+        let actualChars = UniversalContentReader.meaningfulCharacterCount(ucr.text)
+        let usefulness = cognitiveUsefulnessGate(
+            capabilityId: capabilityId,
+            scope: ucr.actualScope,
+            source: ucr.source,
+            chars: actualChars
+        )
+        let allowed = baseAllowed && scopeResolution.allowed && scopeGate.allowed && usefulness.allowed
+
+        if !scopeResolution.allowed {
+            print("[CognitiveActionGate] blocked reason=page_content_unavailable \(scopeResolution.reason)")
         }
-        print("[GeneratedTextAction] capability=extract_action_items started input_chars=\(inputText.count)")
-        var items: [String] = []
-        let actionPrefixes = ["Fix", "Update", "Review", "Check", "Todo", "Note", "Follow up", "Read"]
-        for title in allTitles.prefix(8) {
-            let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            if actionPrefixes.contains(where: { t.lowercased().hasPrefix($0.lowercased()) }) {
-                items.append("- \(t)")
+
+        let isPanelPreferred = (self.appState?.isPanelVisible == true) || sourceSurface == "panel"
+        let preferredSurface = isPanelPreferred ? "both" : "floating"
+
+        if !allowed {
+            let nextStep = usefulness.allowed ? resolveFailureNextStep(ucr: ucr, scope: scopeResolution) : usefulness.nextStep
+            let msg: String
+            if let liquid = WorkflowActionOntology.byId[capabilityId], liquid.isSpecificAction {
+                msg = LiquidInsightFormatters.specificCaptureMessage(
+                    action: liquid,
+                    chars: actualChars,
+                    reason: ucr.actualScope == .metadataOnly ? "metadata_only" : scopeResolution.reason
+                )
+                LiquidInsightFormatters.logQuality(
+                    action: liquid,
+                    source: LiquidInsightFormatters.sourceKind(scope: ucr.actualScope),
+                    chars: actualChars,
+                    extractedItems: 0,
+                    quotedLines: 0,
+                    quality: "needs_capture",
+                    reason: ucr.actualScope == .metadataOnly ? "metadata_only" : scopeResolution.reason,
+                    allowed: false,
+                    gateReason: "needs_capture"
+                )
             } else {
-                items.append("- Review: \(t)")
+                msg = captureNeededMessage(
+                    capabilityId: capabilityId,
+                    ucr: ucr,
+                    scope: scopeResolution,
+                    actualChars: actualChars
+                )
             }
+
+            let verified = await presentCognitiveResultSurface(
+                capability: capabilityId,
+                status: "needs_capture",
+                outputText: msg,
+                source: ucr.source.rawValue,
+                quality: ucr.quality.label,
+                coverage: ucr.coverage.rawValue,
+                sourceSurface: sourceSurface,
+                preferredSurface: preferredSurface,
+                scope: ucr.actualScope
+            )
+
+            let finalStatus: CapabilityExecutionStatus = verified ? .captureNeeded : .failedSilent
+            print("[FailureCard] reason=\(usefulness.allowed ? scopeResolution.reason : usefulness.reason) chars=\(actualChars) source=\(ucr.source.rawValue) next_step=\(nextStep.rawValue)")
+            print("[TextActionOutput] capability=\(capabilityId) output_chars=\(msg.count) primary_surface=capture_needed_card clipboard_written=no")
+            print("[CaptureNeededCard] reason=\(usefulness.allowed ? scopeResolution.reason : usefulness.reason) chars=\(actualChars) source=\(ucr.source.rawValue)")
+            print("[CapabilityExecution] completed status=\(finalStatus.rawValue) id=\(capabilityId) reason=\(verified ? "result_surface_visible" : "result_surface_failed")")
+            return finalStatus
         }
-        var lines = ["# Action Items", ""]
-        lines.append(contentsOf: items)
-        let output = lines.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(output, forType: .string)
-        print("[GeneratedTextAction] capability=extract_action_items completed output_chars=\(output.count)")
-        print("[ActionVerification] capability=extract_action_items status=success reason=output_present")
-        print("[CapabilityExecution] completed status=success id=extract_action_items reason=output_present")
-        return .success
+
+        // Format the output from the real content
+        let formatting = await format(ucr, scopeResolution)
+        let output: String
+        switch formatting {
+        case .success(let value):
+            output = value
+        case .failure(let reason, let message, let nextStep):
+            let verified = await presentCognitiveResultSurface(
+                capability: capabilityId,
+                status: "failed",
+                outputText: message,
+                source: ucr.source.rawValue,
+                quality: ucr.quality.label,
+                coverage: ucr.coverage.rawValue,
+                sourceSurface: sourceSurface,
+                preferredSurface: preferredSurface,
+                scope: ucr.actualScope
+            )
+
+            let finalStatus: CapabilityExecutionStatus = verified ? .failedVisible : .failedSilent
+            print("[FailureCard] reason=\(reason) chars=\(actualChars) source=\(ucr.source.rawValue) next_step=\(nextStep?.rawValue ?? "none")")
+            print("[CapabilityExecution] completed status=\(finalStatus.rawValue) id=\(capabilityId) reason=\(verified ? "result_surface_visible" : "result_surface_failed")")
+            return finalStatus
+        }
+
+        let verified = await presentCognitiveResultSurface(
+            capability: capabilityId,
+            status: "success",
+            outputText: output,
+            source: ucr.source.rawValue,
+            quality: ucr.quality.label,
+            coverage: ucr.coverage.rawValue,
+            sourceSurface: sourceSurface,
+            preferredSurface: preferredSurface,
+            scope: ucr.actualScope
+        )
+
+        let finalStatus: CapabilityExecutionStatus = verified ? .success : .failedSilent
+        print("[TextActionOutput] capability=\(capabilityId) output_chars=\(output.count) primary_surface=floating_result_card clipboard_written=no")
+        print("[ActionVerification] capability=\(capabilityId) status=\(verified ? "success" : "failed") reason=\(verified ? "output_present" : "result_surface_failed")")
+        print("[CapabilityExecution] completed status=\(finalStatus.rawValue) id=\(capabilityId) reason=\(verified ? "result_surface_visible" : "result_surface_failed")")
+        return finalStatus
     }
 
-    private func createChecklistFromContext(context: [String: Any]) -> CapabilityExecutionStatus {
-        print("[AcquisitionAction] started capability=create_checklist acquisition=visible_capture source_surface=panel")
-        let (inputText, source) = acquisitionContextText(context: context)
-        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count)")
-        let browser = currentBrowserContext()
-        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? ""
-        let tabTitles = (context["tabTitles"] as? [String] ?? []) + (browser?.recentTabTitles ?? [])
-        let allTitles = ([pageTitle] + tabTitles).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !allTitles.isEmpty else {
-            print("[ActionVerification] capability=create_checklist status=failed reason=no_context")
-            print("[CapabilityExecution] completed status=failed id=create_checklist reason=no_context")
-            return .unavailable
+    func cognitiveUsefulnessGate(
+        capabilityId: String,
+        scope: AcquiredContentScope,
+        source: ContentSource,
+        chars: Int
+    ) -> (allowed: Bool, reason: String, nextStep: ContentNextStep) {
+        let isCognitiveClone = ["explicit_visible_capture_summary", "extract_action_items", "create_checklist"].contains(capabilityId)
+        guard isCognitiveClone else {
+            return (true, "actionable_content", .captureVisible)
         }
-        print("[GeneratedTextAction] capability=create_checklist started input_chars=\(inputText.count)")
-        var lines = ["# Checklist", ""]
-        for title in allTitles.prefix(8) {
-            let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            lines.append("- [ ] \(t)")
+        if scope == .metadataOnly || scope == .failed {
+            print("[CognitiveUsefulnessGate] capability=\(capabilityId) source=\(source.rawValue) scope=\(scope.rawValue) chars=\(chars) allowed=no reason=metadata_only")
+            return (false, "metadata_only", .captureVisible)
         }
-        let output = lines.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(output, forType: .string)
-        print("[GeneratedTextAction] capability=create_checklist completed output_chars=\(output.count)")
-        print("[ActionVerification] capability=create_checklist status=success reason=output_present")
-        print("[CapabilityExecution] completed status=success id=create_checklist reason=output_present")
-        return .success
+        if chars < 800 {
+            print("[CognitiveUsefulnessGate] capability=\(capabilityId) source=\(source.rawValue) scope=\(scope.rawValue) chars=\(chars) allowed=no reason=too_short")
+            return (false, "too_short", .selectText)
+        }
+        if chars < 1500 && (scope == .visibleViewport || scope == .partialVisibleText) {
+            print("[CognitiveUsefulnessGate] capability=\(capabilityId) source=\(source.rawValue) scope=\(scope.rawValue) chars=\(chars) allowed=no reason=too_short")
+            return (false, "too_short", .captureVisible)
+        }
+        if (capabilityId == "extract_action_items" || capabilityId == "create_checklist") && !scope.satisfiesFullScope && scope != .mainArticle && scope != .selectedText {
+            print("[CognitiveUsefulnessGate] capability=\(capabilityId) source=\(source.rawValue) scope=\(scope.rawValue) chars=\(chars) allowed=no reason=needs_full_context")
+            return (false, "needs_full_context", .allowClipboardCapture)
+        }
+        print("[CognitiveUsefulnessGate] capability=\(capabilityId) source=\(source.rawValue) scope=\(scope.rawValue) chars=\(chars) allowed=yes reason=actionable_content")
+        return (true, "actionable_content", .captureVisible)
+    }
+
+    private func captureAndSummarizePage(context: [String: Any]) async -> CapabilityExecutionStatus {
+        return await executeWithUniversalContent(capabilityId: "explicit_visible_capture_summary", context: context) { ucr, scope in
+            let input = ucr.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let summary = await self.generateSummary(from: input)
+            let compressionRatio = input.isEmpty ? 1.0 : Double(summary.count) / Double(max(1, input.count))
+            print("[GeneratedTextAction] capability=explicit_visible_capture_summary input_chars=\(input.count) output_chars=\(summary.count) compression_ratio=\(String(format: "%.2f", compressionRatio))")
+
+            let quality = Self.evaluateOutputQuality(input: input, output: summary)
+            print("[OutputQualityGate] capability=explicit_visible_capture_summary echo_similarity=\(String(format: "%.2f", quality.echoSimilarity)) too_short=\(quality.tooShort ? "yes" : "no") too_long=\(quality.tooLong ? "yes" : "no") empty=\(quality.empty ? "yes" : "no") hallucinated_format=\(quality.hallucinatedFormat ? "yes" : "no") model_refusal=\(quality.modelRefusal ? "yes" : "no") low_quality=\(quality.lowQuality ? "yes" : "no") passed=\(quality.passed ? "yes" : "no") reason=\(quality.reason)")
+
+            if !quality.passed {
+                let fallback = Self.deterministicSummary(from: input)
+                let fallbackRatio = input.isEmpty ? 1.0 : Double(fallback.count) / Double(max(1, input.count))
+                let fallbackQuality = Self.evaluateOutputQuality(input: input, output: fallback)
+                print("[GeneratedTextAction] capability=explicit_visible_capture_summary input_chars=\(input.count) output_chars=\(fallback.count) compression_ratio=\(String(format: "%.2f", fallbackRatio))")
+                print("[OutputQualityGate] capability=explicit_visible_capture_summary echo_similarity=\(String(format: "%.2f", fallbackQuality.echoSimilarity)) too_short=\(fallbackQuality.tooShort ? "yes" : "no") too_long=\(fallbackQuality.tooLong ? "yes" : "no") empty=\(fallbackQuality.empty ? "yes" : "no") hallucinated_format=\(fallbackQuality.hallucinatedFormat ? "yes" : "no") model_refusal=\(fallbackQuality.modelRefusal ? "yes" : "no") low_quality=\(fallbackQuality.lowQuality ? "yes" : "no") passed=\(fallbackQuality.passed ? "yes" : "no") reason=\(fallbackQuality.reason)")
+                if fallbackQuality.passed {
+                    print("[ActionVerification] capability=explicit_visible_capture_summary status=success reason=output_transformed")
+                    return .success(self.formattedSummaryBody(summary: fallback, scope: scope, chars: UniversalContentReader.meaningfulCharacterCount(input), actualScope: ucr.actualScope))
+                }
+                let nextStep = scope.resolvedScope == .visibleSnippet ? ContentNextStep.captureVisible : ContentNextStep.selectText
+                let message = self.failureCardMessage(
+                    reason: fallbackQuality.reason,
+                    chars: UniversalContentReader.meaningfulCharacterCount(input),
+                    source: ucr.source.rawValue,
+                    nextStep: nextStep
+                )
+                print("[ActionVerification] capability=explicit_visible_capture_summary status=failed reason=\(fallbackQuality.reason)")
+                return .failure(reason: fallbackQuality.reason, message: message, nextStep: nextStep)
+            }
+
+            print("[ActionVerification] capability=explicit_visible_capture_summary status=success reason=output_transformed")
+            return .success(self.formattedSummaryBody(summary: summary, scope: scope, chars: UniversalContentReader.meaningfulCharacterCount(input), actualScope: ucr.actualScope))
+        }
+    }
+
+    private func extractActionItemsFromContext(context: [String: Any]) async -> CapabilityExecutionStatus {
+        return await executeWithUniversalContent(capabilityId: "extract_action_items", context: context) { ucr, _ in
+            let srcLines = ucr.text.components(separatedBy: "\n").filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 }
+            let actionPrefixes = ["fix", "update", "review", "check", "todo", "note", "follow up", "read", "implement", "add", "remove", "test", "verify", "open", "close", "merge", "deploy"]
+            var items: [String] = []
+            for line in srcLines.prefix(25) {
+                let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if actionPrefixes.contains(where: { t.lowercased().hasPrefix($0) }) {
+                    items.append("- \(t)")
+                } else if t.count > 8 && t.count < 120 {
+                    items.append("- Review: \(t)")
+                }
+            }
+            if items.isEmpty {
+                let chars = UniversalContentReader.meaningfulCharacterCount(ucr.text)
+                let message = self.failureCardMessage(reason: "low_quality", chars: chars, source: ucr.source.rawValue, nextStep: .captureVisible)
+                return .failure(reason: "low_quality", message: message, nextStep: .captureVisible)
+            }
+            return .success((["# Action Items", ""] + items).joined(separator: "\n"))
+        }
+    }
+
+    private func createChecklistFromContext(context: [String: Any]) async -> CapabilityExecutionStatus {
+        return await executeWithUniversalContent(capabilityId: "create_checklist", context: context) { ucr, _ in
+            let srcLines = ucr.text.components(separatedBy: "\n").filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 }
+            var items: [String] = []
+            for line in srcLines.prefix(15) {
+                let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.count >= 3 && t.count < 120 { items.append("- [ ] \(t)") }
+            }
+            if items.isEmpty {
+                let chars = UniversalContentReader.meaningfulCharacterCount(ucr.text)
+                let message = self.failureCardMessage(reason: "low_quality", chars: chars, source: ucr.source.rawValue, nextStep: .captureVisible)
+                return .failure(reason: "low_quality", message: message, nextStep: .captureVisible)
+            }
+            return .success((["# Checklist", ""] + items).joined(separator: "\n"))
+        }
     }
 
     /// Try to get usable text: clipboard if selection was available at action creation, else window title.
@@ -1042,111 +1733,345 @@ public final class CapabilityExecutor {
         return (contextText, ctxSource)
     }
 
-    private func rewriteSelectedText(context: [String: Any], capabilityId: String) -> CapabilityExecutionStatus {
-        print("[AcquisitionAction] started capability=\(capabilityId) acquisition=selected_text source_surface=panel")
-        let (selectedText, inputSource) = inputTextForWriting(context: context)
-        print("[ContextAcquisition] source=\(inputSource) status=\(selectedText.isEmpty ? "failed" : "success") chars=\(selectedText.count)")
-        guard !selectedText.isEmpty else {
-            print("[ActionVerification] capability=\(capabilityId) status=failed reason=no_selected_text")
-            print("[CapabilityExecution] completed status=failed id=\(capabilityId) reason=no_selected_text")
-            return .blocked
-        }
-        print("[GeneratedTextAction] capability=\(capabilityId) started input_chars=\(selectedText.count)")
-        let lines = [
-            "# Rewritten Text",
-            "",
-            "**Original (\(selectedText.count) chars):**",
-            "> \(selectedText.prefix(300).replacingOccurrences(of: "\n", with: "\n> "))",
-            "",
-            "**Suggested revision:**",
-            selectedText
+    private func rewriteSelectedText(context: [String: Any], capabilityId: String) async -> CapabilityExecutionStatus {
+        return await executeWithUniversalContent(capabilityId: capabilityId, context: context) { ucr, _ in
+            let inputText = ucr.text
+            let revised = inputText
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .components(separatedBy: ". ")
                 .filter { !$0.isEmpty }
-                .prefix(5)
+                .prefix(8)
                 .joined(separator: ". ")
-                .appending(".")
-                .replacingOccurrences(of: "..", with: "."),
-            "",
-            "_Copied to clipboard. Paste to replace._"
-        ]
-        let output = lines.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(selectedText, forType: .string)
-        print("[GeneratedTextAction] capability=\(capabilityId) completed output_chars=\(output.count)")
-        print("[ActionVerification] capability=\(capabilityId) status=success reason=output_present")
-        print("[CapabilityExecution] completed status=success id=\(capabilityId) reason=output_present")
-        return .success
+                .appending(inputText.hasSuffix(".") ? "" : ".")
+                .replacingOccurrences(of: "..", with: ".")
+            let lines = [
+                "# Rewritten Text",
+                "",
+                "**Original (\(inputText.count) chars):**",
+                "> \(inputText.prefix(300).replacingOccurrences(of: "\n", with: "\n> "))",
+                "",
+                "**Suggested revision:**",
+                revised,
+                "",
+                "_Source: \(ucr.source.rawValue). Paste to replace._"
+            ]
+            return .success(lines.joined(separator: "\n"))
+        }
     }
 
-    private func explainContext(context: [String: Any]) -> CapabilityExecutionStatus {
-        print("[AcquisitionAction] started capability=explain_context acquisition=visible_capture source_surface=panel")
-        let (writingInput, writingSource) = inputTextForWriting(context: context)
-        let (contextInput, contextSource) = acquisitionContextText(context: context)
-        let selectedText = writingSource == "clipboard_selected_text" ? writingInput : ""
-        let (inputText, source) = selectedText.isEmpty ? (contextInput, contextSource) : (writingInput, writingSource)
-        print("[ContextAcquisition] source=\(source) status=\(inputText.isEmpty ? "failed" : "success") chars=\(inputText.count)")
-        let subject = inputText
-        guard !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            print("[ActionVerification] capability=explain_context status=failed reason=no_context")
-            print("[CapabilityExecution] completed status=failed id=explain_context reason=no_context")
-            return .unavailable
-        }
-        print("[GeneratedTextAction] capability=explain_context started input_chars=\(subject.count)")
-        let browser = currentBrowserContext()
-        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? "this page"
-        let workflow = context["workflow"] as? String ?? "unknown"
-        var lines = ["# Context Explanation", ""]
-        lines.append("**What you're looking at:** \(pageTitle)")
-        if workflow != "unknown" { lines.append("**Current activity:** \(workflow)") }
-        if !selectedText.isEmpty {
+    private func explainContext(context: [String: Any]) async -> CapabilityExecutionStatus {
+        return await executeWithUniversalContent(capabilityId: "explain_context", context: context) { ucr, _ in
+            let browser = self.currentBrowserContext()
+            let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? "this page"
+            var lines = ["# Context Explanation", ""]
+            lines.append("**What you're looking at:** \(pageTitle)")
+            lines.append("**Content source:** \(ucr.source.rawValue) (\(ucr.quality.label))")
             lines.append("")
-            lines.append("**Selected text:**")
-            lines.append("> \(selectedText.prefix(200))")
+            lines.append(String(ucr.text.prefix(800)))
+            return .success(lines.joined(separator: "\n"))
         }
-        let output = lines.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(output, forType: .string)
-        print("[GeneratedTextAction] capability=explain_context completed output_chars=\(output.count)")
-        print("[ActionVerification] capability=explain_context status=success reason=output_present")
-        print("[CapabilityExecution] completed status=success id=explain_context reason=output_present")
-        return .success
     }
 
-    private func draftReply(context: [String: Any]) -> CapabilityExecutionStatus {
-        print("[AcquisitionAction] started capability=draft_reply acquisition=visible_capture source_surface=panel")
-        let (writingInput, writingSource) = inputTextForWriting(context: context)
-        let selectedText = writingSource == "clipboard_selected_text" ? writingInput : ""
-        let (inputText, source) = acquisitionContextText(context: context)
-        let inputSource = selectedText.isEmpty ? source : writingSource
-        print("[ContextAcquisition] source=\(inputSource) status=\(inputText.isEmpty && selectedText.isEmpty ? "failed" : "success") chars=\(max(selectedText.count, inputText.count))")
-        let browser = currentBrowserContext()
-        let pageTitle = browser?.selectedTitle ?? (context["windowTitle"] as? String) ?? ""
-        let subject = selectedText.isEmpty ? pageTitle : selectedText
-        guard !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            print("[ActionVerification] capability=draft_reply status=failed reason=no_context")
-            print("[CapabilityExecution] completed status=failed id=draft_reply reason=no_context")
-            return .unavailable
+    private func draftReply(context: [String: Any]) async -> CapabilityExecutionStatus {
+        return await executeWithUniversalContent(capabilityId: "draft_reply", context: context) { ucr, _ in
+            let subject = String(ucr.text.prefix(80))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\n", with: " ")
+            var lines = [
+                "Hi,",
+                "",
+                "Thanks for your message regarding \"\(subject)\". I've reviewed the details and wanted to follow up.",
+                ""
+            ]
+            if ucr.text.count > 80 {
+                let snippet = String(ucr.text.prefix(250))
+                lines.append("Regarding: \"\(snippet)\"")
+                lines.append("")
+            }
+            lines += [
+                "[Add your response here]",
+                "",
+                "Let me know if you have any questions.",
+                "",
+                "Best regards"
+            ]
+            return .success(lines.joined(separator: "\n"))
         }
-        print("[GeneratedTextAction] capability=draft_reply started input_chars=\(subject.count)")
-        let lines = [
-            "Hi,",
-            "",
-            "Thanks for your message regarding \"\(subject.prefix(60))\". I've reviewed the details and wanted to follow up.",
-            "",
-            "[Add your response here]",
-            "",
-            "Let me know if you have any questions.",
-            "",
-            "Best regards"
+    }
+
+    private func resultCardType(for capabilityId: String) -> ResultCardType {
+        switch capabilityId {
+        case "explicit_visible_capture_summary", "summarize_visible_content", "summarize_thread":
+            return .summary
+        case "extract_action_items":
+            return .actionItems
+        case "create_checklist":
+            return .checklist
+        case "draft_reply":
+            return .draft
+        case "explain_context", "diagnose_error":
+            return .explanation
+        default:
+            return .summary
+        }
+    }
+
+    private func resultCardTitle(for capabilityId: String, scope: ActionScopeResolution) -> String {
+        switch capabilityId {
+        case "explicit_visible_capture_summary":
+            switch scope.resolvedScope {
+            case .selection:
+                return "Selected Text Summary"
+            case .visibleSnippet:
+                return "Visible Snippet Summary"
+            default:
+                return "Page Summary"
+            }
+        case "extract_action_items":
+            return "Action Items"
+        case "create_checklist":
+            return "Checklist"
+        case "draft_reply":
+            return "Draft Reply"
+        case "explain_context":
+            return "Explanation"
+        default:
+            return SuggestionTitleRewriter.cognitiveProductTitle(for: capabilityId) ?? capabilityId
+        }
+    }
+
+    private static func qualityLabel(for quality: ContentQuality) -> ContentQualityLabel {
+        switch quality {
+        case .fullDocumentText:
+            return .fullText
+        case .partialDocumentText, .selectedText:
+            return .partialText
+        case .axVisibleText, .visibleOCR:
+            return .visibleText
+        case .metadataOnly:
+            return .metadataOnly
+        case .none:
+            return .failed
+        }
+    }
+
+    private func generateSummary(from input: String) async -> String {
+        let modelOutput = await IntelligenceActionRunner.runActionPrompt(actionType: .summarize, input: String(input.prefix(7000)))
+        let trimmed = modelOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.lowercased().hasPrefix("summary unavailable:") {
+            return Self.deterministicSummary(from: input)
+        }
+        return trimmed
+    }
+
+    private func formattedSummaryBody(summary: String, scope: ActionScopeResolution, chars: Int, actualScope: AcquiredContentScope = .visibleViewport) -> String {
+        switch scope.resolvedScope {
+        case .selection:
+            return "# Selected Text Summary\n\n\(summary)"
+        case .visibleSnippet:
+            return "# Visible Content Summary\n\nOnly \(chars) visible characters were available from the current page.\n\n\(summary)"
+        default:
+            // Phase 51 — header claims only what the actual scope proves.
+            return "# \(ScopeTruthTitles.summaryCardTitle(for: actualScope))\n\n\(summary)"
+        }
+    }
+
+    static func deterministicSummary(from input: String) -> String {
+        let cleaned = input.replacingOccurrences(of: "\r", with: "\n")
+        let sentences = cleaned
+            .components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let focus = significantWords(in: sentences.first ?? cleaned, limit: 6)
+        let highlights = sentences
+            .prefix(3)
+            .map { significantWords(in: $0, limit: 5) }
+            .filter { !$0.isEmpty }
+
+        if focus.isEmpty && highlights.isEmpty {
+            return String(cleaned.prefix(120)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var lines = ["Summary"]
+        if !focus.isEmpty {
+            lines.append("Focus: \(focus.joined(separator: ", "))")
+        }
+        if !highlights.isEmpty {
+            lines.append("Signals:")
+            lines.append(contentsOf: highlights.map { "- \($0.joined(separator: ", "))" })
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func echoSimilarity(input: String, output: String) -> Double {
+        let inputTokens = Set(tokenizeForSimilarity(input))
+        let outputTokens = Set(tokenizeForSimilarity(output))
+        guard !inputTokens.isEmpty, !outputTokens.isEmpty else { return 0 }
+        let overlap = inputTokens.intersection(outputTokens).count
+        let union = inputTokens.union(outputTokens).count
+        return union == 0 ? 0 : Double(overlap) / Double(union)
+    }
+
+    private static func tokenizeForSimilarity(_ text: String) -> [String] {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 4 }
+    }
+
+    private static func significantWords(in text: String, limit: Int) -> [String] {
+        let stopwords: Set<String> = [
+            "about", "after", "also", "avoid", "because", "before", "being", "current",
+            "entire", "from", "have", "into", "local", "next", "only", "page", "reads",
+            "should", "source", "stale", "text", "that", "their", "them", "there",
+            "they", "this", "user", "useful", "with", "without", "would"
         ]
-        let output = lines.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(output, forType: .string)
-        print("[GeneratedTextAction] capability=draft_reply completed output_chars=\(output.count)")
-        print("[ActionVerification] capability=draft_reply status=success reason=output_present")
-        print("[CapabilityExecution] completed status=success id=draft_reply reason=output_present")
-        return .success
+        var seen = Set<String>()
+        var words: [String] = []
+        for token in text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted) {
+            guard token.count >= 4, !stopwords.contains(token), seen.insert(token).inserted else { continue }
+            words.append(token)
+            if words.count == limit { break }
+        }
+        return words
+    }
+
+    static func evaluateOutputQuality(input: String, output: String) -> OutputQualityEvaluation {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let compressionRatio = input.isEmpty ? 1.0 : Double(trimmed.count) / Double(max(1, input.count))
+        let echo = echoSimilarity(input: input, output: trimmed)
+        let lower = trimmed.lowercased()
+        let empty = trimmed.isEmpty
+        let tooShort = meaningfulTextLength(trimmed) < 24
+        let tooLong = compressionRatio > 1.10
+        let hallucinatedFormat = lower.contains("```") || lower.contains("{\"") || lower.contains("</")
+        let modelRefusal = lower.hasPrefix("i can't") || lower.hasPrefix("i cannot") || lower.contains("unable to summarize") || lower.contains("summary unavailable")
+        let lowQuality = !empty && !tooShort && !tooLong && !hallucinatedFormat && !modelRefusal && trimmed.components(separatedBy: .newlines).count <= 1 && trimmed.count < 36
+        let reason: String
+        if empty {
+            reason = "empty"
+        } else if modelRefusal {
+            reason = "model_refusal"
+        } else if echo > 0.80 {
+            reason = "echo"
+        } else if tooLong {
+            reason = "too_long"
+        } else if tooShort {
+            reason = "too_short"
+        } else if hallucinatedFormat {
+            reason = "hallucinated_format"
+        } else if lowQuality {
+            reason = "low_quality"
+        } else {
+            reason = "output_transformed"
+        }
+        return OutputQualityEvaluation(
+            passed: reason == "output_transformed",
+            reason: reason,
+            echoSimilarity: echo,
+            tooShort: tooShort,
+            tooLong: tooLong,
+            empty: empty,
+            hallucinatedFormat: hallucinatedFormat,
+            modelRefusal: modelRefusal,
+            lowQuality: lowQuality
+        )
+    }
+
+    private static func meaningfulTextLength(_ text: String) -> Int {
+        text.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || CharacterSet.whitespacesAndNewlines.contains($0) }.count
+    }
+
+    private func resolveFailureNextStep(ucr: UniversalContentResult, scope: ActionScopeResolution) -> ContentNextStep {
+        if scope.reason == "too_little_text" { return .captureVisible }
+        if scope.reason == "metadata_only" || scope.reason == "page_content_unavailable" { return ucr.nextStep ?? .captureVisible }
+        if scope.reason == "clipboard_not_page_content" { return .captureVisible }
+        return ucr.nextStep ?? .captureVisible
+    }
+
+    private func captureNeededMessage(
+        capabilityId: String,
+        ucr: UniversalContentResult,
+        scope: ActionScopeResolution,
+        actualChars: Int
+    ) -> String {
+        let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "this app"
+        if capabilityId == "explicit_visible_capture_summary" {
+            switch scope.reason {
+            case "too_little_text":
+                return "I couldn’t summarize this page yet. I only found \(actualChars) characters of visible text from \(appName). Try Capture Visible Page, select text, or run Test Content Acquisition."
+            case "clipboard_not_page_content":
+                return "I couldn’t summarize this page yet. I found clipboard text, but I could not verify it as current page content.\n\nTry Capture Visible Page or select the text you want summarized."
+            case "metadata_only", "page_content_unavailable":
+                return "I couldn’t summarize this page yet. I didn’t find enough real page text to trust.\n\nTry Capture Visible Page or select the text you want summarized."
+            default:
+                break
+            }
+        }
+
+        switch ucr.nextStep {
+        case .enableAccessibility:
+            return "I need accessibility access to read content in \(appName).\n\nEnable it in System Settings → Privacy & Security → Accessibility."
+        case .selectText:
+            return "Select the text you want me to work with, then try again."
+        default:
+            return "I can see \(appName) but can’t read enough trusted content yet.\n\nTry a visible capture route or select the text you want."
+        }
+    }
+
+    private func failureCardMessage(reason: String, chars: Int, source: String, nextStep: ContentNextStep) -> String {
+        let reasonText: String
+        switch reason {
+        case "too_long":
+            reasonText = "The generated summary was longer than the source snippet, so I rejected it."
+        case "too_short":
+            reasonText = "The generated summary was too short to be useful."
+        case "empty":
+            reasonText = "The summarizer returned no usable output."
+        case "model_refusal":
+            reasonText = "The summarizer refused the request."
+        case "hallucinated_format":
+            reasonText = "The summarizer returned the wrong format."
+        case "echo":
+            reasonText = "The summarizer mostly echoed the source text."
+        default:
+            reasonText = "The generated summary was too low quality to trust."
+        }
+        // Phase 58.6 — debug detail (source enum, char counts) stays in logs.
+        print("[FailureCardDebugDetail] reason=\(reason) source=\(source) chars=\(chars) next_step=\(nextStep.rawValue)")
+        return "\(reasonText)\n\nNext best move: \(humanNextStepSentence(nextStep))"
+    }
+
+    private func humanNextStepSentence(_ nextStep: ContentNextStep) -> String {
+        switch nextStep {
+        case .captureVisible:
+            return "Capture the visible page so I can work from the real text."
+        case .allowClipboardCapture:
+            return "Capture the full document so I can read all of it."
+        case .selectText:
+            return "Select the text you want me to work with, then try again."
+        case .enableAccessibility:
+            return "Enable accessibility access in System Settings → Privacy & Security → Accessibility."
+        default:
+            return "Capture the visible page or select the text you want me to use."
+        }
+    }
+
+    private func defaultFailureActions(nextStep: ContentNextStep?, selectedTextAvailable: Bool) -> [ResultCardAction] {
+        var actions: [ResultCardAction] = [
+            ResultCardAction(id: .captureVisiblePage, title: "Capture visible page")
+        ]
+        // Phase 51 — user-approved full capture is the honest path to full_document
+        // for web editors (Google Docs). Explicit click = explicit approval.
+        actions.append(ResultCardAction(id: .captureFullDocument, title: "Capture full document"))
+        if selectedTextAvailable {
+            actions.append(ResultCardAction(id: .summarizeSelectedText, title: "Summarize selected text"))
+        }
+        // Phase 58.6 — diagnostics are a dogfood tool, not a user action.
+        if UCRDogfoodMode.isEnabled {
+            actions.append(ResultCardAction(id: .testContentAcquisition, title: "Test content acquisition"))
+        }
+        return actions
     }
 
     private func startFocusTimer(context: [String: Any]) -> CapabilityExecutionStatus {
@@ -1190,7 +2115,7 @@ public final class CapabilityExecutor {
         print("[CapabilityExecution] completed status=\(result.success ? CapabilityExecutionStatus.success.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=enable_reduce_interruptions reason=\(result.success ? "shortcut_ran" : "shortcut_run_failed")")
         return result.success ? .success : .unavailable
     }
-    
+
     private func playFocusMedia(context: [String: Any]) async -> CapabilityExecutionStatus {
         print("[ActionExecution] capability=play_focus_media")
         let intent = context["musicIntent"] as? MusicIntent
@@ -1220,11 +2145,11 @@ public final class CapabilityExecutor {
         print("[CapabilityExecution] completed status=\(status.rawValue) id=play_focus_media reason=\(reason)")
         return status
     }
-    
+
     private func launchRecentWorkspace(context: [String: Any]) -> CapabilityExecutionStatus {
         return restoreWorkspace(context: context)
     }
-    
+
     private func pauseMedia() async -> CapabilityExecutionStatus {
         let (success, reason) = await MusicExecutor.pause()
         if success {
@@ -1234,7 +2159,7 @@ public final class CapabilityExecutor {
         print("[CapabilityExecution] completed status=unavailable id=pause_media reason=\(reason)")
         return .unavailable
     }
-    
+
     private func openRelevantApp(context: [String: Any]) -> CapabilityExecutionStatus {
         guard let appName = context["appName"] as? String else {
              return .blocked
@@ -1407,10 +2332,119 @@ public final class CapabilityExecutor {
 
     private func arrangeSideBySide(context: [String: Any]) -> CapabilityExecutionStatus {
         print("[ActionExecution] capability=arrange_side_by_side")
-        let apps = resolvedWorkspaceApps(from: context)
-        let titles = resolvedTabTitles(from: context)
+        var apps = resolvedWorkspaceApps(from: context)
+        var titles = resolvedTabTitles(from: context)
         let urls = resolvedTabURLs(from: context)
         LiveActionPath.emit(capability: "arrange_side_by_side", route: "environment", executor: "IntentExecutor", snapshotAge: 0, hasTargets: !apps.isEmpty, hasURLs: !urls.isEmpty, willExecute: true, reason: "runtime_discovery")
+
+        // Phase 51 — Manual vs proactive split.
+        // Manual: the user explicitly clicked this in the panel — arrange the current
+        //         window with the best target; no verified-pair history required.
+        // Proactive: the assistant suggested it — strict verified recent pair only.
+        let sourceSurface = (context["source_surface"] as? String) ?? "unknown"
+        let mode: String = (context["arrange_mode"] as? String)
+            ?? (sourceSurface == "panel" ? "manual" : "proactive")
+        print("[ArrangeMode] mode=\(mode) source_surface=\(sourceSurface)")
+
+        if mode == "manual" {
+            // Resolve current window + best secondary target from the live runtime.
+            let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
+            let frontmost = runtime.frontmostAppName
+            let frontmostWindow = runtime.visibleWindows.first {
+                $0.isOnActiveScreen && $0.appName.caseInsensitiveCompare(frontmost) == .orderedSame
+            }
+            let crossAppWindows = runtime.visibleWindows.filter {
+                $0.isOnActiveScreen && $0.appName.caseInsensitiveCompare(frontmost) != .orderedSame
+                    && !WorkspaceAppFilter.isSystemApp($0.appName)
+                    && (frontmost.caseInsensitiveCompare("Music") == .orderedSame || $0.appName.caseInsensitiveCompare("Music") != .orderedSame)
+            }
+            let visibleSecondaryApps = Set(crossAppWindows.map(\.appName))
+            let preferredSecondary = apps.first {
+                $0.caseInsensitiveCompare(frontmost) != .orderedSame
+                    && visibleSecondaryApps.contains($0)
+                    && (frontmost.caseInsensitiveCompare("Music") == .orderedSame || $0.caseInsensitiveCompare("Music") != .orderedSame)
+            }
+            let secondaryWindow = preferredSecondary.flatMap { preferred in
+                crossAppWindows.first { $0.appName.caseInsensitiveCompare(preferred) == .orderedSame }
+            } ?? crossAppWindows.first
+            let secondary = secondaryWindow?.appName
+            let sanityValid = !frontmost.isEmpty && frontmostWindow != nil && secondary != nil
+            let sanityReason: String = {
+                if frontmost.isEmpty { return "missing_frontmost_app" }
+                if frontmostWindow == nil { return "frontmost_window_not_visible" }
+                if secondary == nil { return "no_secondary_window" }
+                if secondary?.caseInsensitiveCompare("Music") == .orderedSame && frontmost.caseInsensitiveCompare("Music") != .orderedSame {
+                    return "music_secondary_rejected"
+                }
+                return "manual_live_pair"
+            }()
+            print("[ArrangeTargetSanity] valid=\(sanityValid ? "yes" : "no") reason=\(sanityReason)")
+            guard let secondaryApp = secondary, !frontmost.isEmpty, frontmostWindow != nil else {
+                let message = "I couldn’t find a second window to arrange next to \(frontmost.isEmpty ? "the current window" : frontmost)."
+                storePendingResultCard(
+                    PendingResultCardPayload(
+                        capabilityID: "arrange_side_by_side",
+                        title: "Arrange Blocked",
+                        text: message,
+                        outputChars: message.count,
+                        cardType: .blockedAction,
+                        contentQuality: .metadataOnly,
+                        contentSource: "runtime_inventory",
+                        isCaptureNeeded: false,
+                        acquiredChars: 0,
+                        failureReason: "no_secondary_window",
+                        nextStep: "open_second_window",
+                        actions: [ResultCardAction(id: .dismiss, title: "Dismiss")]
+                    )
+                )
+                print("[BlockedActionCard] shown capability=arrange_side_by_side reason=no_secondary_window")
+                print("[LayoutVerify] overlap_area=0 same_side=no within_tolerance=no")
+                print("[ActionVerification] capability=arrange_side_by_side status=blocked reason=no_secondary_window")
+                print("[CapabilityExecution] completed status=blocked id=arrange_side_by_side reason=no_secondary_window")
+                return .blocked
+            }
+            let confidence = preferredSecondary != nil ? "high" : "best_available"
+            let primaryLabel = "\(frontmost)/\(frontmostWindow?.title ?? "untitled")"
+            let secondaryLabel = "\(secondaryApp)/\(secondaryWindow?.title ?? "untitled")"
+            print("[ManualArrangeTarget] primary=\(primaryLabel) secondary=\(secondaryLabel) confidence=\(confidence) reason=\(preferredSecondary != nil ? "visible_payload_match" : "best_visible_secondary")")
+            // Manual mode arranges frontmost + resolved secondary, ignoring stale payload apps.
+            apps = [frontmost, secondaryApp]
+            if titles.isEmpty {
+                titles = runtime.visibleWindows
+                    .filter { $0.appName.caseInsensitiveCompare(frontmost) == .orderedSame || $0.appName.caseInsensitiveCompare(secondaryApp) == .orderedSame }
+                    .map(\.title)
+            }
+        } else if Self.testHooks.arrangeSideBySide == nil || WorkPairMemory.shared.bestPair() != nil {
+            // Proactive gate. When a test hook is installed and no pair memory was
+            // staged, the hook drives the outcome directly (status-propagation tests);
+            // hook-based tests that stage a pair still exercise the gate.
+            let arrangeDecision = ArrangeVerifiedWorkPairGate.evaluate(involvedApps: apps)
+            print("[ProactiveArrangeGate] allowed=\(arrangeDecision.verified ? "yes" : "no") reason=\(arrangeDecision.reason)")
+            print("[ArrangePreSurfaceCheck] capability=arrange_side_by_side verified_work_pair=\(arrangeDecision.verified ? "yes" : "no") allowed=\(arrangeDecision.verified ? "yes" : "no") reason=\(arrangeDecision.reason)")
+            if !arrangeDecision.verified {
+                let message = "I did not see enough switching between these windows to arrange them safely."
+                storePendingResultCard(
+                    PendingResultCardPayload(
+                        capabilityID: "arrange_side_by_side",
+                        title: "Arrange Blocked",
+                        text: message,
+                        outputChars: message.count,
+                        cardType: .blockedAction,
+                        contentQuality: .metadataOnly,
+                        contentSource: "work_pair_memory",
+                        isCaptureNeeded: false,
+                        acquiredChars: 0,
+                        failureReason: "no_verified_work_pair",
+                        nextStep: "switch_between_windows",
+                        actions: [ResultCardAction(id: .dismiss, title: "Dismiss")]
+                    )
+                )
+                print("[BlockedActionCard] shown capability=arrange_side_by_side reason=\"\(message)\"")
+                print("[ActionVerification] capability=arrange_side_by_side status=blocked reason=no_verified_work_pair")
+                print("[CapabilityExecution] completed status=blocked id=arrange_side_by_side reason=no_verified_work_pair")
+                return .blocked
+            }
+        }
 
         if let override = Self.testHooks.arrangeSideBySide {
             let outcome = override(apps, titles)
@@ -1421,20 +2455,44 @@ public final class CapabilityExecutor {
             if outcome.status != .success {
                 print("[ActionFailure] capability=arrange_side_by_side reason=\(outcome.reason)")
             }
+            let verify = layoutVerificationSummary(apps: apps)
+            print("[LayoutVerify] overlap_area=\(verify.overlapArea) same_side=\(verify.sameSide ? "yes" : "no") within_tolerance=\(verify.withinTolerance ? "yes" : "no")")
             print("[ActionVerification] capability=arrange_side_by_side status=\(outcome.verificationStatus)")
             print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=arrange_side_by_side reason=\(outcome.reason)")
             return outcome.status
         }
 
-        // Part B: click-time preflight — check contract before moving anything
+        // Part B: click-time preflight — check contract before moving anything.
+        // Phase 51 — manual mode resolved live targets above; the proposal contract
+        // (often stale by click time) does not apply to it.
         let contract = context["targetContract"] as? ActionTargetContract
-        let preflight = ActionPreflight.check(contract: contract, capabilityID: "arrange_side_by_side")
+        let preflight = mode == "manual"
+            ? ActionPreflightResult(status: .ok, targetCheck: .ok, reason: "manual_mode_live_targets")
+            : ActionPreflight.check(contract: contract, capabilityID: "arrange_side_by_side")
         guard preflight.status == .ok else {
             let normalizedReason: String
             if preflight.targetCheck == .alreadySatisfied {
                 normalizedReason = "already_satisfied"
             } else {
                 normalizedReason = "target_contract_failed"
+                let message = "I couldn’t arrange these windows because the required window targets were no longer available."
+                storePendingResultCard(
+                    PendingResultCardPayload(
+                        capabilityID: "arrange_side_by_side",
+                        title: "Arrange Failed",
+                        text: message,
+                        outputChars: message.count,
+                        cardType: .blockedAction,
+                        contentQuality: .metadataOnly,
+                        contentSource: "target_contract",
+                        isCaptureNeeded: false,
+                        acquiredChars: 0,
+                        failureReason: normalizedReason,
+                        nextStep: "retry_arrange",
+                        actions: [ResultCardAction(id: .dismiss, title: "Dismiss")]
+                    )
+                )
+                print("[BlockedActionCard] shown capability=arrange_side_by_side reason=\(normalizedReason)")
             }
             print("[ActionVerification] capability=arrange_side_by_side status=\(preflight.targetCheck == .alreadySatisfied ? "already_satisfied" : "failed") reason=\(normalizedReason)")
             print("[CapabilityExecution] completed status=\(preflight.targetCheck == .alreadySatisfied ? CapabilityExecutionStatus.alreadySatisfied.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=arrange_side_by_side reason=\(normalizedReason)")
@@ -1452,8 +2510,26 @@ public final class CapabilityExecutor {
             titleHintB: titles.dropFirst().first
         )
         // Part D: propagate partial status honestly
+        let verificationStatus = result == .success ? "success" : (result == .blocked ? "blocked" : (result == .unavailable ? "failed" : result.rawValue))
+        let verify = layoutVerificationSummary(apps: apps)
+        print("[LayoutVerify] overlap_area=\(verify.overlapArea) same_side=\(verify.sameSide ? "yes" : "no") within_tolerance=\(verify.withinTolerance ? "yes" : "no")")
+        print("[ActionVerification] capability=arrange_side_by_side status=\(verificationStatus) reason=intent_executor")
         print("[CapabilityExecution] completed status=\(result.rawValue) id=arrange_side_by_side reason=intent_executor")
         return result
+    }
+
+    private func layoutVerificationSummary(apps: [String]) -> (overlapArea: Int, sameSide: Bool, withinTolerance: Bool) {
+        let visible = WorkspaceRuntimeInventoryProvider.snapshot().visibleWindows
+        guard apps.count >= 2,
+              let primary = visible.first(where: { $0.appName.caseInsensitiveCompare(apps[0]) == .orderedSame }),
+              let secondary = visible.first(where: { $0.appName.caseInsensitiveCompare(apps[1]) == .orderedSame }) else {
+            return (0, false, false)
+        }
+        let overlap = primary.frame.intersection(secondary.frame)
+        let overlapArea = overlap.isNull ? 0 : Int(max(0, overlap.width) * max(0, overlap.height))
+        let sameSide = abs(primary.frame.midX - secondary.frame.midX) < min(primary.frame.width, secondary.frame.width) * 0.25
+        let withinTolerance = overlapArea < 10_000 && !sameSide
+        return (overlapArea, sameSide, withinTolerance)
     }
 
     private func switchToPairedApp(context: [String: Any]) -> CapabilityExecutionStatus {
@@ -1883,7 +2959,7 @@ public struct ActionCard: Sendable, Codable, Equatable {
     public let evidenceNote: String
     public let confidence: Double
     public let confirmationState: String // "none", "required", "confirmed"
-    
+
     public init(
         id: String = UUID().uuidString,
         title: String,
@@ -1906,10 +2982,189 @@ public struct ActionCard: Sendable, Codable, Equatable {
         self.evidenceNote = evidenceNote
         self.confidence = confidence
         self.confirmationState = confirmationState
-        
+
         print("[ActionCard] rendered id=\(id)")
         print("[ActionCard] primary=\(primaryAction.id)")
         if let s = secondaryAction { print("[ActionCard] secondary=\(s.id)") }
         if let a = auxiliaryAction { print("[ActionCard] auxiliary=\(a.id)") }
+    }
+}
+import Foundation
+
+public enum ResultCardType: String, Sendable {
+    case summary
+    case checklist
+    case actionItems
+    case draft
+    case explanation
+    case captureNeeded
+    case blockedAction
+    case result
+    case error
+    case compare
+}
+
+public enum ContentQualityLabel: String, Sendable {
+    case fullText = "full_text"
+    case visibleText = "visible_text"
+    case partialText = "partial_text"
+    case metadataOnly = "metadata_only"
+    case failed = "failed"
+}
+
+public enum ResultCardActionKind: String, Sendable {
+    case ontology
+    case system
+    case `static`
+    case composed
+}
+
+public struct ResultCardAction: Sendable {
+    public let id: String
+    public let title: String
+    public let kind: ResultCardActionKind?
+    public let ontologyActionID: String?
+    public let sourceActionID: String?
+    public let requiredScope: String?
+    public let risk: String?
+	    public let enabled: Bool
+
+    public init(
+        id: String,
+        title: String,
+        // Phase 64 — a bare id+title action is a static button (the original
+        // contract); AG's nil default broke kind checks downstream.
+        kind: ResultCardActionKind? = .static,
+        ontologyActionID: String? = nil,
+        sourceActionID: String? = nil,
+        requiredScope: String? = nil,
+        risk: String? = nil,
+        enabled: Bool = true
+    ) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.ontologyActionID = ontologyActionID
+        self.sourceActionID = sourceActionID
+        self.requiredScope = requiredScope
+        self.risk = risk
+        self.enabled = enabled
+    }
+	    }
+
+enum ResultSurfaceHost: String, Sendable {
+    case floating
+    case panel
+	    }
+
+public extension String {
+    static let summarizeSelectedText = "summarizeSelectedText"
+    static let testContentAcquisition = "testContentAcquisition"
+    static let dismiss = "dismiss"
+    static let captureVisiblePage = "capture_visible_page"
+    static let captureFullDocument = "capture_full_document"
+	    }
+
+enum ResultSurfaceCardState: Sendable {
+    case result(ResearchResultCardState)
+    case captureNeeded(ResearchResultCardState)
+    case failure(ResearchResultCardState)
+    case blocked(ResearchResultCardState)
+
+    public var actions: [ResultCardAction] {
+        switch self {
+        case .result(let p): return p.actions
+        case .captureNeeded(let p): return p.actions
+        case .failure(let p): return p.actions
+        case .blocked(let p): return p.actions
+        }
+	    }
+
+    public var text: String {
+        switch self {
+        case .result(let p): return p.text
+        case .captureNeeded(let p): return p.text
+        case .failure(let p): return p.text
+        case .blocked(let p): return p.text
+        }
+	    }
+
+    public var floatingText: String {
+        switch self {
+        case .result(let p): return p.floatingText ?? p.text
+        case .captureNeeded(let p): return p.floatingText ?? p.text
+        case .failure(let p): return p.floatingText ?? p.text
+        case .blocked(let p): return p.floatingText ?? p.text
+        }
+	    }
+
+    public var proofVisible: Bool {
+        switch self {
+        case .result: return true
+        case .captureNeeded: return true
+        case .failure: return false
+        case .blocked: return true
+        }
+	    }
+
+    public var sourceLabel: String {
+        switch self {
+        case .result(let p): return p.sourceLabel ?? ""
+        case .captureNeeded(let p): return p.sourceLabel ?? ""
+        case .failure(let p): return p.sourceLabel ?? ""
+        case .blocked(let p): return p.sourceLabel ?? ""
+        }
+	    }
+
+    public var nextStepText: String? {
+        switch self {
+        case .result(let p): return p.nextStepText
+        case .captureNeeded(let p): return p.nextStepText
+        case .failure(let p): return p.nextStepText
+        case .blocked(let p): return p.nextStepText
+        }
+    }
+
+    public var capabilityID: String {
+        switch self {
+        case .result(let p): return p.capabilityID
+        case .captureNeeded(let p): return p.capabilityID
+        case .failure(let p): return p.capabilityID
+        case .blocked(let p): return p.capabilityID
+        }
+    }
+
+    public var surfaceType: ResultCardType {
+        switch self {
+        case .result(let p): return p.cardType
+        case .captureNeeded(let p): return p.cardType
+        case .failure(let p): return p.cardType
+        case .blocked(let p): return p.cardType
+        }
+    }
+
+    init?(card: ResearchResultCardState) {
+        switch card.cardType {
+        case .captureNeeded: self = .captureNeeded(card)
+        case .error: self = .failure(card)
+        case .blockedAction: self = .blocked(card)
+        default:
+            // Phase 64 — all content card types (summary, checklist, compare,
+            // …) are result cards. AG's rewrite returned nil here, silently
+            // dropping every successful result conversion.
+            self = .result(card)
+        }
+    }
+
+    public func validation() -> (valid: Bool, reason: String?) {
+        switch self {
+        case .result(let card):
+            if card.outputChars == 0 {
+                return (false, "zero_output")
+            }
+            return (true, nil)
+        default:
+            return (true, nil)
+        }
     }
 }

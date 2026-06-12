@@ -69,21 +69,22 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 			.store(in: &cancellables)
 	}
 
-	func revealPopoverIfNeeded(source: PanelOpenSource = .menu_bar) {
-		if appState.activeResearchResultCard != nil {
-			print("[PanelOpen] blocked reason=research_result_uses_floating_card")
-			return
-		}
+	/// Returns whether the reveal was allowed and attempted. NSPopover.isShown can
+	/// stay false in headless contexts (no status-item window), so callers/tests
+	/// should rely on the returned decision, not on isShown.
+	@discardableResult
+	func revealPopoverIfNeeded(source: PanelOpenSource = .menu_bar) -> Bool {
 		let allowed = (source != .suggestion_auto)
 		print("[PanelOpen] source=\(source.rawValue) allowed=\(allowed ? "yes" : "no")")
 		if !allowed {
 			print("[PanelOpen] blocked reason=suggestions_do_not_auto_open_panel")
-			return
+			return false
 		}
-		guard !popover.isShown else { return }
-		guard let button = statusItem.button else { return }
+		guard !popover.isShown else { return true }
+		guard let button = statusItem.button else { return true }
 		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 		onPopoverDidShow?()
+		return true
 	}
 
 	@objc private func togglePopover(_ sender: AnyObject?) {

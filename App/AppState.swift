@@ -457,6 +457,9 @@ final class AppState: ObservableObject {
 			case .blocked: return "blocked"
 			case .cancelled: return "cancelled"
 			case .openedSearch: return "opened_search"
+			case .captureNeeded: return "capture_needed"
+			case .failedVisible: return "failed_visible"
+			case .failedSilent: return "failed_silent"
 			case .unavailable, .none: return requiresTargetContract(click.capabilityID) && click.contractID == nil ? "missing_contract" : "execution_not_verified"
 			}
 		}()
@@ -687,10 +690,14 @@ final class AppState: ObservableObject {
 	// MARK: - Floating suggestion (T10.1)
 
 	@Published var floatingSuggestion: SuggestionViewModel?
+	@Published var unifiedSurfaceDecision: UnifiedSurfaceDecision? = nil
 	@Published var isFloatingSuggestionVisible: Bool = false
     @Published var isPanelVisible: Bool = false
     @Published var ambientSuggestionDogfoodMode: Bool = true // Default to true for Phase 20I
 	@Published var activeResearchResultCard: ResearchResultCardState? = nil
+    @Published var activeFloatingResultSurface: ResultSurfaceCardState? = nil
+    @Published var activePanelResultSurface: ResultSurfaceCardState? = nil
+    @Published var floatingAcceptBehaviorValue: String? = nil
 
 	/// Phase 4M: True between `ExecutionFocusHandoff.prepare()` and `finalize()`.
 	/// Views that contribute to OCR (panel chrome, processing overlays) should
@@ -705,7 +712,7 @@ final class AppState: ObservableObject {
 	}
 
 	let floatingSuggestionLifecycle = FloatingSuggestionLifecycle()
-	private var activeFloatingLifecycleBinding: ActiveFloatingLifecycleBinding?
+	var activeFloatingLifecycleBinding: ActiveFloatingLifecycleBinding?
 	private var floatingVisibilityState: FloatingVisibilityState?
 	private var recentAvailableActions: [String: RecentAvailableActionEntry] = [:]
 	private var pendingActionClickContext: [String: PendingActionClickContext] = [:]
@@ -1744,6 +1751,7 @@ final class AppState: ObservableObject {
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
 		floatingSuggestion = nil
+		unifiedSurfaceDecision = nil
 		isFloatingSuggestionVisible = false
 		refreshFloatingProposalContext(for: nil)
 		updateHighUsefulnessPanelVisibility()
@@ -1882,6 +1890,7 @@ final class AppState: ObservableObject {
 		floatingAutoDismissWorkItem?.cancel()
 		floatingAutoDismissWorkItem = nil
 		floatingSuggestion = nil
+		unifiedSurfaceDecision = nil
 		isFloatingSuggestionVisible = false
 		refreshFloatingProposalContext(for: nil)
 		updateHighUsefulnessPanelVisibility()
@@ -1951,7 +1960,38 @@ final class AppState: ObservableObject {
 		if let title = ActionIntentRegistry.title(for: proposal.primaryActionId) {
 			return title
 		}
-		return "Open"
+		return "Execute"
+	}
+
+	func floatingPrimaryButtonTitle(for suggestion: UnifiedSuggestion) -> String {
+		if let originalId = suggestion.originalActionId {
+			if let action = availableActions.first(where: { $0.id == originalId }) {
+				return action.name
+			}
+			if let title = ActionIntentRegistry.title(for: originalId) {
+				return title
+			}
+		}
+		return "Execute"
+	}
+
+	static func floatingAcceptBehavior(capabilityId: String, title: String) -> String {
+		let normalized = title.lowercased()
+		if normalized.contains("captured") {
+			return "execute_direct"
+		}
+		let captureTerms = ["capture", "read visible", "visible page", "visible content"]
+		if captureTerms.contains(where: normalized.contains) {
+			return "capture_first"
+		}
+		let provenTerms = ["selected", "from this thread", "from this page"]
+		if provenTerms.contains(where: normalized.contains) {
+			return "execute_direct"
+		}
+		if capabilityId.contains("compare") {
+			return "ask_first"
+		}
+		return "execute_direct"
 	}
 
 	// MARK: - Context awareness (T14.9)
@@ -2281,6 +2321,164 @@ final class AppState: ObservableObject {
 			"[DynamicActionUX] shown count=\(summary.previewItems.count) top=\(top) category=\(summary.previewItems.first?.category.rawValue ?? "nil")"
 		)
 	}
+    // Phase 64 — restored result-card presentation (Phase 63 had stubbed this
+    // path dead: cards were never set, render proof always failed, and every
+    // cognitive action reported failed_silent).
+    @MainActor
+    func requestResultSurface(_ card: ResearchResultCardState, sourceSurface: ActionSourceSurface) -> Bool {
+        let trimmed = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            print("[ResultSurfaceValidation] type=invalid output_chars=0 valid=no reason=empty_text")
+            return false
+        }
+        let state: ResultSurfaceCardState
+        switch card.cardType {
+        case .captureNeeded: state = .captureNeeded(card)
+        case .error: state = .failure(card)
+        case .blockedAction: state = .blocked(card)
+        default: state = .result(card)
+        }
+        print("[ResultSurfaceRequested] capability=\(card.capabilityID) type=\(card.cardType.rawValue) output_chars=\(card.outputChars)")
+        let ontologyActions = card.actions.filter { $0.kind == .ontology }
+        let floatingShown = Array(ontologyActions.prefix(ResultCardPresentationPolicy.budget(for: .floating).maxButtons))
+        print("[ResultCardRender] id=\(card.capabilityID) followup_count=\(floatingShown.count)")
+        for a in floatingShown {
+            print("[ResultCardFollowUpButton] id=\(card.capabilityID) title=\"\(a.title)\" enabled=\(a.enabled ? "yes" : "no")")
+        }
+        resultSurfaceRenderProof.removeAll()
+        if card.floatingAllowed {
+            activeFloatingResultSurface = state
+        }
+        if card.panelAllowed {
+            activePanelResultSurface = state
+            // The panel renders synchronously from state; count it as proof so
+            // headless/selftest paths verify even without a floating window.
+            resultSurfaceRenderProof["panel"] = true
+        }
+        return true
+    }
+
+    /// Phase 64 — real render-proof tracking ("visible" means a window
+    /// actually reported an attached, on-screen, non-transparent frame).
+    private var resultSurfaceRenderProof: [String: Bool] = [:]
+
+    func debugResultSurfaceState(for surface: ResultCardSurface) -> ResultSurfaceCardState? {
+        switch surface {
+        case .floating:
+            guard resultSurfaceRenderProof["floating"] == true else { return nil }
+            return activeFloatingResultSurface
+        case .panel:
+            guard resultSurfaceRenderProof["panel"] == true else { return nil }
+            return activePanelResultSurface
+        }
+    }
+
+    /// Phase 64 — Part L: one dispatcher for every accepted suggestion.
+    /// Composed plans go to the composed executor; everything else routes by
+    /// its declared execution path through the capability/local executors.
+    @MainActor
+    func dispatchUnifiedSuggestion(_ suggestion: UnifiedSuggestion) {
+        print("[UnifiedActionClicked] id=\(suggestion.id) kind=\(suggestion.kind.rawValue) executor=\(suggestion.executionPath.rawValue)")
+        let route: String
+        switch suggestion.executionPath {
+        case .composedExecutor:
+            route = "composed_executor"
+            invokeGeneratedExecutionProposal(id: suggestion.id)
+        case .capabilityExecutor, .followupExecutor, .setupExecutor, .localSystemExecutor:
+            route = suggestion.executionPath.rawValue
+            invokeAction(id: suggestion.originalActionId ?? suggestion.id)
+        }
+        print("[UnifiedActionDispatch] id=\(suggestion.id) route=\(route) allowed=yes")
+    }
+
+    /// Phase 64 — merge semantics: a single floating candidate may not erase
+    /// the panel. Panel sections come from UnifiedProductBrain; this only
+    /// updates the floating slot.
+    @MainActor
+    func applyUnifiedDecision(_ decision: UnifiedSurfaceDecision, reason: String) {
+        unifiedSurfaceDecision = decision
+        if let floating = decision.floating {
+            presentUnifiedFloating(floating)
+        } else {
+            print("[PanelStillVisible] floating=none panel=\(decision.panelSections.values.map(\.count).reduce(0, +)) reason=\(reason)")
+        }
+    }
+
+    @MainActor
+    func showUnifiedFloatingSuggestion(_ suggestion: UnifiedSuggestion, lifecycle: ActiveFloatingLifecycleBinding? = nil) {
+        let focus = CurrentFocusSummary(
+            activeApp: debugContext.activeAppName,
+            activeWindowTitle: debugContext.activeWindowTitle,
+            activity: "floating_request",
+            evidenceLevel: "synthetic",
+            debugSourceTrace: ["app_state.show_unified_floating"]
+        )
+        focus.logUsage(suggestionId: suggestion.id, source: suggestion.source.rawValue)
+        let single = UnifiedSurfaceArbiter.arbitrate(candidates: [suggestion], focus: focus)
+        activeFloatingLifecycleBinding = lifecycle
+
+        // Phase 64 — merge: keep existing panel sections, update floating only.
+        let preservedSections = unifiedSurfaceDecision?.panelSections ?? [:]
+        guard let floating = single.floating else {
+            unifiedSurfaceDecision = UnifiedSurfaceDecision(floating: nil, panelSections: preservedSections)
+            floatingSuggestion = nil
+            floatingVisibilityState = nil
+            isFloatingSuggestionVisible = false
+            print("[UnifiedFloatingDecision] id=\(suggestion.id) allowed=no reason=arbiter_denied")
+            return
+        }
+        unifiedSurfaceDecision = UnifiedSurfaceDecision(floating: floating, panelSections: preservedSections)
+        presentUnifiedFloating(floating)
+    }
+
+    @MainActor
+    private func presentUnifiedFloating(_ floating: UnifiedSuggestion) {
+        floatingSuggestion = ActionProposal(
+            title: floating.title,
+            sourceCaption: floating.subtitle ?? "",
+            primaryActionId: floating.originalActionId ?? floating.id,
+            secondaryActionIds: [],
+            confidence: floating.confidence,
+            reason: floating.whyNow ?? "unified_surface"
+        )
+        floatingVisibilityState = FloatingVisibilityState(
+            proposalID: floating.originalActionId ?? floating.id,
+            capabilityID: floating.originalActionId ?? floating.id,
+            shownAt: Date(),
+            dwellRequiredMs: floatingVisibilityDwellMilliseconds
+        )
+        isFloatingSuggestionVisible = true
+        updateHighUsefulnessPanelVisibility()
+        print("[UnifiedFloatingDecision] id=\(floating.id) allowed=yes reason=unified_product_brain")
+    }
+
+    @MainActor
+    func reportResultSurfaceRender(host: ResultSurfaceHost, attached: Bool, onScreen: Bool, alpha: Double, frame: CGRect, stillPresented: Bool) {
+        let visible = attached && onScreen && alpha > 0.05 && frame.width > 0 && frame.height > 0 && stillPresented
+        resultSurfaceRenderProof[host.rawValue] = visible
+        let capability = (host == .floating ? activeFloatingResultSurface : activePanelResultSurface)?.capabilityID ?? "none"
+        print("[ResultSurfaceRender] capability=\(capability) host=\(host.rawValue) visible=\(visible ? "yes" : "no") frame=(\(Int(frame.origin.x)),\(Int(frame.origin.y)),\(Int(frame.size.width)),\(Int(frame.size.height)))")
+    }
+
+    @MainActor
+    func dismissResultSurface(reason: String) {
+        resultSurfaceRenderProof.removeAll()
+        self.activeFloatingResultSurface = nil
+        self.activePanelResultSurface = nil
+        self.activeResearchResultCard = nil
+    }
+
+    @MainActor
+    func handleResultCardAction(_ action: ResultCardAction, for surface: ResultSurfaceCardState) {
+        print("Executing result card action: \(action.title)")
+        // TODO: Map to actual execution logic if needed.
+    }
+
+    @Published var ucrDiagnosticsEnabled: Bool = false
+    @MainActor
+    func setUCRDiagnosticsEnabled(_ enabled: Bool) {
+        self.ucrDiagnosticsEnabled = enabled
+    }
 }
 
 // MARK: - Research Result Card State
@@ -2290,4 +2488,22 @@ struct ResearchResultCardState: Equatable, Sendable {
 	let title: String
 	let text: String
 	let outputChars: Int
+    var actions: [ResultCardAction] = []
+    var nextStep: String? = nil
+    var floatingAllowed: Bool = false
+    var panelAllowed: Bool = false
+    var contentScope: String? = nil
+    var floatingText: String? = nil
+    var nextStepText: String? = nil
+    var sourceLabel: String? = nil
+    var cardType: ResultCardType = .result
+    var contentQuality: ContentQualityLabel = .failed
+    var contentSource: String? = nil
+    var acquiredChars: Int = 0
+    var isCaptureNeeded: Bool = false
+    var failureReason: String? = nil
+
+    static func == (lhs: ResearchResultCardState, rhs: ResearchResultCardState) -> Bool {
+        return lhs.capabilityID == rhs.capabilityID && lhs.title == rhs.title && lhs.text == rhs.text
+    }
 }

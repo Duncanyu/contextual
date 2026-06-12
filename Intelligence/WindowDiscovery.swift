@@ -421,8 +421,24 @@ enum LayoutEngine {
 
         let aLabel = "\(primary.snapshot.appName)/\(String(primary.snapshot.title.prefix(25)))"
         let bLabel = "\(sec.snapshot.appName)/\(String(sec.snapshot.title.prefix(25)))"
-        let selectionReason = workPair != nil && (primary.reasons.contains("recent_work_pair") || sec.reasons.contains("recent_work_pair"))
-            ? "recent_work_pair" : "best_scored_pair"
+
+        // Phase 44 — BLOCK arrange_side_by_side when no verified work pair.
+        // Without a confirmed pair (min 3 switches in 90s), we cannot know the user's intent.
+        // best_scored_pair is suppressed: it picks high-scored apps (e.g. Xcode) regardless of usage pattern.
+        let hasPairReason = primary.reasons.contains("recent_work_pair") || sec.reasons.contains("recent_work_pair")
+        let hasWorkPair = workPair != nil
+        let selectionReason = (hasWorkPair && hasPairReason) ? "recent_work_pair" : "best_scored_pair"
+
+        print("[WorkPairMemory] pair_available=\(hasWorkPair ? "yes" : "no") primary_has_pair_reason=\(primary.reasons.contains("recent_work_pair") ? "yes" : "no") secondary_has_pair_reason=\(sec.reasons.contains("recent_work_pair") ? "yes" : "no")")
+        print("[ArrangeRequirement] requirement=verified_work_pair met=\(selectionReason == "recent_work_pair" ? "yes" : "no") reason=\(selectionReason)")
+
+        guard selectionReason == "recent_work_pair" else {
+            print("[LayoutIntent] intent=arrange_side_by_side BLOCKED primary=\"\(aLabel)\" secondary=\"\(bLabel)\" reason=no_verified_work_pair selection_would_be=best_scored_pair")
+            print("[ActionVerification] capability=arrange_side_by_side status=blocked reason=best_scored_pair_suppressed")
+            print("[IntentExecutor] status=blocked reason=no_verified_pair_to_arrange")
+            return LayoutResult(status: "blocked", reason: "no_verified_work_pair", windowA: aLabel, windowB: bLabel)
+        }
+
         print("[LayoutIntent] intent=arrange_side_by_side selected_count=2 primary=\"\(aLabel)\" secondary=\"\(bLabel)\" reason=\(selectionReason)")
 
         // Match CG → AX

@@ -35,7 +35,8 @@ private let metadataUtilityIDs: Set<String> = [
     "copy_all_related_links",
     "remember_workspace",
     "open_current_task_panel",
-    "extract_and_organize"
+    "extract_and_organize",
+    "select_text_hint"
 ]
 
 // MARK: - Usefulness Policy
@@ -138,7 +139,7 @@ enum ActionUsefulnessPolicy {
     static func getUsefulnessLevel(capabilityID: String, lane: String) -> String {
         let highValue: Set<String> = [
             "arrange_side_by_side", "switch_to_paired_app", "restore_workspace",
-            "explicit_visible_capture_summary", "extract_action_items", "create_checklist",
+            "capture_visible_page", "capture_full_document", "enable_browser_bridge",
             "rewrite_text", "explain_context", "draft_reply", "diagnose_error", "improve_text"
         ]
         if highValue.contains(capabilityID) || lane == "friction" || lane == "workspace" || lane == "cognitive" || lane == "research" || lane == "coding" || lane == "communication" {
@@ -146,7 +147,7 @@ enum ActionUsefulnessPolicy {
         }
         
         let lowValue: Set<String> = [
-            "copy_current_url", "collect_references", "copy_all_related_links", "remember_workspace", "open_current_task_panel", "extract_and_organize"
+            "copy_current_url", "collect_references", "copy_all_related_links", "remember_workspace", "open_current_task_panel", "extract_and_organize", "select_text_hint"
         ]
         if lowValue.contains(capabilityID) || lane == "metadata" {
             return "low"
@@ -204,7 +205,8 @@ enum ActionUsefulnessPolicy {
     private static func estimateCosts(capabilityID: String, confidence: Double, activityMatch: Bool) -> (String, String) {
         let highValue: Set<String> = [
             "arrange_side_by_side", "switch_to_paired_app", "split_research_setup",
-            "play_focus_media", "pause_media", "restore_workspace", "launch_recent_workspace"
+            "play_focus_media", "pause_media", "restore_workspace", "launch_recent_workspace",
+            "capture_visible_page", "capture_full_document", "enable_browser_bridge"
         ]
         let mediumValue: Set<String> = [
             "restore_research_tabs", "open_related_app_set", "open_paired_app",
@@ -213,7 +215,8 @@ enum ActionUsefulnessPolicy {
         let lowInterrupt: Set<String> = [
             "arrange_side_by_side", "switch_to_paired_app", "play_focus_media",
             "pause_media", "restore_workspace", "launch_recent_workspace",
-            "switch_to_last_task_window", "open_paired_app"
+            "switch_to_last_task_window", "open_paired_app",
+            "capture_visible_page", "capture_full_document", "enable_browser_bridge"
         ]
 
         let saved: String

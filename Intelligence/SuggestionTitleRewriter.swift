@@ -51,10 +51,21 @@ enum SuggestionTitleRewriter {
 
     // Phase 43 — Product-quality titles for cognitive capabilities.
     // Raw capability IDs must never appear in the UI.
+    //
+    // Phase 51 — Titles are scope-honest by default. The static title may only
+    // claim what the WORST acceptable acquisition can deliver (visible content).
+    // It is upgraded to "Summarize this page/document" at execution/result time
+    // by ScopeTruthTitles, only when the actual scope proves it.
     private static let cognitiveProductTitles: [String: String] = [
-        "explicit_visible_capture_summary": "Summarize this page",
+        "explicit_visible_capture_summary": "Summarize visible content",
+        "summarize_full_page": "Summarize this page",
+        "summarize_full_document": "Summarize this document",
+        "summarize_article": "Summarize main content",
+        "summarize_selected_text": "Summarize selected text",
+        "capture_then_summarize": "Capture and summarize",
+        "enable_page_access": "Enable page access",
         "extract_action_items": "Extract action items",
-        "create_checklist": "Make a checklist from this page",
+        "create_checklist": "Make a checklist",
         "summarize_visible_content": "Summarize visible content",
         "rewrite_text": "Rewrite selected text",
         "improve_text": "Improve selected text",

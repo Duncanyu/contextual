@@ -98,9 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastChimeInContext: ChimeInContextSnapshot?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		DebugMode.initialize()
 		ValidationConfiguration.logStatus()
 		AmbientMVPMode.logStatus()
-		UsefulActionOpportunityRegistry.logRegistry()
+		if !DebugMode.shouldSuppressNoisyLogs {
+			UsefulActionOpportunityRegistry.logRegistry()
+		}
 		// Phase 18C — hard proof that the binary actually contains the new
 		// engine + mode types. If any of these symbols were missing, this file
 		// would not have compiled in the first place.
@@ -109,12 +112,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		_ = ValidationConfiguration.self
 		print("[Phase18C] compiled=yes context_execution_engine=yes ambient_mvp_mode=yes")
 		DogfoodChecklist.printIfEnabled()
+		let gitRoot = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.path
+		print("[Phase63RuntimeMarker] active=yes unified_surface=yes debug_mode=\(DebugMode.isEnabled ? "on" : "off") git_root=\(gitRoot) build_time=\(ISO8601DateFormatter().string(from: Date()))")
+		// Phase 64 — unified product brain build-identity marker; references
+		// Phase 64-only symbols so it cannot print from an old binary.
+		_ = UnifiedProductBrain.self
+		_ = UnifiedCandidatePool.self
+		print("[Phase64RuntimeMarker] active=yes git_root=\(gitRoot) build_time=phase64-unified-product-brain-2026-06-12 files=UnifiedProductBrain.swift,AppState.swift,AppDelegate.swift,AssistantPanelView.swift")
+		print("[LogCategoryConfig] mode=\(DebugMode.isEnabled ? "debug" : "product") enabled=runtime_markers,current_focus,unified_decision,product_trace,errors disabled=\(DebugMode.isEnabled ? "none" : "primitive_registry_dump,ontology_spam,window_candidate_dumps")")
 		
 		menuBarController = MenuBarController(appState: appState)
 		floatingSuggestionController = FloatingSuggestionWindowController(appState: appState)
 		floatingResultCardController = FloatingResultCardWindowController(appState: appState)
 
 		let env = ProcessInfo.processInfo.environment
+		if env["CONTEXTUAL_RUN_PHASE63_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await Phase63SelfTest.run()
+				print("[Phase63SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		// Phase 64 — full chain restored: AG's rewrite had dropped 58.5/58.6
+		// and provided no 63/64 coverage in the chain.
+		if env["CONTEXTUAL_RUN_PHASE53_62_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_PHASE53_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let phase53 = await Phase53SelfTest.run()
+				let phase54 = await Phase54SelfTest.run()
+				let phase55 = await Phase55SelfTest.run()
+				let phase56 = await Phase56SelfTest.run()
+				let phase57 = await Phase57SelfTest.run()
+				let phase58 = await Phase58SelfTest.run()
+				let phase58_5 = await Phase58_5SelfTest.run()
+				let phase58_6 = await Phase58_6SelfTest.run()
+				let phase59 = await Phase59SelfTest.run()
+				let phase60 = await Phase60SelfTest.run()
+				let phase61 = await Phase61SelfTest.run()
+				let phase62 = await Phase62SelfTest.run()
+				let phase63 = await Phase63SelfTest.run()
+				let phase64 = await Phase64SelfTest.run()
+				let ok = phase53 && phase54 && phase55 && phase56 && phase57 && phase58 && phase58_5 && phase58_6 && phase59 && phase60 && phase61 && phase62 && phase63 && phase64
+				print("[Phase53_62SelfTest] env selftest ok=\(ok)")
+				print("[Phase53SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_PHASE64_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await Phase64SelfTest.run()
+				print("[Phase64SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
 		if env["CONTEXTUAL_RUN_BROWSER_TAB_MEMORY_SELFTEST"] == "1" {
 			Task {
 				let ok = await BrowserTabMemorySelfTest.run()
@@ -2300,9 +2352,9 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		let deterministicPanel = buildDeterministicPanelPublication(context: context)
 
 		// Phase 43 — Proactively surface cognitive preparation action as a floating pill.
-		if let cogAct = deterministicPanel.cognitiveFloatingAction {
-			maybeShowCognitiveFloatingSuggestion(panelAction: cogAct, context: context)
-		}
+		// if let cogAct = deterministicPanel.cognitiveFloatingAction {
+		// 	maybeShowCognitiveFloatingSuggestion(panelAction: cogAct, context: context)
+		// }
 
 		let toolActions = registeredToolActions(for: packet, context: context)
 		publishDynamicOnlyReasonedActions(
@@ -2935,9 +2987,6 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				)
 				let musicAction = DeterministicCapabilityPanelAction(seed: musicSeed)
 				panelActions.append(musicAction)
-				print("[MusicSuggestion] generated capability=play_focus_media reason=stable_work_context")
-				print("[SurfaceResult] capability=play_focus_media requested=panel actual=panel_added reason=\(musicEval.reason)")
-				print("[PanelAction] added capability=play_focus_media family=media reason=\(musicEval.reason)")
 			case .floatingInterrupt:
 				let musicCandidate = PortfolioCandidate(
 					lane: .music,
@@ -2959,8 +3008,6 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 					targetContract: nil
 				)
 				floatingCandidates.append(musicCandidate)
-				print("[MusicSuggestion] generated capability=play_focus_media reason=floating_interrupt")
-				print("[SurfaceResult] capability=play_focus_media requested=floating actual=shown reason=\(musicEval.reason)")
 			}
 		}
 
@@ -3115,7 +3162,8 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		print("[ResearchResultCard] shown capability=\(capId) trigger=suggestion_accept output_chars=0")
 
 		lastCognitiveFloatShownAt[capId] = now
-		appState.showFloatingSuggestion(proposal, lifecycle: bind)
+		let unified = UnifiedSuggestionAdapters.from(liquidProposal: proposal, isFloatingEligible: true)
+		appState.showUnifiedFloatingSuggestion(unified, lifecycle: bind)
 	}
 
 	private func dynamicGeneratedEvidenceContext(
@@ -3254,6 +3302,15 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			appState.availableActions = publishedActions
 		}
 		appState.registeredToolActions = toolActions
+
+		// Phase 64 — Unified Product Brain: the ONE place all intelligence
+		// layers merge into a single surface decision. Legacy systems above
+		// only produced candidates; nothing before this line decides UI.
+		publishUnifiedProductDecision(
+			publishedActions: publishedActions,
+			finalProposal: finalProposal,
+			context: context
+		)
 		// Phase 4S — replace stale weak proposal when stronger context arrives.
 		// Detected by comparing the previous proposal's title to the new one
 		// through the FastVisibilityQualityGate. Emits a dedicated state log so
@@ -3277,15 +3334,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		}
 		print("[AvailableActions] dynamic_only visible_generated=\(generatedProposalActivation.visibleProposals.count) tools=\(toolActions.count) trigger=\(packet.triggerType.rawValue) reason=\(decision.reason)")
 
-		if let p = finalProposal {
-			maybeShowFloatingSuggestion(
-				proposal: p,
-				suggestionStrength: .strong,
-				context: context,
-				packet: packet,
-				proposalGateAllows: true
-			)
-		}
+
 	}
 
 	private func publishReasonedActions(
@@ -3328,6 +3377,12 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		lastReasonedTriggerType = packet.triggerType
 		lastReasonedProposal = finalProposal
 		lastReasonedProposalKey = finalProposalKey
+		// Phase 64 — both publish paths route through the unified brain.
+		publishUnifiedProductDecision(
+			publishedActions: ordered,
+			finalProposal: finalProposal,
+			context: context
+		)
 		if ordered.contains(where: { $0 is DeterministicCapabilityPanelAction }) {
 			print("[AvailableActions] panel_count=\(ordered.count) floating_count=\(finalProposal == nil ? 0 : 1) source=deterministic_panel_actions")
 		}
@@ -3721,207 +3776,108 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				primaryActionId: proposal.primaryActionId,
 				profile: profile
 			)
-			let bind = ActiveFloatingLifecycleBinding(
-				exactKey: exactKey,
-				safeKey: safeKey,
-				profile: profile,
-				primaryActionId: proposal.primaryActionId
-			)
-			appState.showFloatingSuggestion(proposal, lifecycle: bind)
-		} else if shouldLogTES {
+				let bind = ActiveFloatingLifecycleBinding(
+					exactKey: exactKey,
+					safeKey: safeKey,
+					profile: profile,
+					primaryActionId: proposal.primaryActionId
+				)
+				let unified = UnifiedSuggestionAdapters.from(liquidProposal: proposal, isFloatingEligible: true)
+				appState.showUnifiedFloatingSuggestion(unified, lifecycle: bind)
+			} else if shouldLogTES {
 			print("[TES] suppressed reason=\(tes.reason) score=\(scoreLabel)")
 		}
+	}
+
+	// MARK: - Phase 64 — Unified Product Brain publish point
+
+	/// Builds the shared CurrentFocusSummary, gathers every candidate source,
+	/// and publishes exactly one UnifiedSurfaceDecision to AppState.
+	@MainActor
+	private func publishUnifiedProductDecision(
+		publishedActions: [any ActionProtocol],
+		finalProposal: ActionProposal?,
+		context: ContextModel
+	) {
+		let frontmost = NSWorkspace.shared.frontmostApplication
+		let activeAppName = context.activeAppName ?? frontmost?.localizedName ?? ""
+		let browserContext = BrowserContextExtractor.extract(
+			appName: activeAppName,
+			activeAppPID: frontmost?.processIdentifier
+		)
+		let selectedTitle = browserContext?.selectedTitle
+		let selectedURL = browserContext?.selectedURL ?? browserContext?.currentURL
+		let tabTitles = browserContext?.recentTabTitles ?? []
+		let windowTitle = selectedTitle ?? context.activeWindowTitle ?? ""
+
+		// Shared signals — selected browser tab dominates window title/OCR.
+		let signals = WorkflowSignals(
+			activeApp: activeAppName,
+			windowTitle: windowTitle,
+			urlHost: selectedURL?.host ?? "",
+			urlPath: selectedURL?.path ?? "",
+			tabTitles: tabTitles,
+			selectedTextLength: context.selectedTextLength,
+			// Metadata-level publish point: content acquisition is a click
+			// away via capture-first plans, never assumed present here.
+			contentAvailable: false,
+			workflow: "unknown",
+			visibleAppNames: [activeAppName]
+		)
+		let content = ContentTypeClassifier.classify(signals)
+		let focus = CurrentFocusSummary(
+			activeApp: activeAppName,
+			activeWindowTitle: context.activeWindowTitle,
+			selectedBrowserTabTitle: selectedTitle,
+			selectedBrowserTabURL: selectedURL?.absoluteString,
+			browserTabListSummary: tabTitles,
+			currentContentType: content.type.rawValue,
+			semanticDomain: signals.workflow,
+			activity: nil,
+			evidenceLevel: signals.contentAvailable ? "visible_content" : "metadata",
+			availableContentSources: ContentSourceAvailability(
+				metadata: !windowTitle.isEmpty,
+				url: selectedURL != nil,
+				axText: false,
+				ocr: false,
+				selectedText: context.selectedTextLength > 0,
+				clipboard: false,
+				browserBridge: false
+			),
+			missingContentSources: signals.contentAvailable ? [] : ["visible_text"],
+			debugSourceTrace: ["panel_bridge_publish"]
+		)
+
+		// Candidate sources.
+		let bridgeCandidates = UnifiedProductBrain.panelBridgeCandidates(actions: publishedActions)
+		let composedCandidates = UnifiedProductBrain.composedPlanCandidates(signals: signals)
+		var floatingCandidates: [UnifiedSuggestion] = []
+		if let proposal = finalProposal {
+			floatingCandidates.append(UnifiedSuggestionAdapters.from(liquidProposal: proposal, isFloatingEligible: true))
+		}
+		for source in ["panel_bridge", "composed_planner", "floating_lane"] {
+			print("[UnifiedProductBrainInput] source=\(source) count=\(source == "panel_bridge" ? bridgeCandidates.count : source == "composed_planner" ? composedCandidates.count : floatingCandidates.count) used=yes reason=pooled")
+		}
+
+		let decision = UnifiedProductBrain.decide(
+			focus: focus,
+			panelBridgeSuggestions: bridgeCandidates,
+			composedPlanSuggestions: composedCandidates,
+			floatingCandidates: floatingCandidates,
+			floatingPenalized: DurableMemory.shared.floatingPenalizedActionIds()
+		)
+		appState.applyUnifiedDecision(decision.surface, reason: decision.reason)
 	}
 
 	// MARK: - Phase 20G.4 Ambient Jarvis → floating surface
 
 	@MainActor
 	private func maybeShowAmbientJarvisFloatingSuggestion(proposal: ActionProposal) {
-		// Ambient Jarvis proposals are context-grounded (workflow/behavior/epoch),
-		// NOT text-input-grounded. The standard TES path requires selected text or
-		// clipboard — ambient tabs like Scratch / Gemini / course pages have neither,
-		// so routing through TES always produces `no_meaningful_input` and the
-		// floating window never appears.
-		//
-		// Fix: after ambient-appropriate gate checks (panel, cooldown, paused,
-		// executing), go directly to the lifecycle dedup check and show. Skip TES.
-		let ctx = contextBuilder.model
-
-		// 1. Panel-open: attach inline instead of floating.
-		if appState.isPanelVisible {
-			print("[AmbientSuggestionSurface] attached_to_panel=yes")
-			print("[AmbientFloatingSuggestion] skipped reason=panel_open_attached_inline")
-			return
-		}
-		// 2. Ambient cooldown / dismissed / accepted.
-		if appState.isSuggestionOnCooldown(proposal, context: ctx) {
-			print("[AmbientFloatingSuggestion] skipped reason=cooldown|dismissed|accepted")
-			return
-		}
-		// 3. Floating already visible.
-		if appState.isFloatingSuggestionVisible {
-			print("[AmbientFloatingSuggestion] skipped reason=already_visible")
-			return
-		}
-		// 4. Assistant paused.
-		if appState.isPaused {
-			print("[AmbientFloatingSuggestion] skipped reason=assistant_paused")
-			return
-		}
-		// 5. Another action is currently executing.
-		if appState.isActionExecuting {
-			print("[AmbientFloatingSuggestion] skipped reason=executing_action")
-			return
-		}
-
-		let activeSuggestion = appState.activeAmbientJarvisSuggestion
-		let capabilityId = activeSuggestion.map { appState.ambientCapabilityId(for: $0) } ?? proposal.primaryActionId
-
-		// Phase 35.4: Final gate — restore_research_tabs blocked if tabs are already open
-		if capabilityId == "restore_research_tabs" {
-			let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
-			let browser = BrowserContextExtractor.extract(appName: frontApp, activeAppPID: nil)
-			let tabsOpen = (browser?.recentTabTitles.count ?? 0) > 0
-			if tabsOpen {
-				print("[ProposalFunnelAudit] not_generated capability=restore_research_tabs reason=tabs_already_open final_gate=yes")
-				print("[SurfaceResult] capability=restore_research_tabs requested=floating actual=suppressed reason=tabs_already_open")
-				return
-			}
-		}
-
-		let isMusicPlaying = MediaStateSource.currentSnapshot().isMusicPlaying
-		let isMusicSuppressed = isMusicPlaying
-		let isUserTyping = TypingActivitySource.shared.currentContext().isTypingActive
-		
-		let inventory = WorkspaceRuntimeInventoryProvider.snapshot()
-		let currentApps = Set(inventory.runningApps.map(\.appName))
-		let workflowRaw = WorkflowInferenceEngine.shared.latestResult()?.workflow.rawValue ?? "unknown"
-		
-		let pattern = DurableMemory.shared.bestDurableWorkspacePattern(
-			workflow: workflowRaw,
-			compartment: activeSuggestion?.contextPayload?.taskCompartmentSnapshot?.label,
-			currentApps: currentApps
-		)
-		let missing = pattern.map { DurableMemory.shared.missingCheck(pattern: $0, currentApps: currentApps, currentURLs: inventory.currentURLs) }
-		
-		let recentFeedback: String? = {
-			if appState.wasSuggestionFeedbackLogged(id: capabilityId, event: "dismissed") { return "dismissed" }
-			if appState.wasSuggestionFeedbackLogged(id: capabilityId, event: "ignored") { return "ignored" }
-			if appState.wasSuggestionFeedbackLogged(id: capabilityId, event: "accepted") { return "accepted" }
-			return nil
-		}()
-		
-		let frictionSignals = FrictionEngine.shared.detectFriction()
-		let hasDurablePattern = pattern != nil
-		let involvedURLs: [String] = {
-			var list: [String] = []
-			if let s = activeSuggestion {
-				let browsers = ["Safari", "Google Chrome", "Firefox", "Arc"]
-				for browser in browsers {
-					if let context = BrowserContextExtractor.extract(appName: browser, activeAppPID: nil),
-					   let u = context.selectedURL?.absoluteString ?? context.currentURL?.absoluteString {
-						if !u.isEmpty {
-							list.append(u)
-							break
-						}
-					}
-				}
-			}
-			return list
-		}()
-		let userAcceptedMusicBefore = DurableMemory.shared.hasAcceptedMusicPreference()
-		
-		let isLayoutAlreadyGood = !frictionSignals.contains { $0.type == .repeated_app_switching || $0.type == .repeated_tab_switching }
-		let finalSurfaceAuthoritativeCapabilities: Set<String> = [
-			"arrange_side_by_side",
-			"switch_to_paired_app",
-			"restore_workspace",
-			"split_research_setup"
-		]
-		if finalSurfaceAuthoritativeCapabilities.contains(capabilityId),
-		   activeSuggestion?.whyNow.contains("Cheap always-on portfolio selected") == true {
-			print("[SurfacePolicyBypass] capability=\(capabilityId) reason=final_surface_arbiter_authoritative")
-		} else {
-		
-			let evaluation = SuggestionSurfacePolicy.evaluate(
-				capabilityId: capabilityId,
-				context: ctx,
-				isMusicPlaying: isMusicPlaying,
-				isMusicSuppressed: isMusicSuppressed,
-				isUserTyping: isUserTyping,
-				missing: missing,
-				recentFeedback: recentFeedback,
-				frictionSignals: frictionSignals,
-				hasDurablePattern: hasDurablePattern,
-				involvedURLs: involvedURLs,
-				userAcceptedMusicBefore: userAcceptedMusicBefore,
-				isLayoutAlreadyGood: isLayoutAlreadyGood
-			)
-			
-			if evaluation.surface == SurfaceClassification.suppressed {
-				print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=suppressed reason=\(evaluation.reason)")
-				print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=\(evaluation.reason)")
-				return
-			}
-			if evaluation.surface == SurfaceClassification.panelOnly {
-				print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=panel_added reason=\(evaluation.reason)")
-				print("[PanelAction] added capability=\(capabilityId) reason=surface_policy_panel_only")
-				print("[AmbientFloatingSuggestion] suppressed capability=\(capabilityId) reason=panel_only")
-				return
-			}
-		}
-
-		print("[SurfaceResult] capability=\(capabilityId) requested=floating actual=shown reason=surface_policy_allowed")
-		print("[AmbientFloatingSuggestion] eligible=yes id=\(proposal.primaryActionId)")
-
-		// 6. Lifecycle dedup — prevent the same ambient suggestion from re-surfacing
-		// on every tick. Use the ambient trigger type so lifecycle state is isolated
-		// from regular floating suggestions.
-		let packet = TriggerPacket(
-			triggerType: .contextMetadataEligible,
-			reason: "ambient_jarvis",
-			candidateActions: [],
-			createdAt: Date()
-		)
-		let resolvedInput = appState.effectiveInputSource(for: ctx)
-		let rawSimilarity = FloatingSimilarityText.material(
-			for: ctx,
-			triggerType: packet.triggerType,
-			inputPreference: resolvedInput
-		)
-		let profile = ContentSimilarityProfile.make(from: rawSimilarity)
-		let life = appState.floatingSuggestionLifecycle.shouldSuppressNewFloating(
-			triggerType: packet.triggerType,
-			primaryActionId: proposal.primaryActionId,
-			profile: profile
-		)
-		if life.suppressed, let r = life.reason {
-			appState.floatingSuggestionLifecycle.logSuppressedIfNeeded(state: r, safeKey: life.safeKey)
-			print("[AmbientFloatingSuggestion] skipped reason=lifecycle_suppressed")
-			return
-		}
-
-		// 7. Show — bypasses TES (no selection/clipboard required for ambient context).
-		print("[AmbientFloatingSuggestion] tes_bypassed reason=context_grounded_no_text_input_needed")
-		let exactKey = appState.floatingSuggestionLifecycle.exactKey(
-			triggerType: packet.triggerType,
-			primaryActionId: proposal.primaryActionId,
-			profile: profile
-		)
-		let safeKey = appState.floatingSuggestionLifecycle.safeLogKey(
-			triggerType: packet.triggerType,
-			primaryActionId: proposal.primaryActionId,
-			profile: profile
-		)
-		let bind = ActiveFloatingLifecycleBinding(
-			exactKey: exactKey,
-			safeKey: safeKey,
-			profile: profile,
-			primaryActionId: proposal.primaryActionId
-		)
-		appState.showFloatingSuggestion(proposal, lifecycle: bind)
-		print("[AmbientFloatingSuggestion] attached=yes")
-		print("[AmbientFloatingSuggestion] shown=yes reason=ambient_jarvis")
+		// Phase 64 — restored: ambient candidates flow through the unified
+		// brain's floating merge instead of being silently dropped (Phase 63
+		// had deleted this body without replacement).
+		let unified = UnifiedSuggestionAdapters.from(liquidProposal: proposal, isFloatingEligible: true)
+		appState.showUnifiedFloatingSuggestion(unified)
 	}
 
 	private func preserveOrClearAvailableActions(reason: String) {

@@ -86,10 +86,11 @@ struct Phase40SelfTest {
             hasAXText: false,
             hasOCR: false
         )
+        // Phase 53 — weak context offers a capture/setup path, not the generic trio.
         check("test_4_article_no_content_has_acquisition",
-              articleAssessment.safeActions.contains("explicit_visible_capture_summary") ||
-              articleAssessment.safeActions.contains("extract_action_items") ||
-              articleAssessment.safeActions.contains("create_checklist"))
+              articleAssessment.safeActions.contains("capture_visible_page") ||
+              articleAssessment.safeActions.contains("enable_browser_bridge") ||
+              articleAssessment.safeActions.contains("select_text_hint"))
         check("test_4b_article_no_content_blocks_summarize",
               articleAssessment.blockedActions.contains("summarize_visible_content") ||
               !articleAssessment.safeActions.contains("summarize_visible_content"))
@@ -113,9 +114,10 @@ struct Phase40SelfTest {
             hasAXText: false,
             hasOCR: false
         )
+        // Phase 53 — Google Docs offers full-document capture, not the generic trio.
         check("test_6_google_docs_acquisition_actions",
-              docsAssessment.safeActions.contains("explicit_visible_capture_summary") ||
-              docsAssessment.safeActions.contains("extract_action_items"))
+              docsAssessment.safeActions.contains("capture_full_document") ||
+              docsAssessment.safeActions.contains("select_text_hint"))
 
         // 7. ActionRegistry: acquisition capabilities allowed at metadata_rich evidence level.
         let acquisitionEligibility = ActionRegistry.evaluate(
@@ -160,10 +162,12 @@ struct Phase40SelfTest {
         )
         let plannerResult = DeterministicPanelActionPlanner.evaluate(articleInput)
         let acquisitionCapIds = plannerResult.validCandidates.map { $0.candidate.capabilityId }
+        // Phase 53 — the planner generates a visible capture/setup path for weak articles.
         check("test_9_planner_generates_acquisition_for_article",
-              acquisitionCapIds.contains("explicit_visible_capture_summary") ||
-              acquisitionCapIds.contains("extract_action_items") ||
-              acquisitionCapIds.contains("create_checklist"))
+              acquisitionCapIds.contains("capture_visible_page") ||
+              acquisitionCapIds.contains("capture_full_document") ||
+              acquisitionCapIds.contains("enable_browser_bridge") ||
+              acquisitionCapIds.contains("select_text_hint"))
 
         // 10. DeterministicPanelActionPlanner: research lane used for acquisition candidates.
         let researchCandidates = plannerResult.validCandidates.filter { $0.candidate.lane == .research }
@@ -237,9 +241,10 @@ struct Phase40SelfTest {
             hasAXText: false,
             hasOCR: false
         )
+        // Phase 53 — listings without content get the capture path, not the trio.
         check("test_14_listing_no_content_has_acquisition",
-              listingAssessment.safeActions.contains("explicit_visible_capture_summary") ||
-              listingAssessment.safeActions.contains("extract_action_items"))
+              listingAssessment.safeActions.contains("capture_visible_page") ||
+              listingAssessment.safeActions.contains("select_text_hint"))
 
         let ok = failures.isEmpty
         print("[Phase40SelfTest] completed ok=\(ok) failures=\(failures.count)")

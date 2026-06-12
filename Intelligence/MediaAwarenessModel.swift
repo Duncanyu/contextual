@@ -139,24 +139,32 @@ enum MusicUsefulnessEvaluator {
         if awareness.foregroundMediaPresent && awareness.backgroundMusicState != "playing" {
             print("[MusicSuggestion] suppressed reason=foreground_media_no_music_needed")
             print("[MediaUsefulness] capability=\(capabilityID) eligible=no reason=foreground_media_no_music_needed")
+            print("[MusicUsefulness] eligible=no reason=foreground_media_no_music_needed context=watching_media")
+            print("[MusicSuppression] reason=wrong_context detail=foreground_media_present")
             return MusicUsefulnessResult(eligible: false, reason: "foreground_media_no_music_needed")
         }
 
         if isMusicAlreadyPlaying {
             print("[MusicSuggestion] suppressed reason=already_playing")
             print("[MediaUsefulness] capability=\(capabilityID) eligible=no reason=already_playing")
+            print("[MusicUsefulness] eligible=no reason=already_playing context=music_active")
+            print("[MusicSuppression] reason=already_playing")
             return MusicUsefulnessResult(eligible: false, reason: "already_playing")
         }
 
         if recentFeedbackCooldownActive {
             print("[MusicSuggestion] suppressed reason=recent_feedback_cooldown")
             print("[MediaUsefulness] capability=\(capabilityID) eligible=no reason=recent_feedback_cooldown")
+            print("[MusicUsefulness] eligible=no reason=recent_feedback_cooldown context=user_recently_rejected")
+            print("[MusicSuppression] reason=recently_rejected")
             return MusicUsefulnessResult(eligible: false, reason: "recent_feedback_cooldown")
         }
 
         if hasHigherPriorityTaskAction {
             print("[MusicSuggestion] suppressed reason=task_action_preferred")
             print("[MediaUsefulness] capability=\(capabilityID) eligible=no reason=task_action_preferred")
+            print("[MusicUsefulness] eligible=no reason=task_action_preferred context=task_action_available")
+            print("[MusicSuppression] reason=wrong_context detail=task_action_preferred")
             return MusicUsefulnessResult(eligible: false, reason: "task_action_preferred")
         }
 
@@ -164,11 +172,13 @@ enum MusicUsefulnessEvaluator {
         if awareness.foregroundMediaPresent && awareness.backgroundMusicState == "playing" {
             print("[MusicSuggestion] generated capability=pause_media reason=audio_conflict_foreground_and_background_music")
             print("[MediaUsefulness] capability=\(capabilityID) eligible=yes reason=audio_conflict")
+            print("[MusicUsefulness] eligible=yes reason=audio_conflict context=foreground_media_with_background_music")
             return MusicUsefulnessResult(eligible: true, reason: "audio_conflict")
         }
 
         print("[MusicSuggestion] generated capability=\(capabilityID) reason=work_context_no_music")
         print("[MediaUsefulness] capability=\(capabilityID) eligible=yes reason=work_context_no_music")
+        print("[MusicUsefulness] eligible=yes reason=work_context_no_music context=stable_work_session")
         return MusicUsefulnessResult(eligible: true, reason: "work_context_no_music")
     }
 }

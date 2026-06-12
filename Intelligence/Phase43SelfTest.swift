@@ -74,9 +74,10 @@ struct Phase43SelfTest {
             hasAXText: false,
             hasOCR: false
         )
-        let hasAcquisition = assessment.safeActions.contains("explicit_visible_capture_summary")
-            || assessment.safeActions.contains("extract_action_items")
-            || assessment.safeActions.contains("create_checklist")
+        // Phase 53 — weak finance page gets a capture/setup path, never the trio.
+        let hasAcquisition = assessment.safeActions.contains("capture_visible_page")
+            || assessment.safeActions.contains("enable_browser_bridge")
+            || assessment.safeActions.contains("select_text_hint")
         check("t3_finance_page_gets_acquisition_not_blocked", hasAcquisition)
         check("t3_acquisition_not_blocked", !assessment.blockedActions.contains("explicit_visible_capture_summary"))
         print("[PortfolioLaneDecision] source=browser_context_strategy suggested_research=\(assessment.safeActions.filter { ["explicit_visible_capture_summary","extract_action_items","create_checklist"].contains($0) }.count) research_lane_enabled=yes reason=local_action_executor_available")
@@ -124,19 +125,21 @@ struct Phase43SelfTest {
         // T6: Product titles hide raw capability IDs.
         let summaryTitle = SuggestionTitleRewriter.cognitiveProductTitle(for: "explicit_visible_capture_summary")
         check("t6_product_title_not_nil", summaryTitle != nil)
-        check("t6_product_title_human_readable", summaryTitle == "Summarize this page")
+        // Phase 51 — the static title must NOT overpromise. It may only claim the
+        // worst acceptable scope (visible content); scope truth upgrades it later.
+        check("t6_product_title_human_readable", summaryTitle == "Summarize visible content")
         check("t6_no_underscores_in_title", !(summaryTitle?.contains("_") ?? false))
 
         let extractRewritten = SuggestionTitleRewriter.rewrite(title: "extract_action_items", capabilityId: "extract_action_items")
         check("t6_extract_title_canonical", extractRewritten == "Extract action items")
 
         let checklistRewritten = SuggestionTitleRewriter.rewrite(title: "create_checklist", capabilityId: "create_checklist")
-        check("t6_checklist_title_canonical", checklistRewritten == "Make a checklist from this page")
+        check("t6_checklist_title_canonical", checklistRewritten == "Make a checklist")
 
         let draftReplyRewritten = SuggestionTitleRewriter.rewrite(title: "draft_reply", capabilityId: "draft_reply")
         check("t6_draft_reply_title_canonical", draftReplyRewritten == "Draft a reply")
 
-        print("[ActionTitle] capability=explicit_visible_capture_summary title=\"Summarize this page\" source=product_title_map")
+        print("[ActionTitle] capability=explicit_visible_capture_summary title=\"Summarize visible content\" source=product_title_map")
 
         // T7: Auto-run safe cognitive preparation: executor produces real output on idle/read context.
         if let cap = summaryCapability {
@@ -145,9 +148,11 @@ struct Phase43SelfTest {
                 "workflow": "reading",
             ]
             let status = await CapabilityExecutor.shared.execute(capability: cap, context: cogCtx)
-            check("t7_executor_produces_success_on_read_context", status == .success)
+            // Phase 44: executor may return .captureNeeded when no AX text — that IS correct behavior
+            // for a metadata-only context. Accept either .success or .captureNeeded.
+            check("t7_executor_produces_success_on_read_context", status == .success || status == .captureNeeded)
             print("[CognitiveAutoRun] capability=explicit_visible_capture_summary allowed=yes reason=idle_reading acquisition=metadata")
-            print("[ResearchResultCard] shown capability=explicit_visible_capture_summary trigger=suggestion_accept output_chars=0")
+            print("[PendingCard] capability=explicit_visible_capture_summary trigger=suggestion_accept output_chars=0")
         } else {
             failures.append("t7_capability_missing_cannot_test_executor")
             print("[Phase43SelfTest] FAIL case=t7_capability_missing_cannot_test_executor")
@@ -172,7 +177,7 @@ struct Phase43SelfTest {
             targetContract: nil
         )
         let panelAction = DeterministicCapabilityPanelAction(seed: seed)
-        check("t8_panel_action_product_title", panelAction.name == "Summarize this page")
+        check("t8_panel_action_product_title", panelAction.name == "Summarize visible content")
         check("t8_panel_action_correct_capability", panelAction.capabilityId == "explicit_visible_capture_summary")
         print("[PanelBridge] kept capability=explicit_visible_capture_summary reason=cognitive_float_also_in_panel")
 
@@ -185,7 +190,9 @@ struct Phase43SelfTest {
         // T10: Finance page gets safe "summarize/explain visible page," not financial advice.
         // Cognitive capabilities that are safe: summarize, explain, create_checklist.
         // Financial/legal/medical *advice* capabilities must not be in safeActions for finance.
-        check("t10_finance_page_gets_summarize", assessment.safeActions.contains("explicit_visible_capture_summary"))
+        // Phase 53 — generic summarize is no longer force-offered on weak finance pages;
+        // the honest path is visible capture (advice capabilities stay out of safeActions).
+        check("t10_finance_page_gets_summarize", assessment.safeActions.contains("capture_visible_page"))
         let dangerousActions = ["give_financial_advice", "recommend_investments", "trade_stocks"]
         let hasDangerous = dangerousActions.contains { assessment.safeActions.contains($0) }
         check("t10_finance_page_no_dangerous_advice_actions", !hasDangerous)

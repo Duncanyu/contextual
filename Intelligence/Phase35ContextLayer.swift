@@ -63,6 +63,10 @@ enum BrowserContextKind: String, Sendable, Codable, Equatable {
     case gmail
     case chatgpt
     case youtube
+    case forum = "reddit/forum"
+    case search_results
+    case media_page
+    case document
     case article
     case listing
     case pdf_in_browser
@@ -127,10 +131,21 @@ enum BrowserContextStrategy {
             kind = .youtube; reason = "youtube_url_or_title"
         case path.hasSuffix(".pdf") || lowerTitle.contains("pdf"):
             kind = .pdf_in_browser; reason = "pdf_signal"
-        case containsAny(text: [host, path, lowerTitle] + tabTitles.map { $0.lowercased() }, needles: ["rent", "rental", "lease", "listing", "housing", "landlord", "sublet", "roommate"]):
-            kind = .listing; reason = "listing_terms"
-        case containsAny(text: [host, path, lowerTitle] + tabTitles.map { $0.lowercased() }, needles: ["arxiv", "paper", "research", "doi", "abstract", "journal", "retrieval", "study"]):
-            kind = .article; reason = "article_terms"
+        case path.contains("/search") || url?.query != nil && (url?.query?.contains("q=") ?? false) || lowerTitle.contains("search results"):
+            kind = .search_results; reason = "search_current_focus"
+        case path.contains("/r/") || path.contains("/forum") || path.contains("/thread") || lowerTitle.contains("subreddit") || lowerTitle.contains("thread"):
+            kind = .forum; reason = "forum_current_focus"
+        case path.contains("/watch") || path.contains("/video") || lowerTitle.contains("video"):
+            kind = .media_page; reason = "media_current_focus"
+        case path.contains("/document") || path.contains("/edit") || lowerTitle.contains("document"):
+            kind = .document; reason = "document_current_focus"
+        // Phase 62 — current-focus first: background tab titles cannot
+        // classify the CURRENT browser strategy as listing/article. They are
+        // recorded separately so the workspace memory still has them.
+        case containsAny(text: [host, path, lowerTitle], needles: ["rent", "rental", "lease", "listing", "housing", "landlord", "sublet", "roommate"]):
+            kind = .listing; reason = "listing_terms_current_focus"
+        case containsAny(text: [host, path, lowerTitle], needles: ["arxiv", "paper", "research", "doi", "abstract", "journal", "retrieval", "study"]):
+            kind = .article; reason = "article_terms_current_focus"
         case !host.isEmpty:
             kind = .generic_page; reason = "generic_browser_page"
         default:
@@ -151,7 +166,7 @@ enum BrowserContextStrategy {
                 blockedActions = []
             } else {
                 safeActions = ["open_current_task_panel", "remember_workspace", "copy_current_url", "collect_references",
-                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                               "capture_full_document", "select_text_hint"]
                 blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
             }
         case .gmail:
@@ -160,7 +175,7 @@ enum BrowserContextStrategy {
                 blockedActions = []
             } else {
                 safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url",
-                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                               "capture_visible_page", "select_text_hint"]
                 blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
             }
         case .chatgpt:
@@ -169,16 +184,16 @@ enum BrowserContextStrategy {
                 blockedActions = []
             } else {
                 safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url",
-                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                               "capture_visible_page", "select_text_hint"]
                 blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
             }
-        case .article, .listing, .pdf_in_browser, .generic_page:
+        case .forum, .search_results, .media_page, .document, .article, .listing, .pdf_in_browser, .generic_page:
             if contentAvailable {
                 safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url"]
                 blockedActions = []
             } else {
                 safeActions = ["arrange_side_by_side", "switch_to_paired_app", "collect_references", "remember_workspace", "copy_current_url",
-                               "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
+                               "capture_visible_page", "enable_browser_bridge", "select_text_hint"]
                 blockedActions = ["summarize_visible_content", "generate_quiz", "summarize_full_document"]
             }
         case .youtube:
@@ -196,6 +211,10 @@ enum BrowserContextStrategy {
                 print("[AcquisitionSuggestion] capability=\(cap) reason=content_unavailable_but_visible_capture_available output_surface=floating_result_card")
             }
         }
+        for cap in ["enable_browser_bridge", "capture_full_document", "capture_visible_page", "select_text_hint"] where safeActions.contains(cap) {
+            let reason = contentAvailable ? "content_available" : "content_unavailable"
+            print("[SetupActionSuggestion] capability=\(cap) reason=\(reason)")
+        }
 
         let assessment = BrowserContextAssessment(
             kind: kind,
@@ -205,9 +224,19 @@ enum BrowserContextStrategy {
             safeActions: safeActions,
             blockedActions: blockedActions
         )
-        print("[BrowserContextStrategy] type=\(assessment.kind.rawValue) evidence=\(assessment.evidence.joined(separator: ","))")
+        let backgroundListing = containsAny(text: tabTitles.map { $0.lowercased() }, needles: ["rent", "rental", "lease", "listing", "housing", "landlord", "sublet", "roommate"])
+        let currentListingSignal = containsAny(text: [host, path, lowerTitle], needles: ["rent", "rental", "lease", "listing", "housing", "landlord", "sublet", "roommate"])
+        let currentListing = assessment.kind == .listing
+        let backgroundType = backgroundListing && !currentListing ? "listing" : "none"
+        print("[BrowserContextStrategy] type=\(assessment.kind.rawValue) evidence=current background_type=\(backgroundType)")
         print("[BrowserContextStrategy] content_available=\(assessment.contentAvailable ? "yes" : "no") reason=\(assessment.reason)")
         print("[BrowserContextStrategy] safe_actions=\(assessment.safeActions.joined(separator: ",")) blocked_actions=\(assessment.blockedActions.joined(separator: ","))")
+        // Phase 62 — background contamination check + separate background log.
+        let contaminated = !currentListingSignal && currentListing
+        print("[BrowserStrategyContaminationCheck] passed=\(contaminated ? "no" : "yes") reason=\(contaminated ? "classified_listing_without_current_focus_signal" : "current_focus_dominates")")
+        if backgroundListing && !currentListing {
+            print("[BackgroundBrowserStrategy] type=listing shown=no reason=background_only_current_focus_unrelated")
+        }
         return assessment
     }
 
@@ -489,6 +518,46 @@ struct DeterministicPanelPlannerInput: Sendable {
     let browserAssessment: BrowserContextAssessment?
     let hasDurablePattern: Bool
     let frictionSignals: [FrictionSignal]
+    // Phase 53 — liquid routing inputs (defaulted so existing call sites compile).
+    let selectedTextLength: Int
+    let recentlyRejectedCapabilityIds: Set<String>
+    let recentlyAcceptedCapabilityIds: Set<String>
+
+    init(
+        activeAppName: String,
+        windowTitle: String?,
+        browserAppName: String?,
+        currentURL: String?,
+        tabTitles: [String],
+        visibleApps: [String],
+        workflow: String,
+        compartmentLabel: String?,
+        compartment: TaskCompartment?,
+        evidenceLevel: ProgressiveEvidenceLevel,
+        browserAssessment: BrowserContextAssessment?,
+        hasDurablePattern: Bool,
+        frictionSignals: [FrictionSignal],
+        selectedTextLength: Int = 0,
+        recentlyRejectedCapabilityIds: Set<String> = [],
+        recentlyAcceptedCapabilityIds: Set<String> = []
+    ) {
+        self.activeAppName = activeAppName
+        self.windowTitle = windowTitle
+        self.browserAppName = browserAppName
+        self.currentURL = currentURL
+        self.tabTitles = tabTitles
+        self.visibleApps = visibleApps
+        self.workflow = workflow
+        self.compartmentLabel = compartmentLabel
+        self.compartment = compartment
+        self.evidenceLevel = evidenceLevel
+        self.browserAssessment = browserAssessment
+        self.hasDurablePattern = hasDurablePattern
+        self.frictionSignals = frictionSignals
+        self.selectedTextLength = selectedTextLength
+        self.recentlyRejectedCapabilityIds = recentlyRejectedCapabilityIds
+        self.recentlyAcceptedCapabilityIds = recentlyAcceptedCapabilityIds
+    }
 }
 
 struct DeterministicPanelCandidate: Sendable {
@@ -509,6 +578,10 @@ struct DeterministicPanelCandidate: Sendable {
 struct DeterministicPanelPlannerResult: Sendable {
     let validCandidates: [DeterministicPanelCandidate]
     let suppressedCount: Int
+    /// Phase 61 — capability ids that passed the contract/worthiness pipeline.
+    /// The panel bridge rejects anything outside this set: fallback storage can
+    /// never restore an action the quality path did not approve.
+    var gatedCapabilityIds: Set<String> = []
 }
 
 enum DeterministicPanelActionPlanner {
@@ -720,32 +793,200 @@ enum DeterministicPanelActionPlanner {
             }
         }
 
-        // Phase 40/43 — Research/cognitive acquisition candidates for document/browser contexts.
-        // Phase 43: Product-quality titles — raw capability IDs must never appear in UI.
-        let acquisitionCapabilities: [(String, String, Double)] = [
-            ("explicit_visible_capture_summary", "Summarize this page", 0.72),
-            ("extract_action_items", "Extract action items", 0.68),
-            ("create_checklist", "Make a checklist from this page", 0.65)
-        ]
-        for (capId, title, usefulness) in acquisitionCapabilities where safeActions.contains(capId) {
-            print("[ResearchLane] generated capability=\(capId) evidence=metadata_rich acquisition=visible_capture surface=panel_or_floating")
+        // Phase 53 — Liquid workflow routing: specific workflow actions are
+        // generated BEFORE the generic acquisition trio and demote it.
+        let plannerURL = input.currentURL.flatMap(URL.init(string:))
+        let liquidSignals = WorkflowSignals(
+            activeApp: input.activeAppName,
+            windowTitle: input.windowTitle ?? input.tabTitles.first ?? "",
+            urlHost: plannerURL?.host ?? "",
+            urlPath: plannerURL?.path ?? "",
+            tabTitles: input.tabTitles,
+            selectedTextLength: input.selectedTextLength,
+            contentAvailable: input.evidenceLevel.rank >= ProgressiveEvidenceLevel.visible_content.rank,
+            workflow: input.workflow,
+            visibleAppNames: input.visibleApps
+        )
+        let composedContent = ContentTypeClassifier.classify(liquidSignals)
+        let composedCluster = ComparableCandidateDetector.detect(signals: liquidSignals, content: composedContent)
+        let composedActivity = BrowserActivityClassifier.classify(signals: liquidSignals, content: composedContent, cluster: composedCluster)
+        let composedEvidence = EvidenceSnapshot.evaluate(signals: liquidSignals, content: composedContent, cluster: composedCluster)
+        let composedPlans = ComposedActionPlanner.plansFor(
+            signals: liquidSignals,
+            content: composedContent,
+            activity: composedActivity,
+            cluster: composedCluster,
+            evidence: composedEvidence
+        )
+        var composedCapabilityIds: [String] = []
+        for plan in composedPlans.prefix(2) {
+            let validation = ComposedActionValidator.validate(plan, surface: .panel)
+            print("[PlannerToolchainValidation] valid=\(validation.valid ? "yes" : "no") reason=\(validation.reason)")
+            guard validation.valid else { continue }
+            let identity = ComposedActionUIRegistry.register(plan: plan, signals: liquidSignals, surface: "panel")
+            let capabilityId = identity.uiID
+            composedCapabilityIds.append(capabilityId)
+            print("[DogfoodComposedOpportunity] id=\(capabilityId) title=\"\(identity.title)\" context=\(composedContent.type.rawValue) activity=\(composedActivity.activity.rawValue)")
+            print("[ComposedActionSurfaceDecision] id=\(capabilityId) surface=panel reason=composed_action_plan_\(plan.executionMode.rawValue)")
             makeCandidate(
                 lane: .research,
-                capabilityId: capId,
-                title: title,
-                confidence: 0.68,
-                usefulness: usefulness,
-                executability: 0.80,
-                reason: "document_context_acquisition_available",
+                capabilityId: capabilityId,
+                title: plan.userVisibleTitle,
+                confidence: plan.confidence,
+                usefulness: plan.executionMode == .panelOnly ? 0.50 : 0.84,
+                executability: plan.executionMode == .captureFirst ? 0.72 : 0.86,
+                reason: "composed_action_plan_\(plan.executionMode.rawValue)",
                 involvedApps: [],
                 involvedURLs: urls,
                 browserTabTitles: metadataTabs
             )
+            print("[ComposedActionRender] id=\(plan.id) title=\"\(plan.userVisibleTitle)\" mode=\(plan.executionMode.rawValue) followups=\(plan.followups.count)")
+            print("[PrimitiveIdLeakCheck] leaked=\(plan.userVisibleTitle.contains("_") ? "yes" : "no") terms=\(plan.userVisibleTitle.contains("_") ? "underscore" : "none")")
+            print("[NonListingActionOpportunity] content_type=\(composedContent.type.rawValue) surfaced=\(plan.id) reason=composed_panel_candidate")
         }
+        let liquidSelection = LiquidActionRouter.route(
+            LiquidRoutingInput(
+                signals: liquidSignals,
+                existingCandidateIds: Set(validCandidates.map { $0.candidate.capabilityId }),
+                recentlyRejected: input.recentlyRejectedCapabilityIds,
+                recentlyAccepted: input.recentlyAcceptedCapabilityIds
+            )
+        )
+        // Phase 63: Liquid actions are now completely unified. We no longer pre-select a floating candidate.
+        // We pass the entire panel portfolio to the UnifiedSurfaceArbiter.
+        let liquidFloat = LiquidActionRouter.floatingCandidate(from: liquidSelection, signals: liquidSignals)
+        let liquidWorkflowSpecificCount = liquidSelection.panel.filter { id in
+            guard let action = WorkflowActionOntology.byId[id], action.isSpecificAction else { return false }
+            switch action.category {
+            case .formsApplications, .documentsLeases, .codeLogs, .browserResearch, .writingEditing, .communication:
+                return true
+            case .workspaceFriction, .mediaFocus, .memoryWorkflows, .setupAcquisition:
+                return false
+            }
+        }.count
+        for liquidId in liquidSelection.panel {
+            guard let action = WorkflowActionOntology.byId[liquidId] else { continue }
+            // Generic ontology entries still respect the Phase 52 safeActions gating
+            // (no generic cognitive spam on metadata-only pages).
+            if !action.isSpecificAction && !safeActions.contains(liquidId) {
+                print("[GenericActionDemotion] id=\(liquidId) reason=weak_context")
+                continue
+            }
+            let lane: PortfolioCandidate.Lane = {
+                switch action.category {
+                case .formsApplications, .documentsLeases, .browserResearch, .codeLogs, .setupAcquisition:
+                    return .research
+                case .writingEditing, .communication:
+                    return .cognitive
+                case .workspaceFriction:
+                    return .friction
+                case .mediaFocus:
+                    return .music
+                case .memoryWorkflows:
+                    return .metadata
+                }
+            }()
+            if action.category == .formsApplications {
+                print("[FormActionCandidate] id=\(liquidId) reason=form_workflow_detected")
+            }
+            if action.category == .documentsLeases {
+                print("[RentalActionCandidate] id=\(liquidId) reason=rental_workflow_detected")
+            }
+            if action.category == .codeLogs {
+                print("[CodeActionCandidate] id=\(liquidId) reason=code_workflow_detected")
+            }
+            let liquidTitle = LiquidActionRouter.displayTitle(for: action, signals: liquidSignals)
+            makeCandidate(
+                lane: lane,
+                capabilityId: liquidId,
+                title: liquidTitle,
+                confidence: action.isSpecificAction ? 0.75 : 0.66,
+                usefulness: action.isSpecificAction ? 0.78 : 0.35,
+                executability: 0.80,
+                reason: "liquid_workflow_\(action.category.rawValue)",
+                involvedApps: [],
+                involvedURLs: urls,
+                browserTabTitles: metadataTabs
+            )
+            if liquidFloat.id == liquidId {
+                print("[VisibleGeneratedAction] shown id=\(liquidId) source=liquid_router")
+                print("[DynamicActionUX] visible reason=liquid_action_available")
+            }
+        }
+
+        // Phase 53/55 — Weak context rule: surface generic setup only when the
+        // liquid router did not already create specific capture-needed actions.
+        let hasLiquidContentAction = liquidSelection.panel.contains {
+            WorkflowActionOntology.byId[$0]?.executionKind == .contentInsight
+        }
+        if liquidWorkflowSpecificCount >= 2 && input.evidenceLevel.rank < ProgressiveEvidenceLevel.visible_content.rank {
+            for setupId in ["capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint"] where safeActions.contains(setupId) {
+                print("[GenericCaptureDemotion] reason=specific_capture_available")
+                print("[CheapPortfolioDemotion] capability=\(setupId) reason=liquid_workflow_available")
+                suppressedCount += 1
+            }
+        } else if input.evidenceLevel.rank < ProgressiveEvidenceLevel.visible_content.rank || !hasLiquidContentAction {
+            let setupPreference = ["capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint"]
+            if let setupId = setupPreference.first(where: { safeActions.contains($0) }) {
+                let setupTitle = CognitiveCapabilityRegistry.shared.get(setupId)?.label ?? "Capture visible page"
+                makeCandidate(
+                    lane: .research,
+                    capabilityId: setupId,
+                    title: setupTitle,
+                    confidence: 0.62,
+                    usefulness: 0.4,
+                    executability: 0.9,
+                    reason: "weak_context_setup_path",
+                    involvedApps: [],
+                    involvedURLs: urls,
+                    browserTabTitles: metadataTabs
+                )
+            }
+        }
+
+        // Phase 40/43 — Generic acquisition trio. Phase 53: demoted whenever the
+        // liquid router produced specific workflow actions.
+        let acquisitionCapabilities: [(String, String, Double)] = [
+            ("explicit_visible_capture_summary", "Summarize visible content", 0.72),
+            ("extract_action_items", "Extract action items", 0.68),
+            ("create_checklist", "Make a checklist", 0.65)
+        ]
+        if liquidWorkflowSpecificCount >= 2 {
+            for (capId, _, _) in acquisitionCapabilities where safeActions.contains(capId) && !liquidSelection.panel.contains(capId) {
+                print("[GenericCaptureDemotion] reason=specific_capture_available")
+                print("[GenericActionDemotion] id=\(capId) reason=specific_action_available")
+                suppressedCount += 1
+            }
+        } else {
+            for (capId, title, usefulness) in acquisitionCapabilities
+            where safeActions.contains(capId) && !liquidSelection.panel.contains(capId) {
+                print("[ResearchLane] generated capability=\(capId) evidence=metadata_rich acquisition=visible_capture surface=panel_or_floating")
+                makeCandidate(
+                    lane: .research,
+                    capabilityId: capId,
+                    title: title,
+                    confidence: 0.68,
+                    usefulness: usefulness,
+                    executability: 0.80,
+                    reason: "document_context_acquisition_available",
+                    involvedApps: [],
+                    involvedURLs: urls,
+                    browserTabTitles: metadataTabs
+                )
+            }
+        }
+
+        let liquidIds = liquidSelection.panel
+        let cheapIds = validCandidates
+            .map { $0.candidate.capabilityId }
+            .filter { !liquidIds.contains($0) }
+        let finalIds = validCandidates.map { $0.candidate.capabilityId }
+        print("[LiquidPortfolioMerge] composed=\(composedCapabilityIds.joined(separator: ",")) liquid=\(liquidIds.joined(separator: ",")) cheap=\(cheapIds.joined(separator: ",")) final=\(finalIds.joined(separator: ","))")
 
         return DeterministicPanelPlannerResult(
             validCandidates: validCandidates,
-            suppressedCount: suppressedCount
+            suppressedCount: suppressedCount,
+            gatedCapabilityIds: Set(validCandidates.map { $0.candidate.capabilityId })
         )
     }
 }
@@ -1347,6 +1588,54 @@ final class DurableMemory: @unchecked Sendable {
     func actionFeedbackRecord(for capabilityId: String) -> ActionFeedbackRecord? {
         queue.sync {
             store.actionFeedback[capabilityId]
+        }
+    }
+
+    /// Phase 59 — ids whose floating cards were recently auto-dismissed or
+    /// ignored. These get a score penalty and a floating ban (panel still ok).
+    /// Phase 60 — repeated ignores escalate into a 24h proposal cooldown.
+    func floatingPenalizedActionIds(now: Date = Date()) -> Set<String> {
+        queue.sync {
+            var ids = Set<String>()
+            for (id, record) in store.actionFeedback {
+                let ignoredTotal = record.autoDismissedCount + record.ignoredCount
+                let lastNegative = [record.recentAutoDismissedAt, record.recentIgnoredAt, record.recentDismissedAt].compactMap { $0 }.max()
+                if ignoredTotal >= 3, let last = lastNegative, now.timeIntervalSince(last) < 24 * 3600 {
+                    print("[ProposalCooldown] id=\(id) active=yes reason=repeated_low_value")
+                    print("[ProposalFeedbackPenalty] id=\(id) penalty=cooldown reason=repeated_low_value")
+                    ids.insert(id)
+                    continue
+                }
+                if let auto = record.recentAutoDismissedAt, now.timeIntervalSince(auto) < 6 * 3600 {
+                    print("[ProposalFeedbackPenalty] id=\(id) penalty=float_ban reason=auto_dismissed")
+                    ids.insert(id)
+                } else if let ignored = record.recentIgnoredAt, now.timeIntervalSince(ignored) < 6 * 3600, record.ignoredCount >= 2 {
+                    print("[ProposalFeedbackPenalty] id=\(id) penalty=float_ban reason=recent_ignore")
+                    ids.insert(id)
+                } else if let dismissed = record.recentDismissedAt, now.timeIntervalSince(dismissed) < 2 * 3600 {
+                    print("[ProposalFeedbackPenalty] id=\(id) penalty=float_ban reason=not_clicked")
+                    ids.insert(id)
+                }
+            }
+            return ids
+        }
+    }
+
+    /// Phase 59 — ids the user clicked recently in a similar context
+    /// (same compartment/content token in the recorded context keys).
+    func recentlyAcceptedActionIds(contextKey: String, now: Date = Date()) -> Set<String> {
+        queue.sync {
+            var ids = Set<String>()
+            let tokens = Set(contextKey.split(separator: "|").map(String.init))
+            for (id, record) in store.actionFeedback {
+                guard let accepted = record.recentAcceptedAt, now.timeIntervalSince(accepted) < 24 * 3600 else { continue }
+                let similar = record.contextKeys.contains { key in
+                    let keyTokens = Set(key.split(separator: "|").map(String.init))
+                    return !tokens.isDisjoint(with: keyTokens)
+                }
+                if similar { ids.insert(id) }
+            }
+            return ids
         }
     }
 

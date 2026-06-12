@@ -349,9 +349,9 @@ enum LocalActionReadiness {
 
         switch capabilityId {
         case "arrange_side_by_side":
-            // Truthful: AX required, but actual window availability is only known at runtime
-            canExecute = axAvailable
-            reason = !axAvailable ? "accessibility_not_granted" : "runtime_discovery_required"
+            let verifiedPair = ArrangeVerifiedWorkPairGate.evaluate(involvedApps: involvedApps)
+            canExecute = axAvailable && verifiedPair.verified
+            reason = !axAvailable ? "accessibility_not_granted" : (verifiedPair.verified ? "ready" : "no_verified_work_pair")
         case "split_research_setup":
             canExecute = axAvailable && (!involvedURLs.isEmpty || !browserTabTitles.isEmpty)
             reason = !axAvailable ? "accessibility_not_granted" :

@@ -1,0 +1,25 @@
+# Build artifacts
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# macOS noise
+.DS_Store
+
+# Temporary agent patch scripts — never commit these
+patch_*.py
+fix_*.py
+temp_*.swift
+add_files.rb
+add_all_swift_files.rb
+
+# Worktrees and agent sandboxes
+.claude/worktrees/
+.gemini/
+.antigravity/
+
+# Scratch logs (tracked phase docs live in docs/)
+*.log
+run_output*.log
+__pycache__/

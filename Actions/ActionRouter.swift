@@ -53,6 +53,9 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 	}
 
 	func canExecute(context: ContextModel) -> Bool {
+		if ComposedActionUIRegistry.isComposedPlanID(seed.capabilityId) {
+			return ComposedActionUIRegistry.resolve(seed.capabilityId) != nil
+		}
 		let payload = LocalActionPayloadValidator.validate(
 			capabilityId: seed.capabilityId,
 			involvedApps: seed.involvedApps,
@@ -71,6 +74,13 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 	}
 
 	func execute(context: ContextModel, sourceSurface: String) async -> ActionResult {
+		if ComposedActionUIRegistry.isComposedPlanID(seed.capabilityId) {
+			return await ComposedActionClickDispatcher.execute(
+				uiID: seed.capabilityId,
+				sourceSurface: sourceSurface
+			)
+		}
+
 		guard let capability = CognitiveCapabilityRegistry.shared.get(seed.capabilityId) else {
 			print("[ExecutorAvailability] capability=\(seed.capabilityId) available=no executor=missing reason=not_in_registry")
 			return ActionResult(actionId: id, outputText: "Capability unavailable.")
@@ -80,6 +90,11 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 			capability: capability,
 			context: capabilityContext(sourceSurface: sourceSurface, contextModel: context)
 		)
+		let isCognitiveAction = [
+			"explicit_visible_capture_summary", "extract_action_items", "create_checklist",
+			"summarize_visible_content", "summarize_thread",
+			"rewrite_text", "improve_text", "explain_context", "draft_reply", "diagnose_error"
+		].contains(seed.capabilityId)
 		let outputText: String
 		switch status {
 		case .success:
@@ -87,9 +102,9 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 		case .previewGenerated:
 			outputText = "\(name) preview ready."
 		case .blocked:
-			outputText = "\(name) is blocked right now."
+			outputText = isCognitiveAction ? "" : "\(name) is blocked right now."
 		case .unavailable:
-			outputText = "\(name) is unavailable right now."
+			outputText = isCognitiveAction ? "" : "\(name) is unavailable right now."
 		case .cancelled:
 			outputText = "\(name) was cancelled."
 		case .openedSearch:
@@ -98,6 +113,12 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 			outputText = "\(name) completed with partial results."
 		case .alreadySatisfied:
 			outputText = "\(name) was already done."
+		case .failedVisible, .failedSilent:
+			outputText = ""
+		case .captureNeeded:
+			// Phase 44: content quality too low — result card shows "capture needed" message.
+			// outputText intentionally empty here; AppDelegate reads clipboard for the real message.
+			outputText = ""
 		}
 		return ActionResult(actionId: id, outputText: outputText, executionStatus: status)
 	}

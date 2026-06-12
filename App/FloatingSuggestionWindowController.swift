@@ -52,6 +52,8 @@ final class FloatingSuggestionWindowController {
 					self.positionPanelFixedSafe()
 					self.panel.orderFrontRegardless()
 					let f = self.panel.frame
+					let screenFrame = self.panel.screen?.visibleFrame ?? .zero
+					print("[FloatingRenderAttempt] id=\(self.appState.floatingSuggestion?.primaryActionId ?? "none") mounted=\(self.panel.contentViewController != nil ? "yes" : "no") window_visible=\(self.panel.isVisible ? "yes" : "no") screen_frame=(\(Int(screenFrame.origin.x)),\(Int(screenFrame.origin.y)),\(Int(screenFrame.size.width)),\(Int(screenFrame.size.height)))")
 					if LogControl.shared.shouldLog(category: .visibility_polling, level: .trace) {
 						print("[FloatingSuggestionDebug] state=attached alpha=\(String(format: "%.2f", self.panel.alphaValue)) on_screen=\(self.panel.isVisible) frame=(\(Int(f.origin.x)),\(Int(f.origin.y)),\(Int(f.size.width)),\(Int(f.size.height))) level=\(self.panel.level.rawValue) screen=\(self.panel.screen != nil ? "yes" : "no")")
 					}
@@ -153,6 +155,7 @@ final class FloatingResultCardWindowController {
 	private let panel: NSPanel
 	private var cancellables = Set<AnyCancellable>()
 	private var screenParamsObserver: NSObjectProtocol?
+	private var visibilityProofWorkItem: DispatchWorkItem?
 
 	private let safeEdgeMargin: CGFloat = 20
 	private let desiredPanelWidth: CGFloat = 320
@@ -186,14 +189,17 @@ final class FloatingResultCardWindowController {
 		host.view.layer?.isOpaque = false
 		panel.contentViewController = host
 
-		appState.$activeResearchResultCard
+		appState.$activeFloatingResultSurface
 			.receive(on: DispatchQueue.main)
-			.sink { [weak self] card in
+			.sink { [weak self] surface in
 				guard let self else { return }
-				if card != nil {
+				if surface != nil {
 					self.positionPanelFixedSafe()
 					self.panel.orderFrontRegardless()
+					self.scheduleVisibilityProof()
 				} else {
+					self.visibilityProofWorkItem?.cancel()
+					self.visibilityProofWorkItem = nil
 					self.panel.orderOut(nil)
 				}
 			}
@@ -205,7 +211,7 @@ final class FloatingResultCardWindowController {
 			queue: .main
 		) { [weak self] _ in
 			Task { @MainActor [weak self] in
-				guard let self, self.appState.activeResearchResultCard != nil else { return }
+				guard let self, self.appState.activeFloatingResultSurface != nil else { return }
 				self.positionPanelFixedSafe()
 			}
 		}
@@ -243,5 +249,27 @@ final class FloatingResultCardWindowController {
 			return main
 		}
 		return NSScreen.screens.first
+	}
+
+	private func scheduleVisibilityProof() {
+		visibilityProofWorkItem?.cancel()
+		let expectedCapability = appState.activeFloatingResultSurface?.capabilityID
+		let work = DispatchWorkItem { [weak self] in
+			guard let self else { return }
+			let frame = self.panel.frame
+			let screenFrame = self.panel.screen?.visibleFrame ?? .zero
+			let onScreen = !frame.isEmpty && frame.intersects(screenFrame)
+			let stillPresented = self.panel.isVisible && self.appState.activeFloatingResultSurface?.capabilityID == expectedCapability
+			self.appState.reportResultSurfaceRender(
+				host: .floating,
+				attached: self.panel.contentViewController != nil,
+				onScreen: onScreen,
+				alpha: self.panel.alphaValue,
+				frame: frame,
+				stillPresented: stillPresented
+			)
+		}
+		visibilityProofWorkItem = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
 	}
 }

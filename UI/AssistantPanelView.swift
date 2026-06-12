@@ -38,17 +38,7 @@ struct AssistantPanelView: View {
 
 				WorkflowContinuityDisplayView(summary: appState.workflowContinuitySummary)
 
-				suggestionSection
-
-				availableActionsSection
-
-				VisibleGeneratedActionsSection(
-					summary: appState.dynamicActionDisplaySummary,
-					dismissedIds: $dismissedVisibleGeneratedActionIds,
-					onExecute: { candidateId in
-						appState.invokeGeneratedExecutionProposal(id: candidateId)
-					}
-				)
+				unifiedSections
 
 				InputPreviewView(context: debugCtx)
 					.environmentObject(appState)
@@ -81,242 +71,75 @@ struct AssistantPanelView: View {
 
 	// MARK: - Suggestion
 
-	@ViewBuilder private var suggestionSection: some View {
-		if let proposal = appState.currentProposal {
-			let key = appState.suggestionKey(for: proposal, context: appState.debugContext)
-			if dismissedProposalKey != key, !appState.isSuggestionOnCooldown(proposal, context: appState.debugContext) {
-				SuggestionCard(
-					title: proposal.title,
-					primaryActionTitle: primaryActionTitle(for: proposal.primaryActionId),
-					dismissTitle: "Dismiss",
-					primaryDisabled: appState.isActionExecuting,
-					inputSourceLine: suggestionInputSourceLine(for: proposal),
-					proposalContext: appState.proposalContextSummary,
-					onPrimary: {
-						appState.acceptCurrentProposal()
-						dismissedProposalKey = key
-					},
-					onDismiss: {
-						appState.dismissCurrentProposal()
-						dismissedProposalKey = key
-					}
-				)
-			}
-		}
-	}
+	// MARK: - Unified Sections
 
-	// MARK: - Actions
-
-	// Phase 43 (Part J) — Panel section families.
-	private static let cognitiveCapabilityIds: Set<String> = [
-		"explicit_visible_capture_summary", "extract_action_items", "create_checklist",
-		"summarize_visible_content", "rewrite_text", "improve_text", "draft_reply", "explain_context",
-		"diagnose_error"
-	]
-	private static let workspaceCapabilityIds: Set<String> = [
-		"restore_workspace", "restore_research_tabs"
-	]
-	private static let frictionCapabilityIds: Set<String> = [
-		"arrange_side_by_side", "split_research_setup", "switch_to_paired_app"
-	]
-	private static let utilityCapabilityIds: Set<String> = [
-		"copy_current_url", "collect_references", "remember_workspace", "open_current_task_panel"
-	]
-
-	private func capabilityId(for action: any ActionProtocol) -> String {
-		(action as? DeterministicCapabilityPanelAction)?.capabilityId ?? action.id
-	}
-
-	@ViewBuilder
-	private func panelActionRow(_ action: any ActionProtocol) -> some View {
-		let capId = capabilityId(for: action)
-		let isHighlighted = appState.highlightedPanelActionID == action.id
-		let isEnabled = !appState.isActionExecuting
-		VStack(alignment: .leading, spacing: 4) {
-			Button(action.name) {
-				appState.invokeAction(id: action.id)
-			}
-			.buttonStyle(.borderedProminent)
-			.frame(maxWidth: .infinity, alignment: .leading)
-			.disabled(appState.isActionExecuting)
-
-			if isHighlighted {
-				Text("Suggested now")
-					.font(.caption2.weight(.medium))
-					.foregroundStyle(.orange)
-			}
-		}
-		.padding(8)
-		.background(
-			RoundedRectangle(cornerRadius: 10, style: .continuous)
-				.fill(isHighlighted ? Color.orange.opacity(0.08) : Color.clear)
-		)
-		.overlay(
-			RoundedRectangle(cornerRadius: 10, style: .continuous)
-				.stroke(isHighlighted ? Color.orange.opacity(0.35) : Color.clear, lineWidth: 1)
-		)
-		.onAppear {
-			print("[PanelRenderRow] capability=\(capId) visible=yes enabled=\(isEnabled ? "yes" : "no") title=\"\(action.name.prefix(40))\" click_handler=yes proposal_id=\(action.id)")
-		}
-	}
-
-	@ViewBuilder
-	private func panelSectionBlock(title: String, actions: [any ActionProtocol], sectionKey: String) -> some View {
-		if !actions.isEmpty {
-			VStack(alignment: .leading, spacing: 4) {
-				Text(title)
-					.font(.caption2.weight(.semibold))
-					.foregroundStyle(.secondary)
-					.padding(.horizontal, 8)
-					.padding(.top, 4)
-					.onAppear {
-						print("[PanelSection] section=\(sectionKey) count=\(actions.count)")
-					}
-				ForEach(actions, id: \.id) { action in
-					panelActionRow(action)
-				}
-			}
-		}
-	}
-
-	private var availableActionsSection: some View {
-		let visibleGenerated = appState.activatedGeneratedProposals.filter { !dismissedGeneratedProposalIds.contains($0.id) }
-		let hasVisibleGenerated = !visibleGenerated.isEmpty
-		let hasStatic = !appState.availableActions.isEmpty
-
-		// Phase 43 (Part J) — Group actions into named sections.
-		let allActions = appState.availableActions
-		let suggestedActions = allActions.filter { appState.highlightedPanelActionID == $0.id }
-		let cognitiveActions = allActions.filter {
-			let cap = capabilityId(for: $0)
-			return Self.cognitiveCapabilityIds.contains(cap) && appState.highlightedPanelActionID != $0.id
-		}
-		let frictionActions = allActions.filter { Self.frictionCapabilityIds.contains(capabilityId(for: $0)) }
-		let workspaceActions = allActions.filter { Self.workspaceCapabilityIds.contains(capabilityId(for: $0)) }
-		let utilityActions = allActions.filter { Self.utilityCapabilityIds.contains(capabilityId(for: $0)) }
-		let otherActions = allActions.filter { action in
-			let cap = capabilityId(for: action)
-			return !Self.cognitiveCapabilityIds.contains(cap)
-				&& !Self.workspaceCapabilityIds.contains(cap)
-				&& !Self.frictionCapabilityIds.contains(cap)
-				&& !Self.utilityCapabilityIds.contains(cap)
-				&& appState.highlightedPanelActionID != action.id
-		}
-
-		return VStack(alignment: .leading, spacing: 10) {
-			SectionHeader(title: "Contextual Assistance")
+	@ViewBuilder private var unifiedSections: some View {
+		if let decision = appState.unifiedSurfaceDecision {
 			VStack(alignment: .leading, spacing: 10) {
-				if !hasVisibleGenerated && !hasStatic {
-					Text(generatedProposalEmptyLine)
-						.font(.caption)
-						.foregroundStyle(.secondary)
-						.frame(maxWidth: .infinity, alignment: .leading)
-				}
-
-				if hasVisibleGenerated {
-					VStack(alignment: .leading, spacing: 12) {
-						ForEach(visibleGenerated) { item in
-							generatedProposalCard(item)
+				SectionHeader(title: "Contextual Assistance")
+				VStack(alignment: .leading, spacing: 10) {
+					// We display the sections in order
+					ForEach(UnifiedPanelSection.allCases, id: \.rawValue) { section in
+						if let actions = decision.panelSections[section], !actions.isEmpty {
+							panelSectionBlock(
+								title: displayTitle(for: section),
+								actions: actions,
+								sectionKey: section.rawValue
+							)
 						}
 					}
-					.padding(.bottom, hasStatic ? 10 : 0)
-				}
 
-				if hasStatic {
-					VStack(alignment: .leading, spacing: 8) {
-						// Suggested now — highlighted cognitive actions at top
-						panelSectionBlock(title: "Suggested now", actions: suggestedActions, sectionKey: "suggested_now")
-
-						// Research / Reading — summarize, checklist, extract
-						panelSectionBlock(title: "Research / Reading", actions: cognitiveActions.filter {
-							let c = capabilityId(for: $0)
-							return ["explicit_visible_capture_summary", "extract_action_items", "create_checklist", "summarize_visible_content", "explain_context", "diagnose_error"].contains(c)
-						}, sectionKey: "research_reading")
-
-						// Writing — rewrite, improve, draft
-						panelSectionBlock(title: "Writing", actions: cognitiveActions.filter {
-							let c = capabilityId(for: $0)
-							return ["rewrite_text", "improve_text", "draft_reply"].contains(c)
-						}, sectionKey: "writing")
-
-						// Communication — friction: switch to paired app
-						panelSectionBlock(title: "Communication", actions: frictionActions, sectionKey: "communication")
-
-						// Workspace — restore
-						panelSectionBlock(title: "Workspace", actions: workspaceActions, sectionKey: "workspace")
-
-						// Other (layout etc.)
-						if !otherActions.isEmpty {
-							ForEach(otherActions, id: \.id) { action in
-								panelActionRow(action)
-							}
-						}
-
-						// Utilities — copy URL, collect references, remember workspace (at bottom)
-						panelSectionBlock(title: "Utilities", actions: utilityActions, sectionKey: "utilities")
+					let allEmpty = decision.panelSections.values.allSatisfy { $0.isEmpty }
+					if allEmpty {
+						Text(generatedProposalEmptyLine)
+							.font(.caption)
+							.foregroundStyle(.secondary)
+							.frame(maxWidth: .infinity, alignment: .leading)
 					}
-					.onAppear {
-						print("[PanelRenderVerification] rendered=\(allActions.count) visible=\(allActions.count) enabled=\(appState.isActionExecuting ? 0 : allActions.count) clickable=\(appState.isActionExecuting ? 0 : allActions.count)")
+
+					if appState.isActionExecuting {
+						Text(processingLabel)
+							.font(.caption2)
+							.foregroundStyle(.secondary)
 					}
 				}
-
-				if appState.isActionExecuting {
-					Text(processingLabel)
-						.font(.caption2)
-						.foregroundStyle(.secondary)
-				}
+				.contextualPanelCard()
 			}
-			.contextualPanelCard()
+		}
+	}
+
+	private func displayTitle(for section: UnifiedPanelSection) -> String {
+		switch section {
+		case .currentTask: return "Current Task"
+		case .related: return "Related"
+		case .backgroundWorkspace: return "Background Workspace"
+		case .system: return "System"
+		case .followups: return "Follow-ups"
+		case .debug: return "Debug"
 		}
 	}
 
 	@ViewBuilder
-	private func generatedProposalCard(_ item: GeneratedExecutionProposalPanelItem) -> some View {
-		VStack(alignment: .leading, spacing: 6) {
-			HStack {
-				Text(item.title)
-					.font(.subheadline.weight(.semibold))
-				Spacer(minLength: 4)
-				Text("Generated")
-					.font(.caption2.weight(.medium))
-					.foregroundStyle(.secondary)
-			}
-			if !item.subtitle.isEmpty {
-				Text(item.subtitle)
-					.font(.caption)
-					.foregroundStyle(.secondary)
-					.lineLimit(2)
-			}
-			if !item.expectedOutputSummary.isEmpty {
-				Text(item.expectedOutputSummary)
-					.font(.caption2)
-					.foregroundStyle(.tertiary)
-					.lineLimit(2)
-			}
-			HStack(spacing: 12) {
-				Button(item.source == .reusableGenerated ? "Run" : "Prepare execution") {
-					appState.invokeGeneratedExecutionProposal(id: item.id)
-				}
-				.buttonStyle(.borderedProminent)
-				.disabled(appState.isActionExecuting)
-
-				Button("Dismiss") {
-					dismissedGeneratedProposalIds.insert(item.id)
-				}
-				.buttonStyle(.plain)
-				.font(.caption)
+	private func panelSectionBlock(title: String, actions: [UnifiedSuggestion], sectionKey: String) -> some View {
+		VStack(alignment: .leading, spacing: 4) {
+			Text(title)
+				.font(.caption2.weight(.semibold))
 				.foregroundStyle(.secondary)
+				.padding(.horizontal, 8)
+				.padding(.top, 4)
+				.onAppear {
+					print("[UnifiedPanelSection] section=\(sectionKey) count=\(actions.count)")
+				}
+			ForEach(actions) { action in
+				UnifiedSuggestionRow(suggestion: action) {
+					// Phase 64 — all clicks route through the unified dispatcher.
+					appState.dispatchUnifiedSuggestion(action)
+				}
 			}
-			.padding(.top, 2)
 		}
-		.padding(10)
-		.background(Color.primary.opacity(0.04))
-		.clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-		.overlay(
-			RoundedRectangle(cornerRadius: 10, style: .continuous)
-				.stroke(Color.primary.opacity(0.06), lineWidth: 1)
-		)
 	}
+
+
 
 	private var generatedProposalEmptyLine: String {
 		let status = appState.generatedProposalDebugStatus
@@ -341,6 +164,9 @@ struct AssistantPanelView: View {
 				presentation: presentation,
 				onClear: { appState.clearGeneratedResult() }
 			)
+		} else if let surface = appState.activePanelResultSurface {
+			ResultSurfaceCardContent(surface: surface, host: .panel)
+				.environmentObject(appState)
 		} else if let text = appState.latestActionResult, !text.isEmpty {
 			ResultView(
 				isLoading: false,
@@ -437,9 +263,23 @@ struct AssistantPanelView: View {
 		}
 	}
 
+	@ViewBuilder
 	private var debugSection: some View {
-		DisclosureGroup(isExpanded: $debugExpanded) {
-			VStack(alignment: .leading, spacing: 10) {
+		VStack(alignment: .leading, spacing: 8) {
+			Toggle("Debug Mode", isOn: Binding(
+				get: { DebugMode.isEnabled },
+				set: { DebugMode.isEnabled = $0 }
+			))
+			.toggleStyle(.switch)
+			.font(.caption)
+			.onAppear {
+				print("[DebugUIToggle] visible=yes state=\(DebugMode.isEnabled ? "on" : "off")")
+				DebugMode.logUIVisibility(component: "AssistantPanelDebugSection", visible: DebugMode.isEnabled)
+			}
+
+			if DebugMode.isEnabled {
+				DisclosureGroup(isExpanded: $debugExpanded) {
+					VStack(alignment: .leading, spacing: 10) {
 
 				// ── System ────────────────────────────────────────────────────────
 				DisclosureGroup(isExpanded: $debugSystemExpanded) {
@@ -448,6 +288,18 @@ struct AssistantPanelView: View {
 						Text("Ollama model: \(appState.activeTaskInferenceModel ?? "none") · mode=\(appState.taskInferenceBatchMode ? "batch" : "stream")")
 						Text("Inference disabled: \(appState.taskInferenceDisabled)")
 						Text("Planner/executor: \(appState.plannerModelName)")
+						Toggle("Enable UCR diagnostics", isOn: Binding(
+							get: { appState.ucrDiagnosticsEnabled },
+							set: { appState.setUCRDiagnosticsEnabled($0) }
+						))
+						Text("Test content acquisition action: \(UCRDogfoodMode.isEnabled ? "visible" : "hidden")")
+						Button("Run dogfood matrix") {
+							Task { @MainActor in
+								let ok = await RescueDogfoodMatrix.run()
+								print("[DogfoodMatrix] ui_run ok=\(ok)")
+							}
+						}
+						.font(.caption)
 						if !appState.auditDiscoveredModels.isEmpty {
 							Text("Discovered: \(appState.auditDiscoveredModels.joined(separator: ", "))")
 						}
@@ -553,23 +405,14 @@ struct AssistantPanelView: View {
 							if expanded { appState.refreshActionLibrarySnapshot() }
 						}
 
-						DisclosureGroup(isExpanded: $visibleIntelligenceDebugExpanded) {
-							VisibleIntelligenceDebugView(summary: appState.visibleIntelligenceDebugSummary)
-								.padding(.top, 4)
-						} label: {
-							Text("Visible intelligence (internal)")
-								.font(.caption.weight(.medium))
-						}
-
-						DisclosureGroup(isExpanded: $generatedExecutionResultDebugExpanded) {
-							VStack(alignment: .leading, spacing: 10) {
-								GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.partial)
-								GeneratedExecutionResultView(presentation: GeneratedExecutionResultDebugSamples.failed)
+						if DebugMode.isEnabled {
+							DisclosureGroup(isExpanded: $visibleIntelligenceDebugExpanded) {
+								VisibleIntelligenceDebugView(summary: appState.visibleIntelligenceDebugSummary)
+									.padding(.top, 4)
+							} label: {
+								Text("Visible intelligence (internal)")
+									.font(.caption.weight(.medium))
 							}
-							.padding(.top, 4)
-						} label: {
-							Text("Generated execution result (sample)")
-								.font(.caption.weight(.medium))
 						}
 					}
 					.padding(.top, 4)
@@ -623,9 +466,16 @@ struct AssistantPanelView: View {
 			.frame(maxWidth: .infinity, alignment: .leading)
 			.padding(.top, 6)
 		} label: {
-			Text("Debug Context")
-				.font(.subheadline)
-				.fontWeight(.semibold)
+					Text("Debug Context")
+						.font(.subheadline)
+						.fontWeight(.semibold)
+				}
+			} else {
+				EmptyView()
+					.onAppear {
+						DebugMode.logUIVisibility(component: "AssistantPanelDebugInternals", visible: false)
+					}
+			}
 		}
 		.padding(12)
 		.background(
