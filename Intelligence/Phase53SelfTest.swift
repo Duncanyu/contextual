@@ -121,7 +121,7 @@ struct Phase53SelfTest {
 
         // T6 — Rental/lease title detects rental workflow.
         let rentalDetected = WorkflowDetectors.detect(rentalSignals)
-        check("t6_rental_detected", rentalDetected.contains { $0.kind == .rentalLease && $0.confidence >= 0.55 })
+        check("t6_rental_detected", rentalDetected.contains { $0.kind == .actionPack && $0.confidence >= 0.55 })
 
         // T7 — Rental workflow offers lease-specific actions.
         let rentalSelection = LiquidActionRouter.route(LiquidRoutingInput(signals: rentalSignals))
@@ -527,7 +527,7 @@ struct Phase55SelfTest {
         print("[LiveActionSource] selected_source=liquid_router reason=phase55_live_dogfood")
         print("[FloatingVisibilityProof] id=phase55:rental_tab_cluster visible=no reason=selftest_no_window")
         print("[AssistantFeltReactive] pass=no reason=selftest_no_window")
-        check("deterministic_workflow_not_unknown", workflow == "rental_lease", reason: "workflow=\(workflow)")
+        check("deterministic_workflow_not_unknown", workflow == "action_pack", reason: "workflow=\(workflow)")
         check("liquid_float_not_generic_capture", float.id != nil && float.id != "capture_visible_page", reason: "float=\(float.id ?? "none")")
         check("panel_not_capture_spam", !Array(selection.panel.prefix(3)).contains("capture_visible_page"), reason: "top3=\(Array(selection.panel.prefix(3)).joined(separator: ","))")
 
@@ -708,7 +708,7 @@ struct Phase56SelfTest {
             tabTitles: ["182 Montreal St - LEASE AGREEMENT - 2026 - Google Docs"],
             selectedTextLength: 0,
             contentAvailable: false,
-            workflow: "rental_lease",
+            workflow: "action_pack",
             visibleAppNames: ["Firefox"]
         )
         check(
@@ -1871,7 +1871,7 @@ struct Phase61SelfTest {
         let mcCluster = ComparableCandidateDetector.detect(signals: minecraftYouTube, content: mcContent)
         check("mc_cluster_background_authority", mcCluster.comparable && mcCluster.authority == .background, reason: "authority=\(mcCluster.authority.rawValue)")
         let mcDetected = WorkflowDetectors.detect(minecraftYouTube)
-        check("mc_no_rental_workflow", !mcDetected.contains { $0.kind == .rentalSearch || $0.kind == .rentalLease }, reason: "background tabs cannot define workflow")
+        check("mc_no_rental_workflow", !mcDetected.contains { $0.kind == .rentalSearch || $0.kind == .actionPack }, reason: "background tabs cannot define workflow")
         check("mc_no_research_workflow", !mcDetected.contains { $0.kind == .browserResearch }, reason: "background cluster cannot make this research")
         let mcActivity = BrowserActivityClassifier.classify(signals: minecraftYouTube, content: mcContent, cluster: mcCluster)
         check("mc_activity_not_comparison", mcActivity.activity != .comparisonDecision && mcActivity.activity != .researchCollection, reason: "activity=\(mcActivity.activity.rawValue)")
@@ -1907,7 +1907,7 @@ struct Phase61SelfTest {
         let unrelContent = ContentTypeClassifier.classify(unrelatedWithComparableBackground)
         let unrelCluster = ComparableCandidateDetector.detect(signals: unrelatedWithComparableBackground, content: unrelContent)
         check("unrelated_cluster_background", unrelCluster.comparable && unrelCluster.authority == .background, reason: "authority=\(unrelCluster.authority.rawValue)")
-        check("unrelated_no_workflow_hijack", !WorkflowDetectors.detect(unrelatedWithComparableBackground).contains { $0.kind == .rentalSearch || $0.kind == .rentalLease || $0.kind == .browserResearch }, reason: "no workflow from background cluster")
+        check("unrelated_no_workflow_hijack", !WorkflowDetectors.detect(unrelatedWithComparableBackground).contains { $0.kind == .rentalSearch || $0.kind == .actionPack || $0.kind == .browserResearch }, reason: "no workflow from background cluster")
         let unrelSelection = LiquidActionRouter.route(LiquidRoutingInput(signals: unrelatedWithComparableBackground))
         check("unrelated_no_compare", !unrelSelection.panel.contains("compare_open_tabs"), reason: "panel=\(unrelSelection.panel.joined(separator: ","))")
         let unrelFloat = LiquidActionRouter.floatingCandidate(from: unrelSelection, signals: unrelatedWithComparableBackground)

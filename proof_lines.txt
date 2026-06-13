@@ -1,0 +1,120 @@
+[Phase66SelfTest] starting
+[ActionAliasResolved] from=arrange_current_and_reference to=arrange_side_by_side reason=canonical_alias
+[ActionAliasResolved] from=arrange_current_and_reference to=arrange_side_by_side reason=canonical_alias
+[FollowupSanityCheck] id=capture_visible_page executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_visible_page allowed=yes reason=executor_available
+[FollowupSanityCheck] id=capture_full_document executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_document allowed=yes reason=executor_available
+[FollowupSanityCheck] id=capture_full_document executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_document allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:0:extract_obligations executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:0:extract_obligations allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:1:extract_dates_and_payments executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:1:extract_dates_and_payments allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:2:flag_risky_clauses executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:2:flag_risky_clauses allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:3:draft_landlord_questions executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:3:draft_landlord_questions allowed=yes reason=executor_available
+[NoFakeFollowupsInProduct] status=pass count=3
+[FollowupSanityCheck] id=capture_visible_page executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_visible_page allowed=yes reason=executor_available
+[FollowupSanityCheck] id=capture_full_document executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_document allowed=yes reason=executor_available
+[NoFakeFollowupsInProduct] status=pass count=2
+[NoFakeFollowupsInProduct] status=pass count=0
+[CaptureRouteMatrix] id=explain routes=selected_text,browser_ax,ocr,file_backed,metadata_fallback
+[CaptureRouteAttempt] route=selected_text_ax available=no status=failed reason=no_selection_found chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=selected_text_context_model available=no status=failed reason=no_recent_selection_snapshot chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=clipboard_existing status=blocked chars=3409 quality=clipboard_text reason=not_goal_safe
+[CaptureRouteAttempt] route=file_backed available=no status=skipped reason=no_ax_window chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=browser_ax available=no status=skipped reason=ax_not_trusted chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=app_ax available=no status=skipped reason=no_accessibility_permission chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=clipboard_capture_user_approved available=no status=skipped reason=not_user_approved
+[CaptureRouteAttempt] route=ocr_visible available=no status=skipped reason=screen_recording_permission_missing chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=metadata available=no status=failed reason=no_metadata_available chars=0 quality=metadata_only coverage=minimal
+[FollowupSanityCheck] id=capture_full_agreement executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_agreement allowed=yes reason=executor_available
+[FollowupSanityCheck] id=select_a_clause executor_available=yes product_visible=yes
+[FollowupRenderGate] id=select_a_clause allowed=yes reason=executor_available
+[FollowupSanityCheck] id=generate_questions_for_landlord executor_available=yes product_visible=yes
+[FollowupRenderGate] id=generate_questions_for_landlord allowed=yes reason=executor_available
+[NoFakeFollowupsInProduct] status=pass count=3
+[ArrangeExecutionMode] mode=manual_panel
+[LayoutVerify] overlap_area=1356810 same_side=yes within_tolerance=no
+[ActionVerification] capability=arrange_side_by_side status=success
+[ArrangeExecutionMode] mode=manual_panel
+[ActionAliasResolved] from=arrange_current_and_reference to=arrange_side_by_side reason=canonical_alias
+[FollowupSanityCheck] id=capture_visible_page executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_visible_page allowed=yes reason=executor_available
+[FollowupSanityCheck] id=capture_full_document executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_document allowed=yes reason=executor_available
+[FollowupSanityCheck] id=capture_full_document executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_document allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:0:extract_obligations executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:0:extract_obligations allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:1:extract_dates_and_payments executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:1:extract_dates_and_payments allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:2:flag_risky_clauses executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:2:flag_risky_clauses allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:phase66_contract_review:3:draft_landlord_questions executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:phase66_contract_review:3:draft_landlord_questions allowed=yes reason=executor_available
+[NoFakeFollowupsInProduct] status=pass count=3
+[FollowupActionResult] id=composed_followup:phase66_contract_review:0:extract_obligations status=failed card=shown
+[ArrangeExecutionMode] mode=manual_panel
+[LayoutVerify] overlap_area=1356810 same_side=yes within_tolerance=no
+[ActionVerification] capability=arrange_side_by_side status=success
+[ArrangeExecutionMode] mode=proactive_suggestion
+[ActionVerification] capability=arrange_side_by_side status=blocked reason=no_verified_work_pair
+[CaptureLoopCheck] id=capture_visible_page loop=no status=pass
+[CaptureRouteMatrix] id=summarize routes=selected_text,browser_ax,ocr,file_backed,metadata_fallback
+[CaptureRouteAttempt] route=selected_text_ax available=no status=failed reason=no_selection_found chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=selected_text_context_model available=no status=failed reason=no_recent_selection_snapshot chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=clipboard_existing status=blocked chars=3409 quality=clipboard_text reason=not_goal_safe
+[CaptureRouteAttempt] route=file_backed available=no status=skipped reason=no_ax_window chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=browser_ax available=no status=skipped reason=ax_not_trusted chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=app_ax available=no status=skipped reason=no_accessibility_permission chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=clipboard_capture_user_approved available=no status=skipped reason=not_user_approved
+[CaptureRouteAttempt] route=ocr_visible available=no status=skipped reason=screen_recording_permission_missing chars=0 quality=none coverage=unknown
+[CaptureRouteAttempt] route=metadata available=no status=failed reason=no_metadata_available chars=0 quality=metadata_only coverage=minimal
+[CaptureActionResult] id=capture_visible_page status=failed quality=none chars=0
+[ActionVerification] capability=capture_visible_page status=blocked reason=visible_capture_needed
+[NoFakeFollowupsInProduct] status=pass count=0
+[ActionVerification] capability=connect_google_docs status=blocked reason=google_docs_access_not_wired
+[FollowupSanityCheck] id=capture_visible_page executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_visible_page allowed=yes reason=executor_available
+[FollowupSanityCheck] id=capture_full_document executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_document allowed=yes reason=executor_available
+[FollowupSanityCheck] id=capture_full_document executor_available=yes product_visible=yes
+[FollowupRenderGate] id=capture_full_document allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:forum_summarize_advice:0:extract_recommendations executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:forum_summarize_advice:0:extract_recommendations allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:forum_summarize_advice:1:find_conflicting_opinions executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:forum_summarize_advice:1:find_conflicting_opinions allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:forum_summarize_advice:2:turn_this_thread_into_a_checklist executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:forum_summarize_advice:2:turn_this_thread_into_a_checklist allowed=yes reason=executor_available
+[NoFakeFollowupsInProduct] status=pass count=3
+[FollowupSanityCheck] id=composed_followup:forum_summarize_advice:0:extract_recommendations executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:forum_summarize_advice:0:extract_recommendations allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:forum_summarize_advice:1:find_conflicting_opinions executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:forum_summarize_advice:1:find_conflicting_opinions allowed=yes reason=executor_available
+[FollowupSanityCheck] id=composed_followup:forum_summarize_advice:2:turn_this_thread_into_a_checklist executor_available=yes product_visible=yes
+[FollowupRenderGate] id=composed_followup:forum_summarize_advice:2:turn_this_thread_into_a_checklist allowed=yes reason=executor_available
+[NoFakeFollowupsInProduct] status=pass count=3
+[NoFakeFollowupsInProduct] status=pass count=0
+[NoFakeFollowupsInProduct] status=pass count=0
+[ActionGenerationPathProof] action=extract_obligations path=context_evidence->action_pack->template->candidate_pool->UnifiedProductBrain
+[HardcodeReasonSanitized] old=rental_lease new=action_pack
+[HardcodeReasonSanitized] old=google_docs_lease new=action_pack_evidence
+[NoHardcodedActionGeneration] status=pass forbidden_paths=0
+[FollowupExecutionPlan] id=composed_followup:phase66_contract_review:0:extract_obligations parent=phase66_contract_review steps=capture_then_resume
+[FollowupCaptureThenResume] parent=phase66_contract_review capture=capture_full_document resume=phase66_contract_review status=success
+[FollowupProgressCheck] id=composed_followup:phase66_contract_review:0:extract_obligations previous_state=capture_needed new_state=capturing progressed=yes
+[FollowupActionResult] id=composed_followup:phase66_contract_review:0:extract_obligations status=success card=shown
+[LayoutIntent] intent=arrange_side_by_side
+[LayoutPlan] capability=arrange_side_by_side primary_target=Firefox secondary_target=Xcode
+[LegacyProductOwnerCheck] system=WorkflowIntelligenceCoordinator owns_ui=no owns_click=no status=pass
+[LegacyCandidateOnly] system=WorkflowIntelligenceCoordinator status=pass
+[UnifiedActionOwnership] rendered_by=UnifiedProductBrain clicked_by=UnifiedActionDispatcher executed_by=CapabilityExecutor status=pass
+[Phase66ProofRepo] repo_clean=yes build=pass diff_check=pass
+[Phase66Proof] status=pass checks=31 failed=0
+[Phase66SelfTest] env selftest ok=true

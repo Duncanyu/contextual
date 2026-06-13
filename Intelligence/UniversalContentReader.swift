@@ -248,7 +248,7 @@ enum UniversalContentReader {
         let selectionScoped = request.scope == .selectedText
 
         // Part A: Route matrix header
-        print("[UCRRouteMatrix] app=\(appName) bundle=\(bundleId) title_hash=\(titleHash) goal=\(request.goal.rawValue)")
+        print("[CaptureRouteMatrix] id=\(request.goal.rawValue) routes=selected_text,browser_ax,ocr,file_backed,metadata_fallback")
 
         var attempts: [ContentRouteAttempt] = []
         let selectedTextAXResult = routeSelectedTextAX(app: app, request: request, attempts: &attempts)
@@ -280,7 +280,7 @@ enum UniversalContentReader {
         } else {
             attempts.append(attempt("browser_ax", available: false, status: "skipped",
                 reason: "not_a_browser bundle=\(bundleId)", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=browser_ax available=no status=skipped reason=not_a_browser")
+            print("[CaptureRouteAttempt] route=browser_ax available=no status=skipped reason=not_a_browser")
         }
 
         // 3. Generic app AX
@@ -298,7 +298,7 @@ enum UniversalContentReader {
         } else {
             attempts.append(attempt("clipboard_capture_user_approved", available: false, status: "skipped",
                 reason: "not_user_approved", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=clipboard_capture_user_approved available=no status=skipped reason=not_user_approved")
+            print("[CaptureRouteAttempt] route=clipboard_capture_user_approved available=no status=skipped reason=not_user_approved")
         }
 
         // 5. OCR (visible region via Vision)
@@ -311,7 +311,7 @@ enum UniversalContentReader {
             let reason = request.privacyMode == .strict ? "privacy_strict" : "ocr_not_allowed"
             attempts.append(attempt("ocr_visible", available: false, status: "skipped",
                 reason: reason, chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=ocr_visible available=no status=skipped reason=\(reason)")
+            print("[CaptureRouteAttempt] route=ocr_visible available=no status=skipped reason=\(reason)")
         }
 
         // 6. Selection fallback for page/current-document requests.
@@ -357,7 +357,7 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard let app else {
             attempts.append(attempt("selected_text_ax", available: false, status: "skipped", reason: "no_app", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=selected_text_ax available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=selected_text_ax available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
             return nil
         }
         let pid = app.processIdentifier
@@ -367,13 +367,13 @@ enum UniversalContentReader {
                 .trimmingCharacters(in: .whitespacesAndNewlines),
               text.count >= 10 else {
             attempts.append(attempt("selected_text_ax", available: false, status: "failed", reason: "no_selection_found", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=selected_text_ax available=no status=failed reason=no_selection_found chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=selected_text_ax available=no status=failed reason=no_selection_found chars=0 quality=none coverage=unknown")
             return nil
         }
 
         let quality: ContentQuality = text.count >= 50 ? .selectedText : .axVisibleText
         attempts.append(attempt("selected_text_ax", available: true, status: "success", reason: "ax_selection_found", chars: text.count, quality: quality, coverage: .partial))
-        print("[UCRRouteAttempt] route=selected_text_ax available=yes status=success reason=ax_selection_found chars=\(text.count) quality=\(quality.label) coverage=partial")
+        print("[CaptureRouteAttempt] route=selected_text_ax available=yes status=success reason=ax_selection_found chars=\(text.count) quality=\(quality.label) coverage=partial")
         return ucResult(text: text, quality: quality, coverage: .partial, source: .selectedTextAX, confidence: 0.95)
     }
 
@@ -384,20 +384,20 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard let snapshot = ContentTrustStore.shared.latestSelection(frontmostBundleID: appBundleID) else {
             attempts.append(attempt("selected_text_context_model", available: false, status: "failed", reason: "no_recent_selection_snapshot", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=selected_text_context_model available=no status=failed reason=no_recent_selection_snapshot chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=selected_text_context_model available=no status=failed reason=no_recent_selection_snapshot chars=0 quality=none coverage=unknown")
             return nil
         }
         let age = Date().timeIntervalSince(snapshot.capturedAt)
         guard age <= 20 else {
             attempts.append(attempt("selected_text_context_model", available: true, status: "failed", reason: "selection_snapshot_stale", chars: snapshot.text.count, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=selected_text_context_model available=yes status=failed reason=selection_snapshot_stale chars=\(snapshot.text.count) quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=selected_text_context_model available=yes status=failed reason=selection_snapshot_stale chars=\(snapshot.text.count) quality=none coverage=unknown")
             return nil
         }
 
         let text = snapshot.text
         let quality: ContentQuality = text.count >= 50 ? .selectedText : .axVisibleText
         attempts.append(attempt("selected_text_context_model", available: true, status: "success", reason: "selection_snapshot_fresh", chars: text.count, quality: quality, coverage: .partial))
-        print("[UCRRouteAttempt] route=selected_text_context_model available=yes status=success reason=selection_snapshot_fresh chars=\(text.count) quality=\(quality.label) coverage=partial")
+        print("[CaptureRouteAttempt] route=selected_text_context_model available=yes status=success reason=selection_snapshot_fresh chars=\(text.count) quality=\(quality.label) coverage=partial")
         return ucResult(text: text, quality: quality, coverage: .partial, source: .selectedTextContextModel, confidence: 0.82)
     }
 
@@ -408,14 +408,14 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard let app else {
             attempts.append(attempt("clipboard_existing", available: false, status: "skipped", reason: "no_app", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=clipboard_existing available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=clipboard_existing available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
             return nil
         }
 
         guard let snapshot = ContentTrustStore.shared.latestClipboard() else {
             print("[ClipboardTrust] available=no age_s=-1 app_changed_since_write=no tied_to_selection=no trusted_for_goal=no reason=no_clipboard_snapshot")
             attempts.append(attempt("clipboard_existing", available: false, status: "blocked", reason: "source_unknown", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=clipboard_existing available=no status=blocked chars=0 quality=none reason=source_unknown")
+            print("[CaptureRouteAttempt] route=clipboard_existing available=no status=blocked chars=0 quality=none reason=source_unknown")
             return nil
         }
 
@@ -435,12 +435,12 @@ enum UniversalContentReader {
 
         guard trustedForGoal else {
             attempts.append(attempt("clipboard_existing", available: true, status: "blocked", reason: reason, chars: snapshot.text.count, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=clipboard_existing status=blocked chars=\(snapshot.text.count) quality=clipboard_text reason=\(reason)")
+            print("[CaptureRouteAttempt] route=clipboard_existing status=blocked chars=\(snapshot.text.count) quality=clipboard_text reason=\(reason)")
             return nil
         }
 
         attempts.append(attempt("clipboard_existing", available: true, status: "success", reason: "trusted", chars: snapshot.text.count, quality: .selectedText, coverage: .partial))
-        print("[UCRRouteAttempt] route=clipboard_existing status=success chars=\(snapshot.text.count) quality=clipboard_text reason=trusted")
+        print("[CaptureRouteAttempt] route=clipboard_existing status=success chars=\(snapshot.text.count) quality=clipboard_text reason=trusted")
         return ucResult(text: snapshot.text, quality: .selectedText, coverage: .partial, source: .clipboardExisting, confidence: 0.72)
     }
 
@@ -453,14 +453,14 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard let app = app else {
             attempts.append(attempt("file_backed", available: false, status: "skipped", reason: "no_app", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=file_backed available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=file_backed available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
             return nil
         }
         let pid = app.processIdentifier
         let axApp = AXUIElementCreateApplication(pid)
         guard let window = axFocusedWindow(axApp) else {
             attempts.append(attempt("file_backed", available: false, status: "skipped", reason: "no_ax_window", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=file_backed available=no status=skipped reason=no_ax_window chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=file_backed available=no status=skipped reason=no_ax_window chars=0 quality=none coverage=unknown")
             return nil
         }
 
@@ -469,7 +469,7 @@ enum UniversalContentReader {
               let docStr = docRef as? String,
               let fileURL = URL(string: docStr), fileURL.isFileURL else {
             attempts.append(attempt("file_backed", available: false, status: "skipped", reason: "no_ax_document_url", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=file_backed available=no status=skipped reason=no_ax_document_url chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=file_backed available=no status=skipped reason=no_ax_document_url chars=0 quality=none coverage=unknown")
             return nil
         }
 
@@ -489,17 +489,17 @@ enum UniversalContentReader {
         default:
             print("[FileBackedRoute] extraction=unsupported chars=0 quality=none")
             attempts.append(attempt("file_backed", available: true, status: "skipped", reason: "unsupported_format_\(ext)", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=file_backed available=yes status=skipped reason=unsupported_format_\(ext) chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=file_backed available=yes status=skipped reason=unsupported_format_\(ext) chars=0 quality=none coverage=unknown")
             return nil
         }
 
         guard let r = result else {
             attempts.append(attempt("file_backed", available: true, status: "failed", reason: "extraction_failed_\(ext)", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=file_backed available=yes status=failed reason=extraction_failed ext=\(ext) chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=file_backed available=yes status=failed reason=extraction_failed ext=\(ext) chars=0 quality=none coverage=unknown")
             return nil
         }
         attempts.append(attempt("file_backed", available: true, status: "success", reason: "extraction_\(ext)", chars: r.text.count, quality: r.quality, coverage: r.coverage))
-        print("[UCRRouteAttempt] route=file_backed available=yes status=success reason=extraction_\(ext) chars=\(r.text.count) quality=\(r.quality.label) coverage=\(r.coverage.rawValue)")
+        print("[CaptureRouteAttempt] route=file_backed available=yes status=success reason=extraction_\(ext) chars=\(r.text.count) quality=\(r.quality.label) coverage=\(r.coverage.rawValue)")
         return r
     }
 
@@ -603,13 +603,13 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard let app = app else {
             attempts.append(attempt("browser_ax", available: false, status: "skipped", reason: "no_app", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=browser_ax available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=browser_ax available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
             return nil
         }
 
         guard AXIsProcessTrusted() else {
             attempts.append(attempt("browser_ax", available: false, status: "skipped", reason: "ax_not_trusted", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=browser_ax available=no status=skipped reason=ax_not_trusted chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=browser_ax available=no status=skipped reason=ax_not_trusted chars=0 quality=none coverage=unknown")
             print("[BrowserRoute] browser=\(browser.displayName) selected_strategy=metadata reason=no_ax_trust")
             return nil
         }
@@ -641,7 +641,7 @@ enum UniversalContentReader {
         // Browser AX text extraction — try AXWebArea descendants
         guard let window = axFocusedWindow(axApp) else {
             attempts.append(attempt("browser_ax", available: false, status: "failed", reason: "no_focused_window", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=browser_ax available=yes status=failed reason=no_focused_window chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=browser_ax available=yes status=failed reason=no_focused_window chars=0 quality=none coverage=unknown")
             print("[BrowserRoute] browser=\(browser.displayName) selected_strategy=metadata reason=no_focused_window text_chars=0 quality=none")
             return nil
         }
@@ -653,7 +653,7 @@ enum UniversalContentReader {
         guard text.count >= 30 else {
             let reason = text.isEmpty ? "no_text_in_webarea" : "text_too_short chars=\(text.count)"
             attempts.append(attempt("browser_ax", available: true, status: "failed", reason: reason, chars: text.count, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=browser_ax available=yes status=failed reason=\(reason) chars=\(text.count) quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=browser_ax available=yes status=failed reason=\(reason) chars=\(text.count) quality=none coverage=unknown")
             print("[BrowserRoute] browser=\(browser.displayName) selected_strategy=ax text_chars=\(text.count) quality=none bridge_available=no reason=\(reason)")
             return nil
         }
@@ -661,7 +661,7 @@ enum UniversalContentReader {
         let quality: ContentQuality = text.count >= 300 ? .axVisibleText : .axVisibleText
         let coverage: ContentCoverage = .visible
         attempts.append(attempt("browser_ax", available: true, status: "success", reason: "webarea_ax_text", chars: text.count, quality: quality, coverage: coverage))
-        print("[UCRRouteAttempt] route=browser_ax available=yes status=success reason=webarea_ax_text chars=\(text.count) quality=\(quality.label) coverage=\(coverage.rawValue)")
+        print("[CaptureRouteAttempt] route=browser_ax available=yes status=success reason=webarea_ax_text chars=\(text.count) quality=\(quality.label) coverage=\(coverage.rawValue)")
         print("[AXTextRoute] quality=\(quality.label) reason=webarea_text_extracted")
         print("[BrowserRoute] browser=\(browser.displayName) selected_strategy=ax text_chars=\(text.count) quality=\(quality.label) bridge_available=no reason=ax_succeeded")
         return ucResult(text: text, quality: quality, coverage: coverage, source: .browserAX, confidence: 0.78)
@@ -763,7 +763,7 @@ enum UniversalContentReader {
                 attempts.append(attempt("clipboard_capture_user_approved", available: true, status: "success",
                     reason: "google_docs_clipboard_capture", chars: text.count, quality: quality,
                     coverage: quality == .fullDocumentText ? .full : .partial))
-                print("[UCRRouteAttempt] route=clipboard_capture_user_approved available=yes status=success reason=google_docs_clipboard_capture chars=\(text.count) quality=\(quality.label) coverage=\(quality == .fullDocumentText ? "full" : "partial")")
+                print("[CaptureRouteAttempt] route=clipboard_capture_user_approved available=yes status=success reason=google_docs_clipboard_capture chars=\(text.count) quality=\(quality.label) coverage=\(quality == .fullDocumentText ? "full" : "partial")")
                 return ucResult(text: text, quality: quality,
                     coverage: quality == .fullDocumentText ? .full : .partial,
                     source: .clipboardCaptureUserApproved, confidence: 0.82)
@@ -783,7 +783,7 @@ enum UniversalContentReader {
                 print("[GoogleDocsRoute] strategy=ax_visible status=success chars=\(text.count) scope=partial")
                 attempts.append(attempt("browser_ax", available: true, status: "success",
                     reason: "google_docs_ax_editor_partial", chars: text.count, quality: .axVisibleText, coverage: .partial))
-                print("[UCRRouteAttempt] route=browser_ax available=yes status=success reason=google_docs_ax_editor_partial chars=\(text.count) quality=ax_visible_text coverage=partial")
+                print("[CaptureRouteAttempt] route=browser_ax available=yes status=success reason=google_docs_ax_editor_partial chars=\(text.count) quality=ax_visible_text coverage=partial")
                 return ucResult(text: text, quality: .axVisibleText, coverage: .partial, source: .browserAX, confidence: 0.7)
             }
             print("[GoogleDocsRoute] strategy=ax_visible status=failed chars=\(text.count) scope=partial")
@@ -808,7 +808,7 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard AXWindowContentSource.shared.hasAccessibilityPermission() else {
             attempts.append(attempt("app_ax", available: false, status: "skipped", reason: "no_accessibility_permission", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=app_ax available=no status=skipped reason=no_accessibility_permission chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=app_ax available=no status=skipped reason=no_accessibility_permission chars=0 quality=none coverage=unknown")
             print("[AXTextRoute] root=none nodes_visited=0 text_nodes=0 chars=0 rejected_ui_chrome=0")
             print("[AXTextRoute] quality=none reason=no_accessibility_permission")
             return nil
@@ -816,7 +816,7 @@ enum UniversalContentReader {
 
         guard let ctx = AXWindowContentSource.shared.extractActiveWindowContent() else {
             attempts.append(attempt("app_ax", available: true, status: "failed", reason: "ax_extraction_nil", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=app_ax available=yes status=failed reason=ax_extraction_nil chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=app_ax available=yes status=failed reason=ax_extraction_nil chars=0 quality=none coverage=unknown")
             print("[AXTextRoute] root=window nodes_visited=0 text_nodes=0 chars=0 rejected_ui_chrome=0")
             print("[AXTextRoute] quality=none reason=ax_extraction_returned_nil")
             return nil
@@ -830,7 +830,7 @@ enum UniversalContentReader {
 
         guard chars >= 30 else {
             attempts.append(attempt("app_ax", available: true, status: "failed", reason: "ax_text_too_short", chars: chars, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=app_ax available=yes status=failed reason=ax_text_too_short chars=\(chars) quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=app_ax available=yes status=failed reason=ax_text_too_short chars=\(chars) quality=none coverage=unknown")
             print("[AXTextRoute] quality=none reason=text_below_minimum_threshold")
             return nil
         }
@@ -838,7 +838,7 @@ enum UniversalContentReader {
         let quality: ContentQuality = .axVisibleText
         let coverage: ContentCoverage = ctx.containsScrollableRegion ? .partial : .visible
         attempts.append(attempt("app_ax", available: true, status: "success", reason: "ax_visible_text", chars: chars, quality: quality, coverage: coverage))
-        print("[UCRRouteAttempt] route=app_ax available=yes status=success reason=ax_visible_text chars=\(chars) quality=\(quality.label) coverage=\(coverage.rawValue)")
+        print("[CaptureRouteAttempt] route=app_ax available=yes status=success reason=ax_visible_text chars=\(chars) quality=\(quality.label) coverage=\(coverage.rawValue)")
         print("[AXTextRoute] quality=\(quality.label) reason=ax_text_extracted confidence=\(String(format: "%.2f", ctx.extractionConfidence))")
         return ucResult(text: text, quality: quality, coverage: coverage, source: .axTree, confidence: ctx.extractionConfidence)
     }
@@ -852,7 +852,7 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard let app = app else {
             attempts.append(attempt("clipboard_capture_user_approved", available: false, status: "skipped", reason: "no_app", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=clipboard_capture_user_approved available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=clipboard_capture_user_approved available=no status=skipped reason=no_app chars=0 quality=none coverage=unknown")
             return nil
         }
         let pid = app.processIdentifier
@@ -862,14 +862,14 @@ enum UniversalContentReader {
         guard let text = performClipboardCapture(app: app, pid: pid), text.count >= 30 else {
             let reason = "capture_empty_or_insufficient"
             attempts.append(attempt("clipboard_capture_user_approved", available: true, status: "failed", reason: reason, chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=clipboard_capture_user_approved available=yes status=failed reason=\(reason) chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=clipboard_capture_user_approved available=yes status=failed reason=\(reason) chars=0 quality=none coverage=unknown")
             return nil
         }
         let capped = String(text.prefix(60000))
         let quality: ContentQuality = text.count <= 60000 ? .fullDocumentText : .partialDocumentText
         let coverage: ContentCoverage = quality == .fullDocumentText ? .full : .partial
         attempts.append(attempt("clipboard_capture_user_approved", available: true, status: "success", reason: "select_all_copy_succeeded", chars: capped.count, quality: quality, coverage: coverage))
-        print("[UCRRouteAttempt] route=clipboard_capture_user_approved available=yes status=success reason=select_all_copy_succeeded chars=\(capped.count) quality=\(quality.label) coverage=\(coverage.rawValue)")
+        print("[CaptureRouteAttempt] route=clipboard_capture_user_approved available=yes status=success reason=select_all_copy_succeeded chars=\(capped.count) quality=\(quality.label) coverage=\(coverage.rawValue)")
         return ucResult(text: capped, quality: quality, coverage: coverage, source: .clipboardCaptureUserApproved, confidence: 0.82)
     }
 
@@ -921,13 +921,13 @@ enum UniversalContentReader {
     ) -> UniversalContentResult? {
         guard ScreenCaptureSource.isScreenRecordingAuthorized() else {
             attempts.append(attempt("ocr_visible", available: false, status: "skipped", reason: "screen_recording_permission_missing", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=ocr_visible available=no status=skipped reason=screen_recording_permission_missing chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=ocr_visible available=no status=skipped reason=screen_recording_permission_missing chars=0 quality=none coverage=unknown")
             print("[OCRRoute] skipped reason=permission_missing")
             return nil
         }
         guard let frame = ScreenCaptureSource.captureSingleFrame() else {
             attempts.append(attempt("ocr_visible", available: true, status: "failed", reason: "capture_frame_nil", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=ocr_visible available=yes status=failed reason=capture_frame_nil chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=ocr_visible available=yes status=failed reason=capture_frame_nil chars=0 quality=none coverage=unknown")
             print("[OCRRoute] skipped reason=budget_blocked")
             return nil
         }
@@ -943,21 +943,21 @@ enum UniversalContentReader {
         let timedOut = semaphore.wait(timeout: .now() + 3.0) == .timedOut
         if timedOut {
             attempts.append(attempt("ocr_visible", available: true, status: "failed", reason: "ocr_timeout", chars: 0, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=ocr_visible available=yes status=failed reason=ocr_timeout chars=0 quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=ocr_visible available=yes status=failed reason=ocr_timeout chars=0 quality=none coverage=unknown")
             print("[OCRRoute] skipped reason=budget_blocked reason=timeout")
             return nil
         }
         guard let result = ocrResult, result.text.count >= 30 else {
             let chars = ocrResult?.text.count ?? 0
             attempts.append(attempt("ocr_visible", available: true, status: "failed", reason: "ocr_insufficient_text chars=\(chars)", chars: chars, quality: .none, coverage: .unknown))
-            print("[UCRRouteAttempt] route=ocr_visible available=yes status=failed reason=ocr_insufficient_text chars=\(chars) quality=none coverage=unknown")
+            print("[CaptureRouteAttempt] route=ocr_visible available=yes status=failed reason=ocr_insufficient_text chars=\(chars) quality=none coverage=unknown")
             print("[OCRRoute] completed chars=\(chars) quality=none coverage=visible_region")
             return nil
         }
         let chars = result.text.count
         print("[OCRRoute] completed chars=\(chars) quality=visibleOCR coverage=visible_region")
         attempts.append(attempt("ocr_visible", available: true, status: "success", reason: "ocr_vision_extracted", chars: chars, quality: .visibleOCR, coverage: .visible))
-        print("[UCRRouteAttempt] route=ocr_visible available=yes status=success reason=ocr_vision_extracted chars=\(chars) quality=visible_ocr coverage=visible")
+        print("[CaptureRouteAttempt] route=ocr_visible available=yes status=success reason=ocr_vision_extracted chars=\(chars) quality=visible_ocr coverage=visible")
         return ucResult(text: result.text, quality: .visibleOCR, coverage: .visible, source: .ocrCapture, confidence: Double(result.confidenceAverage ?? 0.7))
     }
 
@@ -984,7 +984,7 @@ enum UniversalContentReader {
         let available = chars > 0
         attempts.append(attempt("metadata", available: available, status: available ? "success" : "failed",
             reason: available ? "browser_window_metadata" : "no_metadata_available", chars: chars, quality: .metadataOnly, coverage: .minimal))
-        print("[UCRRouteAttempt] route=metadata available=\(available ? "yes" : "no") status=\(available ? "success" : "failed") reason=\(available ? "browser_window_metadata" : "no_metadata_available") chars=\(chars) quality=metadata_only coverage=minimal")
+        print("[CaptureRouteAttempt] route=metadata available=\(available ? "yes" : "no") status=\(available ? "success" : "failed") reason=\(available ? "browser_window_metadata" : "no_metadata_available") chars=\(chars) quality=metadata_only coverage=minimal")
         guard available else { return nil }
         let nextStep = defaultNextStep(goal: request.goal, bundleId: app?.bundleIdentifier ?? "")
         return UniversalContentResult(

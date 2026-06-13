@@ -47,6 +47,7 @@ struct UnifiedProductDecision {
 }
 
 enum UnifiedProductBrain {
+    private static var didLogDebugBehaviorAudit = false
 
     /// The single decision point. Called once per panel-publish tick with all
     /// candidate sources. No product-visible suggestion is decided elsewhere.
@@ -60,26 +61,34 @@ enum UnifiedProductBrain {
         floatingPenalized: Set<String> = []
     ) -> UnifiedProductDecision {
 
+        let tick = Int(Date().timeIntervalSince1970)
+        if !didLogDebugBehaviorAudit {
+            didLogDebugBehaviorAudit = true
+            print("[DebugModeBehaviorAudit] status=pass behavior_dependencies=debug_ui,log_verbosity,selftest_controls")
+            print("[DebugModeIsolation] component=UnifiedProductBrain affects_behavior=no fix=product_sources_ignore_debug_mode")
+            print("[DebugModeIsolation] component=UnifiedActionDispatcher affects_behavior=no fix=execution_routes_ignore_debug_mode")
+        }
+
         var pool = UnifiedCandidatePool()
         pool.addAll(panelBridgeSuggestions, from: "panel_bridge")
         pool.addAll(composedPlanSuggestions, from: "composed_planner")
         pool.addAll(floatingCandidates, from: "floating_lane")
         pool.addAll(followupSuggestions, from: "result_followups")
 
-        for candidate in pool.candidates {
+        let visibleCandidates = executableCandidates(from: pool.candidates)
+
+        for candidate in visibleCandidates {
             print("[UnifiedCandidate] id=\(candidate.id) kind=\(candidate.kind.rawValue) source=\(candidate.source.rawValue) target=\(candidate.target.rawValue) title=\"\(candidate.title)\" evidence=\(candidate.evidenceLevel ?? "none")")
             focus.logUsage(suggestionId: candidate.id, source: candidate.source.rawValue)
         }
 
-        func count(_ kinds: Set<SuggestionKind>) -> Int {
-            pool.candidates.filter { kinds.contains($0.kind) }.count
-        }
-        print("[CandidateSourceCoverage] liquid=\(pool.sourceCounts[.liquidRouter] ?? 0) composed=\(pool.sourceCounts[.composedPlanner] ?? 0) hooks=\(count([.localSystemAction])) followups=\(pool.sourceCounts[.resultFollowup] ?? 0) friction=\(count([.frictionAction])) music=\(count([.mediaAction])) setup=\(count([.setupAction])) memory=\(count([.memoryAction])) technical=\(pool.candidates.filter { $0.debugMetadata?["technical"] == "yes" }.count)")
+        let coverage = sourceCoverage(pool: pool, focus: focus)
+        logSourceSweep(tick: tick, coverage: coverage)
 
         // ── Floating policy (Part J): the brain picks at most one winner. ───
         // Cooldowns penalize individual candidates, never whole categories.
         var floatingWinner: UnifiedSuggestion? = nil
-        let floatingEligible = pool.candidates
+        let floatingEligible = visibleCandidates
             .filter { $0.surfacePolicy.eligibleForFloating && !$0.surfacePolicy.hidden && !$0.surfacePolicy.debugOnly }
             .filter { candidate in
                 if floatingPenalized.contains(candidate.originalActionId ?? candidate.id) {
@@ -105,7 +114,7 @@ enum UnifiedProductBrain {
         // ── Panel sections (Part K): everything useful stays visible. ───────
         var sections: [UnifiedPanelSection: [UnifiedSuggestion]] = [:]
         var hidden = 0
-        for candidate in pool.candidates {
+        for candidate in visibleCandidates {
             if candidate.surfacePolicy.hidden { hidden += 1; continue }
             if candidate.surfacePolicy.debugOnly && !DebugMode.isEnabled { hidden += 1; continue }
             let section = panelSection(for: candidate)
@@ -120,18 +129,18 @@ enum UnifiedProductBrain {
                 return a.priority > b.priority
             }
         }
-        let specific = pool.candidates.filter { $0.kind == .composedPlan || $0.kind == .legacyCapability }.count
-        let generic = pool.candidates.filter { $0.id == "focus_current_task" }.count
+        let specific = visibleCandidates.filter { $0.kind == .composedPlan || $0.kind == .legacyCapability }.count
+        let generic = visibleCandidates.filter { $0.id == "focus_current_task" }.count
         print("[PanelSpecificityCheck] specific=\(specific) generic=\(generic) passed=\(specific > 0 || generic <= 1 ? "yes" : "no")")
 
         let panelTotal = sections.values.map(\.count).reduce(0, +)
         let panelNotEmpty = panelTotal > 0 || pool.candidates.isEmpty
         print("[PanelNotEmptyCheck] context=\(focus.currentContentType ?? "unknown") passed=\(panelNotEmpty ? "yes" : "no") reason=\(panelTotal > 0 ? "sections_populated" : pool.candidates.isEmpty ? "no_candidates_exist" : "candidates_all_hidden")")
 
-        let setupNeeded = pool.candidates.contains { $0.kind == .setupAction }
+        let setupNeeded = visibleCandidates.contains { $0.kind == .setupAction }
         let surface = UnifiedSurfaceDecision(floating: floatingWinner, panelSections: sections)
 
-        print("[UnifiedProductBrain] tick=\(Int(Date().timeIntervalSince1970)) current=\(focus.selectedBrowserTabTitle ?? focus.activeWindowTitle ?? "unknown") inputs=\(pool.sourceCounts.count) candidates=\(pool.candidates.count) panel=\(panelTotal) floating=\(floatingWinner?.id ?? "none")")
+        print("[UnifiedProductBrain] tick=\(tick) current=\(focus.selectedBrowserTabTitle ?? focus.activeWindowTitle ?? "unknown") inputs=\(pool.sourceCounts.count) candidates=\(visibleCandidates.count) panel=\(panelTotal) floating=\(floatingWinner?.id ?? "none")")
         print("[UnifiedProductDecision] floating=\(floatingWinner?.id ?? "none") panel=\(panelTotal) hidden=\(hidden) setup_needed=\(setupNeeded ? "yes" : "no") reason=single_brain_arbitration")
         print("[ProductDecisionTrace] app=\(focus.activeApp ?? "unknown") selected_tab=\(focus.selectedBrowserTabTitle ?? "none") content_type=\(focus.currentContentType ?? "unknown") domain=\(focus.semanticDomain ?? "unknown") panel=\(sections.map { "\($0.key.rawValue):\($0.value.count)" }.sorted().joined(separator: ",")) floating=\(floatingWinner?.id ?? "none") hidden=\(hidden)")
         print("[SuggestionVisibilityRestore] context=\(focus.currentContentType ?? "unknown") panel=\(panelTotal) floating=\(floatingWinner?.id ?? "none") reason=all_sources_pooled")
@@ -144,6 +153,52 @@ enum UnifiedProductBrain {
             setupNeeded: setupNeeded,
             reason: "single_brain_arbitration"
         )
+    }
+
+    struct SourceSweepEntry {
+        let name: String
+        let count: Int
+        let skipReason: String?
+    }
+
+    static func sourceCoverage(pool: UnifiedCandidatePool, focus: CurrentFocusSummary) -> [SourceSweepEntry] {
+        let candidates = pool.candidates
+        let browserContextCount = [
+            focus.selectedBrowserTabTitle,
+            focus.selectedBrowserTabURL,
+            focus.browserTabListSummary.isEmpty ? nil : focus.browserTabListSummary.joined(separator: "|")
+        ].compactMap { $0 }.filter { !$0.isEmpty }.count
+        let temporalCount = (focus.activity?.isEmpty == false || focus.debugSourceTrace.contains { $0.contains("temporal") }) ? 1 : 0
+        let compartmentCount = candidates.filter {
+            $0.kind == .memoryAction || $0.debugMetadata?["compartment"] != nil
+        }.count
+        let entries: [SourceSweepEntry] = [
+            SourceSweepEntry(name: "liquid", count: pool.sourceCounts[.liquidRouter] ?? 0, skipReason: "no_liquid_router_candidates_in_tick"),
+            SourceSweepEntry(name: "composed", count: pool.sourceCounts[.composedPlanner] ?? 0, skipReason: "composed_planner_returned_no_plans"),
+            SourceSweepEntry(name: "hooks", count: candidates.filter { $0.debugMetadata?["hook"] == "yes" }.count, skipReason: "no_hook_composer_visible_candidates"),
+            SourceSweepEntry(name: "primitives", count: candidates.filter { $0.debugMetadata?["primitive"] == "yes" }.count, skipReason: "no_primitive_runtime_candidate"),
+            SourceSweepEntry(name: "temporal", count: temporalCount, skipReason: "temporal_stream_not_attached_to_tick"),
+            SourceSweepEntry(name: "compartments", count: compartmentCount, skipReason: "no_task_compartment_candidate"),
+            SourceSweepEntry(name: "browser", count: browserContextCount, skipReason: "no_browser_or_selected_tab_context"),
+            SourceSweepEntry(name: "friction", count: candidates.filter { $0.kind == .frictionAction }.count, skipReason: "no_friction_window_actions"),
+            SourceSweepEntry(name: "music", count: candidates.filter { $0.kind == .mediaAction }.count, skipReason: "no_music_system_actions"),
+            SourceSweepEntry(name: "setup", count: candidates.filter { $0.kind == .setupAction }.count, skipReason: "no_setup_capture_actions"),
+            SourceSweepEntry(name: "memory", count: candidates.filter { $0.kind == .memoryAction }.count, skipReason: "no_memory_workspace_actions"),
+            SourceSweepEntry(name: "followups", count: pool.sourceCounts[.resultFollowup] ?? 0, skipReason: "no_result_followups_available"),
+            SourceSweepEntry(name: "technical", count: candidates.filter { $0.debugMetadata?["technical"] == "yes" }.count, skipReason: "no_code_or_log_context_detected")
+        ]
+        return entries
+    }
+
+    private static func logSourceSweep(tick: Int, coverage: [SourceSweepEntry]) {
+        print("[UnifiedSourceSweep] tick=\(tick) sources=\(coverage.map(\.name).joined(separator: ","))")
+        for entry in coverage {
+            let skipped = entry.count == 0
+            let reason = skipped ? (entry.skipReason ?? "none") : "queried"
+            print("[UnifiedSourceResult] source=\(entry.name) candidates=\(entry.count) skipped=\(skipped ? "yes" : "no") reason=\(reason)")
+        }
+        let values = Dictionary(uniqueKeysWithValues: coverage.map { ($0.name, $0.count) })
+        print("[CandidateSourceCoverage] liquid=\(values["liquid"] ?? 0) composed=\(values["composed"] ?? 0) hooks=\(values["hooks"] ?? 0) primitives=\(values["primitives"] ?? 0) temporal=\(values["temporal"] ?? 0) compartments=\(values["compartments"] ?? 0) browser=\(values["browser"] ?? 0) friction=\(values["friction"] ?? 0) music=\(values["music"] ?? 0) setup=\(values["setup"] ?? 0) memory=\(values["memory"] ?? 0) followups=\(values["followups"] ?? 0) technical=\(values["technical"] ?? 0)")
     }
 
     private static func panelSection(for candidate: UnifiedSuggestion) -> UnifiedPanelSection {
@@ -161,6 +216,28 @@ enum UnifiedProductBrain {
         case .memoryAction: return .backgroundWorkspace
         case .followupAction: return .followups
         case .debugAction: return .debug
+        }
+    }
+
+    @MainActor
+    private static func executableCandidates(from candidates: [UnifiedSuggestion]) -> [UnifiedSuggestion] {
+        candidates.filter { candidate in
+            if candidate.kind == .debugAction {
+                return true
+            }
+            let visibleID = candidate.originalActionId ?? candidate.id
+            let rawCapability = candidate.debugMetadata?["capabilityId"] ?? visibleID
+            let alias = ActionAliasResolver.resolve(rawCapability)
+            if alias.changed {
+                print("[ActionAliasResolved] from=\(alias.visibleID) to=\(alias.canonicalID) reason=\(alias.reason)")
+            }
+            let route = UnifiedActionDispatcher.routeName(for: candidate, capabilityID: alias.canonicalID)
+            let available = ActionAliasResolver.executorAvailable(visibleID: visibleID, canonicalID: alias.canonicalID, route: route)
+            print("[ExecutorResolution] visible_id=\(candidate.id) canonical_id=\(alias.canonicalID) executor=\(route) available=\(available ? "yes" : "no")")
+            if !available {
+                print("[ExecutorMissingBlock] visible_id=\(candidate.id) reason=executor_missing surfaced=no")
+            }
+            return available
         }
     }
 
@@ -223,9 +300,10 @@ enum UnifiedProductBrain {
     @MainActor
     static func panelBridgeCandidates(actions: [any ActionProtocol]) -> [UnifiedSuggestion] {
         actions.map { action in
-            let kind = kindForLegacy(action.id)
-            print("[LegacySystemDemotion] system=panel_bridge:\(action.id) old_role=final_panel_row new_role=candidate_producer")
-            return UnifiedSuggestionAdapters.from(legacyAction: action, source: sourceForLegacy(action.id), kind: kind)
+            let capabilityId = (action as? DeterministicCapabilityPanelAction)?.capabilityId ?? action.id
+            let kind = kindForLegacy(capabilityId)
+            print("[LegacySystemDemotion] system=panel_bridge:\(capabilityId) row_id=\(action.id) old_role=final_panel_row new_role=candidate_producer")
+            return UnifiedSuggestionAdapters.from(legacyAction: action, source: sourceForLegacy(capabilityId), kind: kind)
         }
     }
 

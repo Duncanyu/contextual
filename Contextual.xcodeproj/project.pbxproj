@@ -26,6 +26,9 @@
 		3655283D96FDB3C86067B3DB /* Phase31DebugInfra.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD835D6A3900E44FAD678F0F /* Phase31DebugInfra.swift */; };
 		3C2EFF9FA3D74DE945A90D7D /* GroundedTargetResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC724DC2187B87549C520543 /* GroundedTargetResolver.swift */; };
 		3CE68C35541BE3C9E18A72EE /* UnifiedSuggestionAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D5D5C1D1F0C04F8B0A5919B /* UnifiedSuggestionAdapters.swift */; };
+		PH65DISP1A /* UnifiedActionDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH65DISP1B /* UnifiedActionDispatcher.swift */; };
+		PH65TEST1A /* Phase65SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH65TEST1B /* Phase65SelfTest.swift */; };
+		PH66TEST1A /* Phase66SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH66TEST1B /* Phase66SelfTest.swift */; };
 		3E0218D7A8F46C915B73AC9F /* ComparePivotGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F9DC2A405E7B41C8B30D162 /* ComparePivotGate.swift */; };
 		41B74E3BE3FBC69667812E29 /* AccessibilityGroundingExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34234664F5E20A10D46A32DB /* AccessibilityGroundingExtractor.swift */; };
 		4391863FAE41DE66FB754F7C /* SuggestionCooldownArbiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B9F04B939FD4047A9953A95 /* SuggestionCooldownArbiter.swift */; };
@@ -1022,6 +1025,9 @@
 		E76FEE9AAEAB60331C063E0B /* Phase362SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase362SelfTest.swift; sourceTree = "<group>"; };
 		ED346BED36E59160713BF2A9 /* PrimitiveActionRuntime.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PrimitiveActionRuntime.swift; sourceTree = "<group>"; };
 		PH64BRAIN1B /* UnifiedProductBrain.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UnifiedProductBrain.swift; sourceTree = "<group>"; };
+		PH65DISP1B /* UnifiedActionDispatcher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UnifiedActionDispatcher.swift; sourceTree = "<group>"; };
+		PH65TEST1B /* Phase65SelfTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Phase65SelfTest.swift; sourceTree = "<group>"; };
+		PH66TEST1B /* Phase66SelfTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Phase66SelfTest.swift; sourceTree = "<group>"; };
 		F169C0F699284740F42792AA /* PlannerRefinementAlignmentSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerRefinementAlignmentSelfTest.swift; sourceTree = "<group>"; };
 		F2898F4386114DA435D0BD06 /* GeneratedChromeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedChromeFilter.swift; sourceTree = "<group>"; };
 		F3A002B100000000000000B1 /* AmbientVisibilityRegressionSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientVisibilityRegressionSelfTest.swift; sourceTree = "<group>"; };
@@ -1214,6 +1220,7 @@
 				AA00028100000000000000AC /* RichAnalyzeScreenPromptBuilder.swift */,
 				AA0002B40000000000000D4 /* ScreenSituation.swift */,
 				AA0002160000000000000020 /* ActionRouter.swift */,
+				PH65DISP1B /* UnifiedActionDispatcher.swift */,
 				C64F2C16D649F7DF8CA8E63A /* UCRDogfoodTestAction.swift */,
 			);
 			path = Actions;
@@ -1619,6 +1626,8 @@
 				51D77E2A65ACC3EF4A16776A /* UnifiedSuggestion.swift */,
 				ED346BED36E59160713BF2A9 /* PrimitiveActionRuntime.swift */,
 				PH64BRAIN1B /* UnifiedProductBrain.swift */,
+				PH65TEST1B /* Phase65SelfTest.swift */,
+				PH66TEST1B /* Phase66SelfTest.swift */,
 				A64182C7B917C134F9EBB788 /* GoalGeneratorPromptBuilder.swift */,
 				CFC2D8FCC063F6D5EE982DE6 /* ResultCardPresentation.swift */,
 				CE77F6A564F8D0E88A61359B /* LiquidWorkflowActions.swift */,
@@ -1847,6 +1856,7 @@
 				AA000149000000000000004E /* TemporaryWorkflow.swift in Sources */,
 				AA0001500000000000000050 /* GeneratedActionDescriptor.swift in Sources */,
 				AA0001160000000000000016 /* ActionRouter.swift in Sources */,
+				PH65DISP1A /* UnifiedActionDispatcher.swift in Sources */,
 				AA0001170000000000000017 /* ExplainAction.swift in Sources */,
 				AA0001180000000000000018 /* RewriteAction.swift in Sources */,
 				AA0001270000000000000027 /* ScreenAnalyzeAction.swift in Sources */,
@@ -2242,6 +2252,8 @@
 				EDC4CD0D79F52D71C53E1A09 /* UnifiedSuggestion.swift in Sources */,
 				5C1F45C08233E5010373CD46 /* PrimitiveActionRuntime.swift in Sources */,
 				PH64BRAIN1A /* UnifiedProductBrain.swift in Sources */,
+				PH65TEST1A /* Phase65SelfTest.swift in Sources */,
+				PH66TEST1A /* Phase66SelfTest.swift in Sources */,
 				C3DEB071E3FEBC431112A3DD /* GoalGeneratorPromptBuilder.swift in Sources */,
 				723DCBE39BB21C1B248CF2C9 /* ResultCardPresentation.swift in Sources */,
 				AAEC08272957EAAC4FA5C052 /* LiquidWorkflowActions.swift in Sources */,

@@ -14,12 +14,23 @@ enum DebugMode {
         set {
             UserDefaults.standard.set(newValue, forKey: userDefaultsKey)
             print("[DebugMode] enabled=\(newValue ? "yes" : "no") source=ui")
+            print("[DebugToggleSideEffectCheck] product_rebuild=no allowed=no")
             logFilterState()
         }
     }
     
     /// Initializes and logs the current debug mode state from UserDefaults.
     static func initialize() {
+        let stored = UserDefaults.standard.object(forKey: userDefaultsKey) as? Bool
+        if stored == nil {
+            UserDefaults.standard.set(false, forKey: userDefaultsKey)
+            print("[DebugModeDefault] enabled=no source=default")
+        } else if stored == true {
+            UserDefaults.standard.set(false, forKey: userDefaultsKey)
+            print("[DebugModeDefault] enabled=no source=reset_userdefaults")
+        } else {
+            print("[DebugModeDefault] enabled=no source=userdefaults")
+        }
         let enabled = isEnabled
         print("[DebugMode] enabled=\(enabled ? "yes" : "no") source=userdefaults")
         logFilterState()

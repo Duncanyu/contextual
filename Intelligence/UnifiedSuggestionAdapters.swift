@@ -52,7 +52,8 @@ enum UnifiedSuggestionAdapters {
     
     /// Converts a static or legacy action (like Friction, Memory, Setup) into a UnifiedSuggestion.
     static func from(legacyAction: any ActionProtocol, source: SuggestionSource, kind: SuggestionKind, isDebug: Bool = false) -> UnifiedSuggestion {
-        let classified = classify(capabilityId: legacyAction.id, fallbackSource: source)
+        let capabilityId = (legacyAction as? DeterministicCapabilityPanelAction)?.capabilityId ?? legacyAction.id
+        let classified = classify(capabilityId: capabilityId, fallbackSource: source)
         let policy = UnifiedSuggestionSurfacePolicy(
             eligibleForFloating: false,
             panelOnly: true,
@@ -70,6 +71,7 @@ enum UnifiedSuggestionAdapters {
             acceptBehavior: classified.acceptBehavior,
             executionPath: classified.executionPath,
             priority: 10,
+            debugMetadata: capabilityId == legacyAction.id ? nil : ["capabilityId": capabilityId],
             originalActionId: legacyAction.id
         )
     }

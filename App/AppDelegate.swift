@@ -117,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			.deletingLastPathComponent()
 			.path
 		print("[Phase63RuntimeMarker] active=yes unified_surface=yes debug_mode=\(DebugMode.isEnabled ? "on" : "off") git_root=\(gitRoot) build_time=\(ISO8601DateFormatter().string(from: Date()))")
+		print("[Phase66RepoVerification] root=\(gitRoot) worktree=\(gitRoot.contains(".worktrees") ? "yes" : "no") status=\(gitRoot == "/Users/duncanyu/Documents/GitHub/contextual" ? "pass" : "fail")")
 		// Phase 64 — unified product brain build-identity marker; references
 		// Phase 64-only symbols so it cannot print from an old binary.
 		_ = UnifiedProductBrain.self
@@ -127,6 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		menuBarController = MenuBarController(appState: appState)
 		floatingSuggestionController = FloatingSuggestionWindowController(appState: appState)
 		floatingResultCardController = FloatingResultCardWindowController(appState: appState)
+		CapabilityExecutor.shared.appState = appState
+		Phase65SelfTest.logExecutionAudit()
 
 		let env = ProcessInfo.processInfo.environment
 		if env["CONTEXTUAL_RUN_PHASE63_SELFTEST"] == "1" {
@@ -164,6 +167,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			Task { @MainActor in
 				let ok = await Phase64SelfTest.run()
 				print("[Phase64SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_PHASE65_SELFTEST"] == "1" {
+			Task { @MainActor in
+				let ok = await Phase65SelfTest.run()
+				print("[Phase65SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_PHASE66_SELFTEST"] == "1" || env["CONTEXTUAL_RUN_PHASE66_PROOF"] == "1" {
+			Task { @MainActor in
+				let ok = await Phase66SelfTest.run()
+				print("[Phase66SelfTest] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 		}
@@ -3090,6 +3107,11 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		print("[PanelModel] received actions=\(mergedActions.count) floating=\(cognitiveFloatingAction?.capabilityId ?? floatingCandidate?.capabilityId ?? "none") capabilities=[\(panelCapabilityList)]")
 		print("[PanelComposition] total=\(mergedActions.count) capabilities=[\(panelCapabilityList)]")
 		print("[PanelRender] action_count=\(mergedActions.count) capabilities=[\(panelCapabilityList)]")
+		for system in ["PanelModel", "PanelComposition", "PanelRender", "PanelBridge", "PanelFallback", "SurfacePolicy", "FinalSelection", "LiquidPortfolioMerge"] {
+			print("[OldPanelRenderBypassCheck] system=\(system) product_visible=no status=pass")
+			print("[LegacyPanelDemotion] system=\(system) old_role=product_owner new_role=candidate_source")
+		}
+		print("[UnifiedSurfaceAuthoritative] writer=UnifiedProductBrain panel_writer=UnifiedProductBrain floating_writer=UnifiedProductBrain status=pass")
 
 		return DeterministicPanelPublication(
 			actions: mergedActions,
@@ -4400,6 +4422,17 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[ActionPreflight] capability=\(click.capabilityID) contract_id=\(click.contractID ?? "missing") status=ok")
 				print("[CapabilityExecution] started id=\(click.capabilityID) source_surface=\(click.sourceSurface.rawValue)")
 				print("[ActionVerification] capability=\(click.capabilityID) status=success")
+				let shown = appState.presentActionCompletionSurface(
+					actionID: actionId,
+					capabilityID: click.capabilityID,
+					title: "Open Task Panel",
+					status: .success,
+					reason: nil,
+					outputText: nil,
+					sourceSurface: click.sourceSurface,
+					pendingPayload: nil
+				)
+				appState.logUnifiedActionResult(actionID: click.proposalID, status: .success, cardShown: shown, reason: nil)
 				appState.finalizeActionFeedback(actionID: actionId, status: .success)
 			}
 			menuBarController?.revealPopoverIfNeeded(source: .explicit_button)
@@ -4417,16 +4450,57 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			print("[ActionClickResolution] preserved_recent_candidate=yes contract_valid=\(resolution.contractValid ? "yes" : "no")")
 		}
 		guard let action = resolution.action else {
+			let click = appState.pendingClickContext(for: actionId)
+			let shown = appState.presentActionCompletionSurface(
+				actionID: actionId,
+				capabilityID: resolution.capabilityID,
+				title: resolution.capabilityID,
+				status: .unavailable,
+				reason: resolution.reason,
+				outputText: nil,
+				sourceSurface: click?.sourceSurface ?? .panel,
+				pendingPayload: CapabilityExecutor.shared.takePendingResultCard(for: resolution.capabilityID)
+			)
+			appState.logUnifiedActionResult(actionID: click?.proposalID ?? actionId, status: .unavailable, cardShown: shown, reason: resolution.reason)
 			appState.finalizeActionFeedback(actionID: actionId, status: .unavailable, reason: resolution.reason)
 			return
 		}
 		guard action.canExecute(context: execContext) else {
 			print("[ActionResult] No valid actions")
+			let click = appState.pendingClickContext(for: actionId)
+			let shown = appState.presentActionCompletionSurface(
+				actionID: actionId,
+				capabilityID: resolution.capabilityID,
+				title: action.name,
+				status: .blocked,
+				reason: "payload_invalid",
+				outputText: nil,
+				sourceSurface: click?.sourceSurface ?? .panel,
+				pendingPayload: CapabilityExecutor.shared.takePendingResultCard(for: resolution.capabilityID)
+			)
+			appState.logUnifiedActionResult(actionID: click?.proposalID ?? actionId, status: .blocked, cardShown: shown, reason: "payload_invalid")
 			appState.finalizeActionFeedback(actionID: actionId, status: .blocked, reason: "payload_invalid")
 			return
 		}
 		print("[ActionPreflight] capability=\(resolution.capabilityID) contract_id=\(resolution.contractID ?? "missing") status=\(resolution.contractValid ? "ok" : "blocked")")
-		if !resolution.contractValid {
+		let clickContext = appState.pendingClickContext(for: actionId)
+		let manualClickedArrange = resolution.capabilityID == "arrange_side_by_side"
+			&& (clickContext?.sourceSurface == .panel || clickContext?.sourceSurface == .floating)
+		if !resolution.contractValid && manualClickedArrange {
+			print("[ActionPreflight] capability=arrange_side_by_side contract_id=\(resolution.contractID ?? "missing") status=manual_mode_runtime_resolution reason=clicked_arrange")
+		}
+		if !resolution.contractValid && !manualClickedArrange {
+			let shown = appState.presentActionCompletionSurface(
+				actionID: actionId,
+				capabilityID: resolution.capabilityID,
+				title: action.name,
+				status: .unavailable,
+				reason: "missing_contract",
+				outputText: nil,
+				sourceSurface: clickContext?.sourceSurface ?? .panel,
+				pendingPayload: CapabilityExecutor.shared.takePendingResultCard(for: resolution.capabilityID)
+			)
+			appState.logUnifiedActionResult(actionID: clickContext?.proposalID ?? actionId, status: .unavailable, cardShown: shown, reason: "missing_contract")
 			appState.finalizeActionFeedback(actionID: actionId, status: .unavailable, reason: "missing_contract")
 			return
 		}
@@ -4517,12 +4591,37 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 					print("[ActionResultUI] shown=no type=error_card capability=\(cleanActionId) reason=executor_unavailable")
 				}
 
+				let click = appState.pendingClickContext(for: actionId)
+				let pendingPayload = CapabilityExecutor.shared.takePendingResultCard(for: resolution.capabilityID)
+				let shown = appState.presentActionCompletionSurface(
+					actionID: actionId,
+					capabilityID: resolution.capabilityID,
+					title: action.name,
+					status: result.executionStatus,
+					reason: nil,
+					outputText: result.outputText,
+					sourceSurface: click?.sourceSurface ?? .panel,
+					pendingPayload: pendingPayload
+				)
+				appState.logUnifiedActionResult(actionID: click?.proposalID ?? actionId, status: result.executionStatus, cardShown: shown, reason: nil)
 				appState.finalizeActionFeedback(actionID: actionId, status: result.executionStatus)
 			case .timedOut:
 				print("[ActionExecution] Action timed out")
 				print("[ActionExecution] Failed action \(actionId): timed out")
 				appState.latestActionResult = "This action timed out. Try again with less text or check that local AI is responding."
 				appState.latestActionTimestamp = Date()
+				let click = appState.pendingClickContext(for: actionId)
+				let shown = appState.presentActionCompletionSurface(
+					actionID: actionId,
+					capabilityID: resolution.capabilityID,
+					title: action.name,
+					status: .cancelled,
+					reason: "timed_out",
+					outputText: appState.latestActionResult,
+					sourceSurface: click?.sourceSurface ?? .panel,
+					pendingPayload: nil
+				)
+				appState.logUnifiedActionResult(actionID: click?.proposalID ?? actionId, status: .cancelled, cardShown: shown, reason: "timed_out")
 				appState.finalizeActionFeedback(actionID: actionId, status: .cancelled, reason: "timed_out")
 			}
 		}

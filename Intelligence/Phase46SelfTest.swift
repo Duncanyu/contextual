@@ -509,7 +509,7 @@ struct Phase48SelfTest {
         failureCard.nextStep = "capture_visible"
         failureCard.actions = [
             ResultCardAction(id: .captureVisiblePage, title: "Capture visible page"),
-            ResultCardAction(id: .testContentAcquisition, title: "Test content acquisition"),
+            ResultCardAction(id: .phase46_mock_action, title: "Test content acquisition"),
             ResultCardAction(id: .dismiss, title: "Dismiss")
         ]
         check("t7_failure_card_has_reason_source_chars_next_step",
@@ -617,7 +617,7 @@ struct Phase49SelfTest {
         captureCard.nextStep = "capture_visible"
         captureCard.actions = [
             ResultCardAction(id: .captureVisiblePage, title: "Capture visible page"),
-            ResultCardAction(id: .testContentAcquisition, title: "Test content acquisition"),
+            ResultCardAction(id: .phase46_mock_action, title: "Test content acquisition"),
             ResultCardAction(id: .dismiss, title: "Dismiss")
         ]
         let captureRequested = appState.requestResultSurface(captureCard, sourceSurface: .panel)

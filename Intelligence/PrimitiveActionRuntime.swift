@@ -473,7 +473,7 @@ enum ComposedActionUIRegistry {
     static func uiID(for planID: String) -> String { "composed_plan:\(planID)" }
 
     static func isComposedPlanID(_ id: String) -> Bool {
-        id.hasPrefix("composed_plan:")
+        id.hasPrefix("composed_plan:") || id.hasPrefix("composed_action:")
     }
 
     static func isComposedFollowUpID(_ id: String) -> Bool {
@@ -665,6 +665,8 @@ enum ComposedActionPlanner {
         case .codeOrLog:
             return codeLogPlans(signals: signals, needsCapture: needsCapture)
         case .leaseOrContractDocument:
+            print("[HardcodeAudit] system=ComposedActionPlanner.leaseOrContractDocument hardcoded=no replacement=contract_review_action_pack")
+            print("[ActionPackSelected] pack=contract_review evidence=content_type:\(content.type.rawValue),confidence:\(String(format: "%.2f", content.confidence))")
             return leasePlans(signals: signals, needsCapture: needsCapture)
         case .individualListing, .listingPlatformDashboard, .marketplaceOrListingFeed:
             return listingPlans(signals: signals, needsCapture: needsCapture, cluster: cluster)
@@ -900,10 +902,15 @@ enum ComposedActionPlanner {
             needsCapture: needsCapture,
             mode: needsCapture ? .captureFirst : .executeDirect,
             followups: [
+                ComposedFollowUpDescriptor(title: "Extract obligations", primitives: ["extract_obligations"]),
                 ComposedFollowUpDescriptor(title: "Extract dates and payments", primitives: ["extract_dates", "extract_prices"]),
+                ComposedFollowUpDescriptor(title: "Flag risky clauses", primitives: ["extract_risks"]),
                 ComposedFollowUpDescriptor(title: "Draft landlord questions", primitives: ["draft_questions"])
             ]
-        )]
+        )].map { plan in
+            print("[TemplateActionGenerated] pack=contract_review id=\(plan.id) source=declarative_template")
+            return plan
+        }
     }
 
     private static func listingPlans(signals: WorkflowSignals, needsCapture: Bool, cluster: ComparableCandidateResult) -> [ComposedActionPlan] {
@@ -1089,7 +1096,27 @@ enum ComposedPlanExecutor {
         let validation = ComposedActionValidator.validate(plan)
         print("[PlannerToolchainValidation] valid=\(validation.valid ? "yes" : "no") reason=\(validation.reason)")
         guard validation.valid else {
-            return ComposedPlanResult(planID: plan.id, title: plan.userVisibleTitle, status: "failed", outputs: [], renderedText: "Plan rejected: \(validation.reason)", outputQuality: "insufficient", suggestedNextPlan: nil)
+            if validation.reason == "too_many_steps" {
+                let bounded = decomposedFirstStepPlan(from: plan, reason: validation.reason)
+                print("[ComposedPlanTooLarge] id=\(plan.id) steps=\(plan.steps.count) policy=decompose")
+                print("[ComposedPlanDecomposed] parent=\(plan.id) first_step=\(bounded.steps.first?.primitiveID ?? "none") followups=\(bounded.followups.map(\.title).joined(separator: "|"))")
+                print("[ComposedActionUserCopy] internal_reason=\(validation.reason) user_message=split_into_followups snake_case=no")
+                let result = execute(plan: bounded, signals: signals, capturedText: capturedText)
+                print("[ComposedActionResult] id=\(plan.id) status=decomposed card=pending")
+                return ComposedPlanResult(
+                    planID: plan.id,
+                    title: plan.userVisibleTitle,
+                    status: result.status,
+                    outputs: result.outputs,
+                    renderedText: result.renderedText,
+                    outputQuality: result.outputQuality,
+                    suggestedNextPlan: result.suggestedNextPlan
+                )
+            }
+            let message = "This action is not available in its current form. I can still help if you capture the page or choose a smaller follow-up."
+            print("[ComposedActionUserCopy] internal_reason=\(validation.reason) user_message=smaller_followup snake_case=no")
+            print("[ComposedActionResult] id=\(plan.id) status=failed card=pending")
+            return ComposedPlanResult(planID: plan.id, title: plan.userVisibleTitle, status: "failed", outputs: [], renderedText: message, outputQuality: "insufficient", suggestedNextPlan: plan.followups.first)
         }
         print("[ComposedActionRender] id=\(plan.id) title=\"\(plan.userVisibleTitle)\" mode=\(plan.executionMode.rawValue) followups=\(plan.followups.count)")
         let leaked = plan.userVisibleTitle.contains("_") || plan.followups.contains { $0.title.contains("_") }
@@ -1136,6 +1163,45 @@ enum ComposedPlanExecutor {
             renderedText: rendered,
             outputQuality: quality,
             suggestedNextPlan: suggested
+        )
+    }
+
+    private static func decomposedFirstStepPlan(from plan: ComposedActionPlan, reason: String) -> ComposedActionPlan {
+        let firstStep = plan.steps.first.map {
+            ComposedActionStep(
+                index: 0,
+                primitiveID: $0.primitiveID,
+                input: $0.input,
+                inputFromPrevious: false,
+                reason: $0.reason,
+                expectedOutput: $0.expectedOutput,
+                canSkip: $0.canSkip,
+                failureBehavior: $0.failureBehavior
+            )
+        }
+        let generatedFollowups = plan.steps.dropFirst().compactMap { step -> ComposedFollowUpDescriptor? in
+            guard let tool = PrimitiveToolRegistry.byId[step.primitiveID] else { return nil }
+            return ComposedFollowUpDescriptor(title: tool.displayName, primitives: [step.primitiveID])
+        }
+        var followups = plan.followups
+        for generated in generatedFollowups where !followups.contains(generated) {
+            followups.append(generated)
+        }
+        return ComposedActionPlan(
+            id: "\(plan.id)_first_step",
+            userVisibleTitle: plan.userVisibleTitle,
+            reason: "\(plan.reason); decomposed from \(reason)",
+            contextSummary: plan.contextSummary,
+            sourceScope: plan.sourceScope,
+            steps: firstStep.map { [$0] } ?? [],
+            expectedOutput: "first step plus follow-ups",
+            missingInputs: plan.missingInputs,
+            fallbackPlanID: plan.id,
+            followups: followups,
+            confidence: plan.confidence,
+            interruptionLevel: plan.interruptionLevel,
+            executionMode: plan.executionMode,
+            safetyReview: plan.safetyReview
         )
     }
 

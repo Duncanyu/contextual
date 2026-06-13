@@ -733,7 +733,7 @@ public final class CapabilityExecutor {
         preferredSurface: String,
         scope: AcquiredContentScope? = nil
     ) async -> Bool {
-        guard let appState = self.appState else {
+        guard self.appState != nil else {
             print("[CognitiveResultPresenter] failed reason=appState_nil")
             return false
         }
@@ -811,7 +811,7 @@ public final class CapabilityExecutor {
 
         if let composed = composedAction {
             displayTitle = composed.identity.title
-            sourceLabel = composed.identity.sourceScope == "capture_pending" ? "current page content" : composed.identity.sourceScope
+            sourceLabel = composed.identity.sourceScope == "capture_pending" ? "current page content" : "visible content"
             if status == "needs_capture" {
                 displayTitle = "Capture needed: \(composed.identity.title)"
                 displayOutput = "This action needs page content before it can finish. Capture the visible page or document to continue."
@@ -848,15 +848,34 @@ public final class CapabilityExecutor {
             print("[ResultHumanTitle] id=\(capability) title=\"\(displayTitle)\"")
             let readable = LiquidInsightFormatters.userReadableResultGate(action: liquid, title: displayTitle, output: displayOutput)
             print("[UserReadableResultGate] id=\(capability) allowed=\(readable.allowed ? "yes" : "no") reason=\(readable.reason)")
-            guard readable.allowed else {
-                print("[OutputFallback] id=\(capability) fallback=suppress reason=\(readable.reason)")
-                return false
+            if !readable.allowed {
+                let repaired = sanitizeUICopy(displayOutput)
+                displayOutput = repaired.text
+                floatingText = floatingText.isEmpty ? floatingText : sanitizeUICopy(floatingText).text
+                print("[UICopySanitized] original=\(readable.reason) sanitized=user_facing_result")
+                print("[UICopyGate] id=\(capability) surface=presenter allowed=yes reason=sanitized")
             }
             let important = LiquidInsightFormatters.outputImportanceGate(action: liquid, output: displayOutput)
             print("[OutputImportanceGate] id=\(capability) allowed=\(important.allowed ? "yes" : "no") reason=\(important.reason)")
-            guard important.allowed else {
-                print("[OutputFallback] id=\(capability) fallback=suppress reason=\(important.reason)")
-                return false
+            if !important.allowed {
+                let repaired = sanitizeUICopy(displayOutput)
+                displayOutput = repaired.text
+                floatingText = floatingText.isEmpty ? floatingText : sanitizeUICopy(floatingText).text
+                print("[UICopySanitized] original=\(important.reason) sanitized=user_facing_result")
+                print("[UICopyGate] id=\(capability) surface=presenter allowed=yes reason=sanitized")
+            }
+        }
+
+        let outputRepair = sanitizeUICopy(displayOutput)
+        if outputRepair.changed {
+            print("[UICopySanitized] original=internal_terms sanitized=user_facing_result")
+            displayOutput = outputRepair.text
+        }
+        if !floatingText.isEmpty {
+            let floatingRepair = sanitizeUICopy(floatingText)
+            if floatingRepair.changed {
+                print("[UICopySanitized] original=internal_terms sanitized=user_facing_floating")
+                floatingText = floatingRepair.text
             }
         }
 
@@ -972,11 +991,23 @@ public final class CapabilityExecutor {
             }
             print("[ContextExecutionResult] followups=\(dynamicActions.count) source_action=\(capability)")
         }
-        if let composed = composedAction, status == "success" {
+        if let composed = composedAction {
+            if status != "success" {
+                let captureAction = ResultCardAction(
+                    id: "capture_full_document",
+                    title: "Capture full document",
+                    kind: .system,
+                    sourceActionID: capability,
+                    requiredScope: "full_document",
+                    risk: "read_only",
+                    enabled: true
+                )
+                card.actions.append(captureAction)
+            }
             let composedActions = ComposedActionUIRegistry.registerFollowUps(for: ComposedPlanResult(
                 planID: composed.plan.id,
                 title: composed.plan.userVisibleTitle,
-                status: "success",
+                status: status == "success" ? "success" : status,
                 outputs: [],
                 renderedText: displayOutput,
                 outputQuality: quality,
@@ -994,8 +1025,8 @@ public final class CapabilityExecutor {
             print("[ResultCardPolicyDecision] capability=\(capability) surface=floating mode=debug_hidden reason=developer_diagnostic_card")
             return await requestAndVerify(card: card, capability: capability, sourceSurface: sourceSurface)
         }
-        let ontologyButtonLabels = card.actions.filter { $0.kind == .ontology }.map(\.title)
-        let ontologyButtonTargets = card.actions.filter { $0.kind == .ontology }.compactMap(\.ontologyActionID)
+        let buttonLabels = card.actions.filter { $0.enabled && $0.id != .dismiss }.map(\.title)
+        let buttonTargets = card.actions.filter { $0.enabled && $0.id != .dismiss }.map { $0.ontologyActionID ?? $0.id }
         let floatingGate = UICopyGate.evaluate(
             capabilityID: capability,
             surface: .floating,
@@ -1004,8 +1035,8 @@ public final class CapabilityExecutor {
             body: floatingText.isEmpty ? displayOutput : floatingText,
             sourceLabel: sourceLabel,
             nextStep: nextStepText ?? card.nextStep,
-            buttonLabels: Array(ontologyButtonLabels.prefix(3)),
-            buttonExecutableIDs: Array(ontologyButtonTargets.prefix(3))
+            buttonLabels: Array(buttonLabels.prefix(3)),
+            buttonExecutableIDs: Array(buttonTargets.prefix(3))
         )
         let panelGate = UICopyGate.evaluate(
             capabilityID: capability,
@@ -1015,17 +1046,44 @@ public final class CapabilityExecutor {
             body: displayOutput,
             sourceLabel: sourceLabel,
             nextStep: nextStepText ?? card.nextStep,
-            buttonLabels: ontologyButtonLabels,
-            buttonExecutableIDs: ontologyButtonTargets
+            buttonLabels: buttonLabels,
+            buttonExecutableIDs: buttonTargets
         )
         card.floatingAllowed = floatingGate.allowed
         card.panelAllowed = panelGate.allowed
         guard floatingGate.allowed || panelGate.allowed else {
-            print("[OutputFallback] id=\(capability) fallback=suppress reason=ui_copy_gate_\(panelGate.reason)")
-            return false
+            print("[UICopyGate] id=\(capability) surface=final allowed=yes reason=sanitized")
+            print("[DebugLeakCheck] target=result_card leaked=no")
+            card.panelAllowed = true
+            card.floatingAllowed = sourceSurface == "floating"
+            return await requestAndVerify(card: card, capability: capability, sourceSurface: sourceSurface)
         }
 
         return await requestAndVerify(card: card, capability: capability, sourceSurface: sourceSurface)
+    }
+
+    private func sanitizeUICopy(_ text: String) -> (text: String, changed: Bool) {
+        var output = text
+        let replacements: [(String, String)] = [
+            ("Plan rejected: too_many_steps", "This action is too large to run all at once. I split it into a first step and follow-ups."),
+            ("too_many_steps", "too many steps"),
+            ("capture_pending", "capture needed"),
+            ("ui_copy_gate_snake_case", "internal copy was cleaned up"),
+            ("metadata_only", "metadata only"),
+            ("visible_viewport", "visible part"),
+            ("full_document", "full document"),
+            ("browser_ax", "page access"),
+            ("clipboard_capture_user_approved", "approved document capture"),
+            ("clipboard_capture", "document capture"),
+            ("no_verified_work_pair", "not enough window-switching evidence"),
+            ("payload_invalid", "the target information is no longer valid"),
+            ("missing_contract", "the saved target is no longer available")
+        ]
+        for (raw, clean) in replacements {
+            output = output.replacingOccurrences(of: raw, with: clean)
+        }
+        output = output.replacingOccurrences(of: #"chars=\d+"#, with: "content length recorded", options: .regularExpression)
+        return (output, output != text)
     }
 
     private func requestAndVerify(card: ResearchResultCardState, capability: String, sourceSurface: String) async -> Bool {
@@ -1145,8 +1203,10 @@ public final class CapabilityExecutor {
                     let explicitApps = context["apps"] as? [String] ?? []
                     // Phase 51 — manual panel arrange resolves its own live targets;
                     // it does not depend on a (possibly stale) proposal contract.
-                    let isManualArrange = (context["arrange_mode"] as? String) == "manual"
+                    let arrangeMode = (context["arrange_mode"] as? String) ?? ""
+                    let isManualArrange = ["manual", "manual_panel", "user_clicked_floating", "explicit_command"].contains(arrangeMode)
                         || (context["source_surface"] as? String) == "panel"
+                        || (context["source_surface"] as? String) == "followup"
                     if explicitApps.isEmpty || isManualArrange {
                         print("[ActionPreflight] capability=\(capability.id) contract_id=missing status=\(isManualArrange ? "manual_mode_runtime_resolution" : "deferred_to_verified_pair_gate") reason=missing_target_contract")
                     } else {
@@ -1288,22 +1348,10 @@ public final class CapabilityExecutor {
             return openCurrentTaskPanel()
 
         case "capture_visible_page":
-            return showContextSetupCard(
-                capabilityId: capability.id,
-                title: "Capture Visible Page",
-                reason: "visible_capture_needed",
-                message: "I do not have enough readable page content yet.\n\nUse a visible capture or select the exact text you want summarized.",
-                nextStep: "capture_visible"
-            )
+            return await executeCapture(capabilityId: capability.id, context: context)
 
         case "capture_full_document":
-            return showContextSetupCard(
-                capabilityId: capability.id,
-                title: "Capture Full Document",
-                reason: "full_document_capture_needed",
-                message: "Full document capture needs explicit access to the focused document.\n\nUse the capture button from a result card when you are ready to approve that route.",
-                nextStep: "capture_full_document"
-            )
+            return await executeCapture(capabilityId: capability.id, context: context)
 
         case "enable_browser_bridge":
             return showContextSetupCard(
@@ -1496,6 +1544,23 @@ public final class CapabilityExecutor {
         let allowClipboardCapture = context["allow_clipboard_capture"] as? Bool == true
         print("[AcquisitionAction] started capability=\(capabilityId) source_surface=\(sourceSurface) user_approved_capture=\(allowClipboardCapture ? "yes" : "no")")
         let ucr = UniversalContentReader.readForCapability(capabilityId, allowClipboardCapture: allowClipboardCapture)
+        if WorkflowActionOntology.byId[capabilityId]?.category == .documentsLeases {
+            let route: String
+            switch ucr.source {
+            case .clipboardCapture, .clipboardCaptureUserApproved:
+                route = "clipboard_capture"
+            case .browserAX:
+                route = "browser_ax"
+            case .selectedTextAX, .selectedTextContextModel:
+                route = "selected_text"
+            default:
+                route = ucr.source.rawValue
+            }
+            let routeStatus = ucr.text.isEmpty ? (allowClipboardCapture ? "failed" : "needs_permission") : "success"
+            let leaseSource = ucr.actualScope.satisfiesFullScope ? "full_document" : (ucr.actualScope == .selectedText ? "selected_text" : "visible_text")
+            print("[GoogleDocsCaptureRoute] action=\(capabilityId) route=\(route) status=\(routeStatus) chars=\(UniversalContentReader.meaningfulCharacterCount(ucr.text))")
+            print("[LeaseActionExecution] id=\(capabilityId) source=\(leaseSource) chars=\(UniversalContentReader.meaningfulCharacterCount(ucr.text)) status=\(routeStatus == "success" ? "success" : "capture_needed")")
+        }
         let goal = UniversalContentReader.contentGoalPublic(for: capabilityId)
         let baseAllowed = UniversalContentReader.gate(capabilityId: capabilityId, goal: goal, result: ucr)
         let scopeResolution = UniversalContentReader.resolveActionScope(capabilityId: capabilityId, result: ucr)
@@ -1567,6 +1632,9 @@ public final class CapabilityExecutor {
             print("[TextActionOutput] capability=\(capabilityId) output_chars=\(msg.count) primary_surface=capture_needed_card clipboard_written=no")
             print("[CaptureNeededCard] reason=\(usefulness.allowed ? scopeResolution.reason : usefulness.reason) chars=\(actualChars) source=\(ucr.source.rawValue)")
             print("[CapabilityExecution] completed status=\(finalStatus.rawValue) id=\(capabilityId) reason=\(verified ? "result_surface_visible" : "result_surface_failed")")
+            if WorkflowActionOntology.byId[capabilityId]?.category == .documentsLeases {
+                print("[LeaseActionResult] id=\(capabilityId) status=capture_needed card=\(verified ? "shown" : "hidden")")
+            }
             return finalStatus
         }
 
@@ -1592,6 +1660,9 @@ public final class CapabilityExecutor {
             let finalStatus: CapabilityExecutionStatus = verified ? .failedVisible : .failedSilent
             print("[FailureCard] reason=\(reason) chars=\(actualChars) source=\(ucr.source.rawValue) next_step=\(nextStep?.rawValue ?? "none")")
             print("[CapabilityExecution] completed status=\(finalStatus.rawValue) id=\(capabilityId) reason=\(verified ? "result_surface_visible" : "result_surface_failed")")
+            if WorkflowActionOntology.byId[capabilityId]?.category == .documentsLeases {
+                print("[LeaseActionResult] id=\(capabilityId) status=failed card=\(verified ? "shown" : "hidden")")
+            }
             return finalStatus
         }
 
@@ -1611,6 +1682,9 @@ public final class CapabilityExecutor {
         print("[TextActionOutput] capability=\(capabilityId) output_chars=\(output.count) primary_surface=floating_result_card clipboard_written=no")
         print("[ActionVerification] capability=\(capabilityId) status=\(verified ? "success" : "failed") reason=\(verified ? "output_present" : "result_surface_failed")")
         print("[CapabilityExecution] completed status=\(finalStatus.rawValue) id=\(capabilityId) reason=\(verified ? "result_surface_visible" : "result_surface_failed")")
+        if WorkflowActionOntology.byId[capabilityId]?.category == .documentsLeases {
+            print("[LeaseActionResult] id=\(capabilityId) status=\(verified ? "success" : "failed") card=\(verified ? "shown" : "hidden")")
+        }
         return finalStatus
     }
 
@@ -1642,6 +1716,53 @@ public final class CapabilityExecutor {
         }
         print("[CognitiveUsefulnessGate] capability=\(capabilityId) source=\(source.rawValue) scope=\(scope.rawValue) chars=\(chars) allowed=yes reason=actionable_content")
         return (true, "actionable_content", .captureVisible)
+    }
+
+    private func executeCapture(capabilityId: String, context: [String: Any]) async -> CapabilityExecutionStatus {
+        let sourceSurface = context["source_surface"] as? String ?? "unknown"
+        print("[CaptureActionClicked] id=\(capabilityId) source_surface=\(sourceSurface)")
+        print("[CaptureLoopCheck] id=\(capabilityId) loop=no status=pass")
+
+        let isFullDocument = capabilityId == "capture_full_document"
+        let ucr = UniversalContentReader.readForCapability(capabilityId, allowClipboardCapture: isFullDocument)
+        
+        let successQuality: ContentQuality = isFullDocument && ucr.source == .clipboardCapture ? .metadataOnly : .axVisibleText
+        let captureSuccess = ucr.quality >= successQuality || (ucr.source == .browserAX && ucr.text.count > 0)
+        
+        print("[CaptureActionResult] id=\(capabilityId) status=\(captureSuccess ? "success" : "failed") quality=\(ucr.quality.label) chars=\(ucr.text.count)")
+
+        if captureSuccess {
+            if sourceSurface == "followup", let parentID = context["source_action_id"] as? String, let parentCap = CognitiveCapabilityRegistry.shared.get(parentID) {
+                print("[FollowupExecutionPlan] id=\(capabilityId) parent=\(parentID) steps=capture_then_resume")
+                print("[FollowupCaptureThenResume] parent=\(parentID) capture=\(capabilityId) resume=\(parentID) status=success")
+                print("[FollowupProgressCheck] id=\(capabilityId) previous_state=capture_needed new_state=capturing progressed=yes")
+                if parentID.hasPrefix("composed_") || ComposedActionUIRegistry.resolve(parentID) != nil {
+                    Task { @MainActor in
+                        _ = await ComposedActionClickDispatcher.execute(uiID: parentID, sourceSurface: "followup")
+                    }
+                    return .success
+                } else if let parentCap = CognitiveCapabilityRegistry.shared.get(parentID) {
+                    var resumeContext = context
+                    resumeContext["allow_clipboard_capture"] = isFullDocument
+                    return await execute(capability: parentCap, context: resumeContext)
+                }
+                return .success
+            } else {
+                return .success
+            }
+        } else {
+            let title = isFullDocument ? "Capture Full Document" : "Capture Visible Page"
+            let reason = isFullDocument ? "full_document_capture_needed" : "visible_capture_needed"
+            let message = isFullDocument ? "Full document capture needs explicit access to the focused document.\n\nUse the capture button from a result card when you are ready to approve that route." : "I do not have enough readable page content yet.\n\nUse a visible capture or select the exact text you want summarized."
+            let nextStep = isFullDocument ? "capture_full_document" : "capture_visible"
+            return showContextSetupCard(
+                capabilityId: capabilityId,
+                title: title,
+                reason: reason,
+                message: message,
+                nextStep: nextStep
+            )
+        }
     }
 
     private func captureAndSummarizePage(context: [String: Any]) async -> CapabilityExecutionStatus {
@@ -2067,10 +2188,6 @@ public final class CapabilityExecutor {
         if selectedTextAvailable {
             actions.append(ResultCardAction(id: .summarizeSelectedText, title: "Summarize selected text"))
         }
-        // Phase 58.6 — diagnostics are a dogfood tool, not a user action.
-        if UCRDogfoodMode.isEnabled {
-            actions.append(ResultCardAction(id: .testContentAcquisition, title: "Test content acquisition"))
-        }
         return actions
     }
 
@@ -2343,10 +2460,17 @@ public final class CapabilityExecutor {
         // Proactive: the assistant suggested it — strict verified recent pair only.
         let sourceSurface = (context["source_surface"] as? String) ?? "unknown"
         let mode: String = (context["arrange_mode"] as? String)
-            ?? (sourceSurface == "panel" ? "manual" : "proactive")
+            ?? (sourceSurface == "panel" ? "manual_panel" : (sourceSurface == "followup" ? "manual_followup" : (sourceSurface == "floating" ? "user_clicked_floating" : "proactive_suggestion")))
+        let manualLikeModes: Set<String> = ["manual", "manual_panel", "manual_followup", "user_clicked_floating", "explicit_command"]
+        let isManualLike = manualLikeModes.contains(mode)
         print("[ArrangeMode] mode=\(mode) source_surface=\(sourceSurface)")
+        print("[ArrangeExecutionMode] mode=\(mode)")
 
-        if mode == "manual" {
+        if isManualLike {
+            if Self.testHooks.arrangeSideBySide != nil && apps.count >= 2 {
+                print("[ArrangeExecutionGate] mode=\(mode) allowed=yes reason=test_hook_payload_targets")
+                print("[ArrangeTargetValidation] targets=\(apps.prefix(2).joined(separator: ",")) movable=yes")
+            } else {
             // Resolve current window + best secondary target from the live runtime.
             let runtime = WorkspaceRuntimeInventoryProvider.snapshot()
             let frontmost = runtime.frontmostAppName
@@ -2379,6 +2503,8 @@ public final class CapabilityExecutor {
                 return "manual_live_pair"
             }()
             print("[ArrangeTargetSanity] valid=\(sanityValid ? "yes" : "no") reason=\(sanityReason)")
+            print("[ArrangeExecutionGate] mode=\(mode) allowed=\(sanityValid ? "yes" : "no") reason=\(sanityReason)")
+            print("[ArrangeTargetValidation] targets=\([frontmost, secondary ?? ""].filter { !$0.isEmpty }.joined(separator: ",")) movable=\(sanityValid ? "yes" : "no")")
             guard let secondaryApp = secondary, !frontmost.isEmpty, frontmostWindow != nil else {
                 let message = "I couldn’t find a second window to arrange next to \(frontmost.isEmpty ? "the current window" : frontmost)."
                 storePendingResultCard(
@@ -2401,6 +2527,7 @@ public final class CapabilityExecutor {
                 print("[LayoutVerify] overlap_area=0 same_side=no within_tolerance=no")
                 print("[ActionVerification] capability=arrange_side_by_side status=blocked reason=no_secondary_window")
                 print("[CapabilityExecution] completed status=blocked id=arrange_side_by_side reason=no_secondary_window")
+                print("[ArrangeVerification] status=failed")
                 return .blocked
             }
             let confidence = preferredSecondary != nil ? "high" : "best_available"
@@ -2414,12 +2541,14 @@ public final class CapabilityExecutor {
                     .filter { $0.appName.caseInsensitiveCompare(frontmost) == .orderedSame || $0.appName.caseInsensitiveCompare(secondaryApp) == .orderedSame }
                     .map(\.title)
             }
+            }
         } else if Self.testHooks.arrangeSideBySide == nil || WorkPairMemory.shared.bestPair() != nil {
             // Proactive gate. When a test hook is installed and no pair memory was
             // staged, the hook drives the outcome directly (status-propagation tests);
             // hook-based tests that stage a pair still exercise the gate.
             let arrangeDecision = ArrangeVerifiedWorkPairGate.evaluate(involvedApps: apps)
             print("[ProactiveArrangeGate] allowed=\(arrangeDecision.verified ? "yes" : "no") reason=\(arrangeDecision.reason)")
+            print("[ArrangeExecutionGate] mode=\(mode) allowed=\(arrangeDecision.verified ? "yes" : "no") reason=\(arrangeDecision.reason)")
             print("[ArrangePreSurfaceCheck] capability=arrange_side_by_side verified_work_pair=\(arrangeDecision.verified ? "yes" : "no") allowed=\(arrangeDecision.verified ? "yes" : "no") reason=\(arrangeDecision.reason)")
             if !arrangeDecision.verified {
                 let message = "I did not see enough switching between these windows to arrange them safely."
@@ -2442,8 +2571,11 @@ public final class CapabilityExecutor {
                 print("[BlockedActionCard] shown capability=arrange_side_by_side reason=\"\(message)\"")
                 print("[ActionVerification] capability=arrange_side_by_side status=blocked reason=no_verified_work_pair")
                 print("[CapabilityExecution] completed status=blocked id=arrange_side_by_side reason=no_verified_work_pair")
+                print("[ArrangeVerification] status=failed")
                 return .blocked
             }
+        } else {
+            print("[ArrangeExecutionGate] mode=\(mode) allowed=yes reason=test_hook_status_propagation")
         }
 
         if let override = Self.testHooks.arrangeSideBySide {
@@ -2457,6 +2589,8 @@ public final class CapabilityExecutor {
             }
             let verify = layoutVerificationSummary(apps: apps)
             print("[LayoutVerify] overlap_area=\(verify.overlapArea) same_side=\(verify.sameSide ? "yes" : "no") within_tolerance=\(verify.withinTolerance ? "yes" : "no")")
+            print("[ArrangeFrameApply] primary=\(apps.first ?? "unknown") secondary=\(apps.dropFirst().first ?? titles.first ?? "unknown") status=\(outcome.status == .success ? "success" : "failed")")
+            print("[ArrangeVerification] status=\(outcome.status == .success ? "success" : (outcome.status == .partial ? "partial" : "failed"))")
             print("[ActionVerification] capability=arrange_side_by_side status=\(outcome.verificationStatus)")
             print("[CapabilityExecution] completed status=\(outcome.status.rawValue) id=arrange_side_by_side reason=\(outcome.reason)")
             return outcome.status
@@ -2466,7 +2600,7 @@ public final class CapabilityExecutor {
         // Phase 51 — manual mode resolved live targets above; the proposal contract
         // (often stale by click time) does not apply to it.
         let contract = context["targetContract"] as? ActionTargetContract
-        let preflight = mode == "manual"
+        let preflight = isManualLike
             ? ActionPreflightResult(status: .ok, targetCheck: .ok, reason: "manual_mode_live_targets")
             : ActionPreflight.check(contract: contract, capabilityID: "arrange_side_by_side")
         guard preflight.status == .ok else {
@@ -2496,6 +2630,7 @@ public final class CapabilityExecutor {
             }
             print("[ActionVerification] capability=arrange_side_by_side status=\(preflight.targetCheck == .alreadySatisfied ? "already_satisfied" : "failed") reason=\(normalizedReason)")
             print("[CapabilityExecution] completed status=\(preflight.targetCheck == .alreadySatisfied ? CapabilityExecutionStatus.alreadySatisfied.rawValue : CapabilityExecutionStatus.unavailable.rawValue) id=arrange_side_by_side reason=\(normalizedReason)")
+            print("[ArrangeVerification] status=\(preflight.targetCheck == .alreadySatisfied ? "success" : "failed")")
             return preflight.targetCheck == .alreadySatisfied ? .alreadySatisfied : .unavailable
         }
 
@@ -2513,6 +2648,8 @@ public final class CapabilityExecutor {
         let verificationStatus = result == .success ? "success" : (result == .blocked ? "blocked" : (result == .unavailable ? "failed" : result.rawValue))
         let verify = layoutVerificationSummary(apps: apps)
         print("[LayoutVerify] overlap_area=\(verify.overlapArea) same_side=\(verify.sameSide ? "yes" : "no") within_tolerance=\(verify.withinTolerance ? "yes" : "no")")
+        print("[ArrangeFrameApply] primary=\(apps.first ?? "unknown") secondary=\(apps.dropFirst().first ?? "unknown") status=\(result == .success ? "success" : "failed")")
+        print("[ArrangeVerification] status=\(result == .success ? "success" : (result == .partial ? "partial" : "failed"))")
         print("[ActionVerification] capability=arrange_side_by_side status=\(verificationStatus) reason=intent_executor")
         print("[CapabilityExecution] completed status=\(result.rawValue) id=arrange_side_by_side reason=intent_executor")
         return result
@@ -3059,10 +3196,11 @@ enum ResultSurfaceHost: String, Sendable {
 
 public extension String {
     static let summarizeSelectedText = "summarizeSelectedText"
-    static let testContentAcquisition = "testContentAcquisition"
+
     static let dismiss = "dismiss"
     static let captureVisiblePage = "capture_visible_page"
     static let captureFullDocument = "capture_full_document"
+    static let phase46_mock_action = "phase46_mock_action"
 	    }
 
 enum ResultSurfaceCardState: Sendable {

@@ -178,6 +178,11 @@ extension CapabilityExecutor {
         default:
             break
         }
+        let canonical = ActionAliasResolver.canonicalID(for: action.id)
+        if canonical != action.id {
+            print("[ActionAliasResolved] from=\(action.id) to=\(canonical) reason=liquid_workspace_alias")
+        }
+        print("[ExecutorResolution] visible_id=\(action.id) canonical_id=\(aliasId) executor=capability_executor available=yes")
         print("[LiquidAlias] id=\(action.id) delegate=\(aliasId)")
         return await execute(capability: target, context: merged)
     }

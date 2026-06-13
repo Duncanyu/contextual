@@ -158,9 +158,9 @@ enum ContentTypeClassifier {
         let agreement: Bool
         let reason: String
         switch (workflow, content.type) {
-        case (.rentalLease, .leaseOrContractDocument):
+        case (.actionPack, .leaseOrContractDocument):
             agreement = true; reason = "lease_workflow_on_contract_document"
-        case (.rentalLease, _):
+        case (.actionPack, _):
             agreement = false; reason = "rental_terms_without_contract_document"
         case (.rentalSearch, .forumOrSocialGroup), (.rentalSearch, .marketplaceOrListingFeed),
              (.rentalSearch, .individualListing), (.rentalSearch, .listingPlatformDashboard),

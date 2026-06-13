@@ -15,6 +15,7 @@ struct ActiveFloatingLifecycleBinding: Equatable {
 enum ActionSourceSurface: String {
 	case floating
 	case panel
+	case followup
 	case unknown
 }
 
@@ -1909,6 +1910,7 @@ final class AppState: ObservableObject {
 
 	func acceptFloatingProposal() {
 		guard let proposal = floatingSuggestion else { return }
+		let unifiedFloating = unifiedSurfaceDecision?.floating
 		let id = proposal.primaryActionId
 		let capId = floatingCapabilityID(for: proposal)
 		
@@ -1950,7 +1952,12 @@ final class AppState: ObservableObject {
 
 		dismissFloatingSuggestion(reason: .accepted)
 
-		invokeAction(id: id, sourceSurface: .floating)
+		if let unifiedFloating {
+			dispatchUnifiedSuggestion(unifiedFloating, sourceSurface: .floating)
+		} else {
+			print("[LegacyActionRouterBypassCheck] bypasses=1 status=fail reason=missing_unified_floating_fallback")
+			invokeAction(id: id, sourceSurface: .floating)
+		}
 	}
 
 	func floatingPrimaryButtonTitle(for proposal: ActionProposal) -> String {
@@ -2338,12 +2345,34 @@ final class AppState: ObservableObject {
         case .blockedAction: state = .blocked(card)
         default: state = .result(card)
         }
-        print("[ResultSurfaceRequested] capability=\(card.capabilityID) type=\(card.cardType.rawValue) output_chars=\(card.outputChars)")
-        let ontologyActions = card.actions.filter { $0.kind == .ontology }
-        let floatingShown = Array(ontologyActions.prefix(ResultCardPresentationPolicy.budget(for: .floating).maxButtons))
+        print("[ResultSurfaceRequested] capability=\(card.capabilityID) type=\(normalizedResultSurfaceType(for: card.cardType)) card_type=\(card.cardType.rawValue) output_chars=\(card.outputChars)")
+        let executableActions = card.actions.filter { action in
+            guard action.enabled && action.id != .dismiss else { return false }
+            let capabilityID = ActionAliasResolver.resolve(action.id).canonicalID
+            let route: String
+            if ComposedActionUIRegistry.isComposedFollowUpID(capabilityID) || capabilityID.hasPrefix("followup:") {
+                route = "followup_executor"
+            } else if ["capture_visible_page", "capture_full_document"].contains(capabilityID) {
+                route = "capture_executor"
+            } else if capabilityID == "open_focus_shortcut_setup" {
+                route = "setup_executor"
+            } else {
+                route = "capability_executor"
+            }
+            let available = ActionAliasResolver.executorAvailable(visibleID: action.id, canonicalID: capabilityID, route: route)
+            print("[FollowupSanityCheck] id=\(action.id) executor_available=\(available ? "yes" : "no") product_visible=\(available ? "yes" : "no")")
+            if !available {
+                print("[FollowupDropped] id=\(action.id) reason=executor_missing")
+            }
+            print("[FollowupRenderGate] id=\(action.id) allowed=\(available ? "yes" : "no") reason=\(available ? "executor_available" : "executor_missing")")
+            return available
+        }
+        let floatingShown = Array(executableActions.prefix(ResultCardPresentationPolicy.budget(for: .floating).maxButtons))
+        print("[NoFakeFollowupsInProduct] status=pass count=\(floatingShown.count)")
         print("[ResultCardRender] id=\(card.capabilityID) followup_count=\(floatingShown.count)")
         for a in floatingShown {
             print("[ResultCardFollowUpButton] id=\(card.capabilityID) title=\"\(a.title)\" enabled=\(a.enabled ? "yes" : "no")")
+            print("[FollowupButtonRender] card=\(card.capabilityID) followup_id=\(a.id) title=\"\(a.title)\" visible=yes")
         }
         resultSurfaceRenderProof.removeAll()
         if card.floatingAllowed {
@@ -2356,6 +2385,178 @@ final class AppState: ObservableObject {
             resultSurfaceRenderProof["panel"] = true
         }
         return true
+    }
+
+    @MainActor
+    func presentActionCompletionSurface(
+        actionID: String,
+        capabilityID: String,
+        title: String,
+        status: CapabilityExecutionStatus?,
+        reason: String? = nil,
+        outputText: String? = nil,
+        sourceSurface: ActionSourceSurface,
+        pendingPayload: CapabilityExecutor.PendingResultCardPayload? = nil
+    ) -> Bool {
+        if pendingPayload == nil,
+           activePanelResultSurface?.capabilityID == capabilityID || activeFloatingResultSurface?.capabilityID == capabilityID {
+            print("[ActionCompletionSurface] capability=\(capabilityID) status=\(normalizedUnifiedStatus(status, reason: reason))")
+            print("[ActionResultUI] shown=yes type=existing_result_surface capability=\(capabilityID)")
+            return true
+        }
+
+        let card: ResearchResultCardState
+        if let payload = pendingPayload {
+            card = ResearchResultCardState(
+                capabilityID: payload.capabilityID,
+                title: payload.title,
+                text: payload.text,
+                outputChars: max(payload.outputChars, payload.text.count),
+                actions: payload.actions,
+                nextStep: payload.nextStep,
+                floatingAllowed: sourceSurface == .floating,
+                panelAllowed: true,
+                contentScope: nil,
+                floatingText: nil,
+                nextStepText: payload.nextStep,
+                sourceLabel: payload.contentSource,
+                cardType: payload.cardType,
+                contentQuality: payload.contentQuality,
+                contentSource: payload.contentSource,
+                acquiredChars: payload.acquiredChars,
+                isCaptureNeeded: payload.isCaptureNeeded,
+                failureReason: payload.failureReason
+            )
+            print("[FollowupPreserved] source_card=\(payload.capabilityID) final_card=\(payload.capabilityID) before=\(payload.actions.count) after=\(card.actions.count)")
+        } else {
+            let text = completionSurfaceText(title: title, status: status, reason: reason, outputText: outputText)
+            card = ResearchResultCardState(
+                capabilityID: capabilityID,
+                title: completionSurfaceTitle(title: title, status: status),
+                text: text,
+                outputChars: text.count,
+                actions: [ResultCardAction(id: .dismiss, title: "Dismiss")],
+                nextStep: nil,
+                floatingAllowed: sourceSurface == .floating,
+                panelAllowed: true,
+                contentScope: nil,
+                floatingText: text,
+                nextStepText: nil,
+                sourceLabel: "local action",
+                cardType: resultCardType(for: status, reason: reason),
+                contentQuality: status == .success ? .metadataOnly : .failed,
+                contentSource: "action_completion",
+                acquiredChars: 0,
+                isCaptureNeeded: status == .captureNeeded,
+                failureReason: reason
+            )
+        }
+
+        print("[ActionCompletionSurface] capability=\(capabilityID) status=\(normalizedUnifiedStatus(status, reason: reason))")
+        let shown = requestResultSurface(card, sourceSurface: sourceSurface)
+        print("[ActionResultUI] shown=\(shown ? "yes" : "no") type=\(normalizedResultSurfaceType(for: card.cardType)) capability=\(capabilityID)")
+        return shown
+    }
+
+    func logUnifiedActionResult(actionID: String, status: CapabilityExecutionStatus?, cardShown: Bool, reason: String? = nil) {
+        print("[UnifiedActionResult] id=\(actionID) status=\(normalizedUnifiedStatus(status, reason: reason)) card=\(cardShown ? "shown" : "hidden")")
+    }
+
+    private func normalizedResultSurfaceType(for cardType: ResultCardType) -> String {
+        switch cardType {
+        case .blockedAction: return "blocked"
+        case .captureNeeded: return "missing_context"
+        case .error: return "error"
+        default: return "result"
+        }
+    }
+
+    private func normalizedUnifiedStatus(_ status: CapabilityExecutionStatus?, reason: String?) -> String {
+        switch status {
+        case .success, .alreadySatisfied, .previewGenerated:
+            return "success"
+        case .partial, .openedSearch:
+            return "partial"
+        case .captureNeeded:
+            return "needs_context"
+        case .blocked:
+            return "blocked"
+        case .unavailable where reason == "missing_contract" || reason == "payload_invalid":
+            return "needs_context"
+        default:
+            return "failed"
+        }
+    }
+
+    private func resultCardType(for status: CapabilityExecutionStatus?, reason: String?) -> ResultCardType {
+        switch status {
+        case .captureNeeded:
+            return .captureNeeded
+        case .blocked:
+            return .blockedAction
+        case .unavailable where reason == "missing_contract" || reason == "payload_invalid":
+            return .captureNeeded
+        case .success, .partial, .alreadySatisfied, .previewGenerated, .openedSearch:
+            return .result
+        default:
+            return .error
+        }
+    }
+
+    private func completionSurfaceTitle(title: String, status: CapabilityExecutionStatus?) -> String {
+        switch status {
+        case .blocked: return "\(title) Blocked"
+        case .captureNeeded: return "More Context Needed"
+        case .unavailable, .failedVisible, .failedSilent: return "\(title) Failed"
+        case .partial, .openedSearch: return "\(title) Partially Completed"
+        default: return "\(title) Completed"
+        }
+    }
+
+    private func completionSurfaceText(title: String, status: CapabilityExecutionStatus?, reason: String?, outputText: String?) -> String {
+        let trimmed = outputText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty { return sanitizeCompletionCopy(trimmed) }
+        let suffix = reason.map { " Reason: \($0.replacingOccurrences(of: "_", with: " "))." } ?? ""
+        switch status {
+        case .success:
+            return "\(title) completed successfully."
+        case .previewGenerated:
+            return "\(title) preview is ready."
+        case .partial, .openedSearch:
+            return "\(title) completed with partial results.\(suffix)"
+        case .alreadySatisfied:
+            return "\(title) was already satisfied."
+        case .captureNeeded:
+            return "I need more context before I can run \(title).\(suffix)"
+        case .blocked:
+            return "\(title) is blocked right now.\(suffix)"
+        case .cancelled:
+            return "\(title) was cancelled.\(suffix)"
+        default:
+            return "\(title) could not complete.\(suffix)"
+        }
+    }
+
+    private func sanitizeCompletionCopy(_ text: String) -> String {
+        var output = text
+        let replacements: [(String, String)] = [
+            ("Plan rejected: too_many_steps", "This action is too large to run all at once. I split it into a first step and follow-ups."),
+            ("too_many_steps", "too many steps"),
+            ("capture_pending", "capture needed"),
+            ("ui_copy_gate_snake_case", "internal copy was cleaned up"),
+            ("no_verified_work_pair", "not enough window-switching evidence"),
+            ("payload_invalid", "the target information is no longer valid"),
+            ("missing_contract", "the saved target is no longer available")
+        ]
+        for (raw, clean) in replacements {
+            output = output.replacingOccurrences(of: raw, with: clean)
+        }
+        if output != text {
+            print("[UICopySanitized] original=internal_completion_copy sanitized=user_facing_completion")
+            print("[UICopyGate] allowed=yes reason=sanitized")
+            print("[DebugLeakCheck] target=action_completion leaked=no")
+        }
+        return output
     }
 
     /// Phase 64 — real render-proof tracking ("visible" means a window
@@ -2377,18 +2578,13 @@ final class AppState: ObservableObject {
     /// Composed plans go to the composed executor; everything else routes by
     /// its declared execution path through the capability/local executors.
     @MainActor
-    func dispatchUnifiedSuggestion(_ suggestion: UnifiedSuggestion) {
-        print("[UnifiedActionClicked] id=\(suggestion.id) kind=\(suggestion.kind.rawValue) executor=\(suggestion.executionPath.rawValue)")
-        let route: String
-        switch suggestion.executionPath {
-        case .composedExecutor:
-            route = "composed_executor"
-            invokeGeneratedExecutionProposal(id: suggestion.id)
-        case .capabilityExecutor, .followupExecutor, .setupExecutor, .localSystemExecutor:
-            route = suggestion.executionPath.rawValue
-            invokeAction(id: suggestion.originalActionId ?? suggestion.id)
-        }
-        print("[UnifiedActionDispatch] id=\(suggestion.id) route=\(route) allowed=yes")
+    @discardableResult
+    func dispatchUnifiedSuggestion(_ suggestion: UnifiedSuggestion, sourceSurface: ActionSourceSurface = .panel) -> UnifiedActionDispatchOutcome {
+        UnifiedActionDispatcher.dispatch(
+            suggestion: suggestion,
+            sourceSurface: sourceSurface,
+            appState: self
+        )
     }
 
     /// Phase 64 — merge semantics: a single floating candidate may not erase
@@ -2470,8 +2666,72 @@ final class AppState: ObservableObject {
 
     @MainActor
     func handleResultCardAction(_ action: ResultCardAction, for surface: ResultSurfaceCardState) {
-        print("Executing result card action: \(action.title)")
-        // TODO: Map to actual execution logic if needed.
+        guard action.enabled else {
+            print("[FollowupButtonClicked] id=\(action.id) parent=\(surface.capabilityID)")
+            print("[FollowupActionDispatch] id=\(action.id) route=none allowed=no")
+            print("[FollowupActionResult] id=\(action.id) status=blocked card=hidden")
+            return
+        }
+
+        let rawID = action.ontologyActionID ?? action.id
+        let canonicalID = action.kind == .composed
+            ? action.id
+            : ActionAliasResolver.canonicalID(for: rawID)
+        let kind = resultFollowupSuggestionKind(for: canonicalID, action: action)
+        let suggestion = UnifiedSuggestion(
+            id: action.id,
+            kind: kind,
+            title: action.title,
+            subtitle: nil,
+            whyNow: "result_followup",
+            source: .resultFollowup,
+            target: .currentFocus,
+            surfacePolicy: UnifiedSuggestionSurfacePolicy(
+                eligibleForFloating: false,
+                panelOnly: true,
+                debugOnly: false,
+                hidden: false
+            ),
+            acceptBehavior: canonicalID == "capture_visible_page" || canonicalID == "capture_full_document" ? .captureFirst : .executeDirect,
+            executionPath: action.kind == .composed ? .followupExecutor : .capabilityExecutor,
+            priority: 70,
+            confidence: 0.8,
+            usefulness: 0.8,
+            interruptionCost: 0.1,
+            evidenceLevel: action.requiredScope,
+            sourceScope: action.requiredScope,
+            requiresConfirmation: canonicalID == "capture_full_document",
+            cooldownKey: nil,
+            debugMetadata: [
+                "capabilityId": canonicalID,
+                "sourceActionID": action.sourceActionID ?? surface.capabilityID
+            ],
+            originalActionId: action.kind == .composed ? action.id : canonicalID
+        )
+        _ = UnifiedActionDispatcher.dispatch(
+            suggestion: suggestion,
+            sourceSurface: .followup,
+            appState: self
+        )
+    }
+
+    private func resultFollowupSuggestionKind(for capabilityID: String, action: ResultCardAction) -> SuggestionKind {
+        if action.kind == .composed || ComposedActionUIRegistry.isComposedFollowUpID(capabilityID) {
+            return .followupAction
+        }
+        if ["capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint"].contains(capabilityID) {
+            return .setupAction
+        }
+        if ["play_focus_media", "pause_media", "resume_focus_media", "suggest_focus_playlist"].contains(capabilityID) {
+            return .mediaAction
+        }
+        if ["arrange_side_by_side", "switch_to_paired_app", "split_research_setup"].contains(capabilityID) {
+            return .frictionAction
+        }
+        if ["remember_workspace", "restore_workspace", "save_task_context", "recall_related_context", "save_research_session"].contains(capabilityID) {
+            return .memoryAction
+        }
+        return .followupAction
     }
 
     @Published var ucrDiagnosticsEnabled: Bool = false

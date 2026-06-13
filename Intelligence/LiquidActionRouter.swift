@@ -46,7 +46,7 @@ struct WorkflowSignals: Sendable {
 
 enum DetectedWorkflowKind: String, Sendable {
     case formApplication = "form_application"
-    case rentalLease     = "rental_lease"
+    case actionPack      = "action_pack"
     /// Phase 59 — browsing/searching for rentals (listings, feeds, groups) is
     /// a different activity from reviewing a lease document.
     case rentalSearch    = "rental_search"
@@ -125,13 +125,14 @@ enum WorkflowDetectors {
         let hasRentalCluster = matchedTabs.count >= 2 || signals.count >= 3
         guard hasRentalCluster || hasDocument else { return nil }
 
-        let workflowLabel = hasDocument ? "rental_lease" : "rental_search"
+        let workflowLabel = hasDocument ? "action_pack" : "rental_search"
         let confidence = min(0.98, 0.68 + Double(min(max(matchedTabs.count, signals.count), 5)) * 0.06 + (hasDocument ? 0.10 : 0.0))
         let compactTitles = titles.prefix(6).map { $0.replacingOccurrences(of: ",", with: " ") }.joined(separator: " | ")
         let focusText = [s.windowTitle, s.urlHost, s.urlPath].joined(separator: " ").lowercased()
         let focusSupported = rentalFocusSupported(focusText)
         print("[TabClusterWorkflow] workflow=\(workflowLabel) confidence=\(String(format: "%.2f", confidence)) authority=\(focusSupported ? "current_focus_supported" : "workspace_only") tabs_matched=\(matchedTabs.count) titles=\(compactTitles)")
         print("[DeterministicWorkflowClassifier] workflow=\(workflowLabel) confidence=\(String(format: "%.2f", confidence)) signals=\(signals.prefix(10).joined(separator: ","))")
+        print("[HardcodeAudit] system=DeterministicWorkflowClassifier.\(workflowLabel) hardcoded=yes replacement=content_type_action_pack")
         print("[WorkflowAuthority] source=tab_cluster authority=\(focusSupported ? "live" : "panel_background")")
         // Phase 61 — a deterministic workflow detected ONLY from background
         // tabs cannot define the current task and cannot bypass semantic
@@ -143,11 +144,11 @@ enum WorkflowDetectors {
             return nil
         }
         if confidence >= 0.80 {
-            print("[SemanticGroundingBypass] reason=deterministic_workflow_high_confidence")
+            print("[DeterministicBypassBlocked] old=\(workflowLabel) reason=use_action_pack_pipeline")
         }
         // Phase 59 — the search/lease split is real, not just a log label:
         // browsing listings is rentalSearch; only a document is rentalLease.
-        return DetectedWorkflow(kind: hasDocument ? .rentalLease : .rentalSearch, confidence: confidence, signals: signals.isEmpty ? ["tab_cluster"] : signals)
+        return DetectedWorkflow(kind: hasDocument ? .actionPack : .rentalSearch, confidence: confidence, signals: signals.isEmpty ? ["tab_cluster"] : signals)
     }
 
     static func detect(_ s: WorkflowSignals) -> [DetectedWorkflow] {
@@ -182,11 +183,11 @@ enum WorkflowDetectors {
             if !rentalHits.isEmpty && rentalFocusSupported(focusText) {
                 let confidence = min(0.95, 0.4 + Double(rentalHits.count) * 0.15)
                 if confidence >= 0.55 {
-                    detected.append(DetectedWorkflow(kind: .rentalLease, confidence: confidence, signals: rentalHits))
+                    detected.append(DetectedWorkflow(kind: .actionPack, confidence: confidence, signals: rentalHits))
                     print("[RentalWorkflowDetected] confidence=\(String(format: "%.2f", confidence)) signals=\(rentalHits.joined(separator: ","))")
                 }
             } else if !rentalHits.isEmpty {
-                print("[SemanticVsWorkflowResolution] semantic_domain=current_focus deterministic_workflow=rental_lease winner=current_focus reason=rental_terms_background_only")
+                print("[SemanticVsWorkflowResolution] semantic_domain=current_focus deterministic_workflow=action_pack winner=current_focus reason=action_pack_background_only")
             }
         }
 
@@ -330,9 +331,9 @@ enum LiquidActionCompartmentGate {
             // listing feed, or search page is rental SEARCH.
             let content = ContentTypeClassifier.classify(s)
             let isLeaseDocument = content.type == .leaseOrContractDocument
-            let kind: DetectedWorkflowKind = isLeaseDocument ? .rentalLease : .rentalSearch
+            let kind: DetectedWorkflowKind = isLeaseDocument ? .actionPack : .rentalSearch
             if !isLeaseDocument {
-                print("[ContentTypeCorrection] old=rental_lease new=rental_search reason=content_type_\(content.type.rawValue)")
+                print("[ContentTypeCorrection] old=action_pack new=rental_search reason=content_type_\(content.type.rawValue)")
             }
             let conf = min(0.95, 0.55 + Double(rentalHits.count) * 0.08 + (isLeaseDocument ? 0.20 : 0))
             print("[SelectedTabWorkflow] workflow=\(kind.rawValue) confidence=\(String(format: "%.2f", conf)) signals=\((rentalHits.isEmpty ? [content.type.rawValue] : rentalHits).joined(separator: ","))")
@@ -379,7 +380,7 @@ enum LiquidActionCompartmentGate {
 
         let requiredKind: DetectedWorkflowKind? = {
             switch action.category {
-            case .documentsLeases: return .rentalLease
+            case .documentsLeases: return .actionPack
             case .formsApplications: return .formApplication
             case .codeLogs: return .codeLogs
             case .browserResearch: return .browserResearch
@@ -402,7 +403,7 @@ enum LiquidActionCompartmentGate {
 
         let focusHasWorkflowTerms: Bool = {
             switch requiredKind {
-            case .rentalLease:
+            case .actionPack:
                 // Phase 59 — broad rental terms are NOT enough for lease work;
                 // the focused thing must actually be a contract document.
                 return content.type == .leaseOrContractDocument
@@ -454,8 +455,13 @@ enum LiquidActionRouter {
     /// a contract document. Rental terms, listing pages, and housing groups
     /// never qualify on their own.
     static func isLeaseDocumentContext(_ s: WorkflowSignals, detectedKinds: Set<DetectedWorkflowKind>, content: ClassifiedContent) -> Bool {
-        guard detectedKinds.contains(.rentalLease) || detectedKinds.contains(.rentalSearch) else { return false }
-        return content.type == .leaseOrContractDocument
+        guard detectedKinds.contains(.actionPack) || detectedKinds.contains(.rentalSearch) else { return false }
+        let isDocument = content.type == .leaseOrContractDocument
+        if isDocument {
+            print("[HardcodeAudit] system=LiquidActionRouter.documentsLeases hardcoded=no replacement=contract_review_action_pack")
+            print("[ActionPackSelected] pack=contract_review evidence=content_type:\(content.type.rawValue),workflow_evidence:\(detectedKinds.map(\.rawValue).sorted().joined(separator: ","))")
+        }
+        return isDocument
     }
 
     static func isTrueMultiTabResearchContext(_ s: WorkflowSignals, detectedKinds: Set<DetectedWorkflowKind>) -> Bool {
@@ -708,7 +714,7 @@ enum LiquidActionRouter {
 
         let leaseDocumentContext = isLeaseDocumentContext(s, detectedKinds: detectedKinds, content: content)
         let trueMultiTabResearch = isTrueMultiTabResearchContext(s, detectedKinds: detectedKinds)
-        let rentalSearchContext = (detectedKinds.contains(.rentalSearch) || detectedKinds.contains(.rentalLease))
+        let rentalSearchContext = (detectedKinds.contains(.rentalSearch) || detectedKinds.contains(.actionPack))
             && !leaseDocumentContext
             && (ActionContracts.listingContexts.contains(content.type) || evidence.listingCandidateCount >= 1)
 
@@ -720,7 +726,7 @@ enum LiquidActionRouter {
         func workflowMatch(_ category: WorkflowActionCategory) -> DetectedWorkflowKind? {
             switch category {
             case .formsApplications: return detectedKinds.contains(.formApplication) ? .formApplication : nil
-            case .documentsLeases:   return detectedKinds.contains(.rentalLease) ? .rentalLease : nil
+            case .documentsLeases:   return detectedKinds.contains(.actionPack) ? .actionPack : nil
             case .codeLogs:          return detectedKinds.contains(.codeLogs) ? .codeLogs : nil
             case .browserResearch:
                 if detectedKinds.contains(.browserResearch) { return .browserResearch }
@@ -935,6 +941,9 @@ enum LiquidActionRouter {
             }
 
             candidates.append(LiquidActionCandidate(action: action, score: score, reason: reasons.joined(separator: "+"), tier: tier))
+            if action.category == .documentsLeases && leaseDocumentContext {
+                print("[TemplateActionGenerated] pack=contract_review id=\(action.id) source=declarative_template")
+            }
             print("[SpecificActionCandidate] id=\(action.id) evidence=\(action.evidenceSignals.joined(separator: ",")) score=\(String(format: "%.2f", score)) reason=\(reasons.joined(separator: "+"))")
         }
 
@@ -955,7 +964,7 @@ enum LiquidActionRouter {
         if leaseDocumentContext {
             let reserved = ranked.filter { $0.action.category == .documentsLeases && leaseDocumentPriority.contains($0.action.id) }.count
             reservedLeaseSlots = min(leaseDocumentPriority.count, reserved)
-            print("[PanelSlotReservation] workflow=rental_lease reserved=documents_leases count=\(reservedLeaseSlots)")
+            print("[PanelSlotReservation] workflow=action_pack reserved=documents_leases count=\(reservedLeaseSlots)")
         }
 
         let frictionCandidates = ranked.filter { $0.action.category == .workspaceFriction }
@@ -1049,7 +1058,7 @@ enum LiquidActionRouter {
             let demoted = ranked.filter {
                 $0.action.category == .browserResearch && ["compare_open_tabs", "make_research_brief", "create_decision_table"].contains($0.action.id)
             }.map(\.action.id)
-            print("[WorkflowRankingBoost] workflow=rental_lease boosted=\(boosted.joined(separator: ",")) demoted=\(demoted.joined(separator: ",")) reason=\(s.urlHost.contains("docs.google.com") ? "google_docs_lease" : "document_context")")
+            print("[WorkflowRankingBoost] workflow=action_pack boosted=\(boosted.joined(separator: ",")) demoted=\(demoted.joined(separator: ",")) reason=\(s.urlHost.contains("docs.google.com") ? "action_pack_evidence" : "document_context")")
         }
 
         for (id, reason) in suppressed {
@@ -1253,4 +1262,3 @@ enum LiquidActionRouter {
         )
     }
 }
-

@@ -100,6 +100,7 @@
 /Users/duncanyu/Documents/GitHub/contextual/Actions/TemporaryWorkflow.swift
 /Users/duncanyu/Documents/GitHub/contextual/Actions/GeneratedActionDescriptor.swift
 /Users/duncanyu/Documents/GitHub/contextual/Actions/ActionRouter.swift
+/Users/duncanyu/Documents/GitHub/contextual/Actions/UnifiedActionDispatcher.swift
 /Users/duncanyu/Documents/GitHub/contextual/Actions/ExplainAction.swift
 /Users/duncanyu/Documents/GitHub/contextual/Actions/RewriteAction.swift
 /Users/duncanyu/Documents/GitHub/contextual/Actions/ScreenAnalyzeAction.swift
@@ -495,6 +496,8 @@
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/UnifiedSuggestion.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/PrimitiveActionRuntime.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/UnifiedProductBrain.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/Phase65SelfTest.swift
+/Users/duncanyu/Documents/GitHub/contextual/Intelligence/Phase66SelfTest.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/GoalGeneratorPromptBuilder.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/ResultCardPresentation.swift
 /Users/duncanyu/Documents/GitHub/contextual/Intelligence/LiquidWorkflowActions.swift

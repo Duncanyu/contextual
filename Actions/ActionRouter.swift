@@ -127,6 +127,9 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 	var candidateID: String { seed.candidateID }
 	var targetContract: ActionTargetContract? { seed.targetContract }
 	var contractID: String? { seed.targetContract?.contractID }
+	var involvedApps: [String] { seed.involvedApps }
+	var involvedURLs: [String] { seed.involvedURLs }
+	var browserTabTitles: [String] { seed.browserTabTitles }
 
 	private func capabilityContext(sourceSurface: String, contextModel: ContextModel? = nil) -> [String: Any] {
 		var ctx: [String: Any] = [
@@ -147,6 +150,16 @@ struct DeterministicCapabilityPanelAction: ActionProtocol {
 			"source_surface": sourceSurface,
 			"proposal_id": proposalID
 		]
+		if seed.capabilityId == "arrange_side_by_side" {
+			switch sourceSurface {
+			case "panel":
+				ctx["arrange_mode"] = "manual_panel"
+			case "floating":
+				ctx["arrange_mode"] = "user_clicked_floating"
+			default:
+				ctx["arrange_mode"] = "explicit_command"
+			}
+		}
 		// Phase 42 — Include selection availability from ContextModel so executors can decide strategy.
 		if let cm = contextModel {
 			ctx["selectedTextAvailable"] = cm.selectedTextAvailable
