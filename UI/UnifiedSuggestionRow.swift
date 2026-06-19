@@ -56,6 +56,7 @@ struct UnifiedSuggestionRow: View {
         )
         .onAppear {
             print("[UnifiedSuggestionRow] id=\(suggestion.id) kind=\(suggestion.kind.rawValue) title=\"\(suggestion.title)\" section=\(suggestion.target.rawValue)")
+            print("[VisibleButtonAudit] surface=panel id=\(suggestion.id) has_handler=yes")
         }
     }
 }

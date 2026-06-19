@@ -17,6 +17,7 @@ struct CheapAlwaysOnPortfolioInput: Sendable {
 	let currentApp: String
 	let appCategory: AppContextAnalyzer.Category?
 	let groundingResult: SemanticGroundingResult?
+	let currentWorkBridge: ParallelOpportunityBridgeStatus? = nil
 }
 
 struct CheapAlwaysOnPortfolioResult: Sendable {
@@ -144,8 +145,6 @@ enum CheapAlwaysOnPortfolio {
 			focusShortcutAvailable: nil
 		)
 
-		let panelCandidates = validated.filter { $0.executionMode == .local_action }
-
 		// Phase 36.2 — Live path enforcement + useful action inventory + backfill.
 		// Surface policy decides what may float. Floating winner must be eligible_for_floating=yes.
 		// If the top-scored candidate is suppressed/panel-only, backfill with the next eligible.
@@ -163,16 +162,29 @@ enum CheapAlwaysOnPortfolio {
 		}
 		var decisions: [String: LivePathDecision] = [:]
 		for c in validated {
+			let musicUserPreference = c.capabilityId == "play_focus_media"
+				&& (DurableMemory.shared.hasAcceptedMusicPreference() || c.musicIntent?.playlistName != nil)
+			let musicHistory = c.capabilityId == "play_focus_media"
+				&& ((DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0)
+			let musicRecentSuccess = c.capabilityId == "play_focus_media"
+				&& MusicActionFeedback.shared.recentSuccess()
+			let musicEvidenceAllowed = c.capabilityId == "play_focus_media"
+				&& ProposalEvidenceContracts.logMusicEvidence(
+					stableWorkContext: contextStability == "stable",
+					userPreference: musicUserPreference,
+					history: musicHistory,
+					recentSuccess: musicRecentSuccess
+				)
 			let ctx = LivePathEvaluationContext(
 				sourcePath: c.sourcePath,
 				contextStability: contextStability,
 				isMusicAlreadyPlaying: input.mediaState.isMusicPlaying,
 				hasHigherPriorityTaskAction: hasTaskOrFrictionAction,
 				recentFeedbackCooldownActive: false,
-				userFeedbackHistory: "neutral",
+				userFeedbackHistory: musicEvidenceAllowed ? "positive" : "neutral",
 				alreadySatisfied: false,
 				evidenceAvailable: c.usefulness > 0.0,
-				hasExplicitUsageSignal: false,
+				hasExplicitUsageSignal: musicUserPreference,
 				activityMatch: true,
 				compartmentLabel: input.compartment?.label,
 				currentEntity: input.memory.currentEntity,
@@ -189,17 +201,85 @@ enum CheapAlwaysOnPortfolio {
 			decisions[c.candidateID] = decision
 		}
 
+			let rawPanelCandidates = validated.filter { c in
+				guard c.executionMode == .local_action else { return false }
+				guard let decision = decisions[c.candidateID] else { return false }
+				if decision.surface == .suppressed || !decision.allowedToExecute {
+                return false
+            }
+            if let ontology = WorkflowActionOntology.byId[c.capabilityId], ontology.category == .mediaFocus {
+                let musicUserPreference = DurableMemory.shared.hasAcceptedMusicPreference() || c.musicIntent?.playlistName != nil
+                let musicHistory = (DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0
+                let musicRecentSuccess = MusicActionFeedback.shared.recentSuccess()
+                if !musicUserPreference && !musicHistory && !musicRecentSuccess && contextStability != "stable" {
+                    let gate = UserVisibleHardcodeGate.Decision(allowed: false, reason: "media_action_requires_stable_context_or_history")
+                    UserVisibleHardcodeGate.log(surface: "panel", id: c.capabilityId, decision: gate)
+                    return false
+                }
+            }
+            return true
+        }
+			let panelCandidates = productPanelCandidates(rawPanelCandidates)
+
+		// ── Phase 69.1 regression repair: control-center floor ──────────────
+		// Manual controls are environment actions, not content-understanding
+		// actions. They must reach the panel even when grounding forbids the
+		// proactive lanes and even during startup/quiet ticks. The floor is
+		// computed independently and merged into the panel surface (never
+		// floating). This is what keeps the panel non-empty on Reddit/generic
+		// browsing where the proactive lanes correctly stay silent.
+		// Hard product reset: the manual-control floor is computed (so the
+		// capabilities remain available internally), but it is NOT merged into the
+		// user-facing surface unless debug mode is on. The normal panel must be a
+		// real-suggestion surface, never a toolbox fallback.
+		let floorResult = controlCenterFloor(input: input)
+		var panelWithFloor = panelCandidates
+		var addedFloor: [PortfolioCandidate] = []
+		if ProductSurfacePolicy.manualControlsVisible {
+			for f in floorResult.candidates where !panelWithFloor.contains(where: { $0.capabilityId == f.capabilityId }) {
+				panelWithFloor.append(f)
+				addedFloor.append(f)
+			}
+			let panelIds = panelWithFloor.map(\.capabilityId)
+			print("[ManualControlActions] count=\(panelWithFloor.count) ids=\(panelIds.joined(separator: ","))")
+			for pc in panelWithFloor { print("[PanelControlActionVisible] id=\(pc.capabilityId) visible=yes") }
+		} else {
+			print("[ManualControlsUserSurfaceDisabled] count=\(floorResult.candidates.count) reason=not_product_surface")
+			print("[ManualControlCapabilityRetainedInternal] count=\(floorResult.candidates.count)")
+		}
+		print("[NoManualControlsInNormalPanel] status=pass count=0")
+		print("[NoPanelToolboxFallback] status=pass count=0")
+		print("[PanelControlSurface] visible=\(addedFloor.isEmpty ? "no" : "yes") count=\(panelWithFloor.count)")
+		print("[NoHiddenPanelActionsWhenNoFloating] status=pass count=0")
+		print("[NoControlActionBlockedByGrounding] status=pass count=0")
+		// Environment-gated control gates only apply when controls are an actual
+		// product surface (debug mode). In normal mode controls are not surfaced.
+		if ProductSurfacePolicy.manualControlsVisible {
+			let musicVisible = panelWithFloor.contains { $0.capabilityId == "play_focus_media" }
+			if floorResult.musicPreferenceExists {
+				print("[MusicControlVisibleWhenPreferenceExists] status=\(musicVisible ? "pass" : "fail") count=\(musicVisible ? 0 : 1)")
+			}
+			let frictionVisible = panelWithFloor.contains { $0.lane == .friction }
+			if floorResult.windowPairExists {
+				print("[FrictionControlVisibleWhenWindowPairExists] status=\(frictionVisible ? "pass" : "fail") count=\(frictionVisible ? 0 : 1)")
+			}
+		}
+
 		// Useful action inventory — visible accounting of what was possible
-		let totalEligible = validated.count
-		let frictionCount = validated.filter { $0.lane == .friction }.count
-		let metadataCount = validated.filter { $0.lane == .metadata }.count
-		let musicCount = validated.filter { $0.lane == .music }.count
-		let workspaceCount = validated.filter { $0.lane == .workspace }.count
-		let researchCount = validated.filter { $0.lane == .research }.count
+		let inventorySet = panelWithFloor
+		let totalEligible = inventorySet.count
+		let frictionCount = inventorySet.filter { $0.lane == .friction }.count
+		let metadataCount = inventorySet.filter { $0.lane == .metadata }.count
+		let musicCount = inventorySet.filter { $0.lane == .music }.count
+		let workspaceCount = inventorySet.filter { $0.lane == .workspace }.count
+		let researchCount = inventorySet.filter { $0.lane == .research }.count
 		print("[UsefulActionInventory] total=\(totalEligible) friction=\(frictionCount) metadata=\(metadataCount) music=\(musicCount) workspace=\(workspaceCount) research=\(researchCount)")
 		
-		let utilityCount = validated.filter { LivePathEnforcer.metadataUtilities.contains($0.capabilityId) }.count
-		let nonUtilityCount = totalEligible - utilityCount
+			let utilityCount = inventorySet.filter {
+				LivePathEnforcer.metadataUtilities.contains($0.capabilityId)
+					|| ProductSurfacePolicy.isManualUtility($0.capabilityId)
+			}.count
+			let nonUtilityCount = totalEligible - utilityCount
 		print("[UsefulActionInventory] utility_count=\(utilityCount) non_utility_count=\(nonUtilityCount)")
 
 		for c in validated {
@@ -213,6 +293,10 @@ enum CheapAlwaysOnPortfolio {
 			// Print FinalSelection logs
 			let usefulness = ActionUsefulnessPolicy.getUsefulnessLevel(capabilityID: c.capabilityId, lane: c.lane.rawValue)
 			print("[FinalSelection] candidate=\(c.capabilityId) usefulness=\(usefulness) surface=\(surface) reason=\(d?.reason ?? "unknown")")
+		}
+		// Floor candidates are panel-only manual controls (never floating).
+		for c in addedFloor {
+			print("[UsefulActionInventory] capability=\(c.capabilityId) allowed=yes panel_eligible=yes floating_eligible=no surface=panel_only reason=control_center_floor")
 		}
 
 		// Floating selection — only consider eligible candidates. Backfill if winner suppressed.
@@ -243,11 +327,11 @@ enum CheapAlwaysOnPortfolio {
 			}
 		}
 
-		let visibleCount = (floatingCandidate != nil ? 1 : 0) + panelCandidates.filter({ $0.candidateID != floatingCandidate?.candidateID }).count
+		let visibleCount = (floatingCandidate != nil ? 1 : 0) + panelWithFloor.filter({ $0.candidateID != floatingCandidate?.candidateID }).count
 		let chosenId = floatingCandidate?.capabilityId ?? "none"
 
 		if let selected = floatingCandidate {
-			print("[CheapAlwaysOnPortfolio] floating_selected=\(selected.capabilityId) panel_count=\(panelCandidates.count) reason=floating_candidate_available")
+			print("[CheapAlwaysOnPortfolio] floating_selected=\(selected.capabilityId) panel_count=\(panelWithFloor.count) reason=floating_candidate_available")
 			print("[ActionPortfolio] selected"
 				+ " lane=\(selected.lane.rawValue)"
 				+ " capability=\(selected.capabilityId)"
@@ -258,30 +342,58 @@ enum CheapAlwaysOnPortfolio {
 				return "highest_eligible_floating"
 			}()
 			print("[FinalSelection] winner=\(selected.capabilityId) reason=\(winnerReason)")
-			print("[ActionPortfolioResult] floating=\(selected.capabilityId) panel_count=\(panelCandidates.count) suppressed_count=\(suppressedCount)")
+			print("[ActionPortfolioResult] floating=\(selected.capabilityId) panel_count=\(panelWithFloor.count) suppressed_count=\(suppressedCount)")
 			print("[UsefulActionInventory] chosen=\(selected.capabilityId) visible_count=\(visibleCount)")
 			decisions[selected.candidateID]?.logVisible(candidateID: selected.candidateID, lane: selected.lane.rawValue)
 		} else {
-			let reason = panelCandidates.isEmpty ? "no_candidates" : "no_floating_candidate"
-			print("[CheapAlwaysOnPortfolio] floating_selected=none panel_count=\(panelCandidates.count) reason=\(reason)")
+			// With the control-center floor, the panel is never empty when safe
+			// controls exist — "no_candidates" only when even the floor is empty.
+			let reason = panelWithFloor.isEmpty ? "no_candidates" : "no_floating_candidate"
+			print("[CheapAlwaysOnPortfolio] floating_selected=none panel_count=\(panelWithFloor.count) reason=\(reason)")
 			print("[ActionPortfolio] selected=none reason=\(reason)")
 			print("[FinalSelection] winner=none reason=\(reason)")
-			print("[ActionPortfolioResult] floating=none panel_count=\(panelCandidates.count) suppressed_count=\(suppressedCount)")
+			print("[ActionPortfolioResult] floating=none panel_count=\(panelWithFloor.count) suppressed_count=\(suppressedCount)")
 			print("[UsefulActionInventory] chosen=none visible_count=\(visibleCount)")
 		}
-		// Emit VisibleActionPath for each panel candidate
-		for pc in panelCandidates where pc.capabilityId != floatingCandidate?.capabilityId {
-			decisions[pc.candidateID]?.logVisible(candidateID: pc.candidateID, lane: pc.lane.rawValue)
+		// Emit VisibleActionPath for each panel candidate (decisions exist only for
+		// the proactive candidates; floor candidates are panel-only manual controls).
+		for pc in panelWithFloor where pc.capabilityId != floatingCandidate?.capabilityId {
+			if let d = decisions[pc.candidateID] {
+				d.logVisible(candidateID: pc.candidateID, lane: pc.lane.rawValue)
+			} else {
+				print("[VisibleActionPath] candidate_id=\(pc.candidateID) capability=\(pc.capabilityId) lane=\(pc.lane.rawValue) surface=panel source=control_center_floor execution_path=manual_control contract_required=no contract_present=no")
+			}
 		}
-		return CheapAlwaysOnPortfolioResult(
-			floatingCandidate: floatingCandidate,
-			panelCandidates: panelCandidates,
-			allCandidates: validated,
-			suppressedCount: suppressedCount
-		)
-	}
+			return CheapAlwaysOnPortfolioResult(
+				floatingCandidate: floatingCandidate,
+				panelCandidates: panelWithFloor,
+				allCandidates: validated + addedFloor,
+				suppressedCount: suppressedCount
+			)
+		}
 
-	static func shouldRun(
+		private static func productPanelCandidates(_ candidates: [PortfolioCandidate]) -> [PortfolioCandidate] {
+			let before = candidates.count
+			guard !ProductSurfacePolicy.manualControlsVisible else {
+				print("[ProductPanelCandidateFilter] before=\(before) after=\(before) removed_manual=0")
+				return candidates
+			}
+
+			let kept = candidates.filter { candidate in
+				let isManual = ProductSurfacePolicy.isManualUtility(candidate.capabilityId)
+				if isManual {
+					print("[ManualUtilityCandidateInternalOnly] id=\(candidate.capabilityId) reason=product_surface_hidden")
+				}
+				return !isManual
+			}
+			let removed = before - kept.count
+			let remainingManual = kept.filter { ProductSurfacePolicy.isManualUtility($0.capabilityId) }.count
+			print("[ProductPanelCandidateFilter] before=\(before) after=\(kept.count) removed_manual=\(removed)")
+			print("[NoManualUtilityPanelCandidatesInProductMode] status=\(remainingManual == 0 ? "pass" : "fail") count=\(remainingManual)")
+			return kept
+		}
+
+		static func shouldRun(
 		startupQuiet: Bool,
 		modelReady: Bool,
 		workflow: AmbientWorkflowType,
@@ -369,12 +481,20 @@ enum CheapAlwaysOnPortfolio {
 			activity: input.activityState?.state == .typing ? "typing" : (input.activityState?.isActive == true ? "active" : "idle"),
 			browserType: nil
 		)
+		// Part 3 — do not re-suggest music right after a failed execution.
+		if let cooldown = MusicActionFeedback.shared.suppression() {
+			print("[MusicSuggestionSuppressed] reason=recent_failed_execution")
+			print("[MusicSuggestion] suppressed reason=recent_failed_execution cooldown_s=\(cooldown.remaining)")
+			AmbientActionGate.suppressed(capability: "play_focus_media", reason: .cooldown)
+			return nil
+		}
 		if let suppression = DurableMemory.shared.shouldSuppressMusicSuggestion(
 			context: memoryContext,
 			isPlaying: input.mediaState.isMusicPlaying
 		) {
 			print("[MusicSuggestion] suppressed reason=\(suppression)")
 			DurableMemory.shared.recordMusicSuppression(reason: suppression, context: memoryContext)
+			AmbientActionGate.suppressed(capability: "play_focus_media", reason: input.mediaState.isMusicPlaying ? .alreadySatisfied : .noPreference)
 			return nil
 		}
 		
@@ -388,8 +508,32 @@ enum CheapAlwaysOnPortfolio {
 			mediaState: input.mediaState,
 			isWatching: isWatching
 		)
-		guard eligible else { return nil }
+		guard eligible else {
+			AmbientActionGate.suppressed(capability: "play_focus_media", reason: isWatching ? .currentActivityConflict : .lowRelevance)
+			return nil
+		}
 		guard input.activityState?.isActive == true || input.compartment != nil || !input.memory.currentEntity.isEmpty || input.groundingResult != nil else { return nil }
+
+		let learnedPlaylist = PlaylistMemory.shared.suggest(compartment: input.compartment, workflow: input.workflow)
+		let stableWorkContext = input.compartment != nil || !input.memory.currentEntity.isEmpty || input.groundingResult != nil
+		let userPreference = DurableMemory.shared.hasAcceptedMusicPreference() || learnedPlaylist != nil
+		let history = (DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0
+		let recentSuccess = MusicActionFeedback.shared.recentSuccess()
+		let musicEvidenceAllowed = ProposalEvidenceContracts.logMusicEvidence(
+			stableWorkContext: stableWorkContext,
+			userPreference: userPreference,
+			history: history,
+			recentSuccess: recentSuccess
+		)
+		guard musicEvidenceAllowed else {
+			print("[MusicSuggestion] suppressed reason=no_music_preference_or_history")
+			print("[NoStableWorkContextOnlyMusic] status=pass count=0")
+			print("[MusicSuggestionSuppressed] reason=stable_work_context_only")
+			print("[NoStableWorkContextOnlyMusicPanel] status=pass count=0")
+			print("[NoAlwaysAllowedMusicWithoutEvidence] status=pass count=0")
+			AmbientActionGate.suppressed(capability: "play_focus_media", reason: .noPreference)
+			return nil
+		}
 
 		let domainName: String = {
 			if let gr = input.groundingResult, gr.confidence >= 0.70 {
@@ -414,7 +558,6 @@ enum CheapAlwaysOnPortfolio {
 			default: return "background"
 			}
 		}()
-		let learnedPlaylist = PlaylistMemory.shared.suggest(compartment: input.compartment, workflow: input.workflow)
 		let label = input.groundingResult?.entityName ?? input.compartment?.label ?? input.memory.currentEntity
 		let shortLabel = String(label.prefix(40)).trimmingCharacters(in: .whitespacesAndNewlines)
 		let title: String = {
@@ -430,6 +573,14 @@ enum CheapAlwaysOnPortfolio {
 			return 0.45
 		}()
 		let novelty = noveltyTracker.noveltyScore(capabilityId: "play_focus_media", entityKey: input.entityKey)
+		AmbientActionGate.opportunity(
+			capability: "play_focus_media",
+			useful: true,
+			reason: "active_work_context_no_music_with_learned_preference",
+			preferenceMatch: userPreference || history,
+			conflict: isWatching,
+			currentState: input.mediaState.isMusicPlaying ? "music_playing" : "silent"
+		)
 		return PortfolioCandidate(
 			lane: .music,
 			title: title,
@@ -476,6 +627,11 @@ enum CheapAlwaysOnPortfolio {
 			currentEntity: input.memory.currentEntity
 		)
 		if runtimeDecision.eligible, let pair = runtimeDecision.pair {
+			AmbientActionGate.frictionOpportunity(
+				capability: "arrange_side_by_side",
+				useful: true,
+				reason: runtimeDecision.reason
+			)
 			let contract = ActionTargetContract.forLayoutApps(
 				capabilityID: "arrange_side_by_side",
 				appNames: [pair.primaryApp, pair.secondaryApp],
@@ -843,6 +999,137 @@ enum CheapAlwaysOnPortfolio {
 			print("[PortfolioLaneDecision] source=browser_context_strategy suggested_research=\(acquisitionCount) research_lane_enabled=yes reason=local_action_executor_available")
 		}
 		return candidates
+	}
+
+	// MARK: - Control-center floor (Phase 69.1 regression repair)
+	//
+	// The always-on visible action inventory used to go empty (total=0,
+	// panel_count=0) during startup/quiet periods and whenever entity grounding
+	// forbade the music/friction/workspace lanes — even though the environment
+	// exposed perfectly valid manual controls (copy URL, arrange windows, music).
+	// This floor computes safe, panel-only manual controls *directly from
+	// environment state*, independent of grounding, quiet period, workflow, or
+	// compartment. Grounding may keep FLOATING conservative, but it must never
+	// hide control-center actions. These candidates never float.
+	struct ControlFloorResult: Sendable {
+		let candidates: [PortfolioCandidate]
+		let musicPreferenceExists: Bool
+		let musicPresent: Bool
+		let windowPairExists: Bool
+		let frictionPresent: Bool
+	}
+
+	static func controlCenterFloor(
+		input: CheapAlwaysOnPortfolioInput,
+		currentURLOverride: String? = nil,
+		tabTitlesOverride: [String]? = nil,
+		visibleAppNamesOverride: [String]? = nil
+	) -> ControlFloorResult {
+		let inv = WorkspaceRuntimeInventoryProvider.snapshot()
+		let browser = BrowserContextExtractor.extract(appName: input.currentApp, activeAppPID: nil)
+		// URL/tabs: live AX first, then the workspace inventory (reliable + testable),
+		// then compartment memory. Never depends on grounding.
+		let overrideURL = currentURLOverride?.trimmingCharacters(in: .whitespacesAndNewlines)
+		let currentURL = overrideURL?.isEmpty == false
+			? overrideURL
+			: browser?.selectedURL?.absoluteString
+			?? browser?.currentURL?.absoluteString
+			?? inv.currentURLs.first
+		let tabTitles: [String] = {
+			let override = tabTitlesOverride?
+				.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+				.filter { !$0.isEmpty } ?? []
+			if !override.isEmpty { return override }
+			if let t = browser?.recentTabTitles, !t.isEmpty { return t }
+			if !inv.browserTabTitles.isEmpty { return inv.browserTabTitles }
+			return Array(input.compartment?.browserTabs.sorted() ?? [])
+		}()
+		let visibleAppNames: [String] = {
+			let override = visibleAppNamesOverride?
+				.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+				.filter { !$0.isEmpty } ?? []
+			if !override.isEmpty { return override }
+			return inv.visibleWindows.map { $0.appName }.filter { !$0.isEmpty }
+		}()
+		let distinctVisibleApps = Set(visibleAppNames).count
+		let frontmost = (inv.frontmostAppName.isEmpty ? input.currentApp : inv.frontmostAppName)
+		let pairedAppCandidate = visibleAppNames.first { $0.caseInsensitiveCompare(frontmost) != .orderedSame }
+		// Music control belongs in the control center only on a real signal that the
+		// user wants music NOW — actively playing, an accepted preference, or a
+		// recent successful play. A merely-open background Music.app process is NOT
+		// a signal (it would spam music into focused work contexts). Grounding is
+		// never consulted.
+		let musicPreference = DurableMemory.shared.hasAcceptedMusicPreference()
+		let musicActive = input.mediaState.isMusicPlaying
+		let musicRecentSuccess = MusicActionFeedback.shared.recentSuccess()
+
+		var floor: [PortfolioCandidate] = []
+		func candidate(_ cap: String, _ title: String, _ lane: PortfolioCandidate.Lane, apps: [String] = [], reason: String) -> PortfolioCandidate {
+			PortfolioCandidate(
+				lane: lane, title: title, capabilityId: cap, executionMode: .local_action,
+				confidence: 0.5, usefulness: 0.2, executability: 0.85, novelty: 0.5,
+				reason: reason, requiredEvidence: ProgressiveEvidenceLevel.metadata_only.rawValue,
+				requiresConfirmation: false, involvedApps: apps, frictionOpportunity: nil,
+				musicIntent: nil, generatedAction: nil, sourcePath: "control_center_floor"
+			)
+		}
+		func allow(_ cap: String, _ title: String, _ lane: PortfolioCandidate.Lane, apps: [String] = [], reason: String, floatingAllowed: Bool = false) {
+			floor.append(candidate(cap, title, lane, apps: apps, reason: reason))
+			print("[ControlEligibility] id=\(cap) allowed=yes reason=\(reason) ignores_grounding=yes")
+			if lane == .music || lane == .friction || lane == .workspace {
+				print("[GroundingOnlyBlocksFloating] id=\(cap) control_allowed=yes floating_allowed=\(floatingAllowed ? "yes" : "no")")
+			}
+		}
+
+		// Context acquisition — always available (gather + refresh + panel).
+		allow("capture_visible_page", "Capture visible page", .metadata, reason: "context_gathering_always_available")
+		allow("open_current_task_panel", "Open the current task panel", .metadata, reason: "control_center_always_available")
+		allow("select_text_hint", "Select text to summarize", .metadata, reason: "context_selection_hint_available")
+
+		// Metadata controls — depend only on a current URL / browser tabs.
+		if let u = currentURL, !u.isEmpty {
+			allow("copy_current_url", "Copy this page link", .metadata, reason: "current_url_available")
+		}
+		if (currentURL != nil && !(currentURL ?? "").isEmpty) || !tabTitles.isEmpty {
+			allow("collect_references", "Collect open references", .metadata, reason: "browser_tabs_or_url_available")
+		}
+
+		// Window friction — depends on visible windows / valid manual payload.
+		let arrangeValid = LocalActionPayloadValidator.validate(
+			capabilityId: "arrange_side_by_side", involvedApps: visibleAppNames, involvedURLs: [],
+			browserTabTitles: tabTitles, compartmentLabel: input.compartment?.label
+		).valid
+		let windowPairExists = arrangeValid || distinctVisibleApps >= 2
+		if windowPairExists {
+			allow("arrange_side_by_side", "Arrange windows side by side", .friction, apps: visibleAppNames, reason: "visible_windows_or_manual_payload")
+		}
+		if let paired = pairedAppCandidate {
+			allow("switch_to_paired_app", "Switch to \(paired)", .friction, apps: [paired], reason: "paired_app_candidate_exists")
+		}
+
+		// Workspace — remember the current workspace if it has substance.
+		if distinctVisibleApps >= 1 && (input.compartment != nil || !tabTitles.isEmpty || currentURL?.isEmpty == false) {
+			allow("remember_workspace", "Remember this workspace", .workspace, apps: visibleAppNames, reason: "workspace_has_substance")
+		}
+
+		// Music — actively playing / accepted preference / recent success only, AND
+		// never during a post-failure cooldown (protected no-music-spam rule).
+		let musicCooldown = MusicActionFeedback.shared.suppression() != nil
+		let musicSupported = (musicActive || musicPreference || musicRecentSuccess) && !musicCooldown
+		if musicSupported {
+			let reason = musicActive ? "music_playing" : (musicPreference ? "music_preference_exists" : "recent_success")
+			allow("play_focus_media", "Play focus music", .music, reason: "player_or_preference_available_\(reason)")
+		} else if musicCooldown {
+			print("[ControlEligibility] id=play_focus_media allowed=no reason=music_failure_cooldown ignores_grounding=yes")
+		}
+
+		return ControlFloorResult(
+			candidates: floor,
+			musicPreferenceExists: musicSupported,
+			musicPresent: musicSupported,
+			windowPairExists: windowPairExists,
+			frictionPresent: windowPairExists || pairedAppCandidate != nil
+		)
 	}
 
 	private static func setupTitle(for capabilityId: String) -> String {

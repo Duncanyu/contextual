@@ -109,6 +109,16 @@ extension CapabilityExecutor {
         let urlString = (context["urls"] as? [String])?.first
             ?? (context["tabURLs"] as? [String])?.first ?? ""
         let url = URL(string: urlString)
+        let focusKey = EnrichedContextCache.focusKey(
+            activeApp: NSWorkspace.shared.frontmostApplication?.localizedName ?? "",
+            windowTitle: title,
+            url: urlString.isEmpty ? nil : urlString
+        )
+        let enriched = EnrichedContextCache.shared.lookup(key: focusKey, logHit: false)
+        if enriched == nil, let latest = EnrichedContextCache.shared.latestUsable(logHit: false), latest.key != focusKey {
+            print("[ResultContextRejected] source=cache reason=not_current_focus")
+            print("[NoResultGeneratedFromBackgroundContext] status=pass count=0")
+        }
         return WorkflowSignals(
             activeApp: NSWorkspace.shared.frontmostApplication?.localizedName ?? "",
             windowTitle: title,
@@ -118,7 +128,8 @@ extension CapabilityExecutor {
             selectedTextLength: context["selectedTextLength"] as? Int ?? 0,
             contentAvailable: true,   // executor verifies via UCR; assume reachable here
             workflow: context["workflow"] as? String ?? "unknown",
-            visibleAppNames: WorkspaceRuntimeInventoryProvider.snapshot().visibleWindows.map(\.appName)
+            visibleAppNames: WorkspaceRuntimeInventoryProvider.snapshot().visibleWindows.map(\.appName),
+            enrichedContext: enriched
         )
     }
 
@@ -555,6 +566,16 @@ enum LiquidInsightFormatters {
         if status == "needs_capture" {
             return LiquidActionRouter.specificCaptureTitle(for: action, signals: WorkflowSignals(activeApp: "", windowTitle: action.category == .documentsLeases ? "agreement" : ""))
         }
+        // Phase 67 — a structured content action that failed its quality contract
+        // must not wear a success-shaped title. Tell the truth about missing input.
+        if status != "success" {
+            switch action.id {
+            case "flag_risky_clauses": return "I need more agreement text"
+            case "extract_obligations": return "I need more agreement text"
+            case "compare_open_tabs", "create_decision_table": return "I need the listing details"
+            default: break
+            }
+        }
         switch action.id {
         case "flag_risky_clauses": return "Risky clauses I found"
         case "extract_obligations": return "Obligations I found"
@@ -705,8 +726,22 @@ enum LiquidInsightFormatters {
             let dates = Array(Set(dateMentions(text))).prefix(10)
             let deadlineLines = matching(lines(text), any: ["due", "deadline", "no later than", "by the", "expires"], limit: 6)
             let quotedDeadlines = deadlineLines.map { "> \($0)" }
-            let sourceLines = quotedDeadlines.isEmpty ? "_No deadline language visible._" : quotedDeadlines.joined(separator: "\n")
-            return "# Dates & Payments\n\n**Amounts:**\n\(bullets(Array(money), empty: "No dollar amounts visible."))\n\n**Dates:**\n\(bullets(Array(dates), empty: "No dates visible."))\n\n**Source lines:**\n\(sourceLines)\(footer)"
+            let scopeLabel = scope == .fullDocument ? "Full agreement" : "Visible part of agreement"
+            let nothingFound = money.isEmpty && dates.isEmpty && quotedDeadlines.isEmpty
+            // Issue 4/7: structured, readable empty-state — never a bare one-liner.
+            var out = "# Dates & payments\n\n"
+            out += "## Dates\n\(bullets(Array(dates), empty: "None visible in the current viewport"))\n\n"
+            out += "## Payments\n\(bullets(Array(money), empty: "None visible in the current viewport"))\n\n"
+            if !quotedDeadlines.isEmpty {
+                out += "## Deadlines\n\(quotedDeadlines.joined(separator: "\n"))\n\n"
+            }
+            out += "## Source\n\(scopeLabel)\n\n"
+            if nothingFound {
+                out += "## Next step\nCapture the full agreement to check the whole document"
+            } else {
+                out += "## Next step\nReview the full agreement to confirm nothing was missed outside the visible area"
+            }
+            return out + footer
 
         case "detect_missing_terms":
             let standardTerms: [(String, [String])] = [

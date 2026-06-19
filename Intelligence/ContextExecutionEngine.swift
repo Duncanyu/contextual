@@ -34,7 +34,8 @@ enum ContextExecutionEngine {
         overriddenCompartment: TaskCompartment? = nil,
         overriddenEvidenceQuality: String? = nil,
         requestedIntent: String? = nil,
-        requestedGoal: String? = nil
+        requestedGoal: String? = nil,
+        capabilityID: String? = nil
     ) async -> ContextExecutionResult {
         print("[ContextExecutionEngine] started workflow=\(workflow.workflowType.rawValue) behavior=\(behavior.state.rawValue)")
 
@@ -63,13 +64,55 @@ enum ContextExecutionEngine {
         }
 
 		let pageCtx: PublicPageContextExtractor.PublicPageContext
-        if visibleContextOnlyReason == nil {
-            pageCtx = await PublicPageContextExtractor.shared.extract(
-                windowTitle: windowTitle,
-                axTextFragments: axFragments,
-                clipboardText: snapshot?.clipboardText
+        var planRequiresPublicLookup = false
+        if let capID = capabilityID {
+            let plan = ResultIntentPipeline.plan(
+                capabilityID: capID,
+                requestedTitle: windowTitle,
+                requestedURL: browserCtx?.currentURL?.absoluteString ?? "",
+                activeApp: packet.currentApp,
+                selectedTextLength: snapshot?.selectedText?.count ?? 0,
+                hasLocalBody: axFragments.count > 0,
+                sourceSurface: "floating"
             )
+            if plan.source.primary == "public_lookup" || plan.source.fallback == "public_lookup" {
+                planRequiresPublicLookup = true
+            }
+        }
+        
+        if visibleContextOnlyReason == nil && planRequiresPublicLookup {
+            let clipboard = snapshot?.clipboardText ?? ""
+            let hasPublicCandidate = browserCtx?.currentURL != nil
+                || axFragments.contains { $0.contains("http://") || $0.contains("https://") }
+                || clipboard.contains("http://")
+                || clipboard.contains("https://")
+            if hasPublicCandidate {
+                let source = browserCtx?.currentURL != nil ? "url" : "identifier"
+                let confidence = browserCtx?.currentURL != nil ? 0.88 : 0.62
+                print("[PublicLookupCandidate] current_context=\(source) confidence=\(String(format: "%.2f", confidence)) allowed=yes reason=planned_public_context_available")
+                print("[PublicLookupStarted] query_source=\(source) privacy=public_url_metadata_only")
+                pageCtx = await PublicPageContextExtractor.shared.extract(
+                    windowTitle: windowTitle,
+                    axTextFragments: axFragments,
+                    clipboardText: snapshot?.clipboardText
+                )
+                let quality = pageCtx.source == "url_html"
+                    ? ((pageCtx.pageTitle != nil || pageCtx.ogTitle != nil || !pageCtx.productFacts.isEmpty) ? "metadata" : "empty")
+                    : "none"
+                print("[PublicLookupCompleted] result_quality=\(quality)")
+                if pageCtx.source == "url_html" {
+                    PassiveDogfoodMonitor.shared.noteContextSourceChosen("public_lookup")
+                }
+            } else {
+                print("[PublicLookupCandidate] current_context=title confidence=0.30 allowed=no reason=low_confidence")
+                print("[PublicLookupRejected] reason=low_confidence")
+                pageCtx = emptyPublicPageContext()
+            }
         } else {
+            let reason = visibleContextOnlyReason ?? "not_planned"
+            print("[PublicLookupCandidate] current_context=local_visible confidence=0.00 allowed=no reason=\(reason)")
+            print("[PublicLookupRejected] reason=\(reason)")
+            print("[NoPublicLookupForPrivateContext] status=pass count=0")
             pageCtx = emptyPublicPageContext()
         }
 
@@ -230,13 +273,16 @@ enum ContextExecutionEngine {
         )
 
         // Public Web Research Enrichment (Phase 19 & 20C)
-        if evidenceLevel == .metadata_only,
-           shouldAttemptPublicWebResearch(
+        let publicResearchAllowed = planRequiresPublicLookup && evidenceLevel == .metadata_only
+            && shouldAttemptPublicWebResearch(
                 envelope: envelope,
                 browserURL: browserCtx?.currentURL
-           ) {
+            )
+        print("[PublicLookupDecision] use=\(publicResearchAllowed ? "yes" : "no") reason=\(publicResearchAllowed ? "metadata_only_public_context" : (evidenceLevel == .metadata_only ? "unneeded_or_private" : "visible_context_available"))")
+        if publicResearchAllowed {
             print("[ContextEvidence] attempting_public_web_research=yes")
             let searchTitles = !envelope.memory.comparisonCandidates.isEmpty ? envelope.memory.comparisonCandidates : packet.recentTitles
+            print("[PublicLookupStarted] query_source=title privacy=public_search_terms")
             let researchResult = await PublicWebResearchEnricher.shared.searchAndFetch(
                 intent: intent.intent,
                 intentGoal: intent.goal,
@@ -248,12 +294,15 @@ enum ContextExecutionEngine {
                 allCompartments: allComps
             )
             envelope.webResearchFacts = researchResult.facts
+            print("[PublicLookupCompleted] result_quality=\(envelope.webResearchFacts.isEmpty ? "empty" : "public_web_research")")
             if !envelope.webResearchFacts.isEmpty {
                 evidenceQuality = "public_web_research"
                 print("[ContextEvidence] quality=\(evidenceQuality)")
+                PassiveDogfoodMonitor.shared.noteContextSourceChosen("public_lookup")
             }
         } else if evidenceLevel == .metadata_only {
             print("[ContextEvidence] attempting_public_web_research=no reason=visible_context_only")
+            print("[PublicLookupRejected] reason=\(visibleContextOnlyReason == nil ? "unneeded" : "private")")
         }
 
         // Phase 20D — Judgment Layer. Runs AFTER all evidence is gathered,
@@ -316,11 +365,20 @@ enum ContextExecutionEngine {
                 overriddenCompartment: payload.taskCompartmentSnapshot,
                 overriddenEvidenceQuality: payload.evidenceQuality,
                 requestedIntent: suggestion.intent,
-                requestedGoal: suggestion.intentGoal
+                requestedGoal: suggestion.intentGoal,
+                capabilityID: suggestion.topOpportunity?.capabilityId
             )
         }
         
-        return await execute(workflow: workflow, behavior: behavior, packet: packet, snapshot: snapshot, requestedIntent: suggestion.intent, requestedGoal: suggestion.intentGoal)
+        return await execute(
+            workflow: workflow,
+            behavior: behavior,
+            packet: packet,
+            snapshot: snapshot,
+            requestedIntent: suggestion.intent,
+            requestedGoal: suggestion.intentGoal,
+            capabilityID: suggestion.topOpportunity?.capabilityId
+        )
     }
 
 

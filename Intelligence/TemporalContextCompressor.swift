@@ -56,7 +56,9 @@ public enum TemporalContextCompressor {
         let mediumSelections = medium.eventCountsByType[ContextEventType.selectedTextChanged.rawValue] ?? 0
         let mediumTyping = medium.eventCountsByType[ContextEventType.typingStateChanged.rawValue] ?? 0
         let mediumPointer = medium.eventCountsByType[ContextEventType.pointerStateChanged.rawValue] ?? 0
-        print("[WorkflowPacket] titles=\(medium.recentTitles.count) ocr_events=\(mediumOCR) selection_events=\(mediumSelections) typing_events=\(mediumTyping) pointer_events=\(mediumPointer)")
+        let enriched = EnrichedContextCache.shared.latestUsable(logHit: false)
+        let mediumAX = enriched?.evidenceLevel == "ax_text" ? 1 : 0
+        print("[WorkflowPacket] titles=\(medium.recentTitles.count) ocr_events=\(mediumOCR) selection_events=\(mediumSelections) ax_events=\(mediumAX) typing_events=\(mediumTyping) pointer_events=\(mediumPointer)")
         print("[WorkflowPacket] repeated_terms_medium=\(medium.repeatedTerms.count) repeated_terms_long=\(long.repeatedTerms.count) dominant_apps_medium=\(medium.dominantApps.count)")
 
         // B.1.6: declare packet source policy explicitly.
@@ -91,6 +93,14 @@ public enum TemporalContextCompressor {
         } else {
             print("[WorkflowPacket] ocr_hints_source=ocr_events_only ocr_hints_count=\(ocrHints.count)")
         }
+        let enrichedTerms = enriched.map { EnrichedContextCache.contentTerms(from: $0.text, limit: 8) } ?? []
+        let contentHintsSource: String = {
+            guard let enriched else { return ocrHints.isEmpty ? "none" : "ocr_events" }
+            if enriched.evidenceLevel == "ocr_text" { return "ocr_events" }
+            if enriched.evidenceLevel == "ax_text" { return "ax_visible_text" }
+            return "enriched_context"
+        }()
+        print("[WorkflowPacket] content_hints_source=\(contentHintsSource) content_hints_count=\(enrichedTerms.isEmpty ? ocrHints.count : enrichedTerms.count)")
 
         // B.1.6 per-term diagnostic — surfaces raw count vs. weighted score
         // and age at packet build time. This makes recency dominance visible.

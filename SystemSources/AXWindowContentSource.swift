@@ -54,9 +54,10 @@ final class AXWindowContentSource {
             return nil
         }
         
-        let title = copyAXString(window, attribute: kAXTitleAttribute as CFString) ?? ""
-        let windowTitleAvailable = !title.isEmpty
-        let url = BrowserContextExtractor.extract(appName: app.localizedName ?? "", activeAppPID: app.processIdentifier)?.currentURL?.absoluteString ?? ""
+		let title = copyAXString(window, attribute: kAXTitleAttribute as CFString) ?? ""
+		let windowTitleAvailable = !title.isEmpty
+		let url = BrowserContextExtractor.extract(appName: app.localizedName ?? "", activeAppPID: app.processIdentifier)?.currentURL?.absoluteString ?? ""
+		let focusedWindowFrame = copyAXFrame(window)
         
         if let cached = PerformanceBudgetManager.shared.getCachedAX(app: bundleId ?? "", url: url, title: title) {
             print("[PerformanceBudget] skipped reason=cached_context")
@@ -70,6 +71,11 @@ final class AXWindowContentSource {
 
 		var fragments: [String] = []
 		var fragmentChars = 0
+		var acceptedVisibleChars = 0
+		var rejectedInvisibleChars = 0
+		var visibleNodeCount = 0
+		var hiddenNodeCount = 0
+		var offscreenNodeCount = 0
 
 		var kindsSeen: [AXUIKind] = []
 		var kindSet = Set<AXUIKind>()
@@ -91,11 +97,15 @@ final class AXWindowContentSource {
 			}
 		}
 
-		func addFragment(_ s: String) {
+		func addFragment(_ s: String, userVisible: Bool) {
 			guard fragments.count < maxFragments else { return }
 			guard fragmentChars < maxExtractedChars else { return }
 			let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
 			guard !trimmed.isEmpty else { return }
+			guard userVisible else {
+				rejectedInvisibleChars += trimmed.count
+				return
+			}
 			let capped: String
 			if trimmed.count > maxFragmentLength {
 				let idx = trimmed.index(trimmed.startIndex, offsetBy: maxFragmentLength)
@@ -109,6 +119,7 @@ final class AXWindowContentSource {
 			if capped.count > remaining { return }
 			fragments.append(capped)
 			fragmentChars += capped.count
+			acceptedVisibleChars += capped.count
 		}
 
 		// DFS with bounds + time budget.
@@ -123,8 +134,27 @@ final class AXWindowContentSource {
 			visited += 1
 			maxSeenDepth = max(maxSeenDepth, depth)
 
-			// Skip hidden nodes when possible.
+			// Skip hidden/offscreen nodes before extracting text. Unknown-bounds
+			// nodes are traversed, but their own text is not accepted as primary
+			// visible context unless child bounds prove visibility.
 			if let hidden = copyAXBool(node, attribute: "AXHidden" as CFString), hidden {
+				hiddenNodeCount += 1
+				continue
+			}
+			let visibility = visibilityState(for: node, focusedWindowFrame: focusedWindowFrame)
+			let nodeTextVisible: Bool
+			switch visibility {
+			case .visible:
+				visibleNodeCount += 1
+				nodeTextVisible = true
+			case .offscreen:
+				offscreenNodeCount += 1
+				nodeTextVisible = false
+			case .unknown:
+				hiddenNodeCount += 1
+				nodeTextVisible = false
+			}
+			if visibility == .offscreen {
 				continue
 			}
 
@@ -136,19 +166,19 @@ final class AXWindowContentSource {
 				recordKind(.button)
 				interactiveCount += 1
 				buttonCount += 1
-				if let t = copyAXString(node, attribute: kAXTitleAttribute as CFString) { addFragment(t) }
-				if let d = copyAXString(node, attribute: kAXDescriptionAttribute as CFString) { addFragment(d) }
+				if let t = copyAXString(node, attribute: kAXTitleAttribute as CFString) { addFragment(t, userVisible: nodeTextVisible) }
+				if let d = copyAXString(node, attribute: kAXDescriptionAttribute as CFString) { addFragment(d, userVisible: nodeTextVisible) }
 
 			case "AXTextField":
 				recordKind(.textField)
 				interactiveCount += 1
 				textFieldCount += 1
-				if let p = copyAXString(node, attribute: "AXPlaceholderValue" as CFString) { addFragment(p) }
-				if let v = copyAXString(node, attribute: kAXValueAttribute as CFString), v.count <= 120 { addFragment(v) }
+				if let p = copyAXString(node, attribute: "AXPlaceholderValue" as CFString) { addFragment(p, userVisible: nodeTextVisible) }
+				if let v = copyAXString(node, attribute: kAXValueAttribute as CFString), v.count <= 120 { addFragment(v, userVisible: nodeTextVisible) }
 
 			case "AXStaticText":
 				recordKind(.staticText)
-				if let v = copyAXString(node, attribute: kAXValueAttribute as CFString) { addFragment(v) }
+				if let v = copyAXString(node, attribute: kAXValueAttribute as CFString) { addFragment(v, userVisible: nodeTextVisible) }
 
 			case "AXScrollArea":
 				recordKind(.scrollArea)
@@ -178,10 +208,10 @@ final class AXWindowContentSource {
 				recordKind(.editor)
 				hasEditor = true
 				if let selected = copyAXString(node, attribute: kAXSelectedTextAttribute as CFString), selected.count <= 180 {
-					addFragment(selected)
+					addFragment(selected, userVisible: nodeTextVisible)
 				}
 				if let v = copyAXString(node, attribute: kAXValueAttribute as CFString), v.count <= 180 {
-					addFragment(v)
+					addFragment(v, userVisible: nodeTextVisible)
 				}
 
 			default:
@@ -219,6 +249,9 @@ final class AXWindowContentSource {
 		if hasToolbar { conf += 0.05 }
 		if hasScroll { conf += 0.05 }
 		if didHitLimit { conf -= 0.08 }
+		let scopedNodeTotal = max(visibleNodeCount + hiddenNodeCount + offscreenNodeCount, 1)
+		let userVisibleConfidence = Double(visibleNodeCount) / Double(scopedNodeTotal)
+		if userVisibleConfidence < 0.50 { conf -= 0.18 }
 		conf = max(0.0, min(1.0, conf))
 
 		let ctx = AXWindowContentContext(
@@ -236,7 +269,13 @@ final class AXWindowContentSource {
 			containsFormLikeRegion: hasForm,
 			containsTableLikeRegion: hasTable,
 			hierarchyDepthEstimate: maxSeenDepth,
-			extractionConfidence: conf
+			extractionConfidence: conf,
+			visibleNodeCount: visibleNodeCount,
+			hiddenNodeCount: hiddenNodeCount,
+			offscreenNodeCount: offscreenNodeCount,
+			acceptedVisibleChars: acceptedVisibleChars,
+			rejectedInvisibleChars: rejectedInvisibleChars,
+			userVisibleConfidence: userVisibleConfidence
 		)
 
 		lastContext = ctx
@@ -244,6 +283,14 @@ final class AXWindowContentSource {
         PerformanceBudgetManager.shared.setCachedAX(app: bundleId ?? "", url: url, title: title, context: ctx)
 
 		let c = String(format: "%.2f", conf)
+		let vc = String(format: "%.2f", userVisibleConfidence)
+		print("[AXVisibilityScope] nodes=\(visited) visible_nodes=\(visibleNodeCount) hidden_nodes=\(hiddenNodeCount) offscreen_nodes=\(offscreenNodeCount) accepted_chars=\(acceptedVisibleChars) rejected_chars=\(rejectedInvisibleChars)")
+			print("[AXContextVisibility] user_visible=\(userVisibleConfidence >= 0.65 ? "yes" : "unknown") reason=\(userVisibleConfidence >= 0.65 ? "focused_window_bounds" : "insufficient_visible_bounds") confidence=\(vc)")
+			if userVisibleConfidence < 0.65 {
+				print("[AXContextRejected] reason=offscreen")
+				print("[NoInvisibleAXPrimaryContext] status=pass count=0")
+				PassiveDogfoodMonitor.shared.noteHiddenAXRejected()
+			}
 		print("[AXContent] extracted app=\(app.localizedName ?? "nil") nodes=\(visited) textFragments=\(fragments.count) conf=\(c)")
 		ContextDebugLogger.shared.log(
 			stage: .ax,
@@ -287,6 +334,38 @@ final class AXWindowContentSource {
 		return nil
 	}
 
+	private enum AXVisibilityState {
+		case visible
+		case offscreen
+		case unknown
+	}
+
+	private func visibilityState(for element: AXUIElement, focusedWindowFrame: CGRect?) -> AXVisibilityState {
+		guard let focusedWindowFrame, let frame = copyAXFrame(element), !frame.isEmpty else {
+			return .unknown
+		}
+		let intersection = focusedWindowFrame.intersection(frame)
+		guard !intersection.isNull, !intersection.isEmpty else {
+			return .offscreen
+		}
+		let minVisibleArea = max(8.0, min(frame.width * frame.height, 64.0))
+		return intersection.width * intersection.height >= minVisibleArea ? .visible : .offscreen
+	}
+
+	private func copyAXFrame(_ element: AXUIElement) -> CGRect? {
+		var posRef: CFTypeRef?
+		var sizeRef: CFTypeRef?
+		guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posRef) == .success,
+		      AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRef) == .success,
+		      let posRef,
+		      let sizeRef else { return nil }
+		var point = CGPoint.zero
+		var size = CGSize.zero
+		guard AXValueGetValue((posRef as! AXValue), .cgPoint, &point),
+		      AXValueGetValue((sizeRef as! AXValue), .cgSize, &size) else { return nil }
+		return CGRect(origin: point, size: size)
+	}
+
 	private func copyAXElement(_ element: AXUIElement, attribute: CFString) -> AXUIElement? {
 		var value: CFTypeRef?
 		guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else { return nil }
@@ -318,4 +397,3 @@ extension AXWindowContentSource {
 		return true
 	}
 }
-

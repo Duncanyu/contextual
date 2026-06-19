@@ -636,6 +636,17 @@ enum SuggestionSurfacePolicy: Sendable {
                 print("[MusicSuggestion] suppressed reason=already_playing")
                 return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "already_playing", expectedFriction: .low)
             }
+            let hasMusicEvidence = ProposalEvidenceContracts.logMusicEvidence(
+                stableWorkContext: true,
+                userPreference: userAcceptedMusicBefore,
+                history: recentFeedback == "accepted",
+                recentSuccess: MusicActionFeedback.shared.recentSuccess()
+            )
+            guard hasMusicEvidence else {
+                print("[MusicSuggestion] suppressed reason=no_music_preference_or_history")
+                print("[NoStableWorkContextOnlyMusic] status=pass count=0")
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "no_music_preference_or_history", expectedFriction: .low)
+            }
             if recentFeedback == "accepted" {
                 print("[MusicSuggestion] suppressed reason=recently_accepted")
                 return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "recently_accepted", expectedFriction: .low)
@@ -661,9 +672,9 @@ enum SuggestionSurfacePolicy: Sendable {
             // Phase 40 — first-time users still need to see music as a usable panel action.
             // `no_prior_music_acceptance` keeps it surfaced as panel_only, never suppressed.
             if userAcceptedMusicBefore {
-                return logAndReturn(capabilityId: capabilityId, surface: .floatingInterrupt, reason: "music_idle_context_match", expectedFriction: .medium)
+                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "music_preference_panel_only", expectedFriction: .medium)
             } else {
-                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "first_time_panel_safe", expectedFriction: .low)
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "no_music_preference_or_history", expectedFriction: .low)
             }
             
         case "restore_workspace", "restore_research_tabs":
@@ -714,8 +725,15 @@ enum SuggestionSurfacePolicy: Sendable {
             } else {
                 return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
             }
+
+        case "capture_visible_page", "capture_full_document", "explicit_visible_capture_summary", "enable_browser_bridge", "select_text_hint":
+            print("[InternalAcquisitionAction] id=\(capabilityId) user_visible=followup_or_panel_only reason=surface_policy_panel_only")
+            if capabilityId == "capture_visible_page" {
+                print("[NoFloatingCaptureVisiblePage] status=pass count=0")
+            }
+            return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "internal_acquisition_panel_only", expectedFriction: .low)
             
-        case "explicit_visible_capture_summary", "extract_action_items", "create_checklist",
+        case "extract_action_items", "create_checklist",
              "summarize_visible_content", "rewrite_text", "improve_text", "draft_reply", "explain_context":
             // Phase 43 — Cognitive preparation actions are the primary product value.
             // They should proactively float (not be buried in the panel) when safe conditions are met.

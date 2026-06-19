@@ -444,7 +444,80 @@ enum ActionPortfolioEngine {
             funnelAudit?.recordRanking(v.capabilityId, lane: v.lane.rawValue, survived: true, reason: "score_\(String(format: "%.3f", v.score))")
         }
 
-		let panelCandidates = candidates.filter { $0.executionMode == .local_action }
+		// Phase 36.1 — Live path enforcement gate (before panel assembly).
+		// Surface policy decides what may float. Family winner by score alone is not sufficient.
+		let contextStability: String = {
+			if compartment != nil && !memory.currentEntity.isEmpty { return "stable" }
+			if memory.currentEntity.isEmpty && compartment == nil { return "weak" }
+			return "transient"
+		}()
+		let hasHigherPriorityTaskAction = viable.contains { c in
+			let isTaskFamily = (c.family == .workspace || c.family == .media || c.family == .writing || c.family == .coding)
+			let isNotExcludedMedia = c.capabilityId != "play_focus_media" && c.capabilityId != "resume_focus_media"
+			let isNotMetadata = !LivePathEnforcer.metadataUtilities.contains(c.capabilityId)
+			let isNotPinTabs = c.capabilityId != "pin_reference_tabs"
+			let isHighQuality = c.score >= qualityThreshold
+			return isTaskFamily && isNotExcludedMedia && isNotMetadata && isNotPinTabs && isHighQuality
+		}
+		logDuplicateCapabilities(viable, context: "action_portfolio_live_path")
+		let enforcedSurface: [String: LivePathDecision] = Dictionary(uniqueKeysWithValues: candidates.map { c in
+			let musicUserPreference = c.capabilityId == "play_focus_media"
+				&& (DurableMemory.shared.hasAcceptedMusicPreference() || c.musicIntent?.playlistName != nil)
+			let musicHistory = c.capabilityId == "play_focus_media"
+				&& ((DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0)
+			let musicRecentSuccess = c.capabilityId == "play_focus_media"
+				&& MusicActionFeedback.shared.recentSuccess()
+			let musicEvidenceAllowed = c.capabilityId == "play_focus_media"
+				&& ProposalEvidenceContracts.logMusicEvidence(
+					stableWorkContext: contextStability == "stable",
+					userPreference: musicUserPreference,
+					history: musicHistory,
+					recentSuccess: musicRecentSuccess
+				)
+			let ctx = LivePathEvaluationContext(
+				sourcePath: c.sourcePath,
+				contextStability: contextStability,
+				isMusicAlreadyPlaying: mediaState.isMusicPlaying,
+				hasHigherPriorityTaskAction: hasHigherPriorityTaskAction,
+				recentFeedbackCooldownActive: false,
+				userFeedbackHistory: musicEvidenceAllowed ? "positive" : "neutral",
+				alreadySatisfied: false,
+				evidenceAvailable: c.usefulness > 0.0,
+				hasExplicitUsageSignal: musicUserPreference,
+				activityMatch: true,
+				compartmentLabel: compartment?.label,
+				currentEntity: memory.currentEntity,
+				workflow: compartment?.workflow.rawValue ?? ""
+			)
+			let (decision, _) = LivePathEnforcer.evaluate(
+				capabilityID: c.capabilityId,
+				involvedApps: c.involvedApps,
+				attachedContract: c.targetContract,
+				confidence: c.confidence,
+				evaluationContext: ctx
+			)
+			decision.logEnforcement(candidateID: c.candidateID, lane: c.lane.rawValue)
+			return (c.candidateID, decision)
+		})
+
+		let panelCandidates = candidates.filter { c in
+			guard c.executionMode == .local_action else { return false }
+			guard let decision = enforcedSurface[c.candidateID] else { return false }
+			if decision.surface == .suppressed || !decision.allowedToExecute {
+				return false
+			}
+			if let ontology = WorkflowActionOntology.byId[c.capabilityId], ontology.category == .mediaFocus {
+				let musicUserPreference = DurableMemory.shared.hasAcceptedMusicPreference() || c.musicIntent?.playlistName != nil
+				let musicHistory = (DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0
+				let musicRecentSuccess = MusicActionFeedback.shared.recentSuccess()
+				if !musicUserPreference && !musicHistory && !musicRecentSuccess && contextStability != "stable" {
+					let gate = UserVisibleHardcodeGate.Decision(allowed: false, reason: "media_action_requires_stable_context_or_history")
+					UserVisibleHardcodeGate.log(surface: "panel", id: c.capabilityId, decision: gate)
+					return false
+				}
+			}
+			return true
+		}
 		for candidate in panelCandidates {
 			let panelReason: String = {
 				if candidate.lane == .metadata { return "metadata_safe_valid_payload" }
@@ -462,49 +535,6 @@ enum ActionPortfolioEngine {
 				print("[FamilyWinner] family=\(family.rawValue) candidate=none")
 			}
 		}
-
-		// Phase 36.1 — Live path enforcement gate.
-		// Surface policy decides what may float. Family winner by score alone is not sufficient.
-		let contextStability: String = {
-			if compartment != nil && !memory.currentEntity.isEmpty { return "stable" }
-			if memory.currentEntity.isEmpty && compartment == nil { return "weak" }
-			return "transient"
-		}()
-		let hasHigherPriorityTaskAction = viable.contains { c in
-			let isTaskFamily = (c.family == .workspace || c.family == .media || c.family == .writing || c.family == .coding)
-			let isNotExcludedMedia = c.capabilityId != "play_focus_media" && c.capabilityId != "resume_focus_media"
-			let isNotMetadata = !LivePathEnforcer.metadataUtilities.contains(c.capabilityId)
-			let isNotPinTabs = c.capabilityId != "pin_reference_tabs"
-			let isHighQuality = c.score >= qualityThreshold
-			return isTaskFamily && isNotExcludedMedia && isNotMetadata && isNotPinTabs && isHighQuality
-		}
-		logDuplicateCapabilities(viable, context: "action_portfolio_live_path")
-		let enforcedSurface: [String: LivePathDecision] = Dictionary(uniqueKeysWithValues: viable.map { c in
-			let ctx = LivePathEvaluationContext(
-				sourcePath: c.sourcePath,
-				contextStability: contextStability,
-				isMusicAlreadyPlaying: mediaState.isMusicPlaying,
-				hasHigherPriorityTaskAction: hasHigherPriorityTaskAction,
-				recentFeedbackCooldownActive: false,
-				userFeedbackHistory: "neutral",
-				alreadySatisfied: false,
-				evidenceAvailable: c.usefulness > 0.0,
-				hasExplicitUsageSignal: false,
-				activityMatch: true,
-				compartmentLabel: compartment?.label,
-				currentEntity: memory.currentEntity,
-				workflow: compartment?.workflow.rawValue ?? ""
-			)
-			let (decision, _) = LivePathEnforcer.evaluate(
-				capabilityID: c.capabilityId,
-				involvedApps: c.involvedApps,
-				attachedContract: c.targetContract,
-				confidence: c.confidence,
-				evaluationContext: ctx
-			)
-			decision.logEnforcement(candidateID: c.candidateID, lane: c.lane.rawValue)
-			return (c.candidateID, decision)
-		})
 
 		let floatingEligible = viable.filter { c in
 			(enforcedSurface[c.candidateID]?.eligibleForFloating ?? false)
@@ -631,12 +661,30 @@ enum ActionPortfolioEngine {
             || (groundingResult?.domain.lowercased().contains("watching") == true)
             || (groundingResult?.domain.lowercased().contains("entertainment") == true)
 
+        // Part 3 — recent failed music execution suppresses re-suggestion.
+        if let cooldown = MusicActionFeedback.shared.suppression() {
+            print("[AmbientCapabilityOpportunity] capability=play_focus_media useful=no reason=recent_failed_execution preference_match=no conflict=no")
+            print("[AmbientCapabilitySuppressed] capability=play_focus_media reason=cooldown")
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilityOpportunity(useful: false)
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilitySuppressed()
+            print("[MusicSuggestionSuppressed] reason=recent_failed_execution")
+            print("[MusicSuggestion] suppressed reason=recent_failed_execution cooldown_s=\(cooldown.remaining)")
+            lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "recent_failed_execution")
+            funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: true, reason: "recent_failed_execution")
+            return nil
+        }
+
         let eligible = ActionUsefulnessPolicy.evaluateMediaUsefulness(
             capabilityID: "play_focus_media",
             mediaState: mediaState,
             isWatching: isWatching
         )
         guard eligible else {
+            let suppressReason = isWatching || mediaState.visualMediaKind != .none ? "watching_or_listening" : (mediaState.isMusicPlaying ? "already_satisfied" : "low_relevance")
+            print("[AmbientCapabilityOpportunity] capability=play_focus_media useful=no reason=foreground_media_or_playing preference_match=no conflict=\((isWatching || mediaState.visualMediaKind != .none) && mediaState.isMusicPlaying ? "yes" : "no")")
+            print("[AmbientCapabilitySuppressed] capability=play_focus_media reason=\(suppressReason)")
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilityOpportunity(useful: false)
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilitySuppressed()
 			lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "foreground_media_or_playing")
             if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
                 print("[MusicAudit] eligible=no reason=foreground_media_or_playing media_playing=no candidate_generated=no")
@@ -647,6 +695,10 @@ enum ActionPortfolioEngine {
 
         // Need some work context (not idle/empty)
         guard !memory.currentEntity.isEmpty || compartment != nil || groundingResult != nil else {
+            print("[AmbientCapabilityOpportunity] capability=play_focus_media useful=no reason=no_work_context preference_match=no conflict=no")
+            print("[AmbientCapabilitySuppressed] capability=play_focus_media reason=not_work_state")
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilityOpportunity(useful: false)
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilitySuppressed()
 			lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "no_work_context")
             if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
                 print("[MusicAudit] eligible=no reason=no_work_context media_playing=no candidate_generated=no")
@@ -663,6 +715,30 @@ enum ActionPortfolioEngine {
         )
 
         let playlist = PlaylistMemory.shared.suggest(compartment: compartment, workflow: compartment?.workflow ?? .unknown)
+        let stableWorkContext = !memory.currentEntity.isEmpty || compartment != nil || groundingResult != nil
+        let userPreference = DurableMemory.shared.hasAcceptedMusicPreference() || playlist != nil
+        let history = (DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0
+        let recentSuccess = MusicActionFeedback.shared.recentSuccess()
+        let musicEvidenceAllowed = ProposalEvidenceContracts.logMusicEvidence(
+            stableWorkContext: stableWorkContext,
+            userPreference: userPreference,
+            history: history,
+            recentSuccess: recentSuccess
+        )
+        guard musicEvidenceAllowed else {
+            print("[AmbientCapabilityOpportunity] capability=play_focus_media useful=no reason=no_music_preference_or_history preference_match=no conflict=no")
+            print("[AmbientCapabilitySuppressed] capability=play_focus_media reason=no_preference")
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilityOpportunity(useful: false)
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilitySuppressed()
+            print("[MusicSuggestion] suppressed reason=no_music_preference_or_history")
+            print("[NoStableWorkContextOnlyMusic] status=pass count=0")
+            print("[MusicSuggestionSuppressed] reason=stable_work_context_only")
+            print("[NoStableWorkContextOnlyMusicPanel] status=pass count=0")
+            print("[NoAlwaysAllowedMusicWithoutEvidence] status=pass count=0")
+            lifecycleAudit?.noteNotGenerated(candidate: "play_focus_media", bucket: "music", reason: "no_music_preference_or_history")
+            funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: true, reason: "no_music_preference_or_history")
+            return nil
+        }
         let canPlayDirectly = await MusicExecutor.checkLocalPlaylist(query: playlist ?? domain.query)
 
         let title = musicTitle(
@@ -674,6 +750,10 @@ enum ActionPortfolioEngine {
         )
         let novelty = noveltyTracker.noveltyScore(capabilityId: "play_focus_media", entityKey: entityKey)
 		if novelty < 0.20 {
+            print("[AmbientCapabilityOpportunity] capability=play_focus_media useful=no reason=recently_dismissed preference_match=\(userPreference || history || recentSuccess ? "yes" : "no") conflict=no")
+            print("[AmbientCapabilitySuppressed] capability=play_focus_media reason=cooldown")
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilityOpportunity(useful: false)
+            PassiveDogfoodMonitor.shared.noteAmbientCapabilitySuppressed()
 			lifecycleAudit?.noteRejected(candidate: "play_focus_media", bucket: "music", reason: "recently_dismissed")
 			print("[MusicLane] rejected reason=recently_dismissed")
 			return nil
@@ -703,6 +783,10 @@ enum ActionPortfolioEngine {
         if LogControl.shared.shouldLog(category: .useful_action_inventory, level: .debug) {
             print("[MusicAudit] eligible=yes reason=none media_playing=no playlist_memory_match=\(playlist != nil ? "yes" : "no") playlist=\(playlist ?? "none") candidate_generated=yes action=\(action.rawValue)")
         }
+        print("[AmbientCapabilityOpportunity] capability=play_focus_media useful=yes reason=preference_backed_work_context preference_match=\(userPreference || history || recentSuccess ? "yes" : "no") conflict=no")
+        print("[NoRandomAmbientCapabilityPrompt] status=pass count=0")
+        print("[NoAmbientActionJustBecauseInactive] status=pass count=0")
+        PassiveDogfoodMonitor.shared.noteAmbientCapabilityOpportunity(useful: true)
         funnelAudit?.record(capabilityId: "play_focus_media", lane: "music", isSuppressed: false, reason: "generated")
 
         let involvedApps: [String] = {

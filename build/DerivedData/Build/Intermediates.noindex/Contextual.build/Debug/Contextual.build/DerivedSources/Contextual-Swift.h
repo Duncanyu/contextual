@@ -378,9 +378,13 @@ SWIFT_CLASS("_TtC10Contextual11AppDelegate")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+@class NSPopover;
 SWIFT_CLASS("_TtC10Contextual17MenuBarController")
-@interface MenuBarController : NSObject <NSPopoverDelegate>
+@interface MenuBarController : NSObject <NSPopoverDelegate, NSWindowDelegate>
+- (BOOL)popoverShouldDetach:(NSPopover * _Nonnull)popover SWIFT_WARN_UNUSED_RESULT;
 - (void)popoverDidClose:(NSNotification * _Nonnull)notification;
+- (void)windowDidResize:(NSNotification * _Nonnull)notification;
+- (void)windowDidMove:(NSNotification * _Nonnull)notification;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end

@@ -61,7 +61,10 @@ enum ActiveContextRefreshSelfTest {
         check("coalesces_under_model_backpressure",
               d3.action == .skip && d3.reason == "low_budget")
 
-        // 4. backs_off_after_recent_suggestion
+        // 4. recent_suggestion_does_not_block_context_refresh
+        // Recovery fix: a recent suggestion gates PROPOSAL surfacing, not context
+        // enrichment. With stable weak evidence the refresh lane still runs so the
+        // engine can deepen context between suggestions.
         let d4 = ActiveContextRefresh.decide(
             now: now,
             workflow: .shopping,
@@ -72,8 +75,23 @@ enum ActiveContextRefreshSelfTest {
             lastRefreshAge: nil,
             modelBusy: false
         )
-        check("backs_off_after_recent_suggestion",
-              d4.action == .skip && d4.reason == "recent_suggestion")
+        check("recent_suggestion_does_not_block_context_refresh",
+              d4.action == .refresh && d4.reason != "recent_suggestion")
+
+        // 4b. metadata_thin_triggers_refresh — the point of steady state is to
+        // DISCOVER context, not skip because content is not present yet.
+        let d4b = ActiveContextRefresh.decide(
+            now: now,
+            workflow: .shopping,
+            behavior: .comparing,
+            evidenceQuality: "metadata_rich",
+            lastMeaningfulEventAge: 5,
+            lastSuggestionAge: nil,
+            lastRefreshAge: nil,
+            modelBusy: false
+        )
+        check("metadata_thin_triggers_refresh",
+              d4b.action == .refresh && d4b.cheapEnvironmentAllowed)
 
         // 5. suppresses_unknown_workflow
         let d5 = ActiveContextRefresh.decide(

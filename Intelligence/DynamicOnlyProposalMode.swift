@@ -325,7 +325,32 @@ enum AgenticPivot {
     static let isClipboardInfluenceEnabled = false
     
     /// Disables the influence of selected text on proposal generation and ranking.
+    /// This stays OFF: the old behaviour let ANY selection drive proposals (noisy).
+    /// Bounded influence is governed by `boundedSelectedTextDecision` instead.
     static let isSelectedTextInfluenceEnabled = false
+
+    /// Minimum selection length for the bounded selected-text path. Matches the
+    /// bridge's visible-body threshold (`CurrentFocusAuthority`/`currentWorkCandidate`
+    /// treat `selectedTextLength >= 40` as readable current content).
+    static let boundedSelectedTextMinChars = 40
+
+    struct BoundedSelectionDecision { let allowed: Bool; let reason: String }
+
+    /// Bounded selected-text influence — a strict-quality alternative to the global
+    /// `isSelectedTextInfluenceEnabled` flag (which stays off). A selection may
+    /// re-trigger proposal evaluation only when it is meaningful (>= actionable
+    /// length) and the user is not actively typing. The TriggerEngine cooldown
+    /// throttles repeats; downstream quality gates (CurrentFocusAuthority, content
+    /// classification, surface policy) still decide whether a proposal surfaces, so
+    /// this never forces a generic/text-only/manual proposal.
+    static func boundedSelectedTextDecision(context: ContextModel) -> BoundedSelectionDecision {
+        guard context.selectedTextAvailable else { return .init(allowed: false, reason: "no_selection") }
+        guard context.selectedTextLength >= boundedSelectedTextMinChars else { return .init(allowed: false, reason: "low_quality") }
+        if TypingActivitySource.shared.currentContext().isTypingActive {
+            return .init(allowed: false, reason: "typing")
+        }
+        return .init(allowed: true, reason: "gates_passed")
+    }
     
     // MARK: - Part 2 & 3: Planning Pivot
     

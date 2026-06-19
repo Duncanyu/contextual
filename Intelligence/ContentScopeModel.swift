@@ -67,6 +67,9 @@ enum ContentScopeModel {
         case .browserMetadata, .windowMetadata:
             return .metadataOnly
 
+        case .publicLookup:
+            return quality == .none ? .failed : .mainArticle
+
         case .selectedText, .selectedTextAX, .selectedTextContextModel, .clipboardExisting:
             // clipboardExisting is only trusted when tied to a selection — same scope.
             return .selectedText

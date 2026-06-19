@@ -111,7 +111,12 @@ final class ReasoningEngine {
 		case .selectedTextEligible:
 			confidence = 0.72
 			reason = "dynamic_only_selected_text"
-			if !AgenticPivot.isSelectedTextInfluenceEnabled { shouldSurface = false }
+			// Bounded selected-text influence: surface when the global flag is on OR
+			// the bounded quality gate passes (meaningful, non-typing selection).
+			if !AgenticPivot.isSelectedTextInfluenceEnabled
+				&& !AgenticPivot.boundedSelectedTextDecision(context: context).allowed {
+				shouldSurface = false
+			}
 		case .clipboardTextEligible:
 			confidence = looksErrorLikeClipboard() ? 0.68 : 0.58
 			reason = "dynamic_only_clipboard"

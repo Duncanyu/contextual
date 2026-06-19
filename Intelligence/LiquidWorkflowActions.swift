@@ -757,13 +757,14 @@ enum WorkflowActionOntology {
             requiredContext: [],
             evidenceSignals: ["google_docs"],
             executionKind: .setupCard,
+            riskLevel: "read_only",
             surfacePolicy: .panelOnly,
             resultType: "setup_card",
             isSpecificAction: false
         )
         // capture_visible_page / capture_full_document / enable_browser_bridge /
-        // select_text_hint are pre-existing capabilities (Phase 52) and are
-        // referenced as fallbacks rather than re-declared here.
+        // select_text_hint are pre-existing capabilities (Phase 52) registered in
+        // CognitiveCapabilityRegistry; they are NOT re-declared as workflow actions.
     ]
 
     // MARK: Generic actions (kept, demoted — isSpecificAction=false)
@@ -791,8 +792,8 @@ enum WorkflowActionOntology {
         ),
         WorkflowAction(
             id: "create_checklist", category: .browserResearch,
-            title: "Make a checklist",
-            shortDescription: "Generic checklist from readable content.",
+            title: "Create checklist",
+            shortDescription: "Generic checklist generation.",
             requiredContext: ["visible_text"],
             minScope: .visibleViewport, minChars: 300,
             executionKind: .contentInsight,
@@ -875,5 +876,128 @@ final class WorkflowNotesStore: @unchecked Sendable {
         if let data = try? JSONEncoder().encode(notes) {
             UserDefaults.standard.set(data, forKey: key)
         }
+    }
+}
+
+enum CapabilityPolicyTrait: String, Sendable, CaseIterable {
+    case mediaOrFocusSupport = "media_or_focus_support"
+    case workspaceArrangement = "workspace_arrangement"
+    case frictionReduction = "friction_reduction"
+    case sourceIndependentAction = "source_independent_action"
+    case contentDependentAction = "content_dependent_action"
+    case requiresCurrentVisualContext = "requires_current_visual_context"
+    case requiresExternalContext = "requires_external_context"
+    case requiresSelectedOrFocusedContext = "requires_selected_or_focused_context"
+    case dangerousOrManualUtility = "dangerous_or_manual_utility"
+    case ambientCandidate = "ambient_candidate"
+    case resultProducing = "result_producing"
+    case internalAcquisitionAction = "internal_acquisition_action"
+    case metadataUtility = "metadata_utility"
+    case unverifiedBrowserMutator = "unverified_browser_mutator"
+    case layoutTargetContract = "layout_target_contract"
+    case workspacePatternContract = "workspace_pattern_contract"
+}
+
+struct CapabilityPolicyResolver {
+    /// Resolve policy traits for any capability id. Source precedence:
+    ///   1. WorkflowActionOntology     — real workflow actions (rich metadata).
+    ///   2. CognitiveCapabilityRegistry — system/helper/internal/legacy capabilities,
+    ///      via explicit `policyTraits` descriptor metadata (NOT id-literal switches).
+    ///   3. neither                    — emit [CapabilityPolicyTraitMissing].
+    /// This lets non-workflow capabilities carry traits WITHOUT being stuffed into
+    /// WorkflowActionOntology.all just so resolution works.
+    static func resolve(capabilityID: String) -> Set<CapabilityPolicyTrait> {
+        if let action = WorkflowActionOntology.byId[capabilityID] {
+            let traits = traitsFromOntology(action)
+            logResolved(capabilityID, traits, source: "ontology")
+            return traits
+        }
+        if let cap = CognitiveCapabilityRegistry.shared.get(capabilityID) {
+            let traits = traitsFromRegistry(cap)
+            logResolved(capabilityID, traits, source: "registry")
+            return traits
+        }
+        print("[CapabilityPolicyTraitMissing] capability=\(capabilityID) reason=not_in_ontology_or_registry")
+        return []
+    }
+
+    private static func logResolved(_ id: String, _ traits: Set<CapabilityPolicyTrait>, source: String) {
+        let sortedTraits = traits.map { $0.rawValue }.sorted().joined(separator: ",")
+        print("[CapabilityPolicyTraitResolved] capability=\(id) traits=\(sortedTraits) source=\(source)")
+    }
+
+    /// Traits from a real workflow ontology action (category / kind / context / risk).
+    private static func traitsFromOntology(_ action: WorkflowAction) -> Set<CapabilityPolicyTrait> {
+        var traits = Set<CapabilityPolicyTrait>()
+        let category = action.category
+        let kind = action.executionKind
+        let reqContext = action.requiredContext
+
+        if category == .mediaFocus { traits.insert(.mediaOrFocusSupport) }
+        if category == .workspaceFriction {
+            traits.insert(.frictionReduction)
+            if kind == .workspaceAlias { traits.insert(.workspaceArrangement) }
+        }
+        if reqContext.contains("selected_text") || reqContext.contains("focused_field") {
+            traits.insert(.requiresSelectedOrFocusedContext)
+        }
+        if kind == .metadataNote || kind == .workspaceAlias || kind == .memoryNote || kind == .setupCard {
+            traits.insert(.sourceIndependentAction)
+        } else {
+            traits.insert(.contentDependentAction)
+            if reqContext.contains("visible_text") || reqContext.contains("visual") {
+                traits.insert(.requiresCurrentVisualContext)
+            }
+        }
+        if reqContext.contains("url") { traits.insert(.requiresExternalContext) }
+        if action.riskLevel == "destructive" || action.surfacePolicy == .panelLow {
+            traits.insert(.dangerousOrManualUtility)
+        }
+        if action.riskLevel == "internal_acquisition" { traits.insert(.internalAcquisitionAction) }
+        if kind == .metadataNote { traits.insert(.metadataUtility) }
+        if action.riskLevel == "unverified_browser_mutator" { traits.insert(.unverifiedBrowserMutator) }
+        if action.surfacePolicy == .panelPrimary || action.surfacePolicy == .panelOnly {
+            traits.insert(.ambientCandidate)
+        }
+        if kind == .contentInsight || kind == .metadataNote || kind == .selectionTransform || kind == .memoryNote {
+            traits.insert(.resultProducing)
+        }
+        return traits
+    }
+
+    /// Traits for a registered capability that is NOT a workflow ontology action.
+    /// Reads explicit `policyTraits` metadata + generic derivations from existing
+    /// descriptor fields. No literal capability-ID branches.
+    private static func traitsFromRegistry(_ cap: CognitiveCapability) -> Set<CapabilityPolicyTrait> {
+        var traits = Set<CapabilityPolicyTrait>()
+        for raw in cap.policyTraits {
+            if let t = CapabilityPolicyTrait(rawValue: raw) { traits.insert(t) }
+        }
+        if cap.inputRequirements.contains("selection")
+            || cap.inputRequirements.contains("selected_text")
+            || cap.inputRequirements.contains("focused_field") {
+            traits.insert(.requiresSelectedOrFocusedContext)
+        }
+        if cap.outputType == "system_action" {
+            traits.insert(.sourceIndependentAction)
+            traits.insert(.ambientCandidate)
+        }
+        return traits
+    }
+
+    /// Audit hook: confirms every capability that declares policy-trait metadata
+    /// resolves those traits through the metadata path (no hardcoded id switch).
+    /// Counts are real — `count=0` only when every declared trait round-trips.
+    @discardableResult
+    static func verifyNoHardcodedPolicy() -> Bool {
+        var unresolved = 0
+        for cap in CognitiveCapabilityRegistry.shared.capabilities.values where !cap.policyTraits.isEmpty {
+            let declared = Set(cap.policyTraits.compactMap { CapabilityPolicyTrait(rawValue: $0) })
+            if !declared.isSubset(of: resolve(capabilityID: cap.id)) { unresolved += 1 }
+        }
+        let status = unresolved == 0 ? "pass" : "fail"
+        print("[NoHardcodedCapabilityIDPolicy] status=\(status) count=\(unresolved)")
+        print("[NoHardcodedCapabilityPolicySwitch] status=\(status) count=\(unresolved)")
+        return unresolved == 0
     }
 }

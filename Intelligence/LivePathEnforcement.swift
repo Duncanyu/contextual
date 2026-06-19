@@ -131,31 +131,6 @@ struct LivePathEvaluationContext: Sendable {
     }
 }
 
-// MARK: - Capability classification
-
-private let proposalBoundCapabilities: Set<String> = [
-    "arrange_side_by_side",
-    "switch_to_paired_app",
-    "split_research_setup",
-    "restore_workspace"
-]
-
-private let metadataUtilityIDs: Set<String> = [
-    "copy_current_url",
-    "collect_references",
-    "copy_all_related_links",
-    "remember_workspace",
-    "open_current_task_panel",
-    "extract_and_organize"
-]
-
-private let unverifiedBrowserStateMutators: Set<String> = [
-    // pin_reference_tabs currently delegates to restoreResearchTabs which only opens URLs.
-    // It has no contract for verified pin/reorganize, so it cannot prove friction reduction.
-    // It stays here until a verified browser-state contract exists.
-    "pin_reference_tabs"
-]
-
 enum ArrangeVerifiedWorkPairGate {
 
     struct Decision: Sendable {
@@ -188,6 +163,7 @@ enum LivePathEnforcer {
         confidence: Double,
         evaluationContext: LivePathEvaluationContext
     ) -> (LivePathDecision, ActionTargetContract?) {
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
         let reqCheck = ActionRequirementGate.evaluate(
             capabilityID: capabilityID,
             involvedApps: involvedApps,
@@ -196,9 +172,11 @@ enum LivePathEnforcer {
             attachedContract: attachedContract
         )
         if !reqCheck.allowed {
-            if capabilityID == "arrange_side_by_side" {
-                print("[PanelAction] hidden capability=arrange_side_by_side reason=\(reqCheck.reason)")
-                print("[FloatingSuggestion] suppressed capability=arrange_side_by_side reason=\(reqCheck.reason)")
+            let action = WorkflowActionOntology.byId[capabilityID]
+            let isArrange = traits.contains(.workspaceArrangement) && (action?.requiredContext.contains("windows") == true)
+            if isArrange {
+                print("[PanelAction] hidden capability=\(capabilityID) reason=\(reqCheck.reason)")
+                print("[FloatingSuggestion] suppressed capability=\(capabilityID) reason=\(reqCheck.reason)")
             }
             let decision = LivePathDecision(
                 capabilityID: capabilityID,
@@ -216,7 +194,7 @@ enum LivePathEnforcer {
 
 
         // 1. Unverified browser-state mutators (pin_reference_tabs as implemented today)
-        if unverifiedBrowserStateMutators.contains(capabilityID) {
+        if traits.contains(.unverifiedBrowserMutator) {
             let decision = LivePathDecision(
                 capabilityID: capabilityID,
                 sourcePath: evaluationContext.sourcePath,
@@ -233,7 +211,7 @@ enum LivePathEnforcer {
         }
 
         // 2. Metadata utilities → panel_only unless explicit usefulness signal
-        if metadataUtilityIDs.contains(capabilityID) {
+        if traits.contains(.metadataUtility) {
             let canFloat = evaluationContext.hasExplicitUsageSignal && evaluationContext.activityMatch
             let surface: ActionSurface = canFloat ? .floating : .panelOnly
             let reason = canFloat ? "metadata_utility_explicit_signal" : "metadata_utility_low_interrupt"
@@ -253,7 +231,7 @@ enum LivePathEnforcer {
         }
 
         // 3. Music: stable-context gate
-        if capabilityID == "play_focus_media" || capabilityID == "resume_focus_media" {
+        if traits.contains(.mediaOrFocusSupport) {
             if evaluationContext.isMusicAlreadyPlaying {
                 let decision = LivePathDecision(
                     capabilityID: capabilityID,
@@ -316,6 +294,25 @@ enum LivePathEnforcer {
                 print("[ActionUsefulness] capability=\(capabilityID) eligible=no surface=panel_only reason=recent_feedback_cooldown")
                 return (decision, nil)
             }
+            let sourceIntent = "\(evaluationContext.sourcePath) \(evaluationContext.workflow)".lowercased()
+            let explicitMediaInvocation = sourceIntent.contains("music")
+                || sourceIntent.contains("media")
+                || sourceIntent.contains("manual")
+            if evaluationContext.hasExplicitUsageSignal && !explicitMediaInvocation {
+                let decision = LivePathDecision(
+                    capabilityID: capabilityID,
+                    sourcePath: evaluationContext.sourcePath,
+                    surface: .panelOnly,
+                    executionPath: .music,
+                    contractRequired: false, contractPresent: false,
+                    allowedToExecute: true,
+                    eligibleForFloating: false,
+                    reason: "music_preference_panel_only"
+                )
+                print("[MusicSuggestion] surface=panel reason=music_preference_panel_only")
+                print("[ActionUsefulness] capability=\(capabilityID) eligible=yes surface=panel_only reason=music_preference_panel_only")
+                return (decision, nil)
+            }
             // Music passed all gates — eligible to float in stable, work-relevant context
             let decision = LivePathDecision(
                 capabilityID: capabilityID,
@@ -333,7 +330,7 @@ enum LivePathEnforcer {
         }
 
         // 4. Proposal-bound capabilities: require contract or synthesize from involvedApps
-        if proposalBoundCapabilities.contains(capabilityID) {
+        if requiresContract(capabilityID) {
             // Already-satisfied check before contract creation
             if evaluationContext.alreadySatisfied {
                 let decision = LivePathDecision(
@@ -402,7 +399,8 @@ enum LivePathEnforcer {
             // Phase 51 — manual-only arrange (no verified pair) must never float.
             // It stays a panel action the user can click; proactive surfacing
             // requires the verified pair that reqCheck would have confirmed.
-            let manualOnlyArrange = capabilityID == "arrange_side_by_side"
+            let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+            let manualOnlyArrange = traits.contains(.workspaceArrangement)
                 && (reqCheck.reason == "manual_arrange_available" || evaluationContext.sourcePath == "manual_arrange_panel")
             let canFloat = calibration.surface == .floating && evaluationContext.activityMatch && !manualOnlyArrange
             let surface: ActionSurface = manualOnlyArrange ? .panelOnly : calibration.surface
@@ -457,8 +455,8 @@ enum LivePathEnforcer {
         involvedApps: [String],
         confidence: Double
     ) -> ActionTargetContract? {
-        switch capabilityID {
-        case "arrange_side_by_side", "switch_to_paired_app", "split_research_setup":
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        if traits.contains(.layoutTargetContract) {
             guard involvedApps.count >= 2 else { return nil }
             return ActionTargetContract.forLayoutApps(
                 capabilityID: capabilityID,
@@ -467,7 +465,8 @@ enum LivePathEnforcer {
                 confidence: confidence,
                 fallbackAllowed: false
             )
-        case "restore_workspace":
+        }
+        if traits.contains(.workspacePatternContract) {
             guard !involvedApps.isEmpty else { return nil }
             return ActionTargetContract.forLayoutApps(
                 capabilityID: capabilityID,
@@ -476,9 +475,8 @@ enum LivePathEnforcer {
                 confidence: confidence,
                 fallbackAllowed: false
             )
-        default:
-            return nil
         }
+        return nil
     }
 
     /// Returns whether a given capability requires a contract on the live execution path.
@@ -486,11 +484,23 @@ enum LivePathEnforcer {
     /// from the panel; it does not have a verified browser-state contract yet so we cannot
     /// require one without breaking the existing tab-open behavior.
     static func requiresContract(_ capabilityID: String) -> Bool {
-        proposalBoundCapabilities.contains(capabilityID)
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        return traits.contains(.layoutTargetContract) || traits.contains(.workspacePatternContract)
     }
 
-    /// Returns the metadata utility set (for tests).
-    static var metadataUtilities: Set<String> { metadataUtilityIDs }
+    static var metadataUtilities: Set<String> {
+        // Metadata utilities live in two places now: real workflow ontology actions
+        // (resolved via traits) and registry-only system/helper capabilities (which
+        // declare `metadata_utility` in their descriptor policyTraits).
+        var ids = Set(WorkflowActionOntology.all
+            .filter { CapabilityPolicyResolver.resolve(capabilityID: $0.id).contains(.metadataUtility) }
+            .map { $0.id })
+        for (id, cap) in CognitiveCapabilityRegistry.shared.capabilities
+        where cap.policyTraits.contains(CapabilityPolicyTrait.metadataUtility.rawValue) {
+            ids.insert(id)
+        }
+        return ids
+    }
 }
 
 // MARK: - Self-test
@@ -935,51 +945,49 @@ enum ActionRequirementGate {
     ) -> (allowed: Bool, reason: String) {
         
         // 1. arrange_side_by_side requirements check
-        if capabilityID == "arrange_side_by_side" {
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        let action = WorkflowActionOntology.byId[capabilityID]
+        let isArrange = traits.contains(.workspaceArrangement) && (action?.requiredContext.contains("windows") == true)
+        
+        if isArrange {
             let res = checkArrangeRequirements(involvedApps: involvedApps, evaluationContext: evaluationContext)
-            print("[ArrangePreSurfaceCheck] capability=arrange_side_by_side verified_work_pair=\(res.verifiedWorkPair ? "yes" : "no") allowed=\(res.allowed ? "yes" : "no") reason=\(res.reason)")
-            print("[ActionRequirement] capability=arrange_side_by_side allowed=\(res.allowed ? "yes" : "no") reason=\(res.reason)")
+            print("[ArrangePreSurfaceCheck] capability=\(capabilityID) verified_work_pair=\(res.verifiedWorkPair ? "yes" : "no") allowed=\(res.allowed ? "yes" : "no") reason=\(res.reason)")
+            print("[ActionRequirement] capability=\(capabilityID) allowed=\(res.allowed ? "yes" : "no") reason=\(res.reason)")
             
             if !res.allowed {
-                print("[ActionRequirementFailure] capability=arrange_side_by_side missing=\(res.invalidContext ?? "none") invalid_context=\(res.invalidContext ?? "none")")
+                print("[ActionRequirementFailure] capability=\(capabilityID) missing=\(res.invalidContext ?? "none") invalid_context=\(res.invalidContext ?? "none")")
                 return (false, res.reason)
             } else {
-                print("[ActionRequirementPass] capability=arrange_side_by_side reason=\(res.reason)")
+                print("[ActionRequirementPass] capability=\(capabilityID) reason=\(res.reason)")
                 return (true, res.reason)
             }
         }
         
-        // 2. Generic research actions checks
-        let researchActions: Set<String> = [
-            "explicit_visible_capture_summary", "summarize_visible_content", "extract_action_items", "create_checklist"
-        ]
-        let selectionActions: Set<String> = [
-            "rewrite_text", "explain_context", "draft_reply", "diagnose_error"
-        ]
-        
+        // 2. Trait-based generic requirement checks
+        let requiredContext = WorkflowActionOntology.byId[capabilityID]?.requiredContext ?? []
         let evidence: String
         let allowed: Bool
         let reason: String
         let invalidContext: String?
-        
-        if researchActions.contains(capabilityID) {
-            let hasVisible = evaluationContext.evidenceAvailable || evaluationContext.contextStability != "weak"
-            evidence = "visible_capture"
-            allowed = hasVisible
-            reason = hasVisible ? "visible_content_available" : "metadata_only_blocked"
-            invalidContext = hasVisible ? nil : "missing_visible_capture"
-        } else if selectionActions.contains(capabilityID) {
-            let hasSelection = evaluationContext.evidenceAvailable
-            evidence = "selected_text"
-            allowed = hasSelection
-            reason = hasSelection ? "selected_text_available" : "no_selection_blocked"
-            invalidContext = hasSelection ? nil : "missing_selected_text"
-        } else if capabilityID == "synthesize_sources" {
+
+        if requiredContext.contains("full_content") {
             let hasFull = evaluationContext.evidenceAvailable && evaluationContext.contextStability == "stable"
             evidence = "full_content"
             allowed = hasFull
             reason = hasFull ? "full_content_available" : "content_unavailable_metadata_only"
             invalidContext = hasFull ? nil : "missing_full_content"
+        } else if requiredContext.contains("selected_text") {
+            let hasSelection = evaluationContext.evidenceAvailable
+            evidence = "selected_text"
+            allowed = hasSelection
+            reason = hasSelection ? "selected_text_available" : "no_selection_blocked"
+            invalidContext = hasSelection ? nil : "missing_selected_text"
+        } else if requiredContext.contains("visible_text") {
+            let hasVisible = evaluationContext.evidenceAvailable || evaluationContext.contextStability != "weak"
+            evidence = "visible_capture"
+            allowed = hasVisible
+            reason = hasVisible ? "visible_content_available" : "metadata_only_blocked"
+            invalidContext = hasVisible ? nil : "missing_visible_capture"
         } else {
             evidence = "none"
             allowed = true
@@ -1056,7 +1064,7 @@ enum ActionRequirementGate {
                                   combinedText.contains("referencing") ||
                                   combinedText.contains("reference")
         
-        let sourceTransfer = (evaluationContext.hasExplicitUsageSignal) ? "yes" : "no"
+
         
         let visibleWindows = WorkspaceRuntimeInventoryProvider.snapshot().visibleWindows
         let visibleInvolved = involvedApps.filter { app in
@@ -1153,4 +1161,6 @@ enum ActionRequirementGate {
         print("[ArrangeRequirement] passed reason=\(passedReason)")
         return (true, "requirements_passed", passedReason, nil, true)
     }
+
+
 }

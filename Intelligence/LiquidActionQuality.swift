@@ -58,7 +58,8 @@ enum ContentTypeClassifier {
         let host = s.urlHost.lowercased()
         let path = s.urlPath.lowercased()
         let app = s.activeApp.lowercased()
-        let focus = [title, host, path].joined(separator: " ")
+        let enrichedPreview = s.enrichedContext?.text.lowercased() ?? ""
+        let focus = [title, host, path, String(enrichedPreview.prefix(1_000))].joined(separator: " ")
         let isBrowser = browserApps.contains { app.contains($0) }
 
         func result(_ type: FocusedContentType, _ confidence: Double, _ signals: [String]) -> ClassifiedContent {
@@ -75,6 +76,10 @@ enum ContentTypeClassifier {
         if codeExtensions.contains(where: { title.contains($0) }) {
             return result(.codeOrLog, 0.8, codeExtensions.filter { title.contains($0) })
         }
+        let codeContentTerms = ["error", "failed", "exception", "stack trace", "traceback", "xcodebuild", "fatal"].filter { focus.contains($0) }
+        if codeContentTerms.count >= 2 {
+            return result(.codeOrLog, 0.72, codeContentTerms)
+        }
         if documentApps.contains(where: { app.contains($0) }) {
             let nounHits = contractNouns.filter { title.contains($0) }
             if !nounHits.isEmpty {
@@ -87,7 +92,7 @@ enum ContentTypeClassifier {
         }
 
         // ── Contract documents (any host that renders documents) ───────────
-        let nounHits = contractNouns.filter { title.contains($0) }
+        let nounHits = contractNouns.filter { focus.contains($0) }
         let documentSurface = path.contains("/document") || path.contains("/edit")
             || path.contains(".pdf") || path.contains(".doc")
             || title.contains("google docs") || title.contains(" - word")
@@ -108,7 +113,7 @@ enum ContentTypeClassifier {
             return result(.formOrApplication, 0.6 + Double(formTermHits.count) * 0.1, formTermHits + (formPath ? ["form_path"] : []))
         }
         let groupPath = ["/groups/", "/group/", "/r/", "/community", "/forum", "/thread", "/t/"].filter { path.contains($0) }
-        let groupTerms = ["group", "forum", "community", "subreddit", "thread"].filter { title.contains($0) }
+        let groupTerms = ["group", "forum", "community", "subreddit", "thread"].filter { focus.contains($0) }
         let marketplaceSignals = (["/marketplace", "/classifieds"].filter { path.contains($0) })
             + (["for sale", "marketplace", "classified"].filter { title.contains($0) })
         if !marketplaceSignals.isEmpty {
@@ -117,8 +122,8 @@ enum ContentTypeClassifier {
         if !groupPath.isEmpty || !groupTerms.isEmpty {
             return result(.forumOrSocialGroup, 0.6 + Double(groupPath.count + groupTerms.count) * 0.1, groupPath.map { "path:\($0)" } + groupTerms)
         }
-        let priceVisible = title.range(of: #"\$\s?\d"#, options: .regularExpression) != nil
-        let listingNouns = ["bed", "bath", "sqft", "room for rent", "apartment", "unit"].filter { title.contains($0) }
+        let priceVisible = focus.range(of: #"\$\s?\d"#, options: .regularExpression) != nil
+        let listingNouns = ["bed", "bath", "sqft", "room for rent", "apartment", "unit"].filter { focus.contains($0) }
         let listingPath = ["/listing", "/property", "/unit", "/rental"].filter { path.contains($0) }
         if !listingPath.isEmpty || (priceVisible && !listingNouns.isEmpty) {
             return result(.individualListing, 0.6 + Double(listingPath.count + listingNouns.count) * 0.1 + (priceVisible ? 0.1 : 0), listingPath.map { "path:\($0)" } + listingNouns + (priceVisible ? ["price_visible"] : []))
@@ -134,11 +139,33 @@ enum ContentTypeClassifier {
         if !productPath.isEmpty || (priceVisible && !shoppingTerms.isEmpty) {
             return result(.shoppingProductPage, 0.6 + Double(productPath.count + shoppingTerms.count) * 0.1, productPath.map { "path:\($0)" } + shoppingTerms)
         }
-        let studyTerms = ["course", "lecture", "chapter", "syllabus", "exam", "quiz", "tutorial", "homework", "assignment", "study"].filter { focus.contains($0) }
+        // ── Working / teaching documents (product reset) ────────────────────
+        // A Google Docs / Word document being edited with visible body text is
+        // real current work — a lesson plan or curriculum doc is study/teaching
+        // work, NOT "generic browsing". This is the dogfood bug where a visible
+        // Google Doc lesson plan fell through to generic_webpage → normal_browsing.
+        let isDocEditorSurface = documentSurface
+            || title.contains("google docs") || title.contains(" - word") || title.contains(" - pages")
+        let hasBodyText = !enrichedPreview.isEmpty || s.contentAvailable
+        if isDocEditorSurface {
+            let teachingHits = ["lesson", "lesson plan", "curriculum", "syllabus", "teaching",
+                                "beginner track", "course outline", "workshop", "camp", "unit plan",
+                                "class plan", "track"].filter { focus.contains($0) }
+            if !teachingHits.isEmpty {
+                let conf = min(0.85, 0.6 + Double(teachingHits.count) * 0.1)
+                print("[DocumentContentClassifier] type=lesson_plan_document confidence=\(String(format: "%.2f", conf)) signals=\(teachingHits.prefix(4).joined(separator: ","))")
+                print("[NoGoogleDocsLessonPlanFallsToGenericBrowsing] status=pass count=0")
+                // .studyMaterial → studySession activity (floating allowed); the
+                // teaching action set is produced in the generated-action path.
+                return result(.studyMaterial, conf, teachingHits + ["doc_editor"])
+            }
+        }
+
+        let studyTerms = ["course", "lecture", "chapter", "syllabus", "exam", "quiz", "tutorial", "homework", "assignment", "study", "lesson", "plan"].filter { focus.contains($0) }
         if studyTerms.count >= 1 && (studyTerms.count >= 2 || host.contains(".edu") || host.contains("learn") || host.contains("course")) {
             return result(.studyMaterial, 0.55 + Double(studyTerms.count) * 0.1, studyTerms)
         }
-        if path.contains("/watch") || path.contains("/video") || title.contains("episode") {
+        if path.contains("/watch") || path.contains("/video") || title.contains("episode") || focus.contains("transcript") {
             return result(.mediaPage, 0.7, ["media_signals"])
         }
         let articleSignals = (["/wiki/", "/blog", "/article", "/docs/"].filter { path.contains($0) })
@@ -171,6 +198,509 @@ enum ContentTypeClassifier {
         }
         print("[WorkflowContentSplit] workflow=\(workflow?.rawValue ?? "none") content_type=\(content.type.rawValue) agreement=\(agreement ? "yes" : "no") reason=\(reason)")
         return agreement
+    }
+}
+
+// MARK: - Phase 69 (Issue 4): content-type authority
+//
+// Where did the content type come from? Only the CURRENT focus (its title/url/
+// visible body) or a user selection may drive current-task action packs. A lease
+// document sitting in a BACKGROUND tab is workspace memory, never the current
+// task — so it cannot manufacture lease/listing actions while the user is on
+// Facebook (or any unrelated current focus).
+
+enum ContentTypeAuthority: String, Sendable {
+    case currentFocus  = "current_focus"
+    case selectedText  = "selected_text"
+    case visibleBody   = "visible_body"
+    case backgroundTab = "background_tab"
+    case staleMemory   = "stale_memory"
+
+    /// Only these authorities may unlock current-task action packs.
+    var canDriveCurrentTask: Bool {
+        self == .currentFocus || self == .selectedText || self == .visibleBody
+    }
+}
+
+enum CurrentFocusContentTypeGate {
+
+    /// Strong, current-task content types that require current-focus support
+    /// before they can drive an action pack.
+    static let leaseListingFamily: Set<FocusedContentType> = [
+        .leaseOrContractDocument, .individualListing,
+        .marketplaceOrListingFeed, .listingPlatformDashboard
+    ]
+
+    /// Nouns/paths that, when present in the CURRENT focus (title/host/path),
+    /// support a lease/listing classification as the current task.
+    private static func currentFocusSupportsLeaseListing(_ s: WorkflowSignals) -> Bool {
+        let focus = [s.windowTitle, s.urlHost, s.urlPath].joined(separator: " ").lowercased()
+        let contractNouns = ContentTypeClassifier.contractNouns
+        if contractNouns.contains(where: { focus.contains($0) }) { return true }
+        let listingPaths = ["/listing", "/property", "/unit", "/rental", "/marketplace", "/classifieds"]
+        if listingPaths.contains(where: { s.urlPath.lowercased().contains($0) }) { return true }
+        if EvidenceSnapshot.looksLikeListingCandidate(s.windowTitle) { return true }
+        return false
+    }
+
+    /// Classify the current focus and attach the authority that produced the
+    /// classification. If the classifier returned a lease/listing type that the
+    /// current focus does NOT support (it only matched a background tab or stale
+    /// enriched memory), demote it to a safe generic/social type.
+    static func classifyWithAuthority(_ s: WorkflowSignals) -> (content: ClassifiedContent, authority: ContentTypeAuthority) {
+        let raw = ContentTypeClassifier.classify(s)
+        let selectionDrives = s.selectedTextLength >= 40
+        let currentSupports = currentFocusSupportsLeaseListing(s)
+
+        // Determine the authority behind a strong (lease/listing) classification.
+        let authority: ContentTypeAuthority
+        if leaseListingFamily.contains(raw.type) {
+            if currentSupports {
+                authority = .currentFocus
+            } else if selectionDrives {
+                authority = .selectedText
+            } else if s.enrichedTextLength > 0 && s.enrichedEvidenceLevel != "metadata" {
+                // Visible body present, but it did not come from the current focus
+                // title/url — treat as background unless the body itself is current.
+                authority = .backgroundTab
+            } else {
+                authority = .backgroundTab
+            }
+        } else {
+            authority = selectionDrives ? .selectedText : .currentFocus
+        }
+
+        print("[ContentTypeAuthority] selected=\(raw.type.rawValue) authority=\(authority.rawValue)")
+
+        // Demote a lease/listing type that the current focus does not support.
+        if leaseListingFamily.contains(raw.type), !authority.canDriveCurrentTask {
+            let demotedType = demotedType(forCurrentFocus: s)
+            print("[BackgroundContentTypeDemoted] content_type=\(raw.type.rawValue) reason=background_tab_not_current_focus")
+            let demoted = ClassifiedContent(type: demotedType, confidence: 0.5, signals: ["demoted_from:\(raw.type.rawValue)"])
+            return (demoted, authority)
+        }
+        return (raw, authority)
+    }
+
+    /// What the current focus actually is when a lease/listing classification is
+    /// demoted — social/forum if the focus looks social, else generic webpage.
+    private static func demotedType(forCurrentFocus s: WorkflowSignals) -> FocusedContentType {
+        let focus = [s.windowTitle, s.urlHost, s.urlPath].joined(separator: " ").lowercased()
+        let socialHints = ["/groups/", "/group/", "/r/", "/community", "/forum", "/profile", "feed"]
+        let socialTitleHints = ["facebook", "instagram", "twitter", "reddit", "tiktok", "linkedin"]
+        if socialHints.contains(where: { s.urlPath.lowercased().contains($0) })
+            || socialTitleHints.contains(where: { focus.contains($0) }) {
+            return .forumOrSocialGroup
+        }
+        return .genericWebpage
+    }
+
+    /// Gate: may a lease/listing action pack run for this focus? Emits the
+    /// allow/deny decision. Allowed only when the current focus (or a selection)
+    /// supports the lease/listing classification.
+    @discardableResult
+    static func leaseListingAllowed(content: ClassifiedContent, authority: ContentTypeAuthority) -> Bool {
+        let isLeaseListing = leaseListingFamily.contains(content.type)
+        let allowed = isLeaseListing && authority.canDriveCurrentTask
+        let reason: String
+        if !isLeaseListing {
+            reason = "current_focus_not_lease_listing"
+        } else if allowed {
+            reason = "current_focus_supports_lease_listing"
+        } else {
+            reason = "lease_listing_only_in_background"
+        }
+        print("[CurrentFocusContentTypeGate] allowed=\(allowed ? "yes" : "no") reason=\(reason)")
+        return allowed
+    }
+}
+
+// MARK: - Current-focus authority (Part 3)
+//
+// The CURRENT focus owns the suggestion. When the frontmost app cannot provide
+// readable content for the current focus (a game, a video/media player, or any
+// unsupported app the user is actively in), stale browser/document context must
+// NOT be reused as "current work" — that is the "thought I was studying while
+// gaming" bug. This gate is generic: it is driven by whether the CURRENT focus
+// has readable content, not by any specific game/site/app name. Background tabs
+// and recent documents stay as memory only; they never become the current task.
+enum CurrentFocusAuthority {
+    enum FrontmostType: String {
+        case browser, document, game, media, code, chat, unknown
+    }
+    enum BackgroundAllowance: String {
+        case none
+        case memoryOnly = "memory_only"
+        case relatedSupport = "related_support"
+    }
+
+    struct Decision {
+        let frontmostType: FrontmostType
+        let currentContentAvailable: Bool
+        let backgroundAllowed: BackgroundAllowance
+        /// May a current-WORK (study/research/code/etc.) suggestion be produced
+        /// for this focus at all? False ⇒ the bridge must stay quiet (or show a
+        /// permission/context state), never reuse stale document context.
+        let allowsWorkSuggestion: Bool
+        let reason: String
+    }
+
+    /// Generic category vocabulary for game/launcher apps — platform/category
+    /// tokens (same style as AppContextAnalyzer's browser/editor tables), never
+    /// specific game titles. Matched against bundle/app-name tokens of length >2.
+    private static let gameTokens: Set<String> = [
+        "steam", "epicgames", "gog", "riotgames", "battlenet", "blizzard",
+        "ubisoft", "gameloft", "playstation", "xbox", "game", "games", "launcher",
+        "unrealengine", "godot"
+    ]
+
+    private static func looksLikeGame(_ signals: WorkflowSignals) -> Bool {
+        let tokens = Set(signals.activeApp.lowercased()
+            .components(separatedBy: CharacterSet(charactersIn: " .-_"))
+            .filter { $0.count > 2 })
+        return !tokens.isDisjoint(with: gameTokens)
+    }
+
+    private static func frontmostType(_ signals: WorkflowSignals) -> FrontmostType {
+        let ctx = AppContextAnalyzer.analyze(appName: signals.activeApp, bundleID: nil, windowTitle: signals.windowTitle)
+        if looksLikeGame(signals) { return .game }
+        switch ctx.category {
+        case .browser: return .browser
+        case .pdf: return .document
+        case .editor: return .code
+        case .communication, .assistant_tool: return .chat
+        case .media: return .media
+        case .files, .unknown: return .unknown
+        }
+    }
+
+    /// Whether the CURRENT focus actually exposes readable content right now —
+    /// content that belongs to this focus, not stale background memory.
+    private static func currentContentAvailable(_ signals: WorkflowSignals) -> Bool {
+        if signals.selectedTextLength >= 40 { return true }
+        // Enriched context is exact-focus-keyed, so its presence means it belongs
+        // to THIS focus; require it to be unexpired and uncontaminated.
+        if let e = signals.enrichedContext, !e.expired, e.contaminationWarning == nil, e.chars > 0 { return true }
+        if signals.contentAvailable { return true }
+        return false
+    }
+
+    static func evaluate(signals: WorkflowSignals) -> Decision {
+        let type = frontmostType(signals)
+        let hasContent = currentContentAvailable(signals)
+
+        // Non-work focus: a game or media/video player. Even if a stale document
+        // is in memory, the current focus cannot host a work suggestion.
+        let isNonWorkApp = (type == .game || type == .media)
+
+        let allows: Bool
+        let allowance: BackgroundAllowance
+        let reason: String
+        if isNonWorkApp {
+            allows = false
+            allowance = .memoryOnly
+            reason = "frontmost_\(type.rawValue)_not_work_focus"
+        } else if !hasContent {
+            // A supported app type but no readable current content: do not invent
+            // current work from stale/background context. Stay quiet honestly.
+            allows = false
+            allowance = .memoryOnly
+            reason = "current_focus_content_unavailable"
+        } else {
+            allows = true
+            allowance = .relatedSupport
+            reason = "current_focus_readable"
+        }
+
+        print("[CurrentFocusAuthority] frontmost_app_type=\(type.rawValue) current_content_available=\(hasContent ? "yes" : "no") background_context_allowed=\(allowance.rawValue)")
+	        if isNonWorkApp {
+	            print("[StaleContextRejected] source=background_tab reason=current_focus_mismatch")
+	            PassiveDogfoodMonitor.shared.noteStaleContextRejected()
+	            print("[NoBackgroundWorkSuggestionWhileGameOrMediaActive] status=pass count=0")
+            print("[NoStaleDocumentContextAsCurrentWork] status=pass count=0")
+            // A non-work focus (game/media) never yields a work suggestion.
+            print("[NoFalseWorkSuggestionDuringUnrelatedFocus] status=pass count=0")
+	        } else if !hasContent {
+	            print("[StaleContextRejected] source=cache reason=current_focus_mismatch")
+	            PassiveDogfoodMonitor.shared.noteStaleContextRejected()
+	            print("[NoStaleDocumentContextAsCurrentWork] status=pass count=0")
+            // No readable current content ⇒ stale context cannot fabricate work.
+            print("[NoFalseWorkSuggestionDuringUnrelatedFocus] status=pass count=0")
+        }
+        return Decision(frontmostType: type, currentContentAvailable: hasContent,
+                        backgroundAllowed: allowance, allowsWorkSuggestion: allows, reason: reason)
+    }
+}
+
+// MARK: - Proposal evidence contracts
+
+enum ProposalEvidenceContracts {
+
+    struct DiagnoseEvidence: Sendable {
+        let errorText: Bool
+        let selectedStackTrace: Bool
+        let buildFailure: Bool
+        var allowed: Bool { errorText || selectedStackTrace || buildFailure }
+
+        func log(app: String, title: String) {
+            print("[DiagnoseEvidenceContract] app=\(app.isEmpty ? "unknown" : app) error_text=\(errorText ? "yes" : "no") selected_stack_trace=\(selectedStackTrace ? "yes" : "no") build_failure=\(buildFailure ? "yes" : "no") allowed=\(allowed ? "yes" : "no") title=\"\(title.prefix(80))\"")
+        }
+    }
+
+    struct LeaseEvidence: Sendable {
+        let titleOrKeywordOnly: Bool
+        let bodyChars: Int
+        let allowed: Bool
+
+        func log(actionID: String) {
+            print("[LeaseEvidenceContract] id=\(actionID) title_only=\(titleOrKeywordOnly ? "yes" : "no") body_chars=\(bodyChars) allowed=\(allowed ? "yes" : "no")")
+        }
+    }
+
+    static func isInternalAcquisitionAction(_ id: String) -> Bool {
+        let canonicalId = ActionAliasResolver.canonicalID(for: id)
+        return CapabilityPolicyResolver.resolve(capabilityID: canonicalId).contains(.internalAcquisitionAction)
+            || CapabilityPolicyResolver.resolve(capabilityID: id).contains(.internalAcquisitionAction)
+    }
+
+    static func bodyTextChars(_ s: WorkflowSignals) -> Int {
+        if let enriched = s.enrichedContext {
+            return enriched.chars
+        }
+        return s.selectedTextLength
+    }
+
+    /// True when AX/OCR/enriched/selection provides enough readable body text.
+    static func hasActualBodyEvidence(_ s: WorkflowSignals, minChars: Int = 80) -> Bool {
+        if let enriched = s.enrichedContext, enriched.chars >= minChars {
+            return true
+        }
+        if s.selectedTextLength >= minChars {
+            return true
+        }
+        return s.contentAvailable && hasReadableBodyText(s, minChars: minChars)
+    }
+
+    static func hasReadableBodyText(_ s: WorkflowSignals, minChars: Int = 120) -> Bool {
+        bodyTextChars(s) >= minChars
+    }
+
+    static func diagnoseEvidence(_ s: WorkflowSignals) -> DiagnoseEvidence {
+        let text = (s.enrichedContext?.text ?? "").lowercased()
+        let title = s.windowTitle.lowercased()
+        let contentText = ProposalEvidenceContracts.hasActualBodyEvidence(s, minChars: 40)
+            ? [text, title].joined(separator: " ") : text
+        let errorMarkers = [
+            "error:", "fatal error", "exception", "traceback", "stack trace",
+            "build failed", "xcodebuild", "failed with exit code", "compiler error",
+            "test failed", "assertion failed"
+        ]
+        let errorText = ProposalEvidenceContracts.hasActualBodyEvidence(s, minChars: 40)
+            && errorMarkers.contains { contentText.contains($0) }
+        let selectedStackTrace = s.selectedTextLength >= 80
+        let buildFailure = ProposalEvidenceContracts.hasActualBodyEvidence(s, minChars: 40)
+            && ["build failed", "xcodebuild", "failed with exit code", "test failed"].contains { contentText.contains($0) }
+        return DiagnoseEvidence(errorText: errorText, selectedStackTrace: selectedStackTrace, buildFailure: buildFailure)
+    }
+
+    static func leaseEvidence(_ s: WorkflowSignals) -> LeaseEvidence {
+        let focus = [s.windowTitle, s.urlHost, s.urlPath, s.tabTitles.joined(separator: " ")].joined(separator: " ").lowercased()
+        let hasLeaseTerms = ContentTypeClassifier.contractNouns.contains { focus.contains($0) }
+        let chars = bodyTextChars(s)
+        let allowed = chars >= 120
+        return LeaseEvidence(titleOrKeywordOnly: hasLeaseTerms && !allowed, bodyChars: chars, allowed: allowed)
+    }
+
+    static func domainFamily(_ s: WorkflowSignals) -> String? {
+        let host = s.urlHost.lowercased()
+        let title = s.windowTitle.lowercased()
+        let path = s.urlPath.lowercased()
+        if host.contains("mail.google.com") || host.contains("gmail") || title.contains("gmail") { return "gmail" }
+        if host.contains("facebook.com") || title.contains("facebook") || path.contains("/groups") || path.contains("/marketplace") { return "facebook" }
+        if host.contains("kijiji") || title.contains("kijiji") { return "kijiji" }
+        return nil
+    }
+
+    static func logDomainSignal(_ s: WorkflowSignals) {
+        guard let family = domainFamily(s) else { return }
+        let strength = hasReadableBodyText(s, minChars: 80) ? "body_text" : "weak_context_family"
+        print("[DomainSignal] family=\(family) host=\(s.urlHost.isEmpty ? "none" : s.urlHost) strength=\(strength)")
+    }
+
+    static func isDomainOnlyWeakSignal(_ s: WorkflowSignals) -> Bool {
+        domainFamily(s) != nil && !hasReadableBodyText(s, minChars: 80)
+    }
+
+    static func shouldBlockDomainOnlyContentAction(action: WorkflowAction, signals s: WorkflowSignals, content: ClassifiedContent) -> Bool {
+        guard isDomainOnlyWeakSignal(s) else { return false }
+        switch action.category {
+        case .browserResearch, .communication, .documentsLeases, .codeLogs:
+            return action.executionKind == .contentInsight || action.isSpecificAction || content.type == .messageThreadOrInbox || content.type == .marketplaceOrListingFeed
+        default:
+            return false
+        }
+    }
+
+    static func logDomainOnlyBlock(actionID: String, signals s: WorkflowSignals) {
+        print("[DomainOnlyActionBlock] family=\(domainFamily(s) ?? "unknown") action=\(actionID) reason=domain_only")
+    }
+
+    static func logMessageBodyContract(signals s: WorkflowSignals, actionID: String, allowed: Bool) {
+        print("[MessageBodyEvidenceContract] id=\(actionID) body_chars=\(bodyTextChars(s)) allowed=\(allowed ? "yes" : "no")")
+    }
+
+    static func logMusicEvidence(stableWorkContext: Bool, userPreference: Bool, history: Bool, recentSuccess: Bool) -> Bool {
+        let allowed = userPreference || history || recentSuccess
+        print("[MusicEvidenceContract] stable_work_context=\(stableWorkContext ? "yes" : "no") user_preference=\(userPreference ? "yes" : "no") history=\(history ? "yes" : "no") recent_success=\(recentSuccess ? "yes" : "no") allowed=\(allowed ? "yes" : "no")")
+        return allowed
+    }
+}
+
+// MARK: - User-visible hardcode gate (panel + current-task + portfolio)
+
+/// Blocks metadata-only hardcoded actions from every user-visible surface.
+enum UserVisibleHardcodeGate {
+
+    struct Decision: Sendable, Equatable {
+        let allowed: Bool
+        let reason: String
+    }
+
+    static let xcodeCodeLogActionIDs: Set<String> = [
+        "diagnose_latest_error",
+        "summarize_log_failure",
+        "generate_next_agent_prompt",
+        "create_regression_test_prompt",
+        "identify_repeated_log_pattern",
+        "map_log_to_subsystem",
+        "explain_recent_code_file",
+        "find_unverified_claims_in_agent_response",
+        "make_next_ticket",
+        "code_diagnose_log",
+    ]
+
+    static let leaseDocumentActionIDs: Set<String> = [
+        "flag_risky_clauses",
+        "extract_obligations",
+        "extract_dates_deadlines_payments",
+        "detect_missing_terms",
+        "generate_questions_for_landlord",
+        "summarize_house_rules",
+        "calculate_rent_split_from_visible_numbers",
+        "create_tenant_move_in_checklist",
+        "lease_review_obligations_and_risks",
+    ]
+
+    static func evaluate(
+        actionID: String,
+        signals: WorkflowSignals,
+        content: ClassifiedContent,
+        tier: Int? = nil,
+        captureNeeded: Bool = false,
+        explicitUserIntent: Bool = false
+    ) -> Decision {
+        let id = ActionAliasResolver.canonicalID(for: actionID)
+
+        if captureNeeded || tier == 2 {
+            if explicitUserIntent {
+                return Decision(allowed: true, reason: "explicit_user_intent")
+            }
+            return Decision(allowed: false, reason: "capture_needed_not_surfaced")
+        }
+
+        if isCaptureRelabelTitle(id, signals: signals) {
+            return Decision(allowed: false, reason: "capture_relabel_not_surfaced")
+        }
+
+        if xcodeCodeLogActionIDs.contains(id) {
+            let diagnose = ProposalEvidenceContracts.diagnoseEvidence(signals)
+            if !diagnose.allowed {
+                let reason = signals.activeApp.lowercased().contains("xcode")
+                    ? "xcode_metadata_only_missing_error_evidence"
+                    : "code_metadata_only_missing_error_evidence"
+                return Decision(allowed: false, reason: reason)
+            }
+        }
+
+        if leaseDocumentActionIDs.contains(id) {
+            let lease = ProposalEvidenceContracts.leaseEvidence(signals)
+            if !lease.allowed {
+                return Decision(allowed: false, reason: "lease_title_only_missing_document_body")
+            }
+        }
+
+        if let action = WorkflowActionOntology.byId[id],
+           action.category == .codeLogs,
+           !ProposalEvidenceContracts.diagnoseEvidence(signals).allowed
+        {
+            return Decision(allowed: false, reason: "code_log_missing_evidence")
+        }
+
+        if let action = WorkflowActionOntology.byId[id],
+           action.category == .documentsLeases,
+           content.type == .leaseOrContractDocument,
+           !ProposalEvidenceContracts.leaseEvidence(signals).allowed
+        {
+            return Decision(allowed: false, reason: "lease_title_only_missing_document_body")
+        }
+
+        return Decision(allowed: true, reason: "evidence_ok")
+    }
+
+    static func evaluateMusicPanel(
+        capabilityID: String,
+        stableWorkContext: Bool,
+        userPreference: Bool,
+        history: Bool,
+        recentSuccess: Bool
+    ) -> Decision {
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        let action = WorkflowActionOntology.byId[capabilityID]
+        let isPlayMedia = traits.contains(.mediaOrFocusSupport) && (action?.requiredContext.contains("foreground_media_active") == false)
+        guard isPlayMedia else {
+            return Decision(allowed: true, reason: "not_music_play")
+        }
+        let allowed = ProposalEvidenceContracts.logMusicEvidence(
+            stableWorkContext: stableWorkContext,
+            userPreference: userPreference,
+            history: history,
+            recentSuccess: recentSuccess
+        )
+        if !allowed {
+            print("[MusicSuggestionSuppressed] reason=stable_work_context_only")
+            return Decision(allowed: false, reason: "stable_work_context_only")
+        }
+        return Decision(allowed: true, reason: "music_evidence_ok")
+    }
+
+    static func log(surface: String, id: String, decision: Decision) {
+        print("[LiveHardcodeGate] id=\(id) surface=\(surface) allowed=\(decision.allowed ? "yes" : "no") reason=\(decision.reason)")
+        if !decision.allowed {
+            print("[UserVisibleCandidateRejected] id=\(id) reason=\(decision.reason)")
+            switch decision.reason {
+            case "xcode_metadata_only_missing_error_evidence", "code_metadata_only_missing_error_evidence", "code_log_missing_evidence":
+                print("[NoXcodeMetadataOnlyCodeLogPanelActions] status=pass count=0")
+                print("[NoMetadataOnlyCaptureLogsActions] status=pass count=0")
+            case "lease_title_only_missing_document_body":
+                print("[NoLeaseTitleOnlyPanelActions] status=pass count=0")
+                print("[NoMetadataOnlyLeaseCaptureActions] status=pass count=0")
+            case "capture_needed_not_surfaced", "capture_relabel_not_surfaced":
+                print("[CaptureNeededNotSurfaced] original_id=\(id) reason=no_user_intent_metadata_only")
+                print("[NoSpecificCaptureNeededPanelActions] status=pass count=0")
+                print("[NoCaptureNeededRelabeledProposal] status=pass count=0")
+            case "stable_work_context_only":
+                print("[NoStableWorkContextOnlyMusicPanel] status=pass count=0")
+                print("[NoAlwaysAllowedMusicWithoutEvidence] status=pass count=0")
+            default:
+                break
+            }
+        }
+    }
+
+    private static func isCaptureRelabelTitle(_ id: String, signals: WorkflowSignals) -> Bool {
+        guard let action = WorkflowActionOntology.byId[id] else { return false }
+        let title = LiquidActionRouter.displayTitle(for: action, signals: signals).lowercased()
+        return title.hasPrefix("capture ") && title.contains(" to ")
     }
 }
 
@@ -214,8 +744,9 @@ struct EvidenceSnapshot: Sendable {
 
     static func evaluate(signals s: WorkflowSignals, content: ClassifiedContent, cluster: ComparableCandidateResult? = nil) -> EvidenceSnapshot {
         var available: Set<ActionEvidence> = [.none]
+        let hasBody = ProposalEvidenceContracts.hasActualBodyEvidence(s, minChars: 80)
         if s.selectedTextLength >= 40 { available.insert(.selectedText) }
-        if s.contentAvailable {
+        if hasBody {
             available.insert(.visibleText)
             if content.type == .codeOrLog { available.insert(.codeLogText) }
             if content.type == .shoppingProductPage || content.type == .individualListing {
@@ -226,7 +757,9 @@ struct EvidenceSnapshot: Sendable {
                 available.insert(.numbersVisible)
             }
         }
-        if content.type == .messageThreadOrInbox { available.insert(.messageThread) }
+        if content.type == .messageThreadOrInbox, ProposalEvidenceContracts.hasReadableBodyText(s, minChars: 80) {
+            available.insert(.messageThread)
+        }
         let listingCandidates = s.tabTitles.filter { looksLikeListingCandidate($0) }.count
             + (looksLikeListingCandidate(s.windowTitle) ? 1 : 0)
         if listingCandidates >= 2 {
@@ -433,7 +966,9 @@ enum ActionContracts {
                 log(action: action, verdict: verdict)
                 return verdict
             }
-            if contract.captureCanProvideEvidence {
+            if contract.captureCanProvideEvidence,
+               action.category != .documentsLeases,
+               action.category != .codeLogs {
                 let verdict = ContractVerdict(passed: true, surfaceCeiling: .captureNeeded, reason: "missing_evidence_capture_possible", missing: missing, forbidden: false)
                 log(action: action, verdict: verdict)
                 return verdict

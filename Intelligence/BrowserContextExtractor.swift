@@ -30,7 +30,15 @@ public struct BrowserContextExtractor: Sendable {
     public static var lastExtractedURL: String? = nil
     public static var lastSelectedURL: String? = nil
 
+    public static var mockResult: BrowserContext?
+
     public static func extract(appName: String, activeAppPID: pid_t?) -> BrowserContext? {
+        #if DEBUG
+        if let mock = mockResult {
+            return mock
+        }
+        #endif
+        
         guard browserNames.contains(appName) else { return nil }
         let app = NSWorkspace.shared.runningApplications.first { $0.localizedName == appName }
         guard let pid = activeAppPID ?? app?.processIdentifier else { return nil }

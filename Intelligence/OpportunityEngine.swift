@@ -331,20 +331,21 @@ public enum OpportunityEngine {
     ///   - entityGrounding: Classification from EntityGroundingLayer (nil = legacy path).
     ///   - semanticState: Priority-resolved domain/mode/entityType from SemanticPriorityResolver.
     ///   - entityKey: Cache key for the novelty tracker. Defaults to memory.currentEntity.
-    static func evaluate(
-        determinerSignal: DeterminerSignal,
-        activityState: ActivityState?,
-        compartment: TaskCompartment?,
-        memory: WorkingMemorySnapshot,
-        evidenceQuality: String,
-        entityGrounding: EntityGrounding? = nil,
-        semanticState: SemanticPriorityResolver.SemanticState? = nil,
-        entityKey: String? = nil,
-        frictionSignals: [FrictionSignal] = [],
-        mediaState: EnvironmentMediaState? = nil,
-        appCategory: AppContextAnalyzer.Category? = nil,
-        groundingResult: SemanticGroundingResult? = nil
-    ) async -> [Opportunity] {
+	    static func evaluate(
+	        determinerSignal: DeterminerSignal,
+	        activityState: ActivityState?,
+	        compartment: TaskCompartment?,
+	        memory: WorkingMemorySnapshot,
+	        evidenceQuality: String,
+	        entityGrounding: EntityGrounding? = nil,
+	        semanticState: SemanticPriorityResolver.SemanticState? = nil,
+	        entityKey: String? = nil,
+	        frictionSignals: [FrictionSignal] = [],
+	        mediaState: EnvironmentMediaState? = nil,
+	        appCategory: AppContextAnalyzer.Category? = nil,
+	        groundingResult: SemanticGroundingResult? = nil,
+	        currentWorkBridge: ParallelOpportunityBridgeStatus? = nil
+	    ) async -> [Opportunity] {
 		let lifecycleAudit = CandidateLifecycleAudit(label: "opportunity_engine")
 		var selectedLifecycleCandidate: String?
 		let funnelAudit = ProposalFunnelAudit()
@@ -366,12 +367,31 @@ public enum OpportunityEngine {
 			evidenceQuality: evidenceQuality
 		)
 
-        let entityLabel = memory.currentEntity.isEmpty
-            ? (compartment?.label ?? "")
-            : memory.currentEntity
+	        let entityLabel = memory.currentEntity.isEmpty
+	            ? (compartment?.label ?? "")
+	            : memory.currentEntity
 
-        // ── Entertainment / no-propose gate ──────────────────────────────────
-        if let grounding = entityGrounding {
+	        if let bridge = currentWorkBridge, bridge.consulted {
+	            print("[OpportunityEngineBridgeResult] selected=\(bridge.selected ? "yes" : "no") id=\(bridge.id ?? "none") blocker=\(bridge.blocker ?? "none")")
+	            if bridge.shouldSupersedeDeadState,
+	               let bridgeOpportunity = bridgeOpportunity(from: bridge, evidenceQuality: evidenceQuality) {
+	                selectedLifecycleCandidate = bridge.id
+	                lifecycleAudit.noteSelected(
+	                    candidate: bridge.id ?? "current_work_candidate",
+	                    bucket: "current_work_bridge",
+	                    score: bridge.confidence
+	                )
+	                print("[OpportunityEngineSupersededByBridge] id=\(bridge.id ?? "current_work_candidate") reason=current_work_candidate_selected")
+	                print("[NoParallelNoSpecificActionAfterBridgeSelection] status=pass count=0")
+	                print("[NoParallelTopOpportunityNoneAfterBridgeSelection] status=pass count=0")
+	                print("[OpportunityBudget] deterministic=yes opportunities_count=1")
+	                funnelAudit.emit()
+	                return [bridgeOpportunity]
+	            }
+	        }
+
+	        // ── Entertainment / no-propose gate ──────────────────────────────────
+	        if let grounding = entityGrounding {
             print("[OpportunityEngine] grounding_type=\(grounding.entityType.rawValue)"
                 + " grounding_confidence=\(String(format: "%.2f", grounding.confidence))"
                 + " grounding_should_propose=\(grounding.shouldPropose)")
@@ -488,6 +508,9 @@ public enum OpportunityEngine {
             currentEntity: entityLabel,
             relatedEntities: memory.relatedFocusEntities + memory.comparisonCandidates,
             activeTerms: memory.repeatedConcepts,
+            currentFocusTerms: memory.currentFocusTerms,
+            relatedTerms: memory.relatedTerms,
+            backgroundTerms: memory.backgroundTerms,
             activeCompartmentLabel: compartment?.label,
             activeCompartmentWorkflow: compartment?.workflow,
             evidenceQuality: evidenceQuality,
@@ -565,6 +588,30 @@ public enum OpportunityEngine {
 				)
 				continue
 			}
+
+            let lowerTitle = composed.title.lowercased()
+            let titleTokens = Set(lowerTitle.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 })
+            let focusTokens = Set(memory.currentFocusTerms.map { $0.lowercased() })
+            let relatedTokens = Set(memory.relatedTerms.map { $0.lowercased() })
+            let backgroundTokens = Set(memory.backgroundTerms.map { $0.lowercased() })
+            
+            let hasFocusFit = !titleTokens.intersection(focusTokens).isEmpty || !titleTokens.intersection(relatedTokens).isEmpty
+            let hasBackgroundOnlyFit = !titleTokens.intersection(backgroundTokens).isEmpty && !hasFocusFit
+            
+            print("[ProposalAuthorityCheck] title=\"\(composed.title.prefix(40))\" has_focus_fit=\(hasFocusFit) background_only=\(hasBackgroundOnlyFit)")
+            print("[ProposalContentFit] focus_overlap=\(titleTokens.intersection(focusTokens).count) related_overlap=\(titleTokens.intersection(relatedTokens).count)")
+            
+            if hasBackgroundOnlyFit && !hasFocusFit {
+                print("[ProposalQualitySummary] rejected reason=background_contamination_only")
+                lifecycleAudit.noteRejected(
+                    candidate: candidateName,
+                    bucket: "generated_action",
+                    score: composed.confidence,
+                    reason: "background_contamination"
+                )
+                continue
+            }
+            print("[ProposalQualitySummary] accepted reason=sufficient_focus_authority")
 
             let need = need(for: composed, intent: composition.intentType)
             validated.append(Opportunity(
@@ -680,10 +727,30 @@ public enum OpportunityEngine {
 
         print("[OpportunityBudget] deterministic=yes opportunities_count=\(validated.count)")
         funnelAudit.emit()
-        return validated
-    }
+	        return validated
+	    }
 
-    // MARK: - Title builder (action-verb first, entity-aware)
+	    private static func bridgeOpportunity(
+	        from bridge: ParallelOpportunityBridgeStatus,
+	        evidenceQuality: String
+	    ) -> Opportunity? {
+	        guard let id = bridge.id, let title = bridge.title, !id.isEmpty, !title.isEmpty else { return nil }
+	        return Opportunity(
+	            id: "opp:bridge:\(id)",
+	            title: title,
+	            capabilityId: id,
+	            confidence: max(0.4, bridge.confidence),
+	            reason: "current_work_candidate_selected",
+	            requiredEvidence: bridge.evidenceLevel ?? evidenceQuality,
+	            actionability: max(0.4, bridge.confidence),
+	            inferredNeed: .planning,
+	            requiresConfirmation: false,
+	            auxiliaryCapabilityIds: [],
+	            candidateID: id
+	        )
+	    }
+
+	    // MARK: - Title builder (action-verb first, entity-aware)
 
     /// Produces an action-verb-first title for the given capability.
     static func title(forCapabilityId capId: String, entity: String) -> String {

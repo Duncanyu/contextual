@@ -4,6 +4,7 @@ enum UnifiedSuggestionAdapters {
     private static let setupActionIds: Set<String> = [
         "capture_visible_page",
         "capture_full_document",
+        "explicit_visible_capture_summary",
         "enable_browser_bridge",
         "select_text_hint"
     ]

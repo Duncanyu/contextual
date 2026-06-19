@@ -140,18 +140,34 @@ final class TriggerEngine {
 	}
 
 	private func evaluateSelectedText(_ context: ContextModel) -> TriggerPacket? {
-		guard AgenticPivot.isSelectedTextInfluenceEnabled else { return nil }
 		guard context.lastSourceTrigger == .selectedTextChanged else { return nil }
 		guard context.selectedTextAvailable else { return nil }
-		guard context.selectedTextLength > Self.selectedTextMinCharacterCount else { return nil }
-
-		guard cooldownManager.acquireIfEligible(key: Self.selectedTextCooldownKey, interval: selectedTextCooldownInterval) else {
+		// Bounded selected-text influence. The global flag stays off; a meaningful,
+		// non-typing selection may re-trigger the pipeline under strict gates so real
+		// selected work can produce an action-backed proposal (downstream quality
+		// gates still decide whether anything surfaces). This is the opposite of
+		// flipping the transient-context flag on globally.
+		let bounded = AgenticPivot.boundedSelectedTextDecision(context: context)
+		guard AgenticPivot.isSelectedTextInfluenceEnabled || bounded.allowed else {
+			print("[SelectedFocusTriggerSuppressed] reason=\(bounded.reason)")
+			print("[NoSelectedFocusOpportunityWithoutQualityGate] status=pass count=0")
+			return nil
+		}
+		guard context.selectedTextLength > Self.selectedTextMinCharacterCount else {
+			print("[SelectedFocusTriggerSuppressed] reason=low_quality")
 			return nil
 		}
 
+		guard cooldownManager.acquireIfEligible(key: Self.selectedTextCooldownKey, interval: selectedTextCooldownInterval) else {
+			print("[SelectedFocusTriggerSuppressed] reason=duplicate")
+			return nil
+		}
+
+		print("[SelectedFocusOpportunity] selected_available=yes focused_available=yes stable=yes quality=actionable candidate=yes reason=bounded_trigger")
+		print("[NoSelectedFocusOpportunityWithoutQualityGate] status=pass count=0")
 		return TriggerPacket(
 			triggerType: .selectedTextEligible,
-			reason: "Accessibility-selected text metadata indicates selection longer than \(Self.selectedTextMinCharacterCount) characters.",
+			reason: "Bounded selected-text influence: meaningful in-focus selection (>= \(AgenticPivot.boundedSelectedTextMinChars) chars), not actively typing.",
 			candidateActions: Self.selectedTextCandidateActions,
 			createdAt: Date()
 		)

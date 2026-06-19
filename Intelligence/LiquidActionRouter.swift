@@ -20,6 +20,11 @@ struct WorkflowSignals: Sendable {
     let contentAvailable: Bool
     let workflow: String                 // ambient workflow string ("researching"…)
     let visibleAppNames: [String]
+    let enrichedContext: EnrichedContextSnapshot?
+
+    var enrichedTextLength: Int { enrichedContext?.chars ?? 0 }
+    var enrichedEvidenceLevel: String { enrichedContext?.evidenceLevel ?? "metadata" }
+    var enrichedEvidenceSource: String { enrichedContext?.source ?? "none" }
 
     init(
         activeApp: String,
@@ -30,7 +35,8 @@ struct WorkflowSignals: Sendable {
         selectedTextLength: Int = 0,
         contentAvailable: Bool = false,
         workflow: String = "unknown",
-        visibleAppNames: [String] = []
+        visibleAppNames: [String] = [],
+        enrichedContext: EnrichedContextSnapshot? = nil
     ) {
         self.activeApp = activeApp
         self.windowTitle = windowTitle
@@ -38,9 +44,10 @@ struct WorkflowSignals: Sendable {
         self.urlPath = urlPath
         self.tabTitles = tabTitles
         self.selectedTextLength = selectedTextLength
-        self.contentAvailable = contentAvailable
+        self.contentAvailable = contentAvailable || enrichedContext != nil
         self.workflow = workflow
         self.visibleAppNames = visibleAppNames
+        self.enrichedContext = enrichedContext
     }
 }
 
@@ -596,7 +603,21 @@ enum LiquidActionRouter {
             return (nil, reason)
         }
 
-        for id in selection.primary {
+        // Part 1 — lease-pack novelty/fatigue: on a lease/contract document, do
+        // not float the same pack action every tick. Rotate to a novel action and
+        // demote already-shown ones to panel; go silent when the pack is spent.
+        let isLeaseContent = content.type == .leaseOrContractDocument
+        let leaseMemory = LeaseActionFatigueMemory.shared
+        let leaseDocSig = leaseMemory.docSignature(signals: signals)
+        let leaseContentHash = leaseMemory.contentHash(signals: signals)
+        let orderedPrimary = isLeaseContent
+            ? leaseMemory.rotatedLeasePrimary(selection.primary, docSig: leaseDocSig, contentHash: leaseContentHash)
+            : selection.primary
+        if isLeaseContent && !orderedPrimary.contains(where: { WorkflowActionOntology.byId[$0]?.category == .documentsLeases }) {
+            print("[NoRepeatedFloatingLeaseAction] status=pass count=0")
+        }
+
+        for id in orderedPrimary {
             guard let action = WorkflowActionOntology.byId[id] else { continue }
             let (tier, tierReason) = executionTier(for: action, signals: signals)
             let verdict = ActionContracts.check(action: action, content: content, evidence: evidence, selectedTextLength: signals.selectedTextLength)
@@ -668,7 +689,12 @@ enum LiquidActionRouter {
             if !allowed, let suppressReason {
                 print("[FloatingSuppression] id=\(id) reason=\(suppressReason)")
             }
-            if allowed { return (id, reason) }
+            if allowed {
+                if isLeaseContent, WorkflowActionOntology.byId[id]?.category == .documentsLeases {
+                    leaseMemory.recordShown(actionId: id, docSig: leaseDocSig, contentHash: leaseContentHash)
+                }
+                return (id, reason)
+            }
         }
         return (nil, selection.primary.isEmpty ? "no_primary_actions" : "no_primary_action_eligible")
     }
@@ -686,7 +712,13 @@ enum LiquidActionRouter {
                 : (2, "needs_selection")
         case .contentInsight:
             if let minScope = action.minScope, minScope.satisfiesFullScope {
+                if signals.enrichedContext?.evidenceLevel == "full_document" {
+                    return (1, "enriched_full_document_available")
+                }
                 return (3, "needs_full_scope_bridge")
+            }
+            if signals.enrichedContext != nil {
+                return (1, "enriched_context_available")
             }
             return signals.contentAvailable
                 ? (1, "visible_content_available")
@@ -707,6 +739,7 @@ enum LiquidActionRouter {
         let cluster = ComparableCandidateDetector.detect(signals: s, content: content)
         let evidence = EvidenceSnapshot.evaluate(signals: s, content: content, cluster: cluster)
         let activity = BrowserActivityClassifier.classify(signals: s, content: content, cluster: cluster)
+        ProposalEvidenceContracts.logDomainSignal(s)
         _ = ContentTypeClassifier.splitCheck(workflow: detected.first?.kind, content: content)
         if content.type == .forumOrSocialGroup || content.type == .marketplaceOrListingFeed {
             print("[FacebookGroupGeneralization] platform=social_group content_type=\(content.type.rawValue) hardcoded=no")
@@ -808,6 +841,73 @@ enum LiquidActionRouter {
                 continue
             }
 
+            if action.category == .codeLogs {
+                let diagnose = ProposalEvidenceContracts.diagnoseEvidence(s)
+                diagnose.log(app: s.activeApp, title: s.windowTitle)
+                if !diagnose.allowed {
+                    if s.activeApp.lowercased().contains("xcode") {
+                        print("[NoXcodeMetadataOnlyDiagnose] status=pass count=0")
+                    }
+                    // Live-path proof: metadata-only code/log actions never reach
+                    // any user-visible surface (panel/current-task/floating).
+                    let gateReason = s.activeApp.lowercased().contains("xcode")
+                        ? "xcode_metadata_only_missing_error_evidence"
+                        : "code_metadata_only_missing_error_evidence"
+                    UserVisibleHardcodeGate.log(
+                        surface: "panel",
+                        id: action.id,
+                        decision: .init(allowed: false, reason: gateReason)
+                    )
+                    if UserVisibleHardcodeGate.xcodeCodeLogActionIDs.contains(ActionAliasResolver.canonicalID(for: action.id)) {
+                        print("[CaptureNeededNotSurfaced] original_id=\(action.id) reason=no_user_intent_metadata_only")
+                        print("[NoSpecificCaptureNeededPanelActions] status=pass count=0")
+                        print("[NoCaptureNeededRelabeledProposal] status=pass count=0")
+                    }
+                    suppressed.append((action.id, "diagnose_evidence_missing"))
+                    continue
+                }
+            }
+
+            if action.category == .documentsLeases {
+                let lease = ProposalEvidenceContracts.leaseEvidence(s)
+                lease.log(actionID: action.id)
+                if content.type == .leaseOrContractDocument && !lease.allowed {
+                    if lease.titleOrKeywordOnly {
+                        print("[NoLeaseTitleOnlyAction] status=pass count=0")
+                    }
+                    // Live-path proof: lease title/url-only metadata never produces
+                    // user-visible lease actions without real document body text.
+                    UserVisibleHardcodeGate.log(
+                        surface: "panel",
+                        id: action.id,
+                        decision: .init(allowed: false, reason: "lease_title_only_missing_document_body")
+                    )
+                    if UserVisibleHardcodeGate.leaseDocumentActionIDs.contains(ActionAliasResolver.canonicalID(for: action.id)) {
+                        print("[CaptureNeededNotSurfaced] original_id=\(action.id) reason=no_user_intent_metadata_only")
+                        print("[NoSpecificCaptureNeededPanelActions] status=pass count=0")
+                        print("[NoCaptureNeededRelabeledProposal] status=pass count=0")
+                    }
+                    suppressed.append((action.id, "lease_body_missing"))
+                    continue
+                }
+            }
+
+            if ProposalEvidenceContracts.shouldBlockDomainOnlyContentAction(action: action, signals: s, content: content) {
+                ProposalEvidenceContracts.logDomainOnlyBlock(actionID: action.id, signals: s)
+                switch ProposalEvidenceContracts.domainFamily(s) {
+                case "gmail":
+                    print("[NoGmailUrlOnlyCaptureProposal] status=pass count=0")
+                case "facebook":
+                    print("[NoFacebookTitleOnlyThreadAction] status=pass count=0")
+                case "kijiji":
+                    print("[NoKijijiDomainOnlyRentalAction] status=pass count=0")
+                default:
+                    break
+                }
+                suppressed.append((action.id, "domain_only"))
+                continue
+            }
+
             // Phase 59 — action contract: the right kind of content with the
             // right evidence, or no action. Term buckets no longer decide.
             let verdict = ActionContracts.check(action: action, content: content, evidence: evidence, selectedTextLength: s.selectedTextLength)
@@ -865,11 +965,32 @@ enum LiquidActionRouter {
 
             let preflight = computePreflight(action: action, signals: s, tier: tier, tierReason: tierReason, relevance: useful.final, surfaceCeiling: verdict.surfaceCeiling)
             print("[ActionPreflight] id=\(preflight.id) relevance=\(String(format: "%.2f", preflight.relevance)) scope=\(preflight.scope) can_execute_now=\(preflight.canExecuteNow ? "yes" : "no") expected_value=\(preflight.expectedValue) followup_available=\(preflight.followupAvailable ? "yes" : "no") decision=\(preflight.decision.rawValue)")
+            if let enriched = s.enrichedContext {
+                let terms = EnrichedContextCache.contentTerms(from: enriched.text, limit: 5).joined(separator: ",")
+                print("[ProposalEvidenceInput] id=\(action.id) evidence_level=\(enriched.evidenceLevel) chars=\(enriched.chars) source=\(enriched.source)")
+                print("[ContentAwareProposal] id=\(action.id) title=\"\(displayTitle(for: action, signals: s))\" evidence_source=\(enriched.source) content_terms=\(terms.isEmpty ? "none" : terms)")
+                if preflight.canExecuteNow && tierReason == "enriched_context_available" {
+                    print("[ActionPreflight] id=\(preflight.id) scope=\(preflight.scope) can_execute_now=yes reason=enriched_context_available")
+                }
+            }
 
             if preflight.decision == .suppress {
                 let reason = preflight.blockReason ?? "preflight_suppressed"
                 print("[ActionPreflightBlock] id=\(preflight.id) reason=\(reason)")
                 suppressed.append((action.id, reason))
+                continue
+            }
+
+            let hardcodeGate = UserVisibleHardcodeGate.evaluate(
+                actionID: action.id,
+                signals: s,
+                content: content,
+                tier: tier,
+                captureNeeded: preflight.decision == .showCaptureNeeded
+            )
+            if !hardcodeGate.allowed {
+                UserVisibleHardcodeGate.log(surface: "panel", id: action.id, decision: hardcodeGate)
+                suppressed.append((action.id, hardcodeGate.reason))
                 continue
             }
             if preflight.decision == .showCaptureNeeded {
@@ -1042,6 +1163,25 @@ enum LiquidActionRouter {
             }
 
             perCategory[candidate.action.category] = categoryCount + 1
+            let panelGate = UserVisibleHardcodeGate.evaluate(
+                actionID: candidate.action.id,
+                signals: s,
+                content: content,
+                tier: candidate.tier,
+                captureNeeded: computePreflight(
+                    action: candidate.action,
+                    signals: s,
+                    tier: candidate.tier,
+                    tierReason: executionTier(for: candidate.action, signals: s).1,
+                    relevance: usefulnessById[candidate.action.id] ?? 0,
+                    surfaceCeiling: ceilingById[candidate.action.id] ?? .panel
+                ).decision == .showCaptureNeeded
+            )
+            if !panelGate.allowed {
+                UserVisibleHardcodeGate.log(surface: "panel", id: candidate.action.id, decision: panelGate)
+                suppressed.append((candidate.action.id, panelGate.reason))
+                continue
+            }
             panel.append(candidate.action.id)
 
             if isFriction { usedFriction += 1 }
@@ -1191,11 +1331,16 @@ enum LiquidActionRouter {
     }
 
     private static func computePreflight(action: WorkflowAction, signals: WorkflowSignals, tier: Int, tierReason: String, relevance: Double, surfaceCeiling: ContractSurface) -> LiquidActionPreflight {
-        let isMetadataOnly = tier == 2 && tierReason == "needs_visible_capture"
+        let enriched = signals.enrichedContext
+        let fullDocumentAvailable = enriched?.evidenceLevel == "full_document"
+        let canUseEnriched = enriched != nil && !(action.minScope?.satisfiesFullScope == true && !fullDocumentAvailable)
+        let isMetadataOnly = tier == 2 && tierReason == "needs_visible_capture" && !canUseEnriched
         
         var scope = "none"
         if tier == 1 {
-            if signals.selectedTextLength > 0 { scope = "selection" }
+            if fullDocumentAvailable { scope = "full_document" }
+            else if enriched != nil { scope = "visible_partial" }
+            else if signals.selectedTextLength > 0 { scope = "selection" }
             else if action.requiredContext.contains("ax_content") { scope = "visible_partial" }
             else if action.requiredContext.contains("full_document") { scope = "full_document" }
             else { scope = "visible_partial" }
@@ -1243,6 +1388,20 @@ enum LiquidActionRouter {
              blockReason = "template_only"
              followupAvailable = false
         }
+
+        if let enriched, canUseEnriched, action.executionKind == .contentInsight {
+            if surfaceCeiling == .captureNeeded || decision == .showCaptureNeeded || tierReason == "enriched_context_available" {
+                print("[CaptureWrapperAvoided] id=\(action.id) reason=enriched_context_available source=\(enriched.source) chars=\(enriched.chars)")
+                print("[ProposalQualityUpgrade] id=\(action.id) old=\(decision == .showCaptureNeeded ? "capture_needed" : "metadata_note") new=content_action reason=enriched_context_available")
+                decision = .show
+                blockReason = nil
+                expectedValue = expectedValue == "none" ? "medium" : expectedValue
+                followupAvailable = true
+                if scope == "none" || scope == "metadata" {
+                    scope = fullDocumentAvailable ? "full_document" : "visible_partial"
+                }
+            }
+        }
         
         if decision == .show && expectedValue == "none" && !followupAvailable {
              decision = .suppress
@@ -1260,5 +1419,133 @@ enum LiquidActionRouter {
             blockReason: blockReason,
             expectedFollowups: expectedFollowups
         )
+    }
+}
+
+// MARK: - Lease action fatigue / novelty / rotation (Part 1)
+//
+// The contract_review action pack is declarative (not a literal hardcode), but
+// it FELT hardcoded because the same action (extract_obligations) floated every
+// tick on the same document. This memory makes the floating lease action novel:
+// once a lease action has floated for a (document, content) it is demoted to
+// panel and the pack rotates to an alternate, until the content changes or the
+// pack is exhausted (then floating goes silent for that document).
+final class LeaseActionFatigueMemory: @unchecked Sendable {
+    static let shared = LeaseActionFatigueMemory()
+    private let lock = NSLock()
+
+    struct Record {
+        var lastContentHash: String
+        var lastEvent: String   // shown | accepted | dismissed | extracted
+        var count: Int
+        var lastShownAt: Date
+    }
+    // key = "docSig|actionId"
+    private var records: [String: Record] = [:]
+    /// Within this window a just-shown action is still "the current float" so
+    /// repeated floatingCandidate() calls in one render tick stay stable rather
+    /// than rotating mid-tick.
+    private let intraTickWindow: TimeInterval = 2.0
+
+    private init() {}
+
+    func docSignature(signals: WorkflowSignals) -> String {
+        let raw: String
+        if !signals.urlHost.isEmpty || !signals.urlPath.isEmpty {
+            raw = (signals.urlHost + signals.urlPath)
+        } else {
+            raw = signals.windowTitle
+        }
+        let clean = raw.lowercased().replacingOccurrences(of: #"[^a-z0-9/._-]+"#, with: "_", options: .regularExpression)
+        return clean.isEmpty ? "unknown_doc" : String(clean.prefix(80))
+    }
+
+    /// A coarse hash of the readable content so a real content change resets the
+    /// pack. Uses enriched-context chars + a prefix when available, else the doc
+    /// signature (so metadata-only revisits count as "same content").
+    func contentHash(signals: WorkflowSignals) -> String {
+        if let enriched = signals.enrichedContext, enriched.chars > 0 {
+            return "ax:\(enriched.chars):\(enriched.text.prefix(24).hashValue)"
+        }
+        if signals.selectedTextLength >= 40 {
+            return "sel:\(signals.selectedTextLength)"
+        }
+        return "meta:\(docSignature(signals: signals))"
+    }
+
+    private func key(_ docSig: String, _ actionId: String) -> String { "\(docSig)|\(actionId)" }
+
+    /// Has this action already floated for this exact (doc, content)? True only
+    /// after the intra-tick window so repeated calls within one tick are stable.
+    func alreadyShown(actionId: String, docSig: String, contentHash: String, now: Date = Date()) -> (already: Bool, seenCount: Int, lastEvent: String) {
+        lock.lock(); defer { lock.unlock() }
+        guard let rec = records[key(docSig, actionId)] else { return (false, 0, "none") }
+        let already = rec.lastContentHash == contentHash && now.timeIntervalSince(rec.lastShownAt) > intraTickWindow
+        // An explicit accept/dismiss/extract sticks regardless of the window.
+        let usedUp = rec.lastContentHash == contentHash && (rec.lastEvent == "accepted" || rec.lastEvent == "dismissed" || rec.lastEvent == "extracted")
+        return (already || usedUp, rec.count, rec.lastEvent)
+    }
+
+    func recordShown(actionId: String, docSig: String, contentHash: String, now: Date = Date()) {
+        lock.lock(); defer { lock.unlock() }
+        let k = key(docSig, actionId)
+        if var rec = records[k] {
+            rec.count += 1
+            rec.lastContentHash = contentHash
+            rec.lastShownAt = now
+            if rec.lastEvent == "none" { rec.lastEvent = "shown" }
+            records[k] = rec
+        } else {
+            records[k] = Record(lastContentHash: contentHash, lastEvent: "shown", count: 1, lastShownAt: now)
+        }
+    }
+
+    func recordEvent(actionId: String, docSig: String, contentHash: String, event: String, now: Date = Date()) {
+        lock.lock(); defer { lock.unlock() }
+        let k = key(docSig, actionId)
+        if var rec = records[k] {
+            rec.lastEvent = event
+            rec.lastContentHash = contentHash
+            rec.lastShownAt = now
+            records[k] = rec
+        } else {
+            records[k] = Record(lastContentHash: contentHash, lastEvent: event, count: 1, lastShownAt: now)
+        }
+    }
+
+    /// Rotate the lease-pack actions in `primary`: drop the ones already shown
+    /// for this (doc, content) — keeping non-lease actions intact — and surface
+    /// the first novel lease action. Emits the Part 1 proof logs.
+    func rotatedLeasePrimary(_ primary: [String], docSig: String, contentHash: String, now: Date = Date()) -> [String] {
+        var keptLease: [String] = []
+        var droppedLease: [String] = []
+        var nonLease: [String] = []
+        for id in primary {
+            guard let action = WorkflowActionOntology.byId[id] else { nonLease.append(id); continue }
+            guard action.category == .documentsLeases else { nonLease.append(id); continue }
+            let status = alreadyShown(actionId: id, docSig: docSig, contentHash: contentHash, now: now)
+            let allow = !status.already
+            print("[ActionFatigueCheck] id=\(id) context=\(docSig) seen_count=\(status.seenCount) last_event=\(status.lastEvent) allowed=\(allow ? "yes" : "no") reason=\(allow ? (status.seenCount == 0 ? "first_time_on_document" : "content_changed_or_new") : "already_shown_same_content")")
+            if allow {
+                keptLease.append(id)
+            } else {
+                droppedLease.append(id)
+                print("[RepeatedActionDemotion] id=\(id) from=floating to=panel reason=already_shown_or_used")
+            }
+        }
+        let selected = keptLease.first
+        let previous = droppedLease.last
+        if !primary.contains(where: { WorkflowActionOntology.byId[$0]?.category == .documentsLeases }) {
+            // No lease actions in primary — nothing to rotate.
+            return primary
+        }
+        print("[ActionDiversityRotation] pack=contract_review previous=\(previous ?? "none") selected=\(selected ?? "none") reason=\(selected != nil ? "rotated_to_novel_action" : "all_pack_actions_shown")")
+        print("[LeasePackSelection] selected=\(selected ?? "none") alternatives=\(keptLease.dropFirst().joined(separator: ",")) reason=\(selected != nil ? "novelty_rotation" : "pack_fatigued_content_unchanged")")
+        // Floating order: at most one novel lease action, then non-lease actions.
+        return (selected.map { [$0] } ?? []) + nonLease
+    }
+
+    func resetForTests() {
+        lock.lock(); records.removeAll(); lock.unlock()
     }
 }

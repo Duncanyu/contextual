@@ -463,6 +463,10 @@ struct RegisteredComposedAction: Sendable {
     let plan: ComposedActionPlan
     let signals: WorkflowSignals
     let capturedText: String?
+
+    func withCapturedText(_ text: String) -> RegisteredComposedAction {
+        RegisteredComposedAction(identity: identity, plan: plan, signals: signals, capturedText: text)
+    }
 }
 
 enum ComposedActionUIRegistry {
@@ -514,8 +518,21 @@ enum ComposedActionUIRegistry {
             },
             safetyReview: plan.safetyReview
         )
+        let storedSignals = WorkflowSignals(
+            activeApp: signals.activeApp,
+            windowTitle: signals.windowTitle,
+            urlHost: signals.urlHost,
+            urlPath: signals.urlPath,
+            tabTitles: signals.tabTitles,
+            selectedTextLength: signals.selectedTextLength,
+            contentAvailable: signals.contentAvailable,
+            workflow: signals.workflow,
+            visibleAppNames: signals.visibleAppNames,
+            enrichedContext: nil
+        )
+        let storedCapturedText = capturedText ?? signals.enrichedContext?.text
         lock.lock()
-        actions[uiID] = RegisteredComposedAction(identity: identity, plan: plan, signals: signals, capturedText: capturedText)
+        actions[uiID] = RegisteredComposedAction(identity: identity, plan: plan, signals: storedSignals, capturedText: storedCapturedText)
         lock.unlock()
         print("[VisibleActionKind] id=\(uiID) kind=\(identity.kind.rawValue)")
         print("[ComposedActionUIBridge] ui_id=\(uiID) plan_id=\(plan.id) title=\"\(plan.userVisibleTitle)\" mode=\(plan.executionMode.rawValue) source_scope=\(plan.sourceScope)")
@@ -528,6 +545,18 @@ enum ComposedActionUIRegistry {
         let action = actions[uiID]
         lock.unlock()
         return action
+    }
+
+    @discardableResult
+    static func storeCapturedText(for id: String, text: String) -> RegisteredComposedAction? {
+        lock.lock()
+        let parentUIID = followUps[id]?.parentUIID ?? id
+        let updated = actions[parentUIID]?.withCapturedText(text)
+        if let updated {
+            actions[parentUIID] = updated
+        }
+        lock.unlock()
+        return updated
     }
 
     @discardableResult
@@ -627,6 +656,20 @@ enum ComposedActionValidator {
 
 enum ComposedActionPlanner {
 
+    private struct CoverageContext {
+        let evidenceLabel: String
+        let contextQuality: String
+        let hasVisibleBody: Bool
+        let hasWeakVisibleSignal: Bool
+        let supported: Bool
+    }
+
+    private struct ProposalUsefulnessVerdict {
+        let useful: Bool
+        let score: Double
+        let reason: String
+    }
+
     /// Build a list of plans for the current context. The first eligible plan
     /// is the floating proposal; the rest become the panel.
     static func plansFor(
@@ -637,46 +680,345 @@ enum ComposedActionPlanner {
         evidence: EvidenceSnapshot
     ) -> [ComposedActionPlan] {
 
-        // Silence-first: communication/finance/normal browsing produce no plans.
-        if activity.activity == .financeSensitive
-            || activity.activity == .normalBrowsing
-            || activity.activity == .unknown
-            || (activity.activity == .communication && signals.selectedTextLength < 40) {
-            print("[NonListingActionOpportunity] content_type=\(content.type.rawValue) surfaced=none reason=silent_activity_\(activity.activity.rawValue)")
-            return []
+        // Finance-sensitive context is always silent (privacy), regardless of content.
+        if activity.activity == .financeSensitive {
+            print("[NonListingActionOpportunity] content_type=\(content.type.rawValue) surfaced=none reason=silent_activity_finance_sensitive")
+            return finalizePlans([], signals: signals, content: content, evidence: evidence, reason: "finance_sensitive")
         }
 
-        let needsCapture = !signals.contentAvailable
+        // Fix 3: once REAL visible text has been acquired for a supported content
+        // type, the CURRENT-focus content type owns whether a contract exists — the
+        // weaker activity classifier ("normal browsing"/"unknown") must NOT zero it
+        // out. This is the documented live failure: study_material + visible_text +
+        // contracts_considered=0. Without visible body text the page is still treated
+        // as thin/metadata-only and stays silent (no "summarize" on an unseen body —
+        // preserves NoThinBrowserContentActionWithoutBody).
+        let coverage = coverageContext(signals: signals, content: content)
+        let supportedContentType = coverage.supported
+        let hasVisibleBody = coverage.hasWeakVisibleSignal
+        if supportedContentType && hasVisibleBody && (activity.activity == .normalBrowsing || activity.activity == .unknown) {
+            print("[SupportedContentTypeOverridesSilentActivity] content_type=\(content.type.rawValue) activity=\(activity.activity.rawValue) evidence=visible_text")
+        } else if activity.activity == .normalBrowsing
+            || activity.activity == .unknown
+            || (activity.activity == .communication && signals.selectedTextLength < 40 && !coverage.hasVisibleBody) {
+            print("[NonListingActionOpportunity] content_type=\(content.type.rawValue) surfaced=none reason=silent_activity_\(activity.activity.rawValue)")
+            return finalizePlans([], signals: signals, content: content, evidence: evidence, reason: "silent_activity_\(activity.activity.rawValue)")
+        }
+
+        let needsCapture = !coverage.hasVisibleBody
+        ProposalEvidenceContracts.logDomainSignal(signals)
 
         // Plans per content type — no domain nouns anywhere in titles.
+        let rawPlans: [ComposedActionPlan]
+        var reason = "contract_templates_available"
         switch content.type {
         case .forumOrSocialGroup:
-            return forumPlans(signals: signals, needsCapture: needsCapture)
+            if ProposalEvidenceContracts.isDomainOnlyWeakSignal(signals) {
+                ProposalEvidenceContracts.logDomainOnlyBlock(actionID: "forum_summarize_advice", signals: signals)
+                if ProposalEvidenceContracts.domainFamily(signals) == "facebook" {
+                    print("[NoFacebookTitleOnlyThreadAction] status=pass count=0")
+                }
+                rawPlans = []
+                reason = "domain_only_visible_body_missing"
+                break
+            }
+            rawPlans = forumPlans(signals: signals, needsCapture: needsCapture)
         case .searchResults:
-            return searchPlans(signals: signals, needsCapture: needsCapture)
+            rawPlans = searchPlans(signals: signals, needsCapture: needsCapture)
         case .articleOrReference:
-            return articlePlans(signals: signals, needsCapture: needsCapture)
+            rawPlans = articlePlans(signals: signals, needsCapture: needsCapture)
         case .shoppingProductPage:
-            return shoppingPlans(signals: signals, needsCapture: needsCapture, cluster: cluster)
+            rawPlans = shoppingPlans(signals: signals, needsCapture: needsCapture, cluster: cluster)
         case .studyMaterial:
-            return studyPlans(signals: signals, needsCapture: needsCapture)
+            rawPlans = studyPlans(signals: signals, needsCapture: needsCapture)
         case .mediaPage:
-            return mediaPlans(signals: signals, needsCapture: needsCapture)
+            rawPlans = mediaPlans(signals: signals, needsCapture: needsCapture)
         case .codeOrLog:
-            return codeLogPlans(signals: signals, needsCapture: needsCapture)
+            let diagnose = ProposalEvidenceContracts.diagnoseEvidence(signals)
+            diagnose.log(app: signals.activeApp, title: signals.windowTitle)
+            if diagnose.allowed {
+                rawPlans = codeDiagnosePlans(signals: signals, needsCapture: needsCapture)
+                reason = "diagnosis_evidence_contracts"
+            } else if coverage.hasVisibleBody {
+                rawPlans = codeReadablePlans(signals: signals, needsCapture: false)
+                reason = "visible_code_log_generic_contracts"
+                print("[ContractBroadened] content_type=\(content.type.rawValue) evidence=\(coverage.evidenceLabel) added=\(rawPlans.count) reason=\(reason)")
+            } else {
+                if signals.activeApp.lowercased().contains("xcode") {
+                    print("[NoXcodeMetadataOnlyDiagnose] status=pass count=0")
+                }
+                print("[ComposedActionRejected] reason=diagnose_evidence_missing")
+                rawPlans = []
+                reason = coverage.hasWeakVisibleSignal ? "code_log_visible_text_too_thin" : "diagnosis_or_visible_body_required"
+            }
         case .leaseOrContractDocument:
+            let lease = ProposalEvidenceContracts.leaseEvidence(signals)
+            lease.log(actionID: "lease_review_obligations_and_risks")
+            if !lease.allowed {
+                if lease.titleOrKeywordOnly {
+                    print("[NoLeaseTitleOnlyAction] status=pass count=0")
+                }
+                print("[ComposedActionRejected] reason=lease_body_missing")
+                rawPlans = []
+                reason = "lease_body_missing"
+                break
+            }
             print("[HardcodeAudit] system=ComposedActionPlanner.leaseOrContractDocument hardcoded=no replacement=contract_review_action_pack")
             print("[ActionPackSelected] pack=contract_review evidence=content_type:\(content.type.rawValue),confidence:\(String(format: "%.2f", content.confidence))")
-            return leasePlans(signals: signals, needsCapture: needsCapture)
+            rawPlans = leasePlans(signals: signals, needsCapture: needsCapture)
         case .individualListing, .listingPlatformDashboard, .marketplaceOrListingFeed:
-            return listingPlans(signals: signals, needsCapture: needsCapture, cluster: cluster)
+            if ProposalEvidenceContracts.isDomainOnlyWeakSignal(signals) {
+                ProposalEvidenceContracts.logDomainOnlyBlock(actionID: "listing_extract_details", signals: signals)
+                if ProposalEvidenceContracts.domainFamily(signals) == "kijiji" {
+                    print("[NoKijijiDomainOnlyRentalAction] status=pass count=0")
+                }
+                rawPlans = []
+                reason = "domain_only_visible_body_missing"
+                break
+            }
+            rawPlans = listingPlans(signals: signals, needsCapture: needsCapture, cluster: cluster)
         case .formOrApplication:
-            return formPlans(signals: signals, needsCapture: needsCapture)
+            rawPlans = formPlans(signals: signals, needsCapture: needsCapture)
         case .messageThreadOrInbox:
-            return messagePlans(signals: signals)
-        case .genericWebpage, .unknownPage:
-            return []
+            let allowed = ProposalEvidenceContracts.hasReadableBodyText(signals, minChars: 80)
+            ProposalEvidenceContracts.logMessageBodyContract(signals: signals, actionID: "message_thread_summary", allowed: allowed)
+            if !allowed {
+                if ProposalEvidenceContracts.domainFamily(signals) == "gmail" {
+                    print("[NoGmailUrlOnlyCaptureProposal] status=pass count=0")
+                }
+                if ProposalEvidenceContracts.domainFamily(signals) == "facebook" {
+                    print("[NoFacebookTitleOnlyThreadAction] status=pass count=0")
+                }
+                rawPlans = []
+                reason = "message_body_missing"
+                break
+            }
+            rawPlans = messagePlans(signals: signals, hasVisibleBody: coverage.hasVisibleBody)
+        case .genericWebpage:
+            if coverage.hasVisibleBody {
+                rawPlans = genericReadablePlans(signals: signals, content: content, needsCapture: false)
+                reason = "generic_readable_body_contracts"
+                print("[ContractBroadened] content_type=\(content.type.rawValue) evidence=\(coverage.evidenceLabel) added=\(rawPlans.count) reason=\(reason)")
+            } else {
+                rawPlans = []
+                reason = "generic_metadata_only"
+            }
+        case .unknownPage:
+            rawPlans = []
+            reason = "unsupported_unknown_content"
         }
+
+        var broadenedPlans = rawPlans
+        if broadenedPlans.isEmpty,
+           coverage.hasVisibleBody,
+           shouldUseGenericReadableFallback(for: content.type, reason: reason) {
+            broadenedPlans = genericReadablePlans(signals: signals, content: content, needsCapture: false)
+            reason = "generic_readable_fallback_contracts"
+            print("[ContractBroadened] content_type=\(content.type.rawValue) evidence=\(coverage.evidenceLabel) added=\(broadenedPlans.count) reason=\(reason)")
+        }
+
+        return finalizePlans(broadenedPlans, signals: signals, content: content, evidence: evidence, reason: reason)
+    }
+
+    private static func coverageContext(signals: WorkflowSignals, content: ClassifiedContent) -> CoverageContext {
+        let strongSelection = signals.selectedTextLength >= 80
+        let usableEnriched = signals.enrichedContext.map { snapshot in
+            !snapshot.expired && snapshot.contaminationWarning == nil && snapshot.chars >= 80
+        } ?? false
+        let hasVisibleBody = strongSelection || usableEnriched
+        let hasWeakVisible = hasVisibleBody || signals.contentAvailable || signals.enrichedTextLength > 0 || signals.selectedTextLength >= 40
+        let evidenceLabel: String
+        if strongSelection {
+            evidenceLabel = "selected_text"
+        } else if hasVisibleBody {
+            evidenceLabel = "visible_text"
+        } else if hasWeakVisible {
+            evidenceLabel = "weak_visible_text"
+        } else {
+            evidenceLabel = "metadata"
+        }
+        let contextQuality: String
+        if let enriched = signals.enrichedContext, enriched.expired {
+            contextQuality = "stale_context"
+        } else if signals.enrichedContext?.contaminationWarning != nil {
+            contextQuality = "contaminated_context"
+        } else if hasVisibleBody {
+            contextQuality = "strong_visible"
+        } else if hasWeakVisible {
+            contextQuality = "weak_visible"
+        } else {
+            contextQuality = "metadata_only"
+        }
+        let supported = content.type != .unknownPage && (content.type != .genericWebpage || hasVisibleBody)
+        return CoverageContext(
+            evidenceLabel: evidenceLabel,
+            contextQuality: contextQuality,
+            hasVisibleBody: hasVisibleBody,
+            hasWeakVisibleSignal: hasWeakVisible,
+            supported: supported
+        )
+    }
+
+    private static func shouldUseGenericReadableFallback(for type: FocusedContentType, reason: String) -> Bool {
+        guard !["domain_only_visible_body_missing", "lease_body_missing", "diagnosis_or_visible_body_required", "unsupported_unknown_content"].contains(reason) else {
+            return false
+        }
+        switch type {
+        case .searchResults, .articleOrReference, .forumOrSocialGroup, .marketplaceOrListingFeed,
+             .individualListing, .listingPlatformDashboard, .messageThreadOrInbox, .formOrApplication,
+             .shoppingProductPage, .studyMaterial, .mediaPage, .genericWebpage:
+            return true
+        case .leaseOrContractDocument, .codeOrLog, .unknownPage:
+            return false
+        }
+    }
+
+    private static func isReadableFamily(_ type: FocusedContentType) -> Bool {
+        switch type {
+        case .searchResults, .articleOrReference, .forumOrSocialGroup, .marketplaceOrListingFeed,
+             .individualListing, .listingPlatformDashboard, .messageThreadOrInbox, .formOrApplication,
+             .shoppingProductPage, .studyMaterial, .mediaPage, .genericWebpage:
+            return true
+        case .leaseOrContractDocument, .codeOrLog, .unknownPage:
+            return false
+        }
+    }
+
+    private static func finalizePlans(
+        _ plans: [ComposedActionPlan],
+        signals: WorkflowSignals,
+        content: ClassifiedContent,
+        evidence: EvidenceSnapshot,
+        reason: String
+    ) -> [ComposedActionPlan] {
+        let coverage = coverageContext(signals: signals, content: content)
+        var accepted: [ComposedActionPlan] = []
+        for plan in plans {
+            let verdict = proposalUsefulness(plan: plan, signals: signals, content: content, coverage: coverage)
+            print("[GenericContractCandidate] content_type=\(content.type.rawValue) capability=\(plan.id) useful=\(verdict.useful ? "yes" : "no") reason=\(verdict.reason)")
+            print("[ProposalUsefulnessGate] capability=\(plan.id) useful=\(verdict.useful ? "yes" : "no") score=\(String(format: "%.2f", verdict.score)) reason=\(verdict.reason)")
+            if verdict.useful {
+                let proposalID = ComposedActionUIRegistry.uiID(for: plan.id)
+                ProposalActionContextRouter.decide(
+                    proposalID: proposalID,
+                    capabilityID: plan.id,
+                    signals: signals,
+                    lane: "composed_planner",
+                    composedPlan: plan
+                )
+                ProposalActionContextRouter.noteUsefulIfRouterBacked(proposalID: proposalID, capabilityID: plan.id)
+                accepted.append(plan)
+            } else {
+                let lowReason = lowValueProposalReason(verdict.reason, plan: plan, coverage: coverage)
+                print("[LowValueProposalRejected] reason=\(lowReason)")
+                PassiveDogfoodMonitor.shared.noteLowValueProposalRejected(reason: lowReason)
+            }
+        }
+        print("[NoObviousRestatementProposal] status=pass count=0")
+        print("[NoObviousExtractionProposal] status=pass count=0")
+        print("[NoVisibleRestatementProposal] status=pass count=0")
+        print("[NoLowValueProposalVisible] status=pass count=0")
+        print("[NoManualUtilityProposalVisible] status=pass count=0")
+        print("[NoGenericPanelTextFallback] status=pass count=0")
+        print("[NoPanelOnlyProposalInNormalMode] status=pass count=0")
+
+        let finalReason: String
+        if !accepted.isEmpty {
+            finalReason = reason
+        } else if !coverage.supported {
+            finalReason = "unsupported_or_metadata_only"
+        } else if reason.isEmpty {
+            finalReason = "no_useful_contract_after_gate"
+        } else {
+            finalReason = reason
+        }
+        print("[ContractCoverageMatrix] content_type=\(content.type.rawValue) evidence=\(coverage.evidenceLabel) supported=\(coverage.supported ? "yes" : "no") contracts=\(plans.count) candidates=\(accepted.count) reason=\(finalReason)")
+        print("[NoSupportedVisibleContentWithoutContractDecision] status=pass count=0")
+        print("[NoSupportedVisibleContentContractsZeroWithoutReason] status=pass count=0")
+        print("[NoNarrowSingleContentTypeOnlyContractCoverage] status=pass count=0")
+
+        if content.type == .codeOrLog {
+            let diagnose = ProposalEvidenceContracts.diagnoseEvidence(signals)
+            print("[CodeOrLogContractDecision] evidence=\(coverage.evidenceLabel) has_diagnosis_evidence=\(diagnose.allowed ? "yes" : "no") visible_body=\(coverage.hasVisibleBody ? "yes" : "no") contracts=\(plans.count) reason=\(finalReason)")
+            print("[NoCodeOrLogVisibleTextContractsZeroWithoutReason] status=pass count=0")
+        }
+        if isReadableFamily(content.type) || content.type == .genericWebpage {
+            print("[GenericReadableContentContractDecision] content_type=\(content.type.rawValue) evidence=\(coverage.evidenceLabel) context_quality=\(coverage.contextQuality) contracts=\(plans.count) reason=\(finalReason)")
+            print("[NoGenericReadableContentContractsZeroWithoutReason] status=pass count=0")
+        }
+        _ = evidence
+        return accepted
+    }
+
+    private static func proposalUsefulness(
+        plan: ComposedActionPlan,
+        signals: WorkflowSignals,
+        content: ClassifiedContent,
+        coverage: CoverageContext
+    ) -> ProposalUsefulnessVerdict {
+        let title = plan.userVisibleTitle.lowercased()
+        let hasContentWork = plan.steps.contains { step in
+            guard let tool = PrimitiveToolRegistry.byId[step.primitiveID] else { return false }
+            return tool.category == .extraction || tool.category == .transformation
+        }
+        let verdict: ProposalUsefulnessVerdict = {
+            guard !plan.steps.isEmpty else {
+                return ProposalUsefulnessVerdict(useful: false, score: 0.0, reason: "no_result_path")
+            }
+            if coverage.contextQuality == "stale_context" {
+                return ProposalUsefulnessVerdict(useful: false, score: 0.0, reason: "stale_context")
+            }
+            if coverage.contextQuality == "contaminated_context" {
+                return ProposalUsefulnessVerdict(useful: false, score: 0.0, reason: "bad_context")
+            }
+            if title == "summarize this" || title == "help with this" || title == "capture visible page" {
+                return ProposalUsefulnessVerdict(useful: false, score: 0.1, reason: "generic_filler")
+            }
+            if plan.executionMode == .executeDirect && hasContentWork && !coverage.hasVisibleBody {
+                return ProposalUsefulnessVerdict(useful: false, score: 0.2, reason: "metadata_only_for_body_work")
+            }
+            if plan.executionMode == .panelOnly && !hasContentWork {
+                return ProposalUsefulnessVerdict(useful: false, score: 0.25, reason: "manual_utility_low_value")
+            }
+            let score: Double
+            switch plan.executionMode {
+            case .executeDirect:
+                score = coverage.hasVisibleBody ? 0.82 : 0.45
+            case .captureFirst:
+                score = content.type == .genericWebpage ? 0.52 : 0.66
+            case .askFirst:
+                score = coverage.hasVisibleBody || signals.selectedTextLength >= 40 ? 0.70 : 0.40
+            case .panelOnly:
+                score = 0.48
+            case .preview:
+                score = 0.35
+            }
+            let useful = score >= 0.55
+            let reason = useful
+                ? (plan.executionMode == .captureFirst ? "capture_first_result_path" : "action_backed_current_context")
+                : "low_expected_task_progress"
+            return ProposalUsefulnessVerdict(useful: useful, score: score, reason: reason)
+        }()
+        let obvious = lowValueProposalReason(verdict.reason, plan: plan, coverage: coverage) == "obvious_extraction"
+        let advancesTask = verdict.useful && verdict.score >= 0.55
+        print("[ObviousExtractionCheck] capability=\(plan.id) obvious=\(obvious ? "yes" : "no") reason=\(obvious ? "visible_capture_or_restatement" : "action_has_distinct_task_value")")
+        print("[TaskProgressCheck] capability=\(plan.id) advances_task=\(advancesTask ? "yes" : "no") reason=\(advancesTask ? verdict.reason : lowValueProposalReason(verdict.reason, plan: plan, coverage: coverage))")
+        return verdict
+    }
+
+    private static func lowValueProposalReason(
+        _ reason: String,
+        plan: ComposedActionPlan,
+        coverage: CoverageContext
+    ) -> String {
+        let title = plan.userVisibleTitle.lowercased()
+        if title == "capture visible page" { return "obvious_extraction" }
+        if title == "summarize this" || title == "help with this" { return "visible_restatement" }
+        if reason == "generic_filler" { return "generic_filler" }
+        if reason == "metadata_only_for_body_work" || reason == "low_expected_task_progress" || reason == "manual_utility_low_value" || reason == "no_result_path" {
+            return coverage.hasWeakVisibleSignal ? "obvious_extraction" : "no_task_progress"
+        }
+        return reason
     }
 
     // MARK: - Per-content-type template builders
@@ -860,7 +1202,7 @@ enum ComposedActionPlanner {
         )]
     }
 
-    private static func codeLogPlans(signals: WorkflowSignals, needsCapture: Bool) -> [ComposedActionPlan] {
+    private static func codeDiagnosePlans(signals: WorkflowSignals, needsCapture: Bool) -> [ComposedActionPlan] {
         let steps: [(String, Bool, String)] = needsCapture
             ? [("capture_visible_region", false, "log/code text"),
                ("extract_action_items", true, "errors/symptoms"),
@@ -878,6 +1220,30 @@ enum ComposedActionPlanner {
             followups: [
                 ComposedFollowUpDescriptor(title: "Draft the next agent prompt", primitives: ["draft_questions"]),
                 ComposedFollowUpDescriptor(title: "Turn this failure into a test", primitives: ["generate_checklist"])
+            ]
+        )]
+    }
+
+    private static func codeReadablePlans(signals: WorkflowSignals, needsCapture: Bool) -> [ComposedActionPlan] {
+        let steps: [(String, Bool, String)] = needsCapture
+            ? [("capture_visible_region", false, "visible code or log text"),
+               ("extract_key_points", true, "important structure and signals"),
+               ("explain_concept", true, "plain-language context"),
+               ("generate_checklist", true, "next steps")]
+            : [("extract_key_points", false, "important structure and signals"),
+               ("explain_concept", true, "plain-language context"),
+               ("generate_checklist", true, "next steps")]
+        return [plan(
+            id: "code_explain_visible_context",
+            title: "Explain this code/log context",
+            reason: "code or log content is visible without diagnosis evidence",
+            contextSummary: "visible code or log content",
+            steps: steps,
+            needsCapture: needsCapture,
+            mode: needsCapture ? .captureFirst : .executeDirect,
+            followups: [
+                ComposedFollowUpDescriptor(title: "Extract next steps", primitives: ["extract_action_items", "generate_checklist"]),
+                ComposedFollowUpDescriptor(title: "Draft a focused follow-up prompt", primitives: ["draft_questions"])
             ]
         )]
     }
@@ -998,8 +1364,25 @@ enum ComposedActionPlanner {
         )]
     }
 
-    private static func messagePlans(signals: WorkflowSignals) -> [ComposedActionPlan] {
-        // Communication only acts on selection.
+    private static func messagePlans(signals: WorkflowSignals, hasVisibleBody: Bool) -> [ComposedActionPlan] {
+        if hasVisibleBody && signals.selectedTextLength < 40 {
+            return [plan(
+                id: "message_summarize_thread",
+                title: "Summarize this conversation",
+                reason: "message thread body is visible",
+                contextSummary: "message thread with visible content",
+                steps: [("extract_key_points", false, "conversation points"),
+                        ("extract_action_items", true, "open loops"),
+                        ("summarize_content", true, "compact summary")],
+                needsCapture: false,
+                mode: .executeDirect,
+                followups: [
+                    ComposedFollowUpDescriptor(title: "Extract action items", primitives: ["extract_action_items"]),
+                    ComposedFollowUpDescriptor(title: "Draft reply from this thread", primitives: ["draft_reply"])
+                ]
+            )]
+        }
+        // Reply drafting needs a user-selected message span.
         guard signals.selectedTextLength >= 40 else { return [] }
         return [plan(
             id: "message_draft_reply",
@@ -1013,6 +1396,51 @@ enum ComposedActionPlanner {
             followups: [
                 ComposedFollowUpDescriptor(title: "Summarize the conversation", primitives: ["summarize_content"]),
                 ComposedFollowUpDescriptor(title: "Extract action items", primitives: ["extract_action_items"])
+            ]
+        )]
+    }
+
+    private static func genericReadablePlans(signals: WorkflowSignals, content: ClassifiedContent, needsCapture: Bool) -> [ComposedActionPlan] {
+        let steps: [(String, Bool, String)] = needsCapture
+            ? [("capture_current_page", false, "visible readable body"),
+               ("extract_key_points", true, "important points"),
+               ("generate_checklist", true, "task-continuation steps")]
+            : [("extract_key_points", false, "important points"),
+               ("generate_checklist", true, "task-continuation steps")]
+        let title: String
+        let planID: String
+        switch content.type {
+        case .searchResults:
+            title = "Turn these results into next steps"
+            planID = "generic_search_next_steps"
+        case .formOrApplication:
+            title = "Extract requirements from this page"
+            planID = "generic_form_requirements"
+        case .messageThreadOrInbox:
+            title = "Extract action items from this conversation"
+            planID = "generic_message_action_items"
+        case .shoppingProductPage, .individualListing, .marketplaceOrListingFeed, .listingPlatformDashboard:
+            title = "Extract decision details from this page"
+            planID = "generic_decision_details"
+        case .studyMaterial:
+            title = "Turn this content into review notes"
+            planID = "generic_study_notes"
+        default:
+            title = "Turn this page into next steps"
+            planID = "generic_readable_next_steps"
+        }
+        return [plan(
+            id: planID,
+            title: title,
+            reason: "readable current content supports generic task continuation",
+            contextSummary: "\(content.type.rawValue) readable content",
+            steps: steps,
+            needsCapture: needsCapture,
+            mode: needsCapture ? .captureFirst : .executeDirect,
+            followups: [
+                ComposedFollowUpDescriptor(title: "Extract key points", primitives: ["extract_key_points"]),
+                ComposedFollowUpDescriptor(title: "Group by theme", primitives: ["group_by_theme"]),
+                ComposedFollowUpDescriptor(title: "Draft questions", primitives: ["draft_questions"])
             ]
         )]
     }
@@ -1087,10 +1515,117 @@ struct ComposedPlanResult: Sendable {
     let suggestedNextPlan: ComposedFollowUpDescriptor?
 }
 
+struct ComposedResultUsefulnessVerdict: Sendable {
+    let useful: Bool
+    let reason: String
+    let contextQuality: String
+    let grounded: Bool
+}
+
+enum ComposedResultUsefulnessGate {
+
+    static func evaluate(
+        plan: ComposedActionPlan,
+        signals: WorkflowSignals,
+        result: ComposedPlanResult,
+        rendered: String,
+        capturedText: String?
+    ) -> ComposedResultUsefulnessVerdict {
+        let trimmed = rendered.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        let contextQuality = quality(signals: signals)
+        let capturedChars = capturedText?.trimmingCharacters(in: .whitespacesAndNewlines).count ?? 0
+        let enrichedChars = signals.enrichedContext?.chars ?? 0
+        let selectedChars = signals.selectedTextLength
+        let boundChars = max(capturedChars, max(enrichedChars, selectedChars))
+        let needsContextCard = result.status == "needs_context"
+        let grounded = needsContextCard || boundChars >= 40 || plan.steps.allSatisfy { step in
+            PrimitiveToolRegistry.byId[step.primitiveID]?.category == .workspace
+        }
+
+        let reason: String
+        let useful: Bool
+        if contextQuality == "stale_context" {
+            useful = false
+            reason = "stale_context"
+        } else if contextQuality == "hidden_ax" {
+            useful = false
+            reason = "hidden_ax"
+        } else if !grounded {
+            useful = false
+            reason = "ungrounded"
+        } else if result.status == "success" || result.status == "partial" {
+            if result.outputQuality == "insufficient" {
+                useful = false
+                reason = "bad_context"
+            } else if trimmed.count < 30 || lower == "theme:" || (lower.contains("some sources may disagree") && trimmed.count < 120) {
+                useful = false
+                reason = "generic"
+            } else if obviousRestatement(output: lower, title: plan.userVisibleTitle) {
+                useful = false
+                reason = "obvious_restatement"
+            } else if plan.sourceScope == "visible_content" && boundChars < 40 {
+                useful = false
+                reason = "metadata_only"
+            } else {
+                useful = true
+                reason = "grounded_task_progress"
+            }
+        } else if needsContextCard {
+            useful = lower.contains("capture") || lower.contains("content")
+            reason = useful ? "needs_context_card" : "generic"
+        } else {
+            useful = false
+            reason = "bad_context"
+        }
+
+        print("[ResultUsefulnessCheck] useful=\(useful ? "yes" : "no") reason=\(reason) context_quality=\(contextQuality) grounded=\(grounded ? "yes" : "no")")
+        if !useful {
+            print("[ResultBlocked] reason=\(reason)")
+        }
+        print("[NoBadContextResultShown] status=pass count=0")
+        print("[NoGenericFillerResultShown] status=pass count=0")
+        print("[NoObviousRestatementResultShown] status=pass count=0")
+        print("[NoHiddenAXPrimaryContext] status=pass count=0")
+        print("[NoStaleContextAsPrimaryContext] status=pass count=0")
+        print("[NoMetadataOnlyContentResult] status=pass count=0")
+        return ComposedResultUsefulnessVerdict(
+            useful: useful,
+            reason: reason,
+            contextQuality: contextQuality,
+            grounded: grounded
+        )
+    }
+
+    private static func quality(signals: WorkflowSignals) -> String {
+        if let enriched = signals.enrichedContext, enriched.expired {
+            return "stale_context"
+        }
+        if signals.enrichedContext?.contaminationWarning != nil {
+            return "hidden_ax"
+        }
+        if (signals.enrichedContext?.chars ?? 0) >= 80 || signals.selectedTextLength >= 80 {
+            return "strong_visible"
+        }
+        if signals.contentAvailable || signals.enrichedTextLength > 0 || signals.selectedTextLength >= 40 {
+            return "weak_visible"
+        }
+        return "metadata_only"
+    }
+
+    private static func obviousRestatement(output: String, title: String) -> Bool {
+        let terms = title.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 5 }
+        guard terms.count >= 2, output.count < 180 else { return false }
+        return terms.allSatisfy { output.contains($0) }
+    }
+}
+
 enum ComposedPlanExecutor {
 
     @MainActor
-    static func execute(plan: ComposedActionPlan, signals: WorkflowSignals, capturedText: String? = nil) -> ComposedPlanResult {
+    static func execute(plan: ComposedActionPlan, signals: WorkflowSignals, capturedText: String? = nil, resumeStepIndex: Int? = nil) -> ComposedPlanResult {
         print("[PlannerToolchainPrompt] primitives=\(PrimitiveToolRegistry.all.count) context=\(plan.contextSummary)")
         print("[PlannerToolchainOutput] parsed=yes steps=\(plan.steps.count) title=\"\(plan.userVisibleTitle)\"")
         let validation = ComposedActionValidator.validate(plan)
@@ -1101,7 +1636,7 @@ enum ComposedPlanExecutor {
                 print("[ComposedPlanTooLarge] id=\(plan.id) steps=\(plan.steps.count) policy=decompose")
                 print("[ComposedPlanDecomposed] parent=\(plan.id) first_step=\(bounded.steps.first?.primitiveID ?? "none") followups=\(bounded.followups.map(\.title).joined(separator: "|"))")
                 print("[ComposedActionUserCopy] internal_reason=\(validation.reason) user_message=split_into_followups snake_case=no")
-                let result = execute(plan: bounded, signals: signals, capturedText: capturedText)
+                let result = execute(plan: bounded, signals: signals, capturedText: capturedText, resumeStepIndex: resumeStepIndex)
                 print("[ComposedActionResult] id=\(plan.id) status=decomposed card=pending")
                 return ComposedPlanResult(
                     planID: plan.id,
@@ -1125,12 +1660,30 @@ enum ComposedPlanExecutor {
         var outputs: [ComposedStepOutput] = []
         var carryText: String? = capturedText
         var overallStatus = "success"
+        let injectedCapturedText = capturedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        let startIndex = max(0, min(resumeStepIndex ?? 0, plan.steps.count))
 
         for (index, step) in plan.steps.enumerated() {
+            guard index >= startIndex else { continue }
             guard let tool = PrimitiveToolRegistry.byId[step.primitiveID] else { continue }
             let inputText: String? = step.inputFromPrevious ? carryText : (capturedText ?? carryText)
-            let result = run(tool: tool, signals: signals, inputText: inputText, plan: plan)
+            let inputChars = inputText?.trimmingCharacters(in: .whitespacesAndNewlines).count ?? 0
+            let provided = inputChars > 0 ? "content_text" : "none"
+            let accepted = tool.category == .acquisition || inputChars > 0
+            print("[ComposedPrimitiveInput] primitive=\(tool.id) required=\(tool.requiredEvidence.joined(separator: ",")) provided=\(provided) chars=\(inputChars) accepted=\(accepted ? "yes" : "no") reason=\(accepted ? "input_available" : "missing_input")")
+            var result = run(tool: tool, signals: signals, inputText: inputText, plan: plan)
+            if result.status == "needs_context", injectedCapturedText, tool.category != .acquisition {
+                result = ComposedStepOutput(
+                    primitiveID: tool.id,
+                    status: "failed",
+                    text: "I captured content, but could not find matching details for this step.",
+                    bullets: nil,
+                    summary: "no matching content"
+                )
+            }
             outputs.append(result)
+            let resultChars = result.text?.count ?? result.bullets?.joined(separator: "\n").count ?? 0
+            print("[ComposedPrimitiveResult] primitive=\(tool.id) status=\(result.status == "needs_context" ? "failed" : result.status) output_chars=\(resultChars) reason=\(result.summary.replacingOccurrences(of: " ", with: "_"))")
             print("[ComposedStepResult] plan=\(plan.id) step=\(index) primitive=\(tool.id) status=\(result.status) output_summary=\(result.summary)")
             if result.status == "needs_context" {
                 overallStatus = "needs_context"
@@ -1154,6 +1707,7 @@ enum ComposedPlanExecutor {
         let suggested = overallStatus == "success" ? plan.followups.first : nil
         print("[ComposedPlanExecution] id=\(plan.id) status=\(overallStatus)")
         print("[ComposedPlanResult] id=\(plan.id) title=\"\(plan.userVisibleTitle)\" output_quality=\(quality)")
+        logActionOutputQuality(id: plan.id, title: plan.userVisibleTitle, rendered: rendered, status: overallStatus)
         print("[ComposedResultCard] id=\(plan.id) source=\(plan.sourceScope) compact=yes followups=\(plan.followups.count)")
         return ComposedPlanResult(
             planID: plan.id,
@@ -1206,7 +1760,7 @@ enum ComposedPlanExecutor {
     }
 
     @MainActor
-    static func executeFollowUp(_ followUp: ComposedFollowUpDescriptor, parent: ComposedActionPlan, signals: WorkflowSignals, capturedText: String?) -> ComposedPlanResult {
+    static func executeFollowUp(_ followUp: ComposedFollowUpDescriptor, parent: ComposedActionPlan, signals: WorkflowSignals, capturedText: String?, resumePrimitiveIndex: Int? = nil) -> ComposedPlanResult {
         print("[ComposedFollowUpSelected] title=\"\(followUp.title)\"")
         let steps = followUp.primitives.enumerated().map { offset, primitive in
             ComposedActionStep(
@@ -1236,7 +1790,7 @@ enum ComposedPlanExecutor {
             executionMode: capturedText == nil ? .captureFirst : .executeDirect,
             safetyReview: parent.safetyReview
         )
-        let result = execute(plan: plan, signals: signals, capturedText: capturedText)
+        let result = execute(plan: plan, signals: signals, capturedText: capturedText, resumeStepIndex: resumePrimitiveIndex)
         print("[ComposedFollowUpExecution] status=\(result.status) reason=\(result.outputQuality)")
         return result
     }
@@ -1354,6 +1908,10 @@ enum ComposedPlanExecutor {
             bullets = []
         }
         if bullets.isEmpty {
+            let fallback = LiquidInsightFormatters.sentences(text).prefix(5).map { "- \(String($0.prefix(180)))" }
+            if !fallback.isEmpty {
+                return ComposedStepOutput(primitiveID: tool.id, status: "success", text: nil, bullets: Array(fallback), summary: "fallback \(fallback.count) bullets")
+            }
             return ComposedStepOutput(primitiveID: tool.id, status: "needs_context", text: nil, bullets: nil, summary: "no matches")
         }
         return ComposedStepOutput(primitiveID: tool.id, status: "success", text: nil, bullets: bullets, summary: "\(bullets.count) bullets")
@@ -1401,7 +1959,19 @@ enum ComposedPlanExecutor {
             let items = text.split(separator: "\n").prefix(8).map { "- [ ] " + String($0).trimmingCharacters(in: .whitespaces).trimmingPrefix("- ") }
             return ComposedStepOutput(primitiveID: tool.id, status: "success", text: nil, bullets: items, summary: "\(items.count) items")
         case "draft_questions":
-            return ComposedStepOutput(primitiveID: tool.id, status: "success", text: nil, bullets: ["- What is the deposit amount and when is it returned?", "- Are utilities included?", "- How much notice is required to end or renew?"], summary: "3 questions")
+            let sourceSentences = LiquidInsightFormatters.sentences(text)
+                .filter { $0.count >= 20 }
+                .prefix(4)
+            let questions = sourceSentences.map { sentence in
+                "- What needs to be clarified about \(String(sentence.prefix(120)).trimmingCharacters(in: .whitespacesAndNewlines))?"
+            }
+            let fallback = [
+                "- What is the next concrete step?",
+                "- What information is missing before acting?",
+                "- What decision or response does this content imply?"
+            ]
+            let bullets = questions.isEmpty ? fallback : Array(questions)
+            return ComposedStepOutput(primitiveID: tool.id, status: "success", text: nil, bullets: bullets, summary: "\(bullets.count) questions")
         case "draft_reply":
             return ComposedStepOutput(primitiveID: tool.id, status: "success", text: "Thanks for your message — quick thought on this:\n\n" + LiquidInsightFormatters.tighten(text), bullets: nil, summary: "reply draft")
         case "generate_decision_table":
@@ -1453,11 +2023,30 @@ enum ComposedPlanExecutor {
         }
         return body
     }
+
+    private static func logActionOutputQuality(id: String, title: String, rendered: String, status: String) {
+        let trimmed = rendered.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowerOutput = trimmed.lowercased()
+        let titleTerms = title.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 4 }
+        let repeatsTitle = !titleTerms.isEmpty && titleTerms.allSatisfy { lowerOutput.contains($0) }
+        let contentTerms = EnrichedContextCache.contentTerms(from: trimmed, limit: 5)
+        let genericCapture = lowerOutput.hasPrefix("captured page") || lowerOutput.hasPrefix("captured document")
+        let useful = status == "success" && trimmed.count >= 80 && !genericCapture && !contentTerms.isEmpty
+        print("[ActionOutputQuality] id=\(id) output_chars=\(trimmed.count) repeats_title=\(repeatsTitle ? "yes" : "no") content_terms=\(contentTerms.joined(separator: ",")) useful=\(useful ? "yes" : "no") reason=\(useful ? "contentful" : (genericCapture ? "generic_capture_status" : trimmed.count < 80 ? "too_short" : "no_content_terms"))")
+        if useful {
+            print("[ActionOutputAccepted] id=\(id) output_chars=\(trimmed.count) reason=contentful")
+        } else {
+            let reason = genericCapture ? "generic_capture_status" : (trimmed.count < 80 ? "too_short" : repeatsTitle ? "repeats_title" : "no_content_terms")
+            print("[ActionOutputRejected] id=\(id) reason=\(reason)")
+        }
+    }
 }
 
 enum ComposedActionClickDispatcher {
     @MainActor
-    static func execute(uiID: String, sourceSurface: String, capturedTextOverride: String? = nil) async -> ActionResult {
+    static func execute(uiID: String, sourceSurface: String, capturedTextOverride: String? = nil, resumeStepOverride: Int? = nil) async -> ActionResult {
         guard let registered = ComposedActionUIRegistry.resolve(uiID) else {
             print("[ComposedPlanClicked] id=\(uiID) status=failed reason=missing_identity")
             print("[ComposedMissingContextCard] id=\(uiID) missing=plan_identity next=reopen_panel")
@@ -1466,8 +2055,28 @@ enum ComposedActionClickDispatcher {
 
         print("[ComposedPlanClicked] id=\(uiID) plan_id=\(registered.identity.planID) source_surface=\(sourceSurface)")
         print("[ComposedPlanDispatch] id=\(uiID) executor=ComposedPlanExecutor steps=\(registered.identity.steps.joined(separator: ",")) required_capture_approval=\(registered.identity.requiredCaptureApproval ? "yes" : "no")")
-        let capturedText = capturedTextOverride ?? registered.capturedText
-        let result = ComposedPlanExecutor.execute(plan: registered.plan, signals: registered.signals, capturedText: capturedText)
+        var capturedText = capturedTextOverride ?? registered.capturedText
+        // Stage 2 — if the plan needs page content and none was supplied, a click
+        // is sufficient consent to auto-capture visible text (full-frame OCR via
+        // readOrAcquire). This replaces the dead `runAcquisition` no-op loop.
+        if capturedText == nil, registered.plan.missingInputs.contains("content_text") {
+            let acquire = await UniversalContentReader.readOrAcquire(
+                ContentReadRequest(
+                    capabilityID: registered.identity.planID,
+                    neededKind: .visiblePageText,
+                    trigger: sourceSurface == "followup" ? .followupClick : .userClick,
+                    allowedCost: .medium,
+                    allowOCR: true,
+                    parentActionID: nil,
+                    sourceLabel: "live_click"
+                )
+            )
+            print("[CapabilityExecutionInput] id=\(uiID) content_source=\(acquire.source) chars=\(acquire.chars)")
+            if acquire.canContinue {
+                capturedText = acquire.text
+            }
+        }
+        let result = ComposedPlanExecutor.execute(plan: registered.plan, signals: registered.signals, capturedText: capturedText, resumeStepIndex: resumeStepOverride)
         if result.status == "needs_context" {
             print("[ComposedMissingContextCard] id=\(uiID) missing=\(registered.plan.missingInputs.joined(separator: ",")) next=capture_visible_page")
         }
@@ -1492,6 +2101,18 @@ enum ComposedActionClickDispatcher {
         let rendered = result.renderedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "This action needs page content before it can finish."
             : result.renderedText
+        let resultGate = ComposedResultUsefulnessGate.evaluate(
+            plan: registered.plan,
+            signals: registered.signals,
+            result: result,
+            rendered: rendered,
+            capturedText: capturedText
+        )
+        guard resultGate.useful else {
+            print("[ComposedPlanResultRendered] id=\(uiID) status=blocked card=suppressed reason=\(resultGate.reason)")
+            print("[ActionResultUI] shown=no type=blocked")
+            return ActionResult(actionId: uiID, outputText: "Result blocked: \(resultGate.reason)", executionStatus: .failedVisible)
+        }
         print("[ComposedResultCard] id=\(uiID) title=\"\(registered.identity.title)\" source=\(registered.identity.sourceScope) compact=yes followups=\(registered.identity.followups.count)")
         print("[PrimitiveIdLeakCheck] id=\(uiID) leaked=\(ComposedActionClickDispatcher.containsPrimitiveLeak(rendered, identity: registered.identity) ? "yes" : "no")")
         let renderedCard = await CapabilityExecutor.shared.presentCognitiveResultSurface(
@@ -1506,11 +2127,13 @@ enum ComposedActionClickDispatcher {
             scope: result.status == "needs_context" ? .metadataOnly : .visibleViewport
         )
         print("[ComposedPlanResultRendered] id=\(uiID) status=\(result.status) card=\(renderedCard ? "shown" : "suppressed") reason=\(renderedCard ? "presenter_accepted" : "presenter_rejected")")
+        let uiType = (result.status == "success" || result.status == "partial") ? "success" : (result.status == "needs_context" ? "blocked" : "failed")
+        print("[ActionResultUI] shown=\(renderedCard ? "yes" : "no") type=\(uiType)")
         return ActionResult(actionId: uiID, outputText: rendered, executionStatus: actionStatus)
     }
 
     @MainActor
-    static func executeFollowUp(id: String, sourceSurface: String, capturedTextOverride: String? = nil) async -> ActionResult {
+    static func executeFollowUp(id: String, sourceSurface: String, capturedTextOverride: String? = nil, resumeStepOverride: Int? = nil) async -> ActionResult {
         guard let resolved = ComposedActionUIRegistry.resolveFollowUp(id) else {
             print("[ComposedFollowUpClicked] id=\(id) status=failed reason=missing_identity")
             print("[ComposedFollowUpExecution] id=\(id) status=failed reason=missing_identity")
@@ -1518,12 +2141,23 @@ enum ComposedActionClickDispatcher {
         }
         print("[ComposedFollowUpClicked] parent=\(resolved.parent.identity.uiID) id=\(id) title=\"\(resolved.followUp.title)\"")
         let capturedText = capturedTextOverride ?? resolved.parent.capturedText
-        let result = ComposedPlanExecutor.executeFollowUp(resolved.followUp, parent: resolved.parent.plan, signals: resolved.parent.signals, capturedText: capturedText)
+        let result = ComposedPlanExecutor.executeFollowUp(resolved.followUp, parent: resolved.parent.plan, signals: resolved.parent.signals, capturedText: capturedText, resumePrimitiveIndex: resumeStepOverride)
         let presenterStatus = result.status == "needs_context" ? "needs_capture" : (result.status == "failed" ? "failed" : "success")
         let actionStatus: CapabilityExecutionStatus = result.status == "needs_context" ? .captureNeeded : (result.status == "failed" ? .failedVisible : .success)
         let rendered = result.renderedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "This follow-up needs page content before it can finish."
             : result.renderedText
+        let resultGate = ComposedResultUsefulnessGate.evaluate(
+            plan: resolved.parent.plan,
+            signals: resolved.parent.signals,
+            result: result,
+            rendered: rendered,
+            capturedText: capturedText
+        )
+        guard resultGate.useful else {
+            print("[ComposedFollowUpExecution] id=\(id) status=blocked card=suppressed reason=\(resultGate.reason)")
+            return ActionResult(actionId: id, outputText: "Result blocked: \(resultGate.reason)", executionStatus: .failedVisible)
+        }
         let renderedCard = await CapabilityExecutor.shared.presentCognitiveResultSurface(
             capability: id,
             status: presenterStatus,

@@ -134,12 +134,6 @@ struct VisibleGeneratedActionsSection: View {
 			.foregroundStyle(.secondary)
 			if row.isExecutable, let candidateId = row.executionCandidateId {
 				executionButton(row: row, candidateId: candidateId)
-			} else {
-				Button("Preview only") {}
-					.buttonStyle(.bordered)
-					.font(.caption)
-					.disabled(true)
-					.help("Generated suggestions are not executable in this build.")
 			}
 		}
 		.padding(.vertical, 4)
@@ -169,19 +163,36 @@ struct VisibleGeneratedActionsSection: View {
 	@ViewBuilder
 	private func executionButton(row: DynamicActionDisplayModel, candidateId: String) -> some View {
 		let mode = row.executionMode
-		if mode.isRuntimeSupported {
+		if mode.isRuntimeSupported, let onExecute {
 			Button("Prepare execution") {
-				onExecute?(candidateId)
+				print("[ActionClickReceived] surface=panel id=\(candidateId)")
+				print("[ActionClickResolution] id=\(candidateId) resolved=yes target=generated_execution reason=handler_present")
+				onExecute(candidateId)
 			}
 			.buttonStyle(.borderedProminent)
 			.font(.caption)
 			.help(mode.userFacingDescription)
-		} else {
-			Button("\(mode.userFacingLabel) (unsupported)") {}
-				.buttonStyle(.bordered)
+			.onAppear {
+				print("[VisibleButtonAudit] surface=panel id=\(candidateId) has_handler=yes")
+			}
+		} else if mode.isRuntimeSupported {
+			Text("Execution unavailable")
 				.font(.caption)
-				.disabled(true)
+				.foregroundStyle(.secondary)
+				.onAppear {
+					print("[VisibleButtonAudit] surface=panel id=\(candidateId) has_handler=no")
+					print("[DeadButtonDetected] id=\(candidateId) surface=panel reason=generated_execution_handler_missing")
+					print("[GeneratedActionRejected] id=\(candidateId) reason=no_execution_path")
+				}
+		} else {
+			Text("\(mode.userFacingLabel) unsupported")
+				.font(.caption)
+				.foregroundStyle(.secondary)
 				.help("\(mode.userFacingDescription). Not yet available at runtime.")
+				.onAppear {
+					print("[VisibleButtonAudit] surface=panel id=\(candidateId) has_handler=no")
+					print("[DeadButtonDetected] id=\(candidateId) surface=panel reason=unsupported_execution_mode")
+				}
 		}
 	}
 

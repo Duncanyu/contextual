@@ -27,18 +27,6 @@ struct ActionUsefulnessDecision: Sendable {
     }
 }
 
-// MARK: - Metadata utility IDs (panel-only by default)
-
-private let metadataUtilityIDs: Set<String> = [
-    "copy_current_url",
-    "collect_references",
-    "copy_all_related_links",
-    "remember_workspace",
-    "open_current_task_panel",
-    "extract_and_organize",
-    "select_text_hint"
-]
-
 // MARK: - Usefulness Policy
 
 enum ActionUsefulnessPolicy {
@@ -54,6 +42,8 @@ enum ActionUsefulnessPolicy {
         evidenceAvailable: Bool,
         hasExplicitUsageSignal: Bool
     ) -> ActionUsefulnessDecision {
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        
         let decision: ActionUsefulnessDecision = {
             if !targetPresent {
                 return make(capabilityID, present: false, satisfied: false, saved: "low", cost: "low", eligible: false, surface: .suppressed, reason: "target_missing")
@@ -64,12 +54,19 @@ enum ActionUsefulnessPolicy {
             if !contractFresh {
                 return make(capabilityID, present: true, satisfied: false, saved: "low", cost: "low", eligible: false, surface: .suppressed, reason: "stale_contract")
             }
+            if traits.contains(.internalAcquisitionAction) {
+                print("[InternalAcquisitionAction] id=\(capabilityID) user_visible=followup_or_panel_only reason=usefulness_panel_only")
+                if capabilityID == .captureVisiblePage {
+                    print("[NoFloatingCaptureVisiblePage] status=pass count=0")
+                }
+                return make(capabilityID, present: true, satisfied: false, saved: "low", cost: "low", eligible: true, surface: .panelOnly, reason: "internal_acquisition_panel_only")
+            }
             if !evidenceAvailable {
                 return make(capabilityID, present: true, satisfied: false, saved: "low", cost: "low", eligible: false, surface: .suppressed, reason: "insufficient_evidence")
             }
 
             // Metadata utilities: panel_only by default unless explicit signal
-            if metadataUtilityIDs.contains(capabilityID) {
+            if traits.contains(.metadataUtility) {
                 if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
                     logMetadataDemotion(capabilityID)
                 }
@@ -89,7 +86,7 @@ enum ActionUsefulnessPolicy {
             return make(capabilityID, present: true, satisfied: false, saved: saved, cost: cost, eligible: true, surface: surface, reason: canFloat ? "high_usefulness_low_cost" : "moderate_usefulness")
         }()
 
-        if metadataUtilityIDs.contains(capabilityID) {
+        if traits.contains(.metadataUtility) {
             if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
                 print("[UtilityAction] capability=\(capabilityID) surface=\(decision.surface.rawValue) reason=\(decision.reason)")
             }
@@ -110,47 +107,55 @@ enum ActionUsefulnessPolicy {
             print("[MediaAwareness] foreground_media=\(foregroundMedia ? "yes" : "no") confidence=high background_music=\(backgroundMusic) conflict=\(conflict ? "yes" : "no")")
         }
         
-        if capabilityID == "pause_media" {
-            let eligible = conflict
-            if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
-                print("[MediaUsefulness] capability=pause_media eligible=\(eligible ? "yes" : "no") reason=\(eligible ? "conflict_detected" : "no_conflict")")
-            }
-            if eligible {
-                print("[MusicSuggestion] generated capability=pause_media reason=foreground_media_active")
-            }
-            return eligible
-        } else if capabilityID == "play_focus_media" || capabilityID == "resume_focus_media" {
-            let eligible = !foregroundMedia && !mediaState.isMusicPlaying
-            if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
-                print("[MediaUsefulness] capability=\(capabilityID) eligible=\(eligible ? "yes" : "no") reason=\(eligible ? "stable_work_context" : (foregroundMedia ? "foreground_media_active" : "music_already_playing"))")
-            }
-            if foregroundMedia {
-                if LogControl.shared.shouldLog(category: .selection_reasoning, level: .trace) {
-                    print("[MusicSuggestion] suppressed reason=foreground_media_no_music_needed")
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        let action = WorkflowActionOntology.byId[capabilityID]
+        
+        if traits.contains(.mediaOrFocusSupport) {
+            // Differentiate pause from play using the required context
+            let requiresActiveMedia = action?.requiredContext.contains("foreground_media_active") ?? false
+            
+            if requiresActiveMedia {
+                let eligible = conflict
+                if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+                    print("[MediaUsefulness] capability=\(capabilityID) eligible=\(eligible ? "yes" : "no") reason=\(eligible ? "conflict_detected" : "no_conflict")")
                 }
-            } else if eligible {
-                print("[MusicSuggestion] generated capability=\(capabilityID) reason=stable_work_context")
+                if eligible {
+                    print("[MusicSuggestion] generated capability=\(capabilityID) reason=foreground_media_active")
+                }
+                return eligible
+            } else {
+                let eligible = !foregroundMedia && !mediaState.isMusicPlaying
+                if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
+                    let reason = eligible ? "media_state_ok_pending_evidence" : (foregroundMedia ? "foreground_media_active" : "music_already_playing")
+                    print("[MediaUsefulness] capability=\(capabilityID) eligible=\(eligible ? "yes" : "no") reason=\(reason)")
+                }
+                if foregroundMedia {
+                    if LogControl.shared.shouldLog(category: .selection_reasoning, level: .trace) {
+                        print("[MusicSuggestion] suppressed reason=foreground_media_no_music_needed")
+                    }
+                }
+                return eligible
             }
-            return eligible
         }
+        
         return true
+
     }
 
     static func getUsefulnessLevel(capabilityID: String, lane: String) -> String {
-        let highValue: Set<String> = [
-            "arrange_side_by_side", "switch_to_paired_app", "restore_workspace",
-            "capture_visible_page", "capture_full_document", "enable_browser_bridge",
-            "rewrite_text", "explain_context", "draft_reply", "diagnose_error", "improve_text"
-        ]
-        if highValue.contains(capabilityID) || lane == "friction" || lane == "workspace" || lane == "cognitive" || lane == "research" || lane == "coding" || lane == "communication" {
-            return "high"
-        }
-        
-        let lowValue: Set<String> = [
-            "copy_current_url", "collect_references", "copy_all_related_links", "remember_workspace", "open_current_task_panel", "extract_and_organize", "select_text_hint"
-        ]
-        if lowValue.contains(capabilityID) || lane == "metadata" {
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        if traits.contains(.metadataUtility) || traits.contains(.internalAcquisitionAction) || lane == "metadata" {
             return "low"
+        }
+        if traits.contains(.workspaceArrangement)
+            || traits.contains(.mediaOrFocusSupport)
+            || lane == "friction"
+            || lane == "workspace"
+            || lane == "cognitive"
+            || lane == "research"
+            || lane == "coding"
+            || lane == "communication" {
+            return "high"
         }
         
         return "medium"
@@ -188,43 +193,17 @@ enum ActionUsefulnessPolicy {
     }
 
     private static func logMetadataDemotion(_ capabilityID: String) {
-        switch capabilityID {
-        case "copy_current_url":
-            print("[ActionUsefulness] capability=copy_current_url surface=panel_only reason=metadata_utility_low_interrupt")
-        case "collect_references", "copy_all_related_links":
-            print("[ActionUsefulness] capability=collect_references surface=panel_only reason=metadata_utility_low_interrupt")
-        case "remember_workspace":
-            print("[ActionUsefulness] capability=remember_workspace surface=panel_only reason=metadata_utility_low_interrupt")
-        case "open_current_task_panel":
-            print("[ActionUsefulness] capability=open_current_task_panel surface=panel_only reason=metadata_utility_low_interrupt")
-        default:
-            break
-        }
+        print("[ActionUsefulness] capability=\(capabilityID) surface=panel_only reason=metadata_utility_low_interrupt")
     }
 
     private static func estimateCosts(capabilityID: String, confidence: Double, activityMatch: Bool) -> (String, String) {
-        let highValue: Set<String> = [
-            "arrange_side_by_side", "switch_to_paired_app", "split_research_setup",
-            "play_focus_media", "pause_media", "restore_workspace", "launch_recent_workspace",
-            "capture_visible_page", "capture_full_document", "enable_browser_bridge"
-        ]
-        let mediumValue: Set<String> = [
-            "restore_research_tabs", "open_related_app_set", "open_paired_app",
-            "switch_to_last_task_window", "enable_reduce_interruptions"
-        ]
-        let lowInterrupt: Set<String> = [
-            "arrange_side_by_side", "switch_to_paired_app", "play_focus_media",
-            "pause_media", "restore_workspace", "launch_recent_workspace",
-            "switch_to_last_task_window", "open_paired_app",
-            "capture_visible_page", "capture_full_document", "enable_browser_bridge"
-        ]
-
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
         let saved: String
-        if highValue.contains(capabilityID) && activityMatch { saved = "high" }
-        else if mediumValue.contains(capabilityID) || confidence > 0.7 { saved = "medium" }
+        if activityMatch && (traits.contains(.workspaceArrangement) || traits.contains(.mediaOrFocusSupport)) { saved = "high" }
+        else if confidence > 0.7 || traits.contains(.requiresExternalContext) { saved = "medium" }
         else { saved = "low" }
 
-        let cost = lowInterrupt.contains(capabilityID) ? "low" : "medium"
+        let cost = (traits.contains(.workspaceArrangement) || traits.contains(.mediaOrFocusSupport)) ? "low" : "medium"
         return (saved, cost)
     }
 }

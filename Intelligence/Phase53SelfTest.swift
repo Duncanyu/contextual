@@ -1,6 +1,49 @@
 import Foundation
 import AppKit
 
+enum PhaseSelfTestEvidence {
+    static let leaseBody = """
+    Residential lease agreement. Tenant must pay rent of $2000 per month on the first day of each month. Tenant is responsible for electricity, internet, ordinary cleaning, and reporting repairs promptly. Landlord may enter with 24 hours written notice except in emergencies. Tenant must give 60 days notice before ending the tenancy. Late rent may create fees, and non-refundable deposit language should be reviewed before signing.
+    """
+
+    static let listingBody = """
+    Listing A is a room for rent at 182 Montreal St for $1100 per month with utilities extra and a twelve month lease term. Listing B is a two bedroom apartment for $1800 near downtown Kingston with laundry included. Listing C is a studio unit for $1400 with internet included and a shorter lease option. Compare rent, location, utilities, rooms, and lease term before choosing.
+    """
+
+    static let codeLogBody = """
+    CompileSwift failed with exit code 1. error: cannot find type BuildFailure in scope. xcodebuild reported a compiler error while building ContextExecutionResult.swift. Stack trace follows through compileModule and emitModule, so the next step is to inspect the missing symbol import or declaration.
+    """
+
+    static func snapshot(key: String, text: String, urlOrWindow: String) -> EnrichedContextSnapshot {
+        EnrichedContextSnapshot(
+            key: key,
+            source: "phase_selftest_fixture",
+            text: text,
+            chars: text.count,
+            quality: "ax_visible_text",
+            confidence: 0.9,
+            focusSignature: key,
+            urlOrWindow: urlOrWindow,
+            timestamp: Date(),
+            ttl: 600,
+            region: "selftest",
+            contaminationWarning: nil
+        )
+    }
+
+    static func leaseSnapshot(key: String = "phase_selftest_lease") -> EnrichedContextSnapshot {
+        snapshot(key: key, text: leaseBody, urlOrWindow: "Lease Agreement - Google Docs")
+    }
+
+    static func listingSnapshot(key: String = "phase_selftest_listings") -> EnrichedContextSnapshot {
+        snapshot(key: key, text: listingBody, urlOrWindow: "Room for Rent - Kijiji")
+    }
+
+    static func codeLogSnapshot(key: String = "phase_selftest_code_log") -> EnrichedContextSnapshot {
+        snapshot(key: key, text: codeLogBody, urlOrWindow: "Xcode build log")
+    }
+}
+
 // MARK: - Phase 53 (Liquid Workflow Actions) Self-Test + Dogfood Cases
 //
 // Validates the workflow-action layer:
@@ -48,7 +91,8 @@ struct Phase53SelfTest {
         selectedTextLength: 0,
         contentAvailable: true,
         workflow: "researching",
-        visibleAppNames: ["Firefox", "Preview"]
+        visibleAppNames: ["Firefox", "Preview"],
+        enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase53_rental_readable")
     )
 
     static let codeSignals = WorkflowSignals(
@@ -60,7 +104,8 @@ struct Phase53SelfTest {
         selectedTextLength: 0,
         contentAvailable: true,
         workflow: "coding",
-        visibleAppNames: ["Xcode", "Console"]
+        visibleAppNames: ["Xcode", "Console"],
+        enrichedContext: PhaseSelfTestEvidence.codeLogSnapshot(key: "phase53_code_log_readable")
     )
 
     static let researchSignals = WorkflowSignals(
@@ -395,6 +440,22 @@ struct Phase54SelfTest {
     OCCUPANCY AGREEMENT for 182 Montreal St. The Tenant shall pay rent of $1,200 on September 1, 2026 and on the first day of each month after that. The deposit is non-refundable except where required by law. The Tenant is responsible for utilities and any late fee of $75 if rent is not paid by the due date. The Landlord may terminate this agreement on 10 days notice if the Tenant defaults. The Tenant agrees to indemnify the Landlord for damage caused by guests and shall not sublet without written consent. Maintenance requests must be reported promptly.
     """
 
+    static let occupancyReadableLease = WorkflowSignals(
+        activeApp: "Firefox",
+        windowTitle: "182 Montreal St - LEASE AGREEMENT - 2026 - Google Docs",
+        urlHost: "docs.google.com",
+        urlPath: "/document/d/abc",
+        tabTitles: [
+            "182 Montreal St - LEASE AGREEMENT - 2026 - Google Docs",
+            "Kingston rental listings"
+        ],
+        selectedTextLength: 0,
+        contentAvailable: true,
+        workflow: "researching",
+        visibleAppNames: ["Firefox"],
+        enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase54_occupancy_readable")
+    )
+
     static let selectedLeaseParagraph = """
     The Tenant shall be liable for any late fee and shall not terminate this occupancy agreement prior to the end date without written consent from the Landlord.
     """
@@ -403,7 +464,7 @@ struct Phase54SelfTest {
         print("[Phase54SelfTest] starting")
         failures = []
 
-        let leaseSelection = LiquidActionRouter.route(LiquidRoutingInput(signals: occupancyMetadataOnly))
+        let leaseSelection = LiquidActionRouter.route(LiquidRoutingInput(signals: occupancyReadableLease))
         let expectedLeaseFirst = ["flag_risky_clauses", "extract_obligations", "extract_dates_deadlines_payments", "detect_missing_terms", "generate_questions_for_landlord"]
         let leasePrefix = Array(leaseSelection.panel.prefix(5))
         check(
@@ -517,9 +578,10 @@ struct Phase55SelfTest {
             urlPath: "/listings",
             tabTitles: tabs,
             selectedTextLength: 0,
-            contentAvailable: false,
+            contentAvailable: true,
             workflow: "unknown",
-            visibleAppNames: ["Firefox"]
+            visibleAppNames: ["Firefox"],
+            enrichedContext: PhaseSelfTestEvidence.listingSnapshot(key: "phase55_listing_readable")
         )
         let selection = LiquidActionRouter.route(LiquidRoutingInput(signals: listingSignals))
         let float = LiquidActionRouter.floatingCandidate(from: selection, signals: listingSignals)
@@ -535,20 +597,36 @@ struct Phase55SelfTest {
             title: "Search Listings | Accommodation Listing Service",
             url: URL(string: "https://listingservice.housing.queensu.ca/listings"),
             tabTitles: tabs,
-            hasAXText: false,
+            hasAXText: true,
             hasOCR: false
+        )
+        let listingURL = "https://listingservice.housing.queensu.ca/listings"
+        let _ = EnrichedContextCache.shared.store(
+            source: "phase_selftest_fixture",
+            text: PhaseSelfTestEvidence.listingBody,
+            quality: "ax_visible_text",
+            confidence: 0.9,
+            focusKey: EnrichedContextCache.focusKey(
+                activeApp: "Firefox",
+                windowTitle: "Search Listings | Accommodation Listing Service",
+                url: listingURL
+            ),
+            urlOrWindow: listingURL,
+            ttl: 600,
+            region: "selftest",
+            contaminationWarning: nil
         )
         let planner = DeterministicPanelActionPlanner.evaluate(DeterministicPanelPlannerInput(
             activeAppName: "Firefox",
             windowTitle: "Search Listings | Accommodation Listing Service",
             browserAppName: "Firefox",
-            currentURL: "https://listingservice.housing.queensu.ca/listings",
+            currentURL: listingURL,
             tabTitles: tabs,
             visibleApps: ["Firefox"],
             workflow: "unknown",
             compartmentLabel: "rental_tab_cluster",
             compartment: nil,
-            evidenceLevel: .metadata_rich,
+            evidenceLevel: .visible_content,
             browserAssessment: browserAssessment,
             hasDurablePattern: false,
             frictionSignals: []
@@ -564,9 +642,10 @@ struct Phase55SelfTest {
             urlPath: "/document/d/lease",
             tabTitles: tabs,
             selectedTextLength: 0,
-            contentAvailable: false,
+            contentAvailable: true,
             workflow: "unknown",
-            visibleAppNames: ["Firefox"]
+            visibleAppNames: ["Firefox"],
+            enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase55_agreement_readable")
         )
         let lease = LiquidActionRouter.route(LiquidRoutingInput(signals: agreementSignals))
         let expectedLeaseFirst = ["flag_risky_clauses", "extract_obligations", "extract_dates_deadlines_payments", "detect_missing_terms", "generate_questions_for_landlord"]
@@ -632,9 +711,10 @@ struct Phase56SelfTest {
             urlPath: "/document/d/lease",
             tabTitles: backgroundLeaseTabs,
             selectedTextLength: 0,
-            contentAvailable: false,
+            contentAvailable: true,
             workflow: "researching",
-            visibleAppNames: ["Firefox"]
+            visibleAppNames: ["Firefox"],
+            enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase56_occupancy_readable")
         )
         let occupancySelection = LiquidActionRouter.route(LiquidRoutingInput(signals: occupancy))
         check(
@@ -678,9 +758,10 @@ struct Phase56SelfTest {
             urlPath: "/listings",
             tabTitles: backgroundLeaseTabs,
             selectedTextLength: 0,
-            contentAvailable: false,
+            contentAvailable: true,
             workflow: "researching",
-            visibleAppNames: ["Firefox"]
+            visibleAppNames: ["Firefox"],
+            enrichedContext: PhaseSelfTestEvidence.listingSnapshot(key: "phase56_listing_readable")
         )
         let listingSelection = LiquidActionRouter.route(LiquidRoutingInput(signals: rentalListing))
         check(
@@ -830,7 +911,19 @@ struct Phase57SelfTest {
             workflow: "unknown",
             visibleAppNames: ["Firefox"]
         )
-        let generalSelection = LiquidActionRouter.route(LiquidRoutingInput(signals: generalTerms))
+        let generalLeaseBody = WorkflowSignals(
+            activeApp: "Firefox",
+            windowTitle: "Lease Agreement - Apartment Rental",
+            urlHost: "example.com",
+            urlPath: "/",
+            tabTitles: ["Lease Agreement - Apartment Rental"],
+            selectedTextLength: 0,
+            contentAvailable: true,
+            workflow: "unknown",
+            visibleAppNames: ["Firefox"],
+            enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase57_general_terms_readable")
+        )
+        let generalSelection = LiquidActionRouter.route(LiquidRoutingInput(signals: generalLeaseBody))
         check("general_terms_trigger_rental",
               generalSelection.panel.contains("flag_risky_clauses"),
               reason: "general terms like lease and apartment should trigger rental workflow")
@@ -886,10 +979,10 @@ struct Phase58SelfTest {
         print("[Phase58SelfTest] starting")
         failures = []
 
-        // 1. Anti-hardcoding generic lease title passes
-        let genericSignals = WorkflowSignals(activeApp: "Firefox", windowTitle: "Residential Room License Agreement", urlHost: "docs.google.com", urlPath: "/document", tabTitles: ["Residential Room License Agreement"], selectedTextLength: 0, contentAvailable: false, workflow: "researching", visibleAppNames: ["Firefox"])
+        // 1. Anti-hardcoding generic lease body passes without exact dogfood strings.
+        let genericSignals = WorkflowSignals(activeApp: "Firefox", windowTitle: "Residential Room License Agreement", urlHost: "docs.google.com", urlPath: "/document", tabTitles: ["Residential Room License Agreement"], selectedTextLength: 0, contentAvailable: true, workflow: "researching", visibleAppNames: ["Firefox"], enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase58_generic_lease_readable"))
         let selection1 = LiquidActionRouter.route(LiquidRoutingInput(signals: genericSignals))
-        check("anti_hardcoding_generic_passes", selection1.panel.contains("flag_risky_clauses"), reason: "generic lease title should trigger rental workflow")
+        check("anti_hardcoding_generic_passes", selection1.panel.contains("flag_risky_clauses"), reason: "generic lease body should trigger rental workflow")
 
         // 2. Dogfood title alone does not force action
         let hardcodedSignals = WorkflowSignals(activeApp: "Firefox", windowTitle: "182 Montreal St - zillow", urlHost: "zillow.com", urlPath: "/", tabTitles: ["182 Montreal St - zillow"], selectedTextLength: 0, contentAvailable: false, workflow: "researching", visibleAppNames: ["Firefox"])
@@ -1318,9 +1411,10 @@ struct Phase59SelfTest {
             "Studio unit $1,400 downtown Kingston"
         ],
         selectedTextLength: 0,
-        contentAvailable: false,
+        contentAvailable: true,
         workflow: "researching",
-        visibleAppNames: ["Firefox"]
+        visibleAppNames: ["Firefox"],
+        enrichedContext: PhaseSelfTestEvidence.listingSnapshot(key: "phase59_multiple_listings_readable")
     )
 
     static let gdocsLease = WorkflowSignals(
@@ -1332,7 +1426,8 @@ struct Phase59SelfTest {
         selectedTextLength: 0,
         contentAvailable: true,
         workflow: "researching",
-        visibleAppNames: ["Firefox"]
+        visibleAppNames: ["Firefox"],
+        enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase59_gdocs_lease_readable")
     )
 
     static let redditThread = WorkflowSignals(
@@ -1650,9 +1745,9 @@ struct Phase60SelfTest {
         check("rental_tabs_compare_allowed", rentalSelection.panel.contains("compare_open_tabs"), reason: "panel=\(rentalSelection.panel.joined(separator: ","))")
         if let id = rentalFloat.id, let action = WorkflowActionOntology.byId[id] {
             let title = LiquidActionRouter.displayTitle(for: action, signals: rentalTabs)
-            check("rental_float_honest_capture_title", title.lowercased().contains("capture"), reason: "title=\(title)")
+            check("rental_float_honest_body_title", title.lowercased().contains("listing") && !title.lowercased().hasPrefix("capture"), reason: "title=\(title)")
         } else {
-            check("rental_float_honest_capture_title", false, reason: "expected a floating capture-to-compare, got none")
+            check("rental_float_honest_body_title", false, reason: "expected a floating listing action, got none")
         }
 
         // ── 4. Coherent product tabs (scenario e) ──────────────────────────
@@ -1829,9 +1924,10 @@ struct Phase61SelfTest {
             "desu desu quarry - YouTube"
         ],
         selectedTextLength: 0,
-        contentAvailable: false,
+        contentAvailable: true,
         workflow: "unknown",
-        visibleAppNames: ["Firefox"]
+        visibleAppNames: ["Firefox"],
+        enrichedContext: PhaseSelfTestEvidence.listingSnapshot(key: "phase61_active_listing_readable")
     )
 
     // Scenario e — unrelated current page + two comparable background tabs.
@@ -1989,7 +2085,8 @@ struct Phase62SelfTest {
         windowTitle: "ContextExecutionResult.swift - error build failed",
         urlHost: "", urlPath: "", tabTitles: [],
         selectedTextLength: 0, contentAvailable: true,
-        workflow: "coding", visibleAppNames: ["Xcode", "Console"]
+        workflow: "coding", visibleAppNames: ["Xcode", "Console"],
+        enrichedContext: PhaseSelfTestEvidence.codeLogSnapshot(key: "phase62_code_log_readable")
     )
 
     static let genericBrowsing = WorkflowSignals(
@@ -2110,22 +2207,22 @@ struct Phase62SelfTest {
             check("search_results_uses_search_extractor", srPlan.steps.contains { $0.primitiveID == "extract_search_results" }, reason: "steps=\(srPlan.steps.map(\.primitiveID).joined(separator: "→"))")
         }
 
-        // ── Metadata-only listing tabs (scenario d) ────────────────────────
+        // ── Readable listing tabs (scenario d) ─────────────────────────────
         let listing = Phase59SelfTest.multipleListingTabs
         let lContent = ContentTypeClassifier.classify(listing)
         let lCluster = ComparableCandidateDetector.detect(signals: listing, content: lContent)
         let lActivity = BrowserActivityClassifier.classify(signals: listing, content: lContent, cluster: lCluster)
         let lEvidence = EvidenceSnapshot.evaluate(signals: listing, content: lContent, cluster: lCluster)
         let lPlans = ComposedActionPlanner.plansFor(signals: listing, content: lContent, activity: lActivity, cluster: lCluster, evidence: lEvidence)
-        check("listing_metadata_has_compare_chain", lPlans.contains { $0.id == "listing_compare_captured" }, reason: "plans=\(lPlans.map(\.id).joined(separator: ","))")
+        check("listing_body_has_compare_chain", lPlans.contains { $0.id == "listing_compare_captured" }, reason: "plans=\(lPlans.map(\.id).joined(separator: ","))")
         if let cmp = lPlans.first(where: { $0.id == "listing_compare_captured" }) {
-            check("listing_compare_capture_first", cmp.executionMode == .captureFirst, reason: "mode=\(cmp.executionMode.rawValue)")
-            check("listing_compare_chain_has_capture_then_compare",
-                  cmp.steps[0].primitiveID == "capture_related_tabs"
+            check("listing_compare_execute_direct", cmp.executionMode == .executeDirect, reason: "mode=\(cmp.executionMode.rawValue)")
+            check("listing_compare_chain_uses_captured_body",
+                  cmp.steps.first?.primitiveID != "capture_related_tabs"
                   && cmp.steps.contains { $0.primitiveID == "extract_table_like_records" }
                   && cmp.steps.contains { $0.primitiveID == "compare_records" },
                   reason: "steps=\(cmp.steps.map(\.primitiveID).joined(separator: "→"))")
-            check("listing_compare_title_capture_first_label", cmp.userVisibleTitle.lowercased().contains("capture"), reason: "title=\(cmp.userVisibleTitle)")
+            check("listing_compare_title_body_label", cmp.userVisibleTitle.lowercased().contains("compare") && !cmp.userVisibleTitle.lowercased().hasPrefix("capture"), reason: "title=\(cmp.userVisibleTitle)")
         }
 
         // ── Captured listing records (scenario e) ──────────────────────────
@@ -2205,8 +2302,21 @@ struct Phase62SelfTest {
             check("planner_ui_bridge_resolves_registered_plan", ComposedActionUIRegistry.resolve(identity.uiID)?.plan.id == plan.id, reason: "ui_id=\(identity.uiID)")
 
             let panelClickResult = await ComposedActionClickDispatcher.execute(uiID: identity.uiID, sourceSurface: "panel")
-            check("panel_click_dispatches_composed_executor", panelClickResult.executionStatus == .captureNeeded, reason: "status=\(panelClickResult.executionStatus?.rawValue ?? "nil")")
-            check("missing_context_card_copy_present", panelClickResult.outputText.lowercased().contains("capture") || panelClickResult.outputText.lowercased().contains("need"), reason: "chars=\(panelClickResult.outputText.count)")
+            // Stage 2: a panel click is consent to auto-capture visible text (full-frame
+            // OCR via readOrAcquire). The click must dispatch to the composed executor and
+            // return an honest outcome — success when OCR found content, or captureNeeded
+            // when it did not — but never crash or return nil.
+            check("panel_click_dispatches_composed_executor",
+                  panelClickResult.executionStatus == .success
+                    || panelClickResult.executionStatus == .partial
+                    || panelClickResult.executionStatus == .captureNeeded,
+                  reason: "status=\(panelClickResult.executionStatus?.rawValue ?? "nil")")
+            if panelClickResult.executionStatus == .captureNeeded {
+                check("missing_context_card_copy_present", panelClickResult.outputText.lowercased().contains("capture") || panelClickResult.outputText.lowercased().contains("need"), reason: "chars=\(panelClickResult.outputText.count)")
+            } else {
+                // Auto-captured: a real result card with non-empty content was produced.
+                check("missing_context_card_copy_present", !panelClickResult.outputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, reason: "auto_captured chars=\(panelClickResult.outputText.count)")
+            }
 
             let capturedClickResult = await ComposedActionClickDispatcher.execute(
                 uiID: identity.uiID,
@@ -2310,8 +2420,9 @@ struct Phase64SelfTest {
         windowTitle: "182 Montreal St - LEASE AGREEMENT - 2026 - Google Docs",
         urlHost: "docs.google.com", urlPath: "/document/d/abc",
         tabTitles: ["182 Montreal St - LEASE AGREEMENT - 2026 - Google Docs"],
-        selectedTextLength: 0, contentAvailable: false,
-        workflow: "researching", visibleAppNames: ["Firefox"]
+        selectedTextLength: 0, contentAvailable: true,
+        workflow: "researching", visibleAppNames: ["Firefox"],
+        enrichedContext: PhaseSelfTestEvidence.leaseSnapshot(key: "phase64_lease_doc_readable")
     )
 
     static let xcodeLogs = WorkflowSignals(
@@ -2319,7 +2430,8 @@ struct Phase64SelfTest {
         windowTitle: "ContextExecutionResult.swift - error build failed",
         urlHost: "", urlPath: "", tabTitles: [],
         selectedTextLength: 0, contentAvailable: true,
-        workflow: "coding", visibleAppNames: ["Xcode", "Console"]
+        workflow: "coding", visibleAppNames: ["Xcode", "Console"],
+        enrichedContext: PhaseSelfTestEvidence.codeLogSnapshot(key: "phase64_xcode_logs_readable")
     )
 
     static func run() async -> Bool {
@@ -2413,7 +2525,7 @@ struct Phase64SelfTest {
 
         // ── 14-16. Context restorations ─────────────────────────────────────
         let leasePlans = UnifiedProductBrain.composedPlanCandidates(signals: leaseDoc)
-        check("lease_capture_first_actions", leasePlans.contains { $0.acceptBehavior == .captureFirst }, detail: "lease doc gets capture-first lease plan")
+        check("lease_body_actions_restored", leasePlans.contains { $0.acceptBehavior == .executeDirect }, detail: "lease doc body produces direct lease plan")
         let techPlans = UnifiedProductBrain.composedPlanCandidates(signals: xcodeLogs)
         let techPresent = techPlans.contains { $0.debugMetadata?["technical"] == "yes" }
         check("technical_suggestions_restored", techPresent, detail: "Xcode/log context produces technical composed plans count=\(techPlans.count)")

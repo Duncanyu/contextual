@@ -1116,6 +1116,32 @@ import Foundation
 import AppKit
 
 public enum MusicExecutor {
+    /// Phase 67 — deterministic resume outcome used by the dogfood matrix to prove
+    /// that a resume returning a non-playing state retries the learned playlist and
+    /// never surfaces an immediate hard failure when play was actually issued.
+    public enum ResumeOutcome: String, Sendable {
+        case resumed                  // resume immediately reported playing
+        case retriedPlaylistSuccess   // resume paused → learned playlist played + verified
+        case sentUnverified           // play issued but playback unverifiable → soft message
+        case failed                   // script itself failed and nothing to retry
+    }
+
+    public static func resumeOutcomeForTests(
+        resumePlaying: Bool,
+        resumeScriptOK: Bool,
+        learnedPlaylist: String?,
+        playlistPlaying: Bool
+    ) -> ResumeOutcome {
+        if resumePlaying { return .resumed }
+        // The resume command was issued (exit_code 0) but did not verify as playing.
+        if let _ = learnedPlaylist {
+            return playlistPlaying ? .retriedPlaylistSuccess : .sentUnverified
+        }
+        // No playlist to retry. A clean exit with an ambiguous state is "sent but
+        // unverified" (soft), not a hard failure; only a failed script is failure.
+        return resumeScriptOK ? .sentUnverified : .failed
+    }
+
     static func executionPlanForTests(
         intent: MusicIntent?,
         localPlaylistMatchExists: Bool,
@@ -1140,20 +1166,57 @@ public enum MusicExecutor {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client") != nil
     }
 
+    /// Test override so the dogfood matrix can drive real success/failure/timeout
+    /// outcomes through the live playFocusMedia path without touching Music.app.
+    nonisolated(unsafe) public static var testPlayHook: (@Sendable (MusicIntent?) async -> (success: Bool, status: CapabilityExecutionStatus, reason: String, playlistName: String?))?
+
     @MainActor
     public static func play(intent: MusicIntent? = nil) async -> (success: Bool, status: CapabilityExecutionStatus, reason: String, playlistName: String?) {
+        if let hook = testPlayHook {
+            return await hook(intent)
+        }
         print("[MusicExecutor] started")
 		let action = intent?.action ?? .resume
 		print("[MusicExecutor] action=\(action.rawValue)")
         print("[MusicExecutor] fallback_search=no")
 
 		if action == .resume {
-            if let resumed = await tryResumeAnyPlayer() {
-                print("[MusicAction] action=resume status=success reason=\(resumed.reason)")
-                return resumed
+            let resume = await tryResumeAnyPlayer()
+            if resume.resolved {
+                print("[MusicAction] action=resume status=success reason=\(resume.reason)")
+                return (true, .success, resume.reason, nil)
             }
-            // Phase 51 — resume either resumes or fails visibly. It must never
-            // silently start a playlist the user did not ask for.
+            // Phase 67 — resume returned a non-playing state. Before surfacing any
+            // failure, retry the learned/default playlist and re-verify. A bare
+            // resume that returned paused on exit_code=0 must never be reported as
+            // an immediate hard failure (the user often hears music start).
+            var learned = intent?.playlistName ?? DurableMemory.shared.preferredMusicPlaylist()
+            if learned == nil { learned = await firstLocalPlaylistName() }
+            let outcome = MusicExecutor.resumeOutcomeForTests(
+                resumePlaying: false,
+                resumeScriptOK: resume.scriptOK,
+                learnedPlaylist: learned,
+                playlistPlaying: false
+            )
+            if let playlist = learned, outcome != .failed {
+                print("[MusicExecutor] learned_playlist_found=yes name=\(playlist)")
+                print("[MusicExecutor] retry=playlist reason=resume_returned_paused")
+                let retry = await playLocalPlaylistVerified(query: playlist, reason: "resume_retry_playlist")
+                if retry.success {
+                    print("[MusicAction] action=play_playlist status=success")
+                    return (true, .success, "play_playlist", retry.playlistName)
+                }
+                // Played but couldn't verify sustained playback — soft, not failed.
+                print("[MusicAction] action=resume status=sent_unverified reason=music_state_ambiguous")
+                return (false, .success, "music_state_ambiguous", retry.playlistName)
+            }
+            print("[MusicExecutor] learned_playlist_found=no name=\"\"")
+            if resume.scriptOK {
+                // Play was issued cleanly; state is just unverifiable → soft.
+                print("[MusicAction] action=resume status=sent_unverified reason=music_state_ambiguous")
+                return (false, .success, "music_state_ambiguous", nil)
+            }
+            // The resume script itself failed — that is an honest hard failure.
             print("[MusicAction] action=resume status=failed reason=no_player_resumed")
             print("[MusicSuppression] reason=low_confidence detail=resume_failed_no_named_playlist")
 			return (false, .unavailable, "resume_failed_no_player", nil)
@@ -1222,8 +1285,11 @@ public enum MusicExecutor {
         return (false, "no_player_responded")
 	}
 
+    /// Returns whether playback resolved to "playing" and whether the underlying
+    /// scripts ran cleanly (exit_code 0). `scriptOK` distinguishes "play issued but
+    /// state ambiguous" (soft) from "script failed" (hard failure).
     @MainActor
-    private static func tryResumeAnyPlayer() async -> (success: Bool, status: CapabilityExecutionStatus, reason: String, playlistName: String?)? {
+    private static func tryResumeAnyPlayer() async -> (resolved: Bool, scriptOK: Bool, reason: String) {
         let resumeScript = """
             tell application "Music"
                 play
@@ -1232,14 +1298,15 @@ public enum MusicExecutor {
         """
         let (musicSuccess, musicOut, _, _) = await runAppleScript(resumeScript, backend: "music")
         if musicSuccess && musicOut.lowercased().contains("playing") {
-            return (true, .success, "music_resumed", nil)
+            return (true, true, "music_resumed")
         }
+        var scriptOK = musicSuccess
 
         // Phase 51 — `play` resumes; `playpause` would TOGGLE (pausing an already-
         // playing player). Spotify is only scripted when actually installed.
         guard isSpotifyInstalled else {
             print("[MusicExecutor] backend=spotify skipped reason=not_installed")
-            return nil
+            return (false, scriptOK, "music_not_playing")
         }
         let spotifyResume = """
             tell application "Spotify"
@@ -1248,10 +1315,40 @@ public enum MusicExecutor {
             end tell
         """
         let (spotifySuccess, spotifyOut, _, _) = await runAppleScript(spotifyResume, backend: "spotify")
+        scriptOK = scriptOK || spotifySuccess
         if spotifySuccess && spotifyOut.lowercased().contains("playing") {
-            return (true, .success, "spotify_resumed", nil)
+            return (true, true, "spotify_resumed")
         }
-        return nil
+        return (false, scriptOK, "no_player_resumed")
+    }
+
+    /// Reads the current Music.app player state (used for delayed re-verification).
+    @MainActor
+    private static func currentMusicPlayerState() async -> String {
+        let script = "tell application \"Music\" to return player state as string"
+        let (_, out, _, _) = await runAppleScript(script, backend: "music")
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Plays a local playlist, then re-verifies sustained playback after a short
+    /// delay (attempt 2). Avoids surfacing failure when the first state read is
+    /// momentarily "paused" right after issuing play.
+    @MainActor
+    private static func playLocalPlaylistVerified(query: String, reason: String) async -> (success: Bool, status: CapabilityExecutionStatus, reason: String, playlistName: String?) {
+        let first = await playLocalPlaylist(query: query, reason: reason)
+        // Re-check player state after a short additional delay regardless of the
+        // first read, so a slow Music.app state update doesn't read as failure.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        let state = await currentMusicPlayerState()
+        let playing = state.lowercased().contains("playing")
+        print("[MusicVerification] attempt=2 expected=playing actual=\(state.isEmpty ? "unknown" : state) passed=\(playing ? "yes" : "no")")
+        if first.success && playing {
+            return first
+        }
+        if playing {
+            return (true, .success, reason, first.playlistName ?? query)
+        }
+        return (false, .unavailable, "playlist_not_verified", first.playlistName)
     }
 
     @MainActor
@@ -1469,5 +1566,52 @@ enum PassivePlaylistObserverSelfTest {
         let ok = failures.isEmpty
         print("[PassivePlaylistObserverSelfTest] completed ok=\(ok) failures=\(failures.count)")
         return ok
+    }
+}
+
+// MARK: - Music action failure feedback + cooldown (Part 3)
+//
+// After a music action fails verification, suppress music suggestions for a
+// cooldown so the assistant does not keep proposing "play focus music" right
+// after it just failed. In-memory (session) — a failure should not nag, but a
+// fresh session starts clean.
+final class MusicActionFeedback: @unchecked Sendable {
+    static let shared = MusicActionFeedback()
+    private let lock = NSLock()
+    private var lastFailureAt: Date?
+    private var lastFailureReason: String?
+    private var lastSuccessAt: Date?
+    /// Cooldown window after a failed music action.
+    var cooldownSeconds: TimeInterval = 300
+
+    private init() {}
+
+    func recordFailure(reason: String, now: Date = Date()) {
+        lock.lock(); lastFailureAt = now; lastFailureReason = reason; lock.unlock()
+    }
+
+    func recordSuccess(now: Date = Date()) {
+        lock.lock(); lastFailureAt = nil; lastFailureReason = nil; lastSuccessAt = now; lock.unlock()
+    }
+
+    func recentSuccess(now: Date = Date(), window: TimeInterval = 3600) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let at = lastSuccessAt else { return false }
+        return now.timeIntervalSince(at) <= window
+    }
+
+    /// Returns the active suppression (remaining seconds + reason) if a recent
+    /// failure is still inside the cooldown window.
+    func suppression(now: Date = Date()) -> (remaining: Int, reason: String)? {
+        lock.lock(); defer { lock.unlock() }
+        guard let at = lastFailureAt else { return nil }
+        let elapsed = now.timeIntervalSince(at)
+        if elapsed >= cooldownSeconds { return nil }
+        return (Int(cooldownSeconds - elapsed), lastFailureReason ?? "recent_failed_execution")
+    }
+
+    func resetForTests() {
+        lock.lock(); lastFailureAt = nil; lastFailureReason = nil; lastSuccessAt = nil; lock.unlock()
+        cooldownSeconds = 300
     }
 }

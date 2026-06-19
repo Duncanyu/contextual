@@ -58,34 +58,13 @@ enum PanelRanker {
         "rewrite_text", "improve_text", "draft_reply", "explain_context", "diagnose_error"
     ]
 
-    /// Phase 53 — setup/acquisition actions get their own section.
-    static let captureCapabilityIds: Set<String> = [
-        "capture_visible_page", "capture_full_document", "enable_browser_bridge",
-        "select_text_hint", "connect_google_docs", "capture_form_page",
-        "enable_page_access", "capture_then_summarize"
-    ]
-
     /// Generic cognitive ids that must never crowd the panel (Part I cap).
     static let genericCognitiveIds: Set<String> = [
         "explicit_visible_capture_summary", "extract_action_items", "create_checklist",
         "summarize_visible_content", "rewrite_text", "improve_text", "explain_context", "draft_reply"
     ]
 
-    static let actCapabilityIds: Set<String> = [
-        "arrange_side_by_side", "split_research_setup", "switch_to_paired_app",
-        "open_related_app_set", "open_paired_app", "play_focus_media",
-        "resume_focus_media", "pause_media", "enable_reduce_interruptions"
-    ]
-
-    static let workspaceCapabilityIds: Set<String> = [
-        "restore_workspace", "restore_research_tabs", "launch_recent_workspace"
-    ]
-
-    static let utilityCapabilityIds: Set<String> = [
-        "copy_current_url", "copy_all_related_links", "collect_references",
-        "remember_workspace", "open_current_task_panel", "pin_reference_tabs",
-        "extract_and_organize", "select_text_hint"
-    ]
+    private static let accessCommandIds: Set<String> = ["enable_page_access", "capture_then_summarize"]
 
     /// Rank panel actions into sections.
     /// - Parameters:
@@ -227,7 +206,8 @@ enum PanelRanker {
     }
 
     static func section(for capabilityId: String) -> PanelSection {
-        if captureCapabilityIds.contains(capabilityId) { return .capture }
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityId)
+        if traits.contains(.internalAcquisitionAction) || accessCommandIds.contains(capabilityId) { return .capture }
         // Phase 53 — ontology actions map by category and result type:
         // insights → "Understand this workflow"; drafts/notes/system actions →
         // "Act on this workflow"; setup → capture; workspace aliases → workspace.
@@ -248,9 +228,9 @@ enum PanelRanker {
             }
         }
         if cognitiveCapabilityIds.contains(capabilityId) { return .understand }
-        if actCapabilityIds.contains(capabilityId) { return .act }
-        if workspaceCapabilityIds.contains(capabilityId) { return .workspace }
-        if utilityCapabilityIds.contains(capabilityId) { return .utilities }
+        if traits.contains(.metadataUtility) || traits.contains(.unverifiedBrowserMutator) { return .utilities }
+        if traits.contains(.workspaceArrangement) { return .workspace }
+        if traits.contains(.mediaOrFocusSupport) || traits.contains(.sourceIndependentAction) { return .act }
         // Unknown capabilities go to "act on this" — they are environment actions
         // by default, never top suggestions.
         return .act
@@ -259,8 +239,10 @@ enum PanelRanker {
     /// Capture/access actions stay visible even when content is unavailable —
     /// they are the honest path to getting content.
     private static func isAccessAction(_ capabilityId: String) -> Bool {
-        isSpecificLiquidCaptureNeededAction(capabilityId)
-            || ["enable_page_access", "capture_then_summarize", "capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint"].contains(capabilityId)
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityId)
+        return isSpecificLiquidCaptureNeededAction(capabilityId)
+            || traits.contains(.internalAcquisitionAction)
+            || accessCommandIds.contains(capabilityId)
     }
 
     private static func isSpecificLiquidCaptureNeededAction(_ capabilityId: String) -> Bool {

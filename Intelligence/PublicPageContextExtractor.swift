@@ -9,6 +9,10 @@ import Foundation
 ///   title / og:title / og:description / JSON-LD Product fields (when present).
 public actor PublicPageContextExtractor {
 	static let shared = PublicPageContextExtractor()
+	
+	#if DEBUG
+	public static var mockResult: PublicPageContext?
+	#endif
 
 	public struct PublicPageContext: Sendable, Equatable, Codable {
 		public let url: URL?
@@ -52,6 +56,13 @@ public actor PublicPageContextExtractor {
 		clipboardText: String?,
 		now: Date = Date()
 	) async -> PublicPageContext {
+		#if DEBUG
+		if let mock = PublicPageContextExtractor.mockResult {
+			print("[PublicPageContextExtractor] using injected mock for url=\(mock.url?.absoluteString ?? "none")")
+			return mock
+		}
+		#endif
+
 		let url = Self.bestPublicURL(windowTitle: windowTitle, axTextFragments: axTextFragments, clipboardText: clipboardText)
 		guard let url else {
 			print("[PublicPageContextExtractor] skipped reason=no_public_url_available")

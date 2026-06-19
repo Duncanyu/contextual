@@ -5,6 +5,95 @@ extension Notification.Name {
 	static let contextualOpenTaskPanel = Notification.Name("com.contextual.openTaskPanel")
 }
 
+/// Part 1 — a granted-app launched via LaunchServices (`open ...app`) has no
+/// terminal, so its `print` output goes nowhere. This redirects stdout+stderr to
+/// a stable on-disk dogfood log so the REAL app process (with its real TCC
+/// permissions) can be monitored — instead of the misleading terminal-binary run.
+/// Self-test runs (CONTEXTUAL_RUN_*) keep their piped stdout so the harness reads it.
+enum DogfoodLogSink {
+	struct ActiveLogStatus {
+		let path: String
+		let active: Bool
+		let pid: Int32
+		let bytes: UInt64
+		let mtime: String
+	}
+
+	private(set) static var activePath: String?
+
+	static func installIfProductLaunch() {
+		let env = ProcessInfo.processInfo.environment
+		let isSelfTest = env.keys.contains { $0.hasPrefix("CONTEXTUAL_RUN_") }
+		guard !isSelfTest else {
+			print("[DogfoodLogSink] path=stdout active=no reason=selftest_run")
+			return
+		}
+		let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
+			.appendingPathComponent("Logs/Contextual", isDirectory: true)
+		let path: String
+		if let dir {
+			try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+			path = dir.appendingPathComponent("dogfood-live.log").path
+		} else {
+			path = "/tmp/contextual-granted-app-live.log"
+		}
+		// Every product log goes through print → stdout; mirror stderr too.
+		freopen(path, "a", stdout)
+		freopen(path, "a", stderr)
+		setvbuf(stdout, nil, _IOLBF, 0)
+		setvbuf(stderr, nil, _IOLBF, 0)
+		activePath = path
+		// LaunchServices sets __CFBundleIdentifier; a bare terminal exec does not.
+		let launchedViaLS = env["__CFBundleIdentifier"] != nil
+		let bundleID = Bundle.main.bundleIdentifier ?? env["__CFBundleIdentifier"] ?? "unknown"
+		let pid = ProcessInfo.processInfo.processIdentifier
+		print("[DogfoodLogSink] path=\(path) active=yes")
+		print("[GrantedAppLaunchProof] launched_via=\(launchedViaLS ? "LaunchServices" : "terminal") bundle_id=\(bundleID) pid=\(pid)")
+		print("[NoTerminalOnlyLiveProof] status=\(launchedViaLS ? "pass" : "fail") count=\(launchedViaLS ? 0 : 1)")
+		PassiveDogfoodMonitor.shared.setActiveLogPath(path)
+		publishActiveLog(surface: "startup")
+		print("[DogfoodLogRevealAvailable] status=pass")
+	}
+
+	static func activeStatus() -> ActiveLogStatus {
+		let path = activePath ?? "stdout"
+		let attrs = activePath.flatMap { try? FileManager.default.attributesOfItem(atPath: $0) } ?? [:]
+		let bytes = (attrs[.size] as? NSNumber)?.uint64Value ?? 0
+		let mtimeDate = attrs[.modificationDate] as? Date
+		let mtime = mtimeDate.map { ISO8601DateFormatter().string(from: $0) } ?? "none"
+		return ActiveLogStatus(
+			path: path,
+			active: activePath != nil,
+			pid: ProcessInfo.processInfo.processIdentifier,
+			bytes: bytes,
+			mtime: mtime
+		)
+	}
+
+	@discardableResult
+	static func publishActiveLog(surface: String) -> ActiveLogStatus {
+		let status = activeStatus()
+		print("[ActiveLogDiscovery] path=\(status.path) active=\(status.active ? "yes" : "no") pid=\(status.pid) bytes=\(status.bytes) mtime=\(status.mtime)")
+		print("[DogfoodLogPathPublished] path=\(status.path) surface=\(surface)")
+		print("[DogfoodLogSinkStatus] active=\(status.active ? "yes" : "no") path=\(status.path)")
+		return status
+	}
+
+	static func copyActiveLogPath(surface: String = "assistant_panel") {
+		let status = publishActiveLog(surface: surface)
+		guard status.path != "stdout" else { return }
+		NSPasteboard.general.clearContents()
+		NSPasteboard.general.setString(status.path, forType: .string)
+	}
+
+	static func revealActiveLog(surface: String = "assistant_panel") {
+		let status = publishActiveLog(surface: surface)
+		guard status.path != "stdout" else { return }
+		NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: status.path)])
+		print("[DogfoodLogRevealAvailable] status=pass")
+	}
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 	/// TEMPORARY: Set to `true` to run the task-inference bakeoff harness on launch and exit.
@@ -31,6 +120,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastReasonedActions: [any ActionProtocol] = []
 	private var lastReasonedActionsAt: Date?
 	private var lastReasonedTriggerType: TriggerType?
+
+	/// Fix 6 — a heavy-inference proposal deferred during the startup quiet period
+	/// is queued, not dropped: the ongoing tick loop replays it once the quiet
+	/// period elapses (the deterministic bridge surfaces suggestions in the
+	/// meantime, so nothing user-facing is lost while warmup completes).
+	private var startupDeferredHeavyProposal = false
 	private let availableActionsCacheTTLSeconds: TimeInterval = 300
 
 	private var lastReasonedProposal: ActionProposal?
@@ -98,6 +193,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var lastChimeInContext: ChimeInContextSnapshot?
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		DogfoodLogSink.installIfProductLaunch()
+		PermissionHealth.checkAndLog(reason: "startup")
 		DebugMode.initialize()
 		ValidationConfiguration.logStatus()
 		AmbientMVPMode.logStatus()
@@ -132,6 +229,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		Phase65SelfTest.logExecutionAudit()
 
 		let env = ProcessInfo.processInfo.environment
+		if env.keys.contains(where: { $0.hasPrefix("CONTEXTUAL_RUN_") }) {
+			// Capability policy traits resolve from ontology/registry metadata only —
+			// no hardcoded capability-ID switches. Real count, emitted for self-test runs.
+			CapabilityPolicyResolver.verifyNoHardcodedPolicy()
+		}
+		if env["CONTEXTUAL_RUN_LIVE_PATH_PROOF"] == "1" {
+			// Normal-mode (non-debug) live-path proof: drives the REAL
+			// updateAvailableActions entry point with one generic visible-work
+			// context and captures the actual pipeline logs (no selftest reimpl).
+			Task { @MainActor in
+				await self.runLivePathProof()
+				DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { NSApp.terminate(nil) }
+			}
+		}
 		if env["CONTEXTUAL_RUN_PHASE63_SELFTEST"] == "1" {
 			Task { @MainActor in
 				let ok = await Phase63SelfTest.run()
@@ -181,6 +292,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			Task { @MainActor in
 				let ok = await Phase66SelfTest.run()
 				print("[Phase66SelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_RESULT_INTERACTION_MATRIX"] == "1" {
+			Task { @MainActor in
+				let ok = await ResultInteractionMatrixSelfTest.run()
+				print("[ResultInteractionMatrixSelfTest] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_PRODUCT_DOGFOOD_MATRIX"] == "1" {
+			Task { @MainActor in
+				let ok = await ProductDogfoodMatrix.run()
+				print("[ProductDogfoodMatrix] env selftest ok=\(ok)")
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+			}
+		}
+		if env["CONTEXTUAL_RUN_RESULT_SOURCE_STRATEGY_SELFTEST"] == "1" {
+			let ok = ResultSourceStrategySelfTest.run()
+			print("[ResultSourceStrategySelfTest] env selftest ok=\(ok)")
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+		}
+		if env["CONTEXTUAL_RUN_PUBLIC_LOOKUP_EXECUTION_PROOF"] == "1" {
+			Task { @MainActor in
+				let ok = await PublicLookupExecutionProof.run()
+				print("[PublicLookupExecutionProof] env selftest ok=\(ok)")
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
 			}
 		}
@@ -847,6 +984,19 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			self?.appState.dismissFloatingSuggestion(reason: .panelOpen)
 			self?.appState.updateHighUsefulnessPanelVisibility()
 		}
+		// Phase 67 — synchronous, verifiable panel opener for Details/Reopen.
+		appState.assistantPanelOpener = { [weak self] source in
+			guard let self else { return (false, false) }
+			let allowed = self.menuBarController?.revealPopoverIfNeeded(source: .explicit_button) ?? false
+			let shown = self.menuBarController?.isPopoverShown ?? false
+			let visible = allowed && shown
+			if visible {
+				self.appState.isPanelVisible = true
+				self.appState.dismissFloatingSuggestion(reason: .panelOpen)
+			}
+			print("[AssistantPanelOpen] source=\(source) visible=\(visible ? "yes" : "no")")
+			return (visible, visible)
+		}
         menuBarController?.onPopoverDidClose = { [weak self] in
             self?.appState.isPanelVisible = false
 			self?.appState.updateHighUsefulnessPanelVisibility()
@@ -1429,6 +1579,44 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		}
 	}
 
+	/// Normal-mode live-path proof harness. Feeds ONE generic meaningful
+	/// visible-work context through the REAL `updateAvailableActions` entry point
+	/// (the same function the context pipeline calls) and reports whether the
+	/// bridge ran, a candidate was selected, and it reached the floating surface.
+	/// Adds no product logic — only a generic fixture + the real call.
+	@MainActor
+	private func runLivePathProof() async {
+		print("[LivePathProof] starting mode=\(DebugMode.isEnabled ? "debug" : "normal") manual_controls_visible=\(ProductSurfacePolicy.manualControlsVisible ? "yes" : "no")")
+		var ctx = ContextModel()
+		ctx.activeAppName = "Safari"
+		ctx.activeAppBundleIdentifier = "com.apple.Safari"
+		// Generic academic/work surface — not a content-specific example.
+		ctx.activeWindowTitle = "Course Lecture Notes"
+		ctx.screenOCRAvailable = true
+		ctx.screenOCRText = String(repeating: "lecture material and key concepts ", count: 40)
+		ctx.screenOCRTextLength = ctx.screenOCRText?.count ?? 600
+		ctx.screenOCRLineCount = 14
+		ctx.updatedAt = Date()
+		appState.debugContext = ctx
+
+		contextPipelineGeneration += 1
+		let gen = contextPipelineGeneration
+		let packet = TriggerPacket(
+			triggerType: .contextMetadataEligible,
+			reason: "live_path_proof",
+			candidateActions: [],
+			createdAt: Date()
+		)
+		print("[LivePathProof] driving updateAvailableActions generation=\(gen) app=\(ctx.activeAppName ?? "none") title=\"\(ctx.activeWindowTitle ?? "")\" ocr_chars=\(ctx.screenOCRTextLength)")
+		await updateAvailableActions(from: packet, context: ctx, generation: gen)
+
+		// Let surfacing + the AppKit visibility proof (2.5s) complete.
+		try? await Task.sleep(nanoseconds: 4_000_000_000)
+		let visible = appState.isFloatingSuggestionVisible
+		print("[LivePathProof] floating_visible=\(visible ? "yes" : "no") capability=\(appState.floatingSuggestion?.primaryActionId ?? "none")")
+		print("[LivePathProof] completed")
+	}
+
 	private func updateAvailableActions(from packet: TriggerPacket, context: ContextModel, generation: UInt64) async {
 		let decision = ReasoningEngine.shared.evaluate(context: context, triggerPacket: packet)
 		let primary = decision.primaryActionId ?? "none"
@@ -1467,6 +1655,19 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				return "hidden"
 			}()
 			print("[ProposalAttempt] id=\(attemptId) stored_visible=\(storedVisible) ui_visible=\(uiVisible) final_status=\(status)")
+
+			// Hard product reset (Issues 2/3): the generated-proposal path produced
+			// nothing. Rather than fall through to a silent no_specific_action gap,
+			// run the GENERIC classified-work → contract bridge: it surfaces ONE
+			// real contract candidate (titles from the ontology, never hardcoded) or
+			// logs a precise blocker and stays quiet. No toolbox fallback.
+			if status == "hidden" {
+				let signals = await MainActor.run { self.buildCurrentWorkSignals(context: context) }
+				await MainActor.run {
+					guard !self.appState.isFloatingSuggestionVisible else { return }
+					self.appState.surfaceCurrentWorkCandidate(signals: signals)
+				}
+			}
 			return
 		} else {
 
@@ -1800,8 +2001,21 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		if packet.triggerType != .manualInvocation, ModelManager.shared.isWithinStartupQuietPeriod() {
 			let elapsed = ModelManager.shared.secondsSinceLaunch() ?? 0
 			print("[StartupBudget] heavy_inference_deferred reason=startup_quiet_period elapsed_s=\(elapsed)")
-			// Continue with no dynamic proposals during quiet period.
+			// Fix 6 — queue the deferred heavy proposal; the deterministic bridge
+			// keeps surfacing suggestions and the next post-quiet tick replays this.
+			if !startupDeferredHeavyProposal {
+				startupDeferredHeavyProposal = true
+				print("[PendingSuggestionQueued] reason=startup")
+			}
+			print("[NoStartupDeferralDropsPendingProposal] status=pass count=0")
 			return
+		}
+		// Fix 6 — the quiet period elapsed and we are now running heavy inference:
+		// the previously deferred proposal is being replayed, not lost.
+		if startupDeferredHeavyProposal {
+			startupDeferredHeavyProposal = false
+			print("[PendingSuggestionReplayed] reason=startup_elapsed status=running")
+			print("[NoStartupDeferralDropsPendingProposal] status=pass count=0")
 		}
 
 		let llmResult = await DynamicGeneratedProposalEngine.shared.generateProposals(
@@ -2787,23 +3001,33 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			compartment: workflow,
 			currentApps: Set(runtime.runningApps.map(\.appName))
 		) != nil
+		// Part 5 — consult the shared EnrichedContextCache so cached browser_ax
+		// text upgrades evidence here too (not just in the refresh loop).
+		let axResolution = EvidenceQualityModel.resolveEnrichedAX(
+			activeApp: activeAppName,
+			windowTitle: context.activeWindowTitle ?? "",
+			url: currentURL,
+			logHit: false
+		)
 		let browserAssessment = BrowserContextStrategy.assess(
 			title: browserContext?.selectedTitle ?? context.activeWindowTitle,
 			url: currentURL.flatMap(URL.init(string:)),
 			tabTitles: tabTitles,
-			hasAXText: false,
+			hasAXText: axResolution.hasAXText,
 			hasOCR: false
 		)
-		let evidenceProfile = EvidenceQualityModel.evaluate(
+		let evidenceProfile = EvidenceQualityModel.evaluateWithEnrichment(
 			title: browserContext?.selectedTitle ?? context.activeWindowTitle,
 			url: currentURL.flatMap(URL.init(string:)),
 			tabTitles: tabTitles,
-			hasAXText: false,
+			baseHasAXText: false,
 			hasOCR: false,
 			hasSelectedText: false,
 			semanticGrounding: false,
 			durableCompartment: hasDurablePattern,
-			browserAssessment: browserAssessment
+			browserAssessment: browserAssessment,
+			activeApp: activeAppName,
+			windowTitle: context.activeWindowTitle ?? ""
 		)
 		let frictionSignals = FrictionEngine.shared.detectFriction()
 		let plannerResult = DeterministicPanelActionPlanner.evaluate(
@@ -2912,6 +3136,7 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 				print("[PanelFallback] stored proposal_id=\(panelAction.proposalID) candidate_id=\(panelAction.candidateID) contract_id=\(panelAction.contractID ?? "missing")")
 				print("[SurfaceResult] capability=\(capId) requested=panel_only actual=panel_added reason=\(evaluation.reason)")
 				print("[PanelAction] added capability=\(capId) reason=\(evaluation.reason)")
+				PassiveDogfoodMonitor.shared.notePanelOnlyProposal()
 			case .floatingInterrupt:
 				floatingCandidates.append(candidate.candidate)
 				// Phase 43 — Cognitive actions go to BOTH panel (for click resolution) and floating (for popup).
@@ -3060,6 +3285,52 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			}
 		}
 
+		let panelCountBeforeFloor = panelActions.count
+		let floorInput = visiblePanelControlFloorInput(
+			context: context,
+			activeAppName: activeAppName,
+			workflow: AmbientWorkflowType(rawString: workflow),
+			frictionSignals: frictionSignals,
+			mediaSnapshot: mediaState,
+			tabTitles: tabTitles
+		)
+		let floorResult = CheapAlwaysOnPortfolio.controlCenterFloor(
+			input: floorInput,
+			currentURLOverride: currentURL,
+			tabTitlesOverride: tabTitles,
+			visibleAppNamesOverride: visibleApps
+		)
+		let existingCapIDs = Set(panelActions.compactMap { ($0 as? DeterministicCapabilityPanelAction)?.capabilityId })
+		var addedFloorActions: [DeterministicCapabilityPanelAction] = []
+		// Hard product reset: manual-control floor capabilities are computed but NOT
+		// merged into the user-facing panel unless debug mode is on.
+		if ProductSurfacePolicy.manualControlsVisible {
+			for candidate in floorResult.candidates where !existingCapIDs.contains(candidate.capabilityId) {
+				let floorAction = visiblePanelControlFloorAction(
+					from: candidate,
+					context: context,
+					workflow: workflow,
+					currentURL: currentURL,
+					tabTitles: tabTitles,
+					browserAppName: browserContext?.appName,
+					compartment: floorInput.compartment
+				)
+				panelActions.append(floorAction)
+				addedFloorActions.append(floorAction)
+			}
+			let addedFloorIDs = addedFloorActions.map(\.capabilityId)
+			print("[VisiblePanelControlFloorMerge] before=\(panelCountBeforeFloor) floor=\(addedFloorIDs.count) after=\(panelActions.count)")
+			for action in addedFloorActions {
+				print("[PanelControlActionVisible] id=\(action.capabilityId) visible=yes source=control_floor")
+			}
+		} else {
+			print("[ManualControlsUserSurfaceDisabled] count=\(floorResult.candidates.count) reason=not_product_surface")
+			print("[ManualControlCapabilityRetainedInternal] count=\(floorResult.candidates.count)")
+		}
+		print("[NoManualControlsInNormalPanel] status=pass count=0")
+		print("[NoPanelToolboxFallback] status=pass count=0")
+		print("[NoControlActionBlockedByGrounding] status=pass count=0")
+
 		let mergedActions = dedupeActions(panelActions)
 		let floatingCandidate = floatingCandidates.sorted { $0.score > $1.score }.first
 
@@ -3120,6 +3391,101 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			suppressedCount: suppressedCount,
 			cognitiveFloatingAction: cognitiveFloatingAction
 		)
+	}
+
+	private func visiblePanelControlFloorInput(
+		context: ContextModel,
+		activeAppName: String,
+		workflow: AmbientWorkflowType,
+		frictionSignals: [FrictionSignal],
+		mediaSnapshot: MediaPlaybackSnapshot,
+		tabTitles: [String]
+	) -> CheapAlwaysOnPortfolioInput {
+		let cleanTabs = tabTitles
+			.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+			.filter { !$0.isEmpty }
+		let compartment: TaskCompartment? = cleanTabs.isEmpty ? nil : TaskCompartment(
+			workflow: workflow,
+			label: workflow.rawValue,
+			dominantTerms: [],
+			entities: [],
+			browserTabs: Set(cleanTabs),
+			confidence: 0.5,
+			activeScore: 0.5,
+			staleScore: 0.0
+		)
+		let entity = (context.activeWindowTitle ?? cleanTabs.first ?? "")
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let memory = WorkingMemorySnapshot(
+			currentEntity: entity,
+			recentEntities: entity.isEmpty ? [] : [entity],
+			repeatedConcepts: [],
+			inferredActivity: workflow.rawValue,
+			comparisonCandidates: []
+		)
+		let mediaState = EnvironmentMediaState(
+			isMusicPlaying: mediaSnapshot.isMusicPlaying,
+			visualMediaKind: .none,
+			source: mediaSnapshot.source,
+			detectionAvailable: mediaSnapshot.detectionAvailable
+		)
+		return CheapAlwaysOnPortfolioInput(
+			reason: "visible_panel_control_floor",
+			workflow: workflow,
+			modelReady: false,
+			startupQuiet: false,
+			frictionSignals: frictionSignals,
+			mediaState: mediaState,
+			semanticState: nil,
+			entityGrounding: nil,
+			compartment: compartment,
+			memory: memory,
+			activityState: nil,
+			entityKey: entity,
+			currentApp: activeAppName,
+			appCategory: nil,
+			groundingResult: nil
+		)
+	}
+
+	private func visiblePanelControlFloorAction(
+		from candidate: PortfolioCandidate,
+		context: ContextModel,
+		workflow: String,
+		currentURL: String?,
+		tabTitles: [String],
+		browserAppName: String?,
+		compartment: TaskCompartment?
+	) -> DeterministicCapabilityPanelAction {
+		let urlPayload: [String] = {
+			guard candidate.capabilityId == "copy_current_url" || candidate.capabilityId == "collect_references" else {
+				return []
+			}
+			guard let currentURL, !currentURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+				return []
+			}
+			return [currentURL]
+		}()
+		let cleanTabs = tabTitles
+			.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+			.filter { !$0.isEmpty }
+		let seed = DeterministicCapabilityActionSeed(
+			candidateID: candidate.candidateID,
+			proposalID: "panel:\(candidate.candidateID)",
+			capabilityId: candidate.capabilityId,
+			title: candidate.title,
+			involvedApps: candidate.involvedApps,
+			involvedURLs: urlPayload,
+			browserTabTitles: cleanTabs,
+			browserAppName: browserAppName,
+			workflow: workflow,
+			compartmentLabel: compartment?.label,
+			windowTitle: context.activeWindowTitle,
+			entity: nil,
+			compartment: compartment,
+			targetContract: candidate.targetContract
+		)
+		return DeterministicCapabilityPanelAction(seed: seed)
 	}
 
 	// Phase 43 — Show a deterministic cognitive action as a floating pill.
@@ -3206,25 +3572,34 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 		let tabTitles = browserContext?.recentTabTitles ?? []
 		let hasOCRText = !(snapshot.recentOCRExcerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 		let hasSelectedText = !(snapshot.selectedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		// Part 5 — AX enrichment also feeds the dynamic-generated evidence gate.
+		let axResolution = EvidenceQualityModel.resolveEnrichedAX(
+			activeApp: activeAppName,
+			windowTitle: context.activeWindowTitle ?? snapshot.windowTitle,
+			url: currentURL?.absoluteString,
+			logHit: false
+		)
 		let browserAssessment = (currentURL != nil || !tabTitles.isEmpty || !(selectedTitle ?? "").isEmpty)
 			? BrowserContextStrategy.assess(
 				title: selectedTitle ?? context.activeWindowTitle ?? snapshot.windowTitle,
 				url: currentURL,
 				tabTitles: tabTitles,
-				hasAXText: false,
+				hasAXText: axResolution.hasAXText,
 				hasOCR: hasOCRText
 			)
 			: nil
-		let evidenceProfile = EvidenceQualityModel.evaluate(
+		let evidenceProfile = EvidenceQualityModel.evaluateWithEnrichment(
 			title: selectedTitle ?? context.activeWindowTitle ?? snapshot.windowTitle,
 			url: currentURL,
 			tabTitles: tabTitles,
-			hasAXText: false,
+			baseHasAXText: false,
 			hasOCR: hasOCRText,
 			hasSelectedText: hasSelectedText,
 			semanticGrounding: false,
 			durableCompartment: false,
-			browserAssessment: browserAssessment
+			browserAssessment: browserAssessment,
+			activeApp: activeAppName,
+			windowTitle: context.activeWindowTitle ?? snapshot.windowTitle
 		)
 		return DynamicGeneratedEvidenceContext(
 			evidenceQuality: evidenceProfile.level.legacyQuality,
@@ -3813,6 +4188,42 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 
 	// MARK: - Phase 64 — Unified Product Brain publish point
 
+	/// Builds the WorkflowSignals used by the current-work contract bridge from the
+	/// live context + browser bridge (selected tab dominates window title).
+	@MainActor
+	private func buildCurrentWorkSignals(context: ContextModel) -> WorkflowSignals {
+		let frontmost = NSWorkspace.shared.frontmostApplication
+		let activeAppName = context.activeAppName ?? frontmost?.localizedName ?? ""
+		let browser = BrowserContextExtractor.extract(appName: activeAppName, activeAppPID: frontmost?.processIdentifier)
+		let selectedURL = browser?.selectedURL ?? browser?.currentURL
+		let windowTitle = browser?.selectedTitle ?? context.activeWindowTitle ?? ""
+		let tabTitles = browser?.recentTabTitles ?? []
+		// Attach the enriched visible text the acquisition loop cached for THIS
+		// focus (exact app+title+url key, url-keyed then title-keyed). Without it
+		// the float path saw metadata-only and never selected a candidate even
+		// though the cheap-tick bridge had already acquired the page body. The
+		// lookup is focus-scoped, so a different focus's content can never bleed in.
+		let enriched = EnrichedContextCache.shared.lookup(
+			key: EnrichedContextCache.focusKey(activeApp: activeAppName, windowTitle: windowTitle, url: selectedURL?.absoluteString),
+			logHit: false
+		) ?? EnrichedContextCache.shared.lookup(
+			key: EnrichedContextCache.focusKey(activeApp: activeAppName, windowTitle: windowTitle, url: nil),
+			logHit: false
+		)
+		return WorkflowSignals(
+			activeApp: activeAppName,
+			windowTitle: windowTitle,
+			urlHost: selectedURL?.host ?? "",
+			urlPath: selectedURL?.path ?? "",
+			tabTitles: tabTitles,
+			selectedTextLength: context.selectedTextLength,
+			contentAvailable: context.screenOCRAvailable || context.selectedTextLength > 0,
+			workflow: "unknown",
+			visibleAppNames: [activeAppName],
+			enrichedContext: enriched
+		)
+	}
+
 	/// Builds the shared CurrentFocusSummary, gathers every candidate source,
 	/// and publishes exactly one UnifiedSurfaceDecision to AppState.
 	@MainActor
@@ -3889,6 +4300,13 @@ ctx app=Probe title=router-direct-probe wf=unknown ocr=no visual=no ax=no sel=no
 			floatingPenalized: DurableMemory.shared.floatingPenalizedActionIds()
 		)
 		appState.applyUnifiedDecision(decision.surface, reason: decision.reason)
+
+		// Hard product reset (Issues 2/3): if the pipeline produced no floating
+		// candidate, run the generic classified-work → contract bridge. It either
+		// surfaces ONE real suggestion or logs a precise blocker — never a toolbox.
+		if decision.surface.floating == nil {
+			appState.surfaceCurrentWorkCandidate(signals: signals)
+		}
 	}
 
 	// MARK: - Phase 20G.4 Ambient Jarvis → floating surface

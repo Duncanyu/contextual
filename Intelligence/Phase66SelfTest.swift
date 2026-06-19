@@ -163,7 +163,7 @@ enum Phase66SelfTest {
         check("old_panel_render_cannot_own_product_ui", offDecision.reason == "single_brain_arbitration", detail: "writer=UnifiedProductBrain")
 
         let actionPackPlans = ComposedActionPlanner.plansFor(
-            signals: contractSignals(contentAvailable: false),
+            signals: contractSignals(contentAvailable: true),
             content: ClassifiedContent(type: .leaseOrContractDocument, confidence: 0.9, signals: ["agreement"]),
             activity: ClassifiedActivity(activity: .documentReview, confidence: 0.9, signals: ["agreement"]),
             cluster: ComparableCandidateResult(totalTabs: 1, candidateTabs: 1, comparable: false, clusterType: "document", coherence: 0, reason: "single", currentFocusIsCandidate: true, feedCandidateSource: false),
@@ -378,7 +378,8 @@ enum Phase66SelfTest {
             selectedTextLength: 0,
             contentAvailable: contentAvailable,
             workflow: "reviewing_document",
-            visibleAppNames: ["Firefox", "Preview"]
+            visibleAppNames: ["Firefox", "Preview"],
+            enrichedContext: contentAvailable ? PhaseSelfTestEvidence.leaseSnapshot(key: "phase66_contract_readable") : nil
         )
     }
 

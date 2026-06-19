@@ -143,4 +143,43 @@ struct UnifiedSuggestion: Identifiable, Equatable {
         }
         return true
     }
+
+    /// Fix 1: in normal product mode the panel toolbox is hidden, so the floating
+    /// card is the only product-visible home. A bridge-selected candidate that was
+    /// classified panel-only must still reach the user — never be silently lost.
+    /// This returns a floating-eligible copy (capture/acquisition still happens at
+    /// accept time via `acceptBehavior`). Hidden/debug-only candidates are never
+    /// promoted — those are genuinely not user-facing.
+    func promotedToFloating(reason: String) -> UnifiedSuggestion {
+        guard !surfacePolicy.hidden, !surfacePolicy.debugOnly else { return self }
+        guard !surfacePolicy.eligibleForFloating || surfacePolicy.panelOnly else { return self }
+        print("[PanelOnlyPromotedToFloating] id=\(id) reason=\(reason)")
+        return UnifiedSuggestion(
+            id: id,
+            kind: kind,
+            title: title,
+            subtitle: subtitle,
+            whyNow: whyNow,
+            source: source,
+            target: target,
+            surfacePolicy: UnifiedSuggestionSurfacePolicy(
+                eligibleForFloating: true,
+                panelOnly: false,
+                debugOnly: surfacePolicy.debugOnly,
+                hidden: surfacePolicy.hidden
+            ),
+            acceptBehavior: acceptBehavior,
+            executionPath: executionPath,
+            priority: priority,
+            confidence: confidence,
+            usefulness: usefulness,
+            interruptionCost: interruptionCost,
+            evidenceLevel: evidenceLevel,
+            sourceScope: sourceScope,
+            requiresConfirmation: requiresConfirmation,
+            cooldownKey: cooldownKey,
+            debugMetadata: debugMetadata,
+            originalActionId: originalActionId
+        )
+    }
 }

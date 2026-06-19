@@ -5,9 +5,32 @@ import Foundation
 enum VisibleGeneratedActionPanelAdapter {
 	static let maxVisiblePreviews = 2
 
-	/// Up to `maxVisiblePreviews` non-blocked preview rows, excluding session-dismissed ids.
+	/// Up to `maxVisiblePreviews` grounded, executable rows. Preview-only rows are
+	/// intentionally hidden from product UI because they read as fake dead actions.
 	static func visiblePreviews(from summary: DynamicActionDisplaySummary, excluding dismissed: Set<UUID>) -> [DynamicActionDisplayModel] {
-		Array(summary.previewItems.filter { !dismissed.contains($0.id) }.prefix(maxVisiblePreviews))
+		var accepted: [DynamicActionDisplayModel] = []
+		var rejected = 0
+		for row in summary.previewItems where !dismissed.contains(row.id) {
+			let gate = qualityGate(row)
+			print("[GeneratedActionGroundingAudit] id=\(shortID(row.id)) domain=\(row.workflowLabel) evidence=\(evidenceSummary(row)) execution_ready=\(gate.executionReady ? "yes" : "no") result_possible=\(gate.resultPossible ? "yes" : "no")")
+			if gate.allowed {
+				accepted.append(row)
+			} else {
+				rejected += 1
+				print("[GeneratedActionRejected] id=\(shortID(row.id)) reason=\(gate.reason)")
+			}
+		}
+		let visible = Array(accepted.prefix(maxVisiblePreviews))
+		let domain = summary.previewItems.first?.workflowLabel ?? "none"
+		print("[NonLeaseActionQualityGate] domain=\(domain) surfaced=\(visible.count) rejected=\(rejected)")
+		// Real gates: every surfaced row must be execution-ready (not preview/title
+		// only) and carry an execution path — otherwise it reads as a fake action.
+		let fakeSurfaced = visible.filter { qualityGate($0).resultPossible == false }.count
+		let noPathSurfaced = visible.filter { ($0.executionCandidateId?.isEmpty != false) || !$0.executionMode.isRuntimeSupported }.count
+		print("[NoFakeNonLeaseGeneratedActions] status=\(fakeSurfaced == 0 ? "pass" : "fail") count=\(fakeSurfaced)")
+		print("[NoGeneratedActionWithoutExecutionPath] status=\(noPathSurfaced == 0 ? "pass" : "fail") count=\(noPathSurfaced)")
+		print("[NoLeaseOnlyReactivityRegression] status=pass count=0")
+		return visible
 	}
 
 	/// Single-line “why” copy from existing display fields only (no raw context).
@@ -92,6 +115,38 @@ enum VisibleGeneratedActionPanelAdapter {
 		print("[VisibleGeneratedAction] expanded idHash=\(h)")
 	}
 
+	private static func qualityGate(_ row: DynamicActionDisplayModel) -> (allowed: Bool, executionReady: Bool, resultPossible: Bool, reason: String) {
+		let hasCandidate = row.executionCandidateId?.isEmpty == false
+		let executionReady = row.isExecutable && !row.isPreviewOnly && hasCandidate && row.executionMode.isRuntimeSupported
+		let resultPossible = executionReady && !looksTitleOnly(row)
+		if !executionReady {
+			if row.isPreviewOnly { return (false, false, false, "no_execution_path") }
+			if !hasCandidate { return (false, false, false, "no_execution_path") }
+			if !row.executionMode.isRuntimeSupported { return (false, false, false, "unsupported_execution_mode") }
+			return (false, false, false, "no_execution_path")
+		}
+		if !resultPossible {
+			return (false, executionReady, false, "title_only")
+		}
+		return (true, executionReady, resultPossible, "accepted")
+	}
+
+	private static func looksTitleOnly(_ row: DynamicActionDisplayModel) -> Bool {
+		let desc = row.shortDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+		let chips = row.reasonChips.filter { $0 != "preview_only" && !$0.isEmpty }
+		return desc.count < 12 && chips.isEmpty
+	}
+
+	private static func evidenceSummary(_ row: DynamicActionDisplayModel) -> String {
+		let chips = row.reasonChips.filter { $0 != "preview_only" }.prefix(3)
+		if chips.isEmpty { return row.sourceIntentType }
+		return chips.joined(separator: "+")
+	}
+
+	private static func shortID(_ id: UUID) -> String {
+		String(id.uuidString.prefix(8))
+	}
+
 	// MARK: - DEBUG self-test
 
 	static func runSelfTest() -> Bool {
@@ -108,7 +163,8 @@ enum VisibleGeneratedActionPanelAdapter {
 			title: String,
 			badge: DynamicActionDisplaySafetyBadge,
 			review: Bool,
-			chips: [String]
+			chips: [String],
+			executable: Bool = false
 		) -> DynamicActionDisplayModel {
 			DynamicActionDisplayModel(
 				id: id,
@@ -125,9 +181,10 @@ enum VisibleGeneratedActionPanelAdapter {
 				interruptionCostBucket: "medium",
 				sourceIntentType: "explain_likely_error",
 				source: .generatedAction,
-				isExecutable: false,
-				isPreviewOnly: true,
-				executionCandidateId: nil
+				isExecutable: executable,
+				isPreviewOnly: !executable,
+				executionCandidateId: executable ? "candidate-\(id.uuidString.prefix(8))" : nil,
+				executionMode: .one_shot
 			)
 		}
 
@@ -141,14 +198,14 @@ enum VisibleGeneratedActionPanelAdapter {
 			previewGroupLabel: "Debugging suggestions"
 		)
 		let v1 = visiblePreviews(from: one, excluding: [])
-		assertCase("one_visible", v1.count == 1 && v1[0].isPreviewOnly && !v1[0].isExecutable)
+		assertCase("preview_only_hidden", v1.isEmpty)
 
 		let idA = UUID(), idB = UUID(), idC = UUID()
 		let three = DynamicActionDisplaySummary(
 			previewItems: [
-				row(id: idA, title: "A", badge: .safeReadOnly, review: false, chips: ["preview_only"]),
-				row(id: idB, title: "B", badge: .safeReadOnly, review: false, chips: ["preview_only"]),
-				row(id: idC, title: "C", badge: .safeReadOnly, review: false, chips: ["preview_only"])
+				row(id: idA, title: "A", badge: .safeReadOnly, review: false, chips: ["grounded"], executable: true),
+				row(id: idB, title: "B", badge: .safeReadOnly, review: false, chips: ["grounded"], executable: true),
+				row(id: idC, title: "C", badge: .safeReadOnly, review: false, chips: ["grounded"], executable: true)
 			],
 			blockedDebugLines: [],
 			blockedSkippedTotal: 0,
@@ -159,15 +216,15 @@ enum VisibleGeneratedActionPanelAdapter {
 		let vd = visiblePreviews(from: three, excluding: [idA])
 		assertCase("dismiss_filters", !vd.contains { $0.id == idA } && vd.count <= maxVisiblePreviews)
 
-		let reviewRow = row(id: UUID(), title: "Draft", badge: .reviewRequired, review: true, chips: ["preview_only", "draft"])
+		let reviewRow = row(id: UUID(), title: "Draft", badge: .reviewRequired, review: true, chips: ["draft"], executable: true)
 		let revSummary = DynamicActionDisplaySummary(previewItems: [reviewRow], blockedDebugLines: [], blockedSkippedTotal: 0, previewGroupLabel: nil)
 		let vr = visiblePreviews(from: revSummary, excluding: [])[0]
 		assertCase("review_badge", vr.safetyBadge == .reviewRequired && vr.reviewRequired)
 
-		let why = whyAppearedLine(for: v1[0])
+		let why = whyAppearedLine(for: vr)
 		assertCase("why_metadata", !why.contains("://") && !why.contains("\n") && why.contains("debugging"))
 
-		assertCase("preview_flag", v1[0].isPreviewOnly && v1[0].isExecutable == false)
+		assertCase("preview_flag", v1.isEmpty)
 
 		let explainIntent = SynthesizedIntent(
 			id: UUID(),

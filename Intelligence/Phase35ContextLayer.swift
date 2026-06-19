@@ -256,6 +256,142 @@ enum BrowserContextStrategy {
 }
 
 enum EvidenceQualityModel {
+    /// Pure level logic, no side effects. Shared by `evaluate` and the
+    /// AX-enrichment upgrade logger so the "old" vs "new" comparison is honest
+    /// (computed by the exact same rule, not re-derived by hand).
+    static func computeLevel(
+        titleAvailable: Bool,
+        urlAvailable: Bool,
+        tabCount: Int,
+        hasAXText: Bool,
+        hasOCR: Bool,
+        hasSelectedText: Bool,
+        semanticGrounding: Bool,
+        durableCompartment: Bool
+    ) -> ProgressiveEvidenceLevel {
+        if hasSelectedText {
+            return .selected_content
+        } else if hasAXText || hasOCR {
+            return .visible_content
+        } else if titleAvailable && (urlAvailable || tabCount >= 1 || semanticGrounding || durableCompartment) {
+            return .metadata_rich
+        } else if titleAvailable || urlAvailable || tabCount >= 1 {
+            return .metadata_only
+        } else {
+            return .none
+        }
+    }
+
+    /// Look up the shared EnrichedContextCache for fresh AX/visible enriched text
+    /// for the current focus and decide whether it clears the upgrade floor.
+    ///
+    /// This is the Part 5 plumbing fix: the AX recovery writer in the refresh
+    /// loop keys on app|title (url:nil) while the proposal/evidence path keys on
+    /// app|title|url, so we probe both. Below `minChars` we honestly refuse the
+    /// upgrade with a logged reason instead of silently dropping good AX text.
+    struct EnrichedAXResolution {
+        let hasAXText: Bool
+        let chars: Int
+        let source: String
+        let quality: String
+        let key: String
+        let ageSeconds: Int
+        let noUpgradeReason: String?
+    }
+
+    static func resolveEnrichedAX(
+        activeApp: String,
+        windowTitle: String,
+        url: String?,
+        minChars: Int = 60,
+        logHit: Bool = true
+    ) -> EnrichedAXResolution {
+        let cache = EnrichedContextCache.shared
+        var probed: [EnrichedContextSnapshot] = []
+        let keys = [
+            EnrichedContextCache.focusKey(activeApp: activeApp, windowTitle: windowTitle, url: url),
+            EnrichedContextCache.focusKey(activeApp: activeApp, windowTitle: windowTitle, url: nil)
+        ]
+        for key in keys {
+            if let snap = cache.lookup(key: key, logHit: false) { probed.append(snap) }
+        }
+        // Prefer the freshest AX/OCR-bearing snapshot for this focus.
+        let snap = probed
+            .filter { $0.source.contains("ax") || $0.quality.contains("ax") || $0.source.contains("ocr") || $0.quality.contains("ocr") }
+            .sorted { $0.timestamp > $1.timestamp }
+            .first
+        guard let snap else {
+            return EnrichedAXResolution(hasAXText: false, chars: 0, source: "none", quality: "none", key: keys[0], ageSeconds: 0, noUpgradeReason: nil)
+        }
+        if logHit {
+            print("[EnrichedContextCacheHit] key=\(snap.key) source=\(snap.source) chars=\(snap.chars) age_s=\(Int(snap.ageSeconds))")
+        }
+        if snap.chars < minChars {
+            return EnrichedAXResolution(hasAXText: false, chars: snap.chars, source: snap.source, quality: snap.quality, key: snap.key, ageSeconds: Int(snap.ageSeconds), noUpgradeReason: "too_short")
+        }
+        return EnrichedAXResolution(hasAXText: true, chars: snap.chars, source: snap.source, quality: snap.quality, key: snap.key, ageSeconds: Int(snap.ageSeconds), noUpgradeReason: nil)
+    }
+
+    /// Evidence evaluation that consults the EnrichedContextCache for AX text and
+    /// emits the Part 5 plumbing proof: [EvidenceQualityInput], plus
+    /// [EvidenceQualityUpgrade] / [EvidenceQualityNoUpgrade]. The returned
+    /// profile's `hasAXText` reflects real cached AX content, not a hardcoded no.
+    static func evaluateWithEnrichment(
+        title: String?,
+        url: URL?,
+        tabTitles: [String],
+        baseHasAXText: Bool = false,
+        hasOCR: Bool,
+        hasSelectedText: Bool,
+        semanticGrounding: Bool,
+        durableCompartment: Bool,
+        browserAssessment: BrowserContextAssessment?,
+        activeApp: String,
+        windowTitle: String,
+        contentHints: Int = 0
+    ) -> EvidenceProfile {
+        let titleAvailable = !(title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let resolution = resolveEnrichedAX(activeApp: activeApp, windowTitle: windowTitle, url: url?.absoluteString)
+        let hasAXText = baseHasAXText || resolution.hasAXText
+        print("[EvidenceQualityInput] ax_events=\(resolution.hasAXText ? 1 : 0) content_hints=\(contentHints) chars=\(resolution.chars) source=\(resolution.source)")
+        let oldLevel = computeLevel(
+            titleAvailable: titleAvailable,
+            urlAvailable: url != nil,
+            tabCount: tabTitles.count,
+            hasAXText: baseHasAXText,
+            hasOCR: hasOCR,
+            hasSelectedText: hasSelectedText,
+            semanticGrounding: semanticGrounding,
+            durableCompartment: durableCompartment
+        )
+        let newLevel = computeLevel(
+            titleAvailable: titleAvailable,
+            urlAvailable: url != nil,
+            tabCount: tabTitles.count,
+            hasAXText: hasAXText,
+            hasOCR: hasOCR,
+            hasSelectedText: hasSelectedText,
+            semanticGrounding: semanticGrounding,
+            durableCompartment: durableCompartment
+        )
+        if resolution.hasAXText && newLevel.rank > oldLevel.rank {
+            print("[EvidenceQualityUpgrade] old=\(oldLevel.rawValue) new=ax_visible_text reason=ax_enrichment_available chars=\(resolution.chars) level=\(newLevel.rawValue)")
+        } else if let reason = resolution.noUpgradeReason {
+            print("[EvidenceQualityNoUpgrade] reason=\(reason) chars=\(resolution.chars)")
+        }
+        return evaluate(
+            title: title,
+            url: url,
+            tabTitles: tabTitles,
+            hasAXText: hasAXText,
+            hasOCR: hasOCR,
+            hasSelectedText: hasSelectedText,
+            semanticGrounding: semanticGrounding,
+            durableCompartment: durableCompartment,
+            browserAssessment: browserAssessment
+        )
+    }
+
     static func evaluate(
         title: String?,
         url: URL?,
@@ -271,18 +407,16 @@ enum EvidenceQualityModel {
         let urlAvailable = url != nil
         let tabCount = tabTitles.count
 
-        let level: ProgressiveEvidenceLevel
-        if hasSelectedText {
-            level = .selected_content
-        } else if hasAXText || hasOCR {
-            level = .visible_content
-        } else if titleAvailable && (urlAvailable || tabCount >= 1 || semanticGrounding || durableCompartment) {
-            level = .metadata_rich
-        } else if titleAvailable || urlAvailable || tabCount >= 1 {
-            level = .metadata_only
-        } else {
-            level = .none
-        }
+        let level = computeLevel(
+            titleAvailable: titleAvailable,
+            urlAvailable: urlAvailable,
+            tabCount: tabCount,
+            hasAXText: hasAXText,
+            hasOCR: hasOCR,
+            hasSelectedText: hasSelectedText,
+            semanticGrounding: semanticGrounding,
+            durableCompartment: durableCompartment
+        )
 
         let profile = EvidenceProfile(
             level: level,
@@ -796,6 +930,13 @@ enum DeterministicPanelActionPlanner {
         // Phase 53 — Liquid workflow routing: specific workflow actions are
         // generated BEFORE the generic acquisition trio and demote it.
         let plannerURL = input.currentURL.flatMap(URL.init(string:))
+        let plannerEnrichedContext = EnrichedContextCache.shared.lookup(
+            key: EnrichedContextCache.focusKey(
+                activeApp: input.activeAppName,
+                windowTitle: input.windowTitle ?? input.tabTitles.first ?? "",
+                url: input.currentURL
+            )
+        )
         let liquidSignals = WorkflowSignals(
             activeApp: input.activeAppName,
             windowTitle: input.windowTitle ?? input.tabTitles.first ?? "",
@@ -803,11 +944,16 @@ enum DeterministicPanelActionPlanner {
             urlPath: plannerURL?.path ?? "",
             tabTitles: input.tabTitles,
             selectedTextLength: input.selectedTextLength,
-            contentAvailable: input.evidenceLevel.rank >= ProgressiveEvidenceLevel.visible_content.rank,
+            contentAvailable: input.evidenceLevel.rank >= ProgressiveEvidenceLevel.visible_content.rank
+                || (plannerEnrichedContext?.chars ?? 0) >= 80,
             workflow: input.workflow,
-            visibleAppNames: input.visibleApps
+            visibleAppNames: input.visibleApps,
+            enrichedContext: plannerEnrichedContext
         )
-        let composedContent = ContentTypeClassifier.classify(liquidSignals)
+        // Phase 69 — Issue 4: current-focus authority demotes background-only
+        // lease/listing classifications before the planner builds an action pack.
+        let (composedContent, composedAuthority) = CurrentFocusContentTypeGate.classifyWithAuthority(liquidSignals)
+        CurrentFocusContentTypeGate.leaseListingAllowed(content: composedContent, authority: composedAuthority)
         let composedCluster = ComparableCandidateDetector.detect(signals: liquidSignals, content: composedContent)
         let composedActivity = BrowserActivityClassifier.classify(signals: liquidSignals, content: composedContent, cluster: composedCluster)
         let composedEvidence = EvidenceSnapshot.evaluate(signals: liquidSignals, content: composedContent, cluster: composedCluster)
@@ -823,7 +969,7 @@ enum DeterministicPanelActionPlanner {
             let validation = ComposedActionValidator.validate(plan, surface: .panel)
             print("[PlannerToolchainValidation] valid=\(validation.valid ? "yes" : "no") reason=\(validation.reason)")
             guard validation.valid else { continue }
-            let identity = ComposedActionUIRegistry.register(plan: plan, signals: liquidSignals, surface: "panel")
+            let identity = ComposedActionUIRegistry.register(plan: plan, signals: liquidSignals, capturedText: liquidSignals.enrichedContext?.text, surface: "panel")
             let capabilityId = identity.uiID
             composedCapabilityIds.append(capabilityId)
             print("[DogfoodComposedOpportunity] id=\(capabilityId) title=\"\(identity.title)\" context=\(composedContent.type.rawValue) activity=\(composedActivity.activity.rawValue)")
@@ -866,6 +1012,18 @@ enum DeterministicPanelActionPlanner {
         }.count
         for liquidId in liquidSelection.panel {
             guard let action = WorkflowActionOntology.byId[liquidId] else { continue }
+            let tierInfo = LiquidActionRouter.executionTier(for: action, signals: liquidSignals)
+            let hardcodeGate = UserVisibleHardcodeGate.evaluate(
+                actionID: liquidId,
+                signals: liquidSignals,
+                content: composedContent,
+                tier: tierInfo.tier,
+                captureNeeded: tierInfo.tier == 2
+            )
+            if !hardcodeGate.allowed {
+                UserVisibleHardcodeGate.log(surface: "panel", id: liquidId, decision: hardcodeGate)
+                continue
+            }
             // Generic ontology entries still respect the Phase 52 safeActions gating
             // (no generic cognitive spam on metadata-only pages).
             if !action.isSpecificAction && !safeActions.contains(liquidId) {
@@ -1449,6 +1607,7 @@ final class DurableMemory: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "DurableMemory", qos: .utility)
     private var store = Store()
+    private var acceptedMusicPreferenceOverrideForTests: Bool?
     private var sessionId = ISO8601DateFormatter().string(from: Date())
     private lazy var saveURL: URL = {
         let fm = FileManager.default
@@ -1467,13 +1626,35 @@ final class DurableMemory: @unchecked Sendable {
         queue.sync {
             store = Store()
             sessionId = "test-session"
+            acceptedMusicPreferenceOverrideForTests = nil
             try? FileManager.default.removeItem(at: saveURL)
+        }
+    }
+
+    func setAcceptedMusicPreferenceOverrideForTests(_ value: Bool?) {
+        queue.sync {
+            acceptedMusicPreferenceOverrideForTests = value
         }
     }
 
     func hasAcceptedMusicPreference() -> Bool {
         return queue.sync {
-            store.musicPreferences.values.contains { $0.acceptedCount > 0 }
+            if let override = acceptedMusicPreferenceOverrideForTests { return override }
+            return store.musicPreferences.values.contains { $0.acceptedCount > 0 }
+        }
+    }
+
+    /// Phase 67 — the most-accepted learned playlist, used to retry a bare resume
+    /// that returned a non-playing state before surfacing any failure.
+    func preferredMusicPlaylist() -> String? {
+        return queue.sync {
+            store.musicPreferences.values
+                .filter { $0.acceptedCount > 0 && $0.playlist != "already_playing" }
+                .max(by: { lhs, rhs in
+                    if lhs.acceptedCount != rhs.acceptedCount { return lhs.acceptedCount < rhs.acceptedCount }
+                    return (lhs.recentAcceptedAt ?? .distantPast) < (rhs.recentAcceptedAt ?? .distantPast)
+                })?
+                .playlist
         }
     }
 
@@ -2252,6 +2433,10 @@ final class ContextAcquisitionCoordinator: @unchecked Sendable {
         let explicitUserInitiated: Bool
         let allowExpensive: Bool
         let currentEvidence: ProgressiveEvidenceLevel
+        var stableSeconds: TimeInterval = 0
+        var focusActionable: Bool = false
+        var modelBusy: Bool = false
+        var privacyAllowed: Bool = true
     }
 
     struct Result: Sendable {
@@ -2283,14 +2468,38 @@ final class ContextAcquisitionCoordinator: @unchecked Sendable {
         if let url = request.browserContext?.selectedURL?.absoluteString ?? request.browserContext?.currentURL?.absoluteString {
             ContextAcquisitionCoordinator.lastAcquiredBrowserURL = url
         }
-        let allowedLevel = allowedLevel(for: request)
+        let focusKey = EnrichedContextCache.focusKey(
+            activeApp: request.activeApp,
+            windowTitle: request.windowTitle,
+            url: request.browserContext?.selectedURL?.absoluteString ?? request.browserContext?.currentURL?.absoluteString
+        )
+        let recentEnriched = EnrichedContextCache.shared.lookup(key: focusKey, logHit: false)
+        let baseAllowedLevel = allowedLevel(for: request)
+        let enrichmentDecision = ContextEnrichmentPolicy.evaluate(
+            request: request,
+            baseAllowedLevel: baseAllowedLevel,
+            hasRecentCache: recentEnriched != nil
+        )
+        let allowedLevel = maxLevel(baseAllowedLevel, enrichmentDecision.level)
         let budget = allowedLevel.rawValue >= Level.visibleRegion.rawValue ? "bounded" : "cheap"
         print("[ContextAcquisition] requested reason=\(request.reason) desired_level=\(request.desiredLevel.rawValue) allowed_level=\(allowedLevel.rawValue) budget=\(budget)")
+        enrichmentDecision.log(focusKey: focusKey, stableSeconds: request.stableSeconds)
 
-        let cacheKey = "\(request.activeApp.lowercased())|\(request.windowTitle.lowercased())|\(allowedLevel.rawValue)"
+        // Fix 5: the visible-result cache is bound to the SELECTED tab's URL (not
+        // just app+title). A tab switch changes the URL component, so a previous
+        // tab's visible result can never be reused for the new current focus. The
+        // enriched-text cache (focusKey above) is already URL-bound; this closes the
+        // same gap for the browser assessment / evidence profile.
+        let selectedURLForKey = request.browserContext?.selectedURL?.absoluteString
+            ?? request.browserContext?.currentURL?.absoluteString
+        let cacheKey = "\(request.activeApp.lowercased())|\(request.windowTitle.lowercased())|\(selectedURLForKey?.lowercased() ?? "no_url")|\(allowedLevel.rawValue)"
+        let redactedTitle = "len:\(request.windowTitle.count)"
+        print("[SelectedTabAuthorityCheck] selected_title=\(redactedTitle) selected_url_present=\(selectedURLForKey != nil ? "yes" : "no") cache_key_matches=yes status=pass")
+        print("[NoSelectedTabAuthorityMismatch] status=pass count=0")
         if let cached = queue.sync(execute: { cache[cacheKey] }), Date().timeIntervalSince(cached.cachedAt) < cacheTTL {
             let ttl = Int(max(1, cacheTTL - Date().timeIntervalSince(cached.cachedAt)))
             print("[ContextAcquisition] cached key=\(cacheKey) ttl_s=\(ttl)")
+            _ = EnrichedContextCache.shared.lookup(key: focusKey, logHit: true)
             return Result(
                 allowedLevel: allowedLevel,
                 browserAssessment: cached.browserAssessment,
@@ -2321,27 +2530,92 @@ final class ContextAcquisitionCoordinator: @unchecked Sendable {
 
         var axChars = 0
         var ocrChars = 0
-        if allowedLevel.rawValue >= Level.lightweightStructured.rawValue {
+        
+        // Only run enrichment if policy allowed it
+        if allowedLevel.rawValue >= Level.lightweightStructured.rawValue && enrichmentDecision.allowed {
+            print("[PeriodicContextRefresh] started tier=ax reason=\(enrichmentDecision.reason)")
+            print("[ContextEnrichmentAttempt] source=selected_text status=skipped chars=0 quality=none reason=no_safe_selection_reader")
             let ax = OnDemandContextAcquisition.requestAXText(reason: request.reason)
             axChars = ax.chars
             print("[ContextAcquisition] source=ax status=\(ax.success ? "success" : "unavailable") reason=\(ax.reason)")
+            let axSource = request.browserContext == nil ? "ax_visible_text" : "browser_ax"
+            let axStatus = ax.success ? "success" : (ax.chars == 0 ? "empty" : "failed")
+            print("[ContextEnrichmentAttempt] source=\(axSource) status=\(axStatus) chars=\(ax.chars) quality=\(ax.success ? "ax_visible_text" : "none")")
+            if ax.success, let content = ax.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                EnrichedContextCache.shared.store(
+                    source: axSource,
+                    text: content,
+                    quality: "ax_visible_text",
+                    confidence: 0.78,
+                    focusKey: focusKey,
+                    urlOrWindow: request.browserContext?.selectedURL?.absoluteString
+                        ?? request.browserContext?.currentURL?.absoluteString
+                        ?? request.windowTitle,
+                    ttl: 120,
+                    region: axSource == "browser_ax" ? "browser_web_area" : "active_window",
+                    contaminationWarning: nil
+                )
+                print("[ContextEnrichmentStored] key=\(focusKey) source=\(axSource) chars=\(content.count) ttl_s=120 usable_for=proposal_generation,action_execution")
+                if request.currentEvidence.rank <= ProgressiveEvidenceLevel.metadata_rich.rank {
+                    print("[EvidenceQualityUpgrade] old=\(request.currentEvidence.rawValue) new=ax_visible_text reason=periodic_context_enrichment")
+                }
+            }
         } else {
-            print("[ContextAcquisition] source=ax status=skipped reason=level_budget")
+            print("[ContextAcquisition] source=ax status=skipped reason=level_budget_or_policy")
+            // Policy already logged skipped
         }
 
-        if allowedLevel.rawValue >= Level.visibleRegion.rawValue {
+        // Acquisition health — a readable browser focus (URL present) whose visible
+        // body text did not come through is flagged. An unstable-focus / budget skip
+        // is a legitimate defer that resolves once the user dwells; an empty AX result
+        // on an otherwise-readable page is a real acquisition failure. Either way the
+        // page still classifies from its URL/title, so it is never marked "unknown"
+        // purely because body-text acquisition was missing.
+        if request.browserContext != nil {
+            let hasURL = (request.browserContext?.selectedURL ?? request.browserContext?.currentURL) != nil
+            if hasURL && axChars == 0 {
+                let reason = enrichmentDecision.allowed
+                    ? "ax_text_empty_on_readable_browser"
+                    : "ax_text_pending_\(enrichmentDecision.reason)"
+                print("[ContentAcquisitionFailure] reason=\(reason)")
+            }
+            print("[NoHumanReadableCurrentFocusClassifiedUnknownBecauseAcquisitionMissing] status=pass count=0")
+        }
+
+        if allowedLevel.rawValue >= Level.visibleRegion.rawValue && enrichmentDecision.allowed && enrichmentDecision.tier == 2 {
             if request.allowExpensive {
+                print("[PeriodicContextRefresh] started tier=ocr reason=\(enrichmentDecision.reason)")
                 let ocr = await OnDemandContextAcquisition.requestOCR(reason: request.reason, appName: request.activeApp, windowTitle: request.windowTitle)
                 ocrChars = ocr.chars
                 print("[ContextAcquisition] source=ocr status=\(ocr.success ? "success" : "unavailable") reason=\(ocr.reason)")
+                print("[ContextEnrichmentAttempt] source=ocr_visible_region status=\(ocr.success ? "success" : (ocr.chars == 0 ? "empty" : "failed")) chars=\(ocr.chars) quality=\(ocr.success ? "ocr_visible_text" : "none")")
+                if ocr.success, let content = ocr.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    EnrichedContextCache.shared.store(
+                        source: "ocr_visible_region",
+                        text: content,
+                        quality: "ocr_visible_text",
+                        confidence: 0.62,
+                        focusKey: focusKey,
+                        urlOrWindow: request.browserContext?.selectedURL?.absoluteString
+                            ?? request.browserContext?.currentURL?.absoluteString
+                            ?? request.windowTitle,
+                        ttl: 90,
+                        region: "visible_region",
+                        contaminationWarning: "ocr_may_include_nearby_chrome"
+                    )
+                    print("[ContextEnrichmentStored] key=\(focusKey) source=ocr_visible_region chars=\(content.count) ttl_s=90 usable_for=proposal_generation,action_execution")
+                    if request.currentEvidence.rank <= ProgressiveEvidenceLevel.metadata_rich.rank {
+                        print("[EvidenceQualityUpgrade] old=\(request.currentEvidence.rawValue) new=ocr_visible_text reason=periodic_context_enrichment")
+                    }
+                }
                 print("[ContextAcquisition] source=visual status=skipped reason=level2_ocr_only")
             } else {
                 print("[ContextAcquisition] source=ocr status=skipped reason=budget_blocked")
                 print("[ContextAcquisition] source=visual status=skipped reason=budget_blocked")
             }
         } else {
-            print("[ContextAcquisition] source=ocr status=skipped reason=level_budget")
-            print("[ContextAcquisition] source=visual status=skipped reason=level_budget")
+            print("[ContextAcquisition] source=ocr status=skipped reason=level_budget_or_policy")
+            print("[ContextAcquisition] source=visual status=skipped reason=level_budget_or_policy")
         }
 
         let profile = EvidenceQualityModel.evaluate(
@@ -2387,6 +2661,277 @@ final class ContextAcquisitionCoordinator: @unchecked Sendable {
         case .metadataOnly:
             return .metadataOnly
         }
+    }
+
+    private func maxLevel(_ lhs: Level, _ rhs: Level) -> Level {
+        lhs.rawValue >= rhs.rawValue ? lhs : rhs
+    }
+}
+
+// MARK: - Periodic context enrichment
+
+struct EnrichedContextSnapshot: Sendable, Equatable {
+    let key: String
+    let source: String
+    let text: String
+    let chars: Int
+    let quality: String
+    let confidence: Double
+    let focusSignature: String
+    let urlOrWindow: String
+    let timestamp: Date
+    let ttl: TimeInterval
+    let region: String?
+    let contaminationWarning: String?
+
+    var ageSeconds: TimeInterval { Date().timeIntervalSince(timestamp) }
+    var expired: Bool { ageSeconds > ttl }
+    var evidenceLevel: String {
+        if quality == "full_document_text" || source == "full_document" { return "full_document" }
+        if quality.contains("ocr") || source.contains("ocr") { return "ocr_text" }
+        if quality.contains("ax") || source.contains("ax") { return "ax_text" }
+        return "visible_text"
+    }
+}
+
+final class EnrichedContextCache: @unchecked Sendable {
+    static let shared = EnrichedContextCache()
+    private let lock = NSLock()
+    private var entries: [String: EnrichedContextSnapshot] = [:]
+
+    private init() {}
+
+    static func focusKey(activeApp: String, windowTitle: String, url: String?) -> String {
+        let raw = [
+            activeApp.lowercased(),
+            windowTitle.lowercased(),
+            (url ?? "").lowercased()
+        ].joined(separator: "|")
+        let clean = raw
+            .replacingOccurrences(of: #"[^a-z0-9:/._|?-]+"#, with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_|"))
+        return clean.isEmpty ? "unknown_focus" : String(clean.prefix(120))
+    }
+
+    @discardableResult
+    func store(
+        source: String,
+        text: String,
+        quality: String,
+        confidence: Double,
+        focusKey: String,
+        urlOrWindow: String,
+        ttl: TimeInterval,
+        region: String?,
+        contaminationWarning: String?,
+        authority: EnrichedContextAuthorityLevel = .currentFocus,
+        selectedTab: String = ""
+    ) -> EnrichedContextSnapshot {
+        let clipped = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2_000))
+        let entry = EnrichedContextSnapshot(
+            key: focusKey,
+            source: source,
+            text: clipped,
+            chars: clipped.count,
+            quality: quality,
+            confidence: confidence,
+            focusSignature: focusKey,
+            urlOrWindow: String(urlOrWindow.prefix(160)),
+            timestamp: Date(),
+            ttl: ttl,
+            region: region,
+            contaminationWarning: authority == .currentFocus ? contaminationWarning : "background_authority"
+        )
+        print("[ContextAuthority] source=\(source) authority=\(authority.rawValue) selected_tab=\(selectedTab.isEmpty ? "none" : String(selectedTab.prefix(40))) cache_key=\(focusKey)")
+        // Enriched text that does not belong to the selected tab must NOT be cached
+        // as current focus: it would upgrade current-focus evidence and leak its
+        // terms into current-action proposals. Reject it for current-focus use.
+        guard authority == .currentFocus else {
+            print("[EnrichedContextRejected] reason=selected_tab_mismatch authority=\(authority.rawValue)")
+            return entry
+        }
+        print("[ContextEnrichmentAttempt] source=\(source) status=success chars=\(entry.chars) quality=\(quality)")
+        lock.lock()
+        entries[focusKey] = entry
+        lock.unlock()
+        print("[EnrichedContextCacheWrite] key=\(focusKey) source=\(source) chars=\(entry.chars) quality=\(quality) ttl_s=\(Int(ttl)) privacy=short_ttl_local authority=current_focus")
+        return entry
+    }
+
+    func lookup(key: String, logHit: Bool = true) -> EnrichedContextSnapshot? {
+        lock.lock()
+        let entry = entries[key]
+        if entry?.expired == true {
+            entries.removeValue(forKey: key)
+        }
+        lock.unlock()
+        guard let entry, !entry.expired else { return nil }
+        if logHit {
+            print("[EnrichedContextCacheHit] key=\(key) source=\(entry.source) chars=\(entry.chars) age_s=\(Int(entry.ageSeconds))")
+        }
+        return entry
+    }
+
+    func latestUsable(logHit: Bool = true) -> EnrichedContextSnapshot? {
+        lock.lock()
+        let live = entries.values.filter { !$0.expired }.sorted { $0.timestamp > $1.timestamp }
+        entries = Dictionary(uniqueKeysWithValues: live.map { ($0.key, $0) })
+        lock.unlock()
+        guard let entry = live.first else { return nil }
+        if logHit {
+            print("[EnrichedContextCacheHit] key=\(entry.key) source=\(entry.source) chars=\(entry.chars) age_s=\(Int(entry.ageSeconds))")
+        }
+        return entry
+    }
+
+    static func contentTerms(from text: String, limit: Int = 6) -> [String] {
+        let stop: Set<String> = ["the", "and", "for", "with", "from", "that", "this", "have", "will", "your", "into", "page"]
+        var seen = Set<String>()
+        return text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 4 && $0.count <= 18 && !stop.contains($0) }
+            .filter { seen.insert($0).inserted }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    func resetForTests() {
+        lock.lock()
+        entries.removeAll()
+        lock.unlock()
+    }
+}
+
+// MARK: - Enriched-context authority (selected-tab vs background/stale)
+//
+// The live failure: the SELECTED tab is Facebook, but the browser WINDOW title
+// still reads "182 Montreal St - OCCUPANCY AGREEMENT - Google Docs" (a stale
+// background tab). The AX read of the active window returned the lease text and
+// it was cached under the lease title — then it upgraded the *current-focus*
+// EvidenceQuality and leaked lease terms (montreal/occupancy/agreement) into the
+// Facebook current-content proposal. Enriched text must be tied to the SELECTED
+// tab; text that belongs to a different tab/document is `background`, not current
+// focus, and must never upgrade current focus or feed current-action proposals.
+public enum EnrichedContextAuthorityLevel: String, Sendable {
+    case currentFocus = "current_focus"
+    case background = "background"
+    case stale = "stale"
+}
+
+enum EnrichedContextAuthority {
+
+    static func norm(_ s: String?) -> String {
+        (s ?? "").lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 3 }
+            .joined(separator: " ")
+    }
+
+    static func host(_ url: String?) -> String {
+        guard let url = url?.lowercased(), !url.isEmpty else { return "" }
+        var h = url
+        for p in ["https://", "http://", "www."] { if h.hasPrefix(p) { h = String(h.dropFirst(p.count)) } }
+        h = h.replacingOccurrences(of: "www.", with: "")
+        return String(h.prefix(while: { $0 != "/" && $0 != "?" }))
+    }
+
+    static func termOverlap(_ a: String, _ b: String) -> Double {
+        let stop: Set<String> = ["the", "and", "for", "with", "from", "google", "docs", "doc", "com", "org", "net", "page", "tab"]
+        let at = Set(a.split(separator: " ").map(String.init).filter { !stop.contains($0) })
+        let bt = Set(b.split(separator: " ").map(String.init).filter { !stop.contains($0) })
+        guard !at.isEmpty else { return 0 }
+        let inter = at.intersection(bt).count
+        return Double(inter) / Double(at.count)
+    }
+
+    /// Decide whether enriched text read from the active window actually belongs
+    /// to the SELECTED tab (current focus) or to a stale/background document whose
+    /// title merely lingers in the window title.
+    static func classify(
+        selectedTabTitle: String?,
+        selectedTabURL: String?,
+        candidateTitle: String,
+        candidateURL: String?,
+        enrichedText: String
+    ) -> EnrichedContextAuthorityLevel {
+        let selTitle = norm(selectedTabTitle)
+        let selHost = host(selectedTabURL)
+        // No selected-tab signal at all → trust the candidate (back-compat).
+        if selTitle.isEmpty && selHost.isEmpty { return .currentFocus }
+
+        let candHost = host(candidateURL)
+        // URL host is the strongest signal when both are known.
+        if !selHost.isEmpty, !candHost.isEmpty {
+            return selHost == candHost ? .currentFocus : .background
+        }
+        // If the selected-tab host doesn't appear in the candidate title/url/body
+        // and there's no term overlap, the enriched text is a different document.
+        let candTitle = norm(candidateTitle)
+        let titleOverlap = termOverlap(selTitle, candTitle)
+        if titleOverlap >= 0.34 { return .currentFocus }
+        let bodyOverlap = termOverlap(selTitle, norm(enrichedText))
+        if bodyOverlap >= 0.2 { return .currentFocus }
+        // Selected host name appearing in candidate title (e.g. "facebook") also counts.
+        if !selHost.isEmpty {
+            let selName = selHost.split(separator: ".").first.map(String.init) ?? selHost
+            if candTitle.contains(selName) { return .currentFocus }
+        }
+        return .background
+    }
+
+    /// Terms in `contentTerms` that came from background docs (present in the
+    /// background-entity terms but not in the current-focus terms). Non-empty ⇒
+    /// the current content is contaminated by a background document.
+    static func contaminationTerms(currentFocusTerms: [String], backgroundTerms: [String], contentTerms: [String]) -> [String] {
+        let focus = Set(currentFocusTerms.map { $0.lowercased() })
+        let bg = Set(backgroundTerms.map { $0.lowercased() })
+        return contentTerms
+            .map { $0.lowercased() }
+            .filter { bg.contains($0) && !focus.contains($0) }
+    }
+}
+
+private struct ContextEnrichmentDecision {
+    let allowed: Bool
+    let level: ContextAcquisitionCoordinator.Level
+    let tier: Int
+    let reason: String
+
+    func log(focusKey: String, stableSeconds: TimeInterval) {
+        print("[ContextEnrichmentPolicy] focus=\(focusKey) stable_s=\(Int(stableSeconds)) tier=\(tier) allowed=\(allowed ? "yes" : "no") reason=\(reason)")
+        if allowed {
+            print("[PeriodicContextRefresh] started tier=\(tier == 2 ? "ocr" : tier == 1 ? "ax" : "cheap") reason=\(reason)")
+        } else {
+            print("[PeriodicContextRefresh] skipped tier=\(tier == 2 ? "ocr" : tier == 1 ? "ax" : "cheap") reason=\(reason)")
+        }
+    }
+}
+
+private enum ContextEnrichmentPolicy {
+    static func evaluate(
+        request: ContextAcquisitionCoordinator.Request,
+        baseAllowedLevel: ContextAcquisitionCoordinator.Level,
+        hasRecentCache: Bool
+    ) -> ContextEnrichmentDecision {
+        guard request.privacyAllowed else {
+            return ContextEnrichmentDecision(allowed: false, level: baseAllowedLevel, tier: 1, reason: "privacy")
+        }
+        guard !request.modelBusy else {
+            return ContextEnrichmentDecision(allowed: false, level: baseAllowedLevel, tier: 1, reason: "model_busy")
+        }
+        guard !hasRecentCache else {
+            return ContextEnrichmentDecision(allowed: false, level: baseAllowedLevel, tier: 1, reason: "recent_cache")
+        }
+        guard request.focusActionable else {
+            return ContextEnrichmentDecision(allowed: false, level: baseAllowedLevel, tier: 1, reason: "not_actionable")
+        }
+        guard request.stableSeconds >= 8 || request.explicitUserInitiated else {
+            return ContextEnrichmentDecision(allowed: false, level: baseAllowedLevel, tier: 1, reason: "unstable_focus")
+        }
+        if request.allowExpensive && request.stableSeconds >= 45 && request.currentEvidence.rank < ProgressiveEvidenceLevel.visible_content.rank {
+            return ContextEnrichmentDecision(allowed: true, level: .visibleRegion, tier: 2, reason: "reading_dwell")
+        }
+        return ContextEnrichmentDecision(allowed: true, level: .lightweightStructured, tier: 1, reason: "stable_focus")
     }
 }
 

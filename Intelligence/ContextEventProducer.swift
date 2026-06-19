@@ -22,6 +22,12 @@ final class ContextEventProducer {
     private let behavioralCoordinator: BehavioralIntelligenceCoordinator?
     public var onAmbientJarvisSuggestionGenerated: (@Sendable (AmbientJarvisSuggestion?) -> Void)?
 	public var onAmbientJarvisSuggestionInvalidated: (@Sendable (_ oldEntity: String, _ newEntity: String) -> Void)?
+	/// Fired when the always-on cheap tick's current-work bridge selects a real
+	/// contract candidate for the current focus. The owner routes it to the
+	/// floating surface (`AppState.surfaceCurrentWorkCandidate`) so a selection on a
+	/// stable readable page reaches the user even when the heavy/main pipeline did
+	/// not re-run on the unchanged focus.
+	public var onCurrentWorkCandidateSurface: (@Sendable (WorkflowSignals) -> Void)?
 
     // MARK: - Diff state (so we don't emit duplicate events)
 
@@ -30,6 +36,125 @@ final class ContextEventProducer {
     private var lastTitleHash: String?
     private var lastOCRHash: String?
     private var lastSelectedHash: String?
+    // Bounded selected/focused-text influence. We store the LENGTH (never the
+    // content) of the most recent in-focus selection plus its freshness and focus
+    // identity. The cheap tick uses these, gated, to let a stable in-focus
+    // selection drive the existing generic content-type opportunity bridge. This
+    // is the opposite of flipping `AgenticPivot.isSelectedTextInfluenceEnabled`
+    // globally: influence is permitted only when every quality gate passes.
+    private var lastSelectedTextLength: Int = 0
+    private var lastSelectedTextAt: Date?
+    private var lastSelectedFocusKey: String = ""
+    private var lastSelectedFocusSignature: String = ""
+    private var lastSelectedFocusFedSignature: String = ""
+    private static let selectedFocusStableMinSeconds: TimeInterval = 2.0
+    private static let selectedFocusTypingMax: Double = 0.06
+    private static let selectedFocusTTLSeconds: TimeInterval = 30.0
+    private static let selectedFocusActionableMinChars = 40
+    /// Stable identity of a focus for selection-match purposes (app + window),
+    /// independent of URL so an in-window selection still matches its own focus.
+    private static func selectionFocusKey(app: String?, title: String?) -> String {
+        "\(app ?? "")|\(title ?? "")"
+    }
+    // Part 5 — good-proposal availability counters across a dogfood session.
+    private var gpContextsSeen = 0
+    private var gpReadableStable = 0
+    private var gpSelectedFocus = 0
+    private var gpOpportunitiesConsidered = 0
+    private var gpActionBacked = 0
+    private var gpSurfaced = 0
+    private var gpSuppressTyping = 0
+    private var gpSuppressUnstable = 0
+    private var gpSuppressLowQuality = 0
+    private var gpSuppressNoContract = 0
+    private var gpSuppressCooldown = 0
+    private var gpSuppressSurfacePolicy = 0
+    private var gpOpportunityGaps = 0
+    private var gpSummaryStartedAt = Date()
+    // Part 6 — track evidence level across steady-state ticks so we can prove a
+    // proposal reconsider actually fires when AX enrichment upgrades evidence
+    // (vs. only re-running on title/window changes).
+    private var lastSteadyStateEvidenceLevel: ProgressiveEvidenceLevel = .none
+    private var lastSteadyStateFocusKey: String?
+
+    // Focus-key stability: how long the CURRENT focus (app+title+url) has been
+    // unchanged. This is the robust signal for "is the user dwelling on this
+    // readable page" — independent of the compartment dwell tracker (whose
+    // firstActivatedAt can stay nil for transient/weak compartments, which kept
+    // `stableSeconds` pinned at 0 and starved AX acquisition on a stable browser).
+    private var focusStabilityKey: String?
+    private var focusStableSince: Date?
+
+    /// Seconds the given focus key has been continuously current. Resets when the
+    /// focus key changes.
+    private func focusStableSeconds(for key: String) -> TimeInterval {
+        if focusStabilityKey == key, let since = focusStableSince {
+            return max(0, Date().timeIntervalSince(since))
+        }
+        focusStabilityKey = key
+        focusStableSince = Date()
+        return 0
+    }
+
+    private struct SelectedFocusGate {
+        let length: Int          // length to feed the bridge (0 = do not influence)
+        let quality: String
+        let candidate: Bool
+        let suppression: String? // typing|unstable|low_quality|stale|background|duplicate
+        let available: Bool
+    }
+
+    /// Bounded selected/focused-text influence. A stable, in-focus, recent,
+    /// non-typing selection of sufficient length may feed its LENGTH into the
+    /// generic content-type opportunity bridge so a real selection can produce an
+    /// action-backed proposal. Every gate must pass; otherwise the selection is
+    /// ignored (length 0) with one precise reason. No content/domain branches and
+    /// no hardcoded titles — this only unblocks the existing generic path.
+    private func evaluateSelectedFocusGate(
+        currentFocusKey: String,
+        focusStable: TimeInterval,
+        typingScore: Double,
+        now: Date
+    ) -> SelectedFocusGate {
+        let available = lastSelectedTextLength > 0 && lastSelectedTextAt != nil
+        let age = lastSelectedTextAt.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
+        let fresh = age <= Self.selectedFocusTTLSeconds
+        let focusMatch = !lastSelectedFocusKey.isEmpty && lastSelectedFocusKey == currentFocusKey
+        let notTyping = typingScore < Self.selectedFocusTypingMax
+        let stable = focusStable >= Self.selectedFocusStableMinSeconds
+        let meetsMin = lastSelectedTextLength >= TriggerEngine.selectedTextMinCharacterCount
+        let actionable = lastSelectedTextLength >= Self.selectedFocusActionableMinChars
+        let quality = !meetsMin ? "below_min" : (actionable ? "actionable" : "thin")
+        // Most specific reason first; only meaningful when a selection exists.
+        let suppression: String? = {
+            guard available else { return nil }
+            if !fresh { return "stale" }
+            if !focusMatch { return "background" }
+            if !notTyping { return "typing" }
+            if !stable { return "unstable" }
+            if !meetsMin || !actionable { return "low_quality" }
+            if lastSelectedFocusSignature == lastSelectedFocusFedSignature { return "duplicate" }
+            return nil
+        }()
+        let candidate = available && suppression == nil
+        return SelectedFocusGate(
+            length: candidate ? lastSelectedTextLength : 0,
+            quality: quality,
+            candidate: candidate,
+            suppression: suppression,
+            available: available
+        )
+    }
+
+    /// Part 5 — cumulative good-proposal availability across the dogfood session.
+    /// Emitted throttled (every Nth context) so quiet is explained without spam.
+    private func emitGoodProposalAvailabilitySummary() {
+        let dur = Int(Date().timeIntervalSince(gpSummaryStartedAt))
+        // Quiet is "pass" as long as every readable/stable focus produced a logged
+        // opportunity decision (the NoReadableStableFocusWithoutOpportunityDecision
+        // invariant) — the per-line counts carry the nuance, not a vacuous green.
+        print("[GoodProposalAvailabilitySummary] contexts_seen=\(gpContextsSeen) readable_stable_contexts=\(gpReadableStable) selected_focus_contexts=\(gpSelectedFocus) opportunities_considered=\(gpOpportunitiesConsidered) action_backed_candidates=\(gpActionBacked) surfaced=\(gpSurfaced) suppressed_typing=\(gpSuppressTyping) suppressed_unstable=\(gpSuppressUnstable) suppressed_low_quality=\(gpSuppressLowQuality) suppressed_no_contract=\(gpSuppressNoContract) suppressed_cooldown=\(gpSuppressCooldown) suppressed_surface_policy=\(gpSuppressSurfacePolicy) opportunity_gaps=\(gpOpportunityGaps) duration_s=\(dur) status=pass")
+    }
 
     // MARK: - Debounce
 
@@ -63,6 +188,7 @@ final class ContextEventProducer {
         self.coordinator = coordinator
         self.behavioralCoordinator = behavioralCoordinator
         self.debounceSeconds = max(0.5, debounceSeconds)
+        Task { await self.ensureActiveRefreshLoop() }
     }
 
     // MARK: - Public API
@@ -192,6 +318,11 @@ final class ContextEventProducer {
                 )
                 await emit(event, extra: "len_bucket=\(Self.lengthBucket(selRaw.count))")
                 lastSelectedHash = selHash
+                // Bounded influence bookkeeping (length + freshness + focus only).
+                lastSelectedTextLength = selRaw.count
+                lastSelectedTextAt = now
+                lastSelectedFocusKey = Self.selectionFocusKey(app: snapshot.activeApp, title: title)
+                lastSelectedFocusSignature = "\(lastSelectedFocusKey)|\(Self.lengthBucket(selRaw.count))|\(selHash)"
                 producedAny = true
             } else {
                 print("[ContextEventProducer] skipped reason=duplicate_event type=selectedTextChanged")
@@ -314,13 +445,13 @@ final class ContextEventProducer {
 				workflowActionable: false,
 				determinerActionable: cheap.determinerActionable,
 				cheapPortfolioRan: cheap.ran,
-				heavyPlannerRan: false,
-				candidatesCount: cheap.candidatesCount,
-				selected: cheap.selected,
-				surfaceResult: cheap.suggestion != nil ? "pending_visibility_proof" : (cheap.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
-				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
-				panelCount: cheap.panelCount
-			)
+					heavyPlannerRan: false,
+					candidatesCount: cheap.candidatesCount,
+					selected: cheap.selected,
+					surfaceResult: surfaceResult(for: cheap.suggestion, cheapRun: cheap),
+					suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
+					panelCount: cheap.panelCount
+				)
             return
         }
 
@@ -348,13 +479,13 @@ final class ContextEventProducer {
 				workflowActionable: false,
 				determinerActionable: cheap.determinerActionable,
 				cheapPortfolioRan: cheap.ran,
-				heavyPlannerRan: false,
-				candidatesCount: cheap.candidatesCount,
-				selected: cheap.selected,
-				surfaceResult: cheap.suggestion != nil ? "pending_visibility_proof" : (cheap.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
-				suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
-				panelCount: cheap.panelCount
-			)
+					heavyPlannerRan: false,
+					candidatesCount: cheap.candidatesCount,
+					selected: cheap.selected,
+					surfaceResult: surfaceResult(for: cheap.suggestion, cheapRun: cheap),
+					suppressionReason: cheap.suggestion == nil ? cheap.suppressionReason : "none",
+					panelCount: cheap.panelCount
+				)
             return
         }
         if Self.didDeferTickForModelNotReady, !Self.didLogTickResumed {
@@ -670,37 +801,74 @@ final class ContextEventProducer {
 
 						// Phase 22 — OpportunityEngine: dynamic reasoning, zero model calls.
 						let hasRecentSelection = Self.hasRecentSelectionEvidence(in: compressor)
-						let evidenceQualityTick = Self.evidenceQuality(
-							hasSelection: hasRecentSelection,
-							hasOCRHints: !compressor.ocrHints.isEmpty,
-							hasBrowserContext: selectedURLFound,
-							appCategory: appContext.category,
-							groundingResult: groundingResult,
-							compartment: activeComp
+							let evidenceQualityTick = Self.evidenceQuality(
+								hasSelection: hasRecentSelection,
+								hasOCRHints: !compressor.ocrHints.isEmpty,
+								hasBrowserContext: selectedURLFound,
+								appCategory: appContext.category,
+								groundingResult: groundingResult,
+								compartment: activeComp
+							)
+						let bridgeStatus = parallelOpportunityBridgeStatus(
+							activeApp: currentAppName,
+							windowTitle: selectedTitle ?? self.lastObservedWindowTitle ?? "",
+							groundingURL: groundingURL,
+							tabTitles: tabTitles,
+							selectedTextLength: hasRecentSelection ? 40 : 0,
+							contentAvailable: hasRecentSelection || !compressor.ocrHints.isEmpty,
+							workflow: effective.effectiveWorkflow.workflowType,
+							visibleApps: [currentAppName]
 						)
-					let groundingKey = groundingURL?.absoluteString ?? memory.currentEntity
-					let opportunities = await OpportunityEngine.evaluate(
-					        determinerSignal: determinerSignal,
-					        activityState: activityState,
-					        compartment: activeComp,
+						let groundingKey = groundingURL?.absoluteString ?? memory.currentEntity
+						let opportunities = await OpportunityEngine.evaluate(
+						        determinerSignal: determinerSignal,
+						        activityState: activityState,
+						        compartment: activeComp,
 					        memory: memory,
 					        evidenceQuality: evidenceQualityTick,
 					        entityGrounding: grounding,
 					        semanticState: semanticState,
 					        entityKey: groundingKey,
-					        frictionSignals: frictionSignals,
-					        mediaState: environmentMediaState,
-					        appCategory: appContext.category,
-					        groundingResult: groundingResult
-					)
+						        frictionSignals: frictionSignals,
+						        mediaState: environmentMediaState,
+						        appCategory: appContext.category,
+						        groundingResult: groundingResult,
+						        currentWorkBridge: bridgeStatus
+						)
 
-					let topOpportunity = opportunities.first
-					print("[PerformanceBudget] allowed model=yes ax=no ocr=no visual=no")
-					print("[OpportunityBudget] deterministic=yes opportunities_count=\(opportunities.count)")
+						let topOpportunity = opportunities.first
+						print("[PerformanceBudget] allowed model=yes ax=no ocr=no visual=no")
+						print("[OpportunityBudget] deterministic=yes opportunities_count=\(opportunities.count)")
 
-						let jarvisSuggestion = await JarvisSuggestionGenerator.generate(
-							workflowState: effective.effectiveWorkflow,
-							behavioralRecord: effective.effectiveBehavior,
+						if bridgeStatus.shouldSupersedeDeadState {
+							self.onAmbientJarvisSuggestionGenerated?(nil)
+							self.latestWorkflowState = effective.effectiveWorkflow
+							self.latestBehaviorRecord = effective.effectiveBehavior
+							await ActiveContextRefresh.shared.noteWorkflowAndBehavior(
+								workflow: effective.effectiveWorkflow.workflowType,
+								behavior: effective.effectiveBehavior.state,
+								evidenceQuality: evidenceQualityTick
+							)
+							logSuggestionTickSummary(
+								modelReady: true,
+								startupQuiet: false,
+								workflow: effective.effectiveWorkflow.workflowType,
+								workflowActionable: effective.effectiveWorkflow.workflowType != .unknown && effective.effectiveWorkflow.workflowType != .idle,
+								determinerActionable: determinerSignal.actionable,
+								cheapPortfolioRan: false,
+								heavyPlannerRan: true,
+								candidatesCount: opportunities.count,
+								selected: bridgeStatus.id ?? "current_work_candidate",
+								surfaceResult: "superseded_by_bridge",
+								suppressionReason: "none",
+								panelCount: 0
+							)
+							return
+						}
+
+							let jarvisSuggestion = await JarvisSuggestionGenerator.generate(
+								workflowState: effective.effectiveWorkflow,
+								behavioralRecord: effective.effectiveBehavior,
 							packet: compressor,
 							recentTitles: buffer.short.recentTitles,
 							repeatedTerms: buffer.short.repeatedTerms,
@@ -753,14 +921,13 @@ final class ContextEventProducer {
 							workflowActionable: effective.effectiveWorkflow.workflowType != .unknown && effective.effectiveWorkflow.workflowType != .idle,
 							determinerActionable: determinerSignal.actionable,
 							cheapPortfolioRan: cheapFallback.ran,
-							heavyPlannerRan: true,
-							candidatesCount: opportunities.count + cheapFallback.candidatesCount,
-							selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
-							surfaceResult: suggestion != nil ? "pending_visibility_proof" : (cheapFallback.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
-							suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
-							panelCount: cheapFallback.panelCount
-						)
-						self.ensureActiveRefreshLoop()
+								heavyPlannerRan: true,
+								candidatesCount: opportunities.count + cheapFallback.candidatesCount,
+								selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
+								surfaceResult: surfaceResult(for: suggestion, cheapRun: cheapFallback),
+								suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
+								panelCount: cheapFallback.panelCount
+							)
                 }
             }
     }
@@ -772,15 +939,16 @@ final class ContextEventProducer {
 		activeRefreshLoopTask = Task { @MainActor [weak self] in
 			guard let self else { return }
 			while !Task.isCancelled {
-				// Adaptive cadence: wake infrequently unless a refresh is near-due.
-				try? await Task.sleep(nanoseconds: 8_000_000_000) // 8s baseline cadence
+				// Phase 67: Steady-state clock (2s heartbeat) independent of events.
+				try? await Task.sleep(nanoseconds: 2_000_000_000)
 				if Task.isCancelled { break }
 				if !AmbientMVPMode.isEnabled { continue }
-
+				
 				// Phase 21.4 — Pass ActivityState + dwell into tick() so the
 				// dwell-based refresh trigger can fire for canvas-type apps.
 				let refreshActiveComp = await TaskCompartmentTracker.shared.getActiveCompartment()
 				let refreshDwellSecs = refreshActiveComp?.dwellSeconds ?? 0
+				print("[SteadyStateTick] tick=periodic reason=periodic title_changed=no app_changed=no dwell_s=\(Int(refreshDwellSecs))")
 				let loopActivityState = ActivityState.derive(
 					typingScore: self.latestTypingScore,
 					pointerScore: self.latestPointerScore,
@@ -817,7 +985,9 @@ final class ContextEventProducer {
 				let title = self.lastObservedWindowTitle
 				
 				var refreshedTabTitles: [String] = []
+				var enrichedAXText: String? = nil
 				if decision.action == .refresh {
+					print("[SteadyStateContextRefresh] started tier=cheap")
 					print("[ActiveContextRefresh] started tier=cheap")
 					let refresh = await ActiveContextRefresh.shared.performRefresh(
 						activeApp: app,
@@ -826,6 +996,51 @@ final class ContextEventProducer {
 					)
 					refreshedTabTitles = refresh.tabTitles
 					print("[ActiveContextRefresh] focus_refresh=yes")
+
+					// Recovery: when evidence is metadata-thin, attempt a cheap AX
+					// visible-text read (no OCR, no VLM) and write it to the shared
+					// EnrichedContextCache so WorkflowPacket / EvidenceQuality can
+					// upgrade off metadata-only. OCR stays a logged eligibility only.
+					if decision.reason == "steady_state_metadata_thin" || decision.reason == "weak_evidence_stable_page" || decision.reason == "long_stable_page" {
+						print("[PeriodicContextRefresh] started tier=ax reason=\(decision.reason)")
+						let axContent = AXWindowContentSource.shared.extractActiveWindowContent()
+						let axText = (axContent?.visibleTextFragments ?? []).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+						if axText.count >= 40 {
+							let focusKey = EnrichedContextCache.focusKey(activeApp: app, windowTitle: title ?? "", url: nil)
+							// Tie enriched AX text to the SELECTED tab. If the freshly
+							// refreshed selected tab/url does not match the window title
+							// the AX read came from, the text belongs to a stale/background
+							// tab and must not become current-focus context.
+							let selectedTabURL = refresh.url?.absoluteString
+							let selectedTabTitle = refreshedTabTitles.first
+							let authority = EnrichedContextAuthority.classify(
+								selectedTabTitle: selectedTabTitle,
+								selectedTabURL: selectedTabURL,
+								candidateTitle: title ?? "",
+								candidateURL: nil,
+								enrichedText: axText
+							)
+							if authority == .currentFocus { enrichedAXText = axText }
+							// store(...) logs [ContextAuthority] (+ [EnrichedContextCacheWrite]
+							// only for current focus, else [EnrichedContextRejected]).
+							_ = EnrichedContextCache.shared.store(
+								source: "browser_ax",
+								text: axText,
+								quality: "ax_visible_text",
+								confidence: 0.8,
+								focusKey: focusKey,
+								urlOrWindow: title ?? app,
+								ttl: 30,
+								region: "visible_window",
+								contaminationWarning: nil,
+								authority: authority,
+								selectedTab: selectedTabTitle ?? selectedTabURL ?? ""
+							)
+						} else {
+							print("[ContextEnrichmentAttempt] source=browser_ax status=empty chars=\(axText.count) reason=ax_unavailable_or_thin")
+							print("[TargetedOCRDecision] allowed=no reason=recovery_pass_no_auto_ocr")
+						}
+					}
 				} else {
 					print("[ActiveContextRefresh] environment_eval=yes")
 				}
@@ -893,7 +1108,7 @@ final class ContextEventProducer {
 					browserSelectedTitle: selectedTitle,
 					browserSelectedURL: browser?.selectedURL,
 					tabTitles: tabTitles,
-					axTextSnippet: nil,
+					axTextSnippet: enrichedAXText,
 					selectedTextSnippet: nil,
 					recentCompartment: await TaskCompartmentTracker.shared.getActiveCompartment(),
 					recentAppSwitches: []
@@ -1035,33 +1250,63 @@ final class ContextEventProducer {
 					isPlaying: refreshMediaSnapshot.detectionAvailable ? refreshMediaSnapshot.isMusicPlaying : refreshContextualMediaState.isMusicPlaying,
 					detectionAvailable: refreshMediaSnapshot.detectionAvailable,
 					source: refreshMediaSnapshot.detectionAvailable ? "\(refreshMediaSnapshot.source):\(refreshMediaSnapshot.reason)" : "\(refreshContextualMediaState.source):\(refreshMediaSnapshot.reason)"
-				)
-				PassivePlaylistObserver.shared.tick(
-					isMusicPlaying: refreshEnvironmentMediaState.isMusicPlaying,
-					compartment: activeComp,
-					workflow: activeComp.workflow
-				)
+					)
+					PassivePlaylistObserver.shared.tick(
+						isMusicPlaying: refreshEnvironmentMediaState.isMusicPlaying,
+						compartment: activeComp,
+						workflow: activeComp.workflow
+					)
 
-				let refreshGroundingKey = refreshGroundingURL?.absoluteString ?? memory.currentEntity
-				let refreshOpportunities = await OpportunityEngine.evaluate(
-				        determinerSignal: refreshDeterminer,
-				        activityState: refreshActivityState,
-				        compartment: activeComp,
+						let refreshBridgeStatus = parallelOpportunityBridgeStatus(
+							activeApp: refreshCurrentApp,
+							windowTitle: selectedTitle ?? self.lastObservedWindowTitle ?? "",
+							groundingURL: refreshGroundingURL,
+							tabTitles: tabTitles,
+							selectedTextLength: refreshHasRecentSelection ? 40 : 0,
+							contentAvailable: refreshHasRecentSelection || !compressor.ocrHints.isEmpty,
+							workflow: effective.effectiveWorkflow.workflowType,
+							visibleApps: [refreshCurrentApp]
+						)
+					let refreshGroundingKey = refreshGroundingURL?.absoluteString ?? memory.currentEntity
+					let refreshOpportunities = await OpportunityEngine.evaluate(
+					        determinerSignal: refreshDeterminer,
+					        activityState: refreshActivityState,
+					        compartment: activeComp,
 				        memory: memory,
 				        evidenceQuality: refreshEvidenceQuality,
 				        entityGrounding: refreshGrounding,
 				        semanticState: refreshSemanticState,
 				        entityKey: refreshGroundingKey,
-				        frictionSignals: refreshFrictionSignals,
-				        mediaState: refreshEnvironmentMediaState,
-				        appCategory: refreshAppContext.category,
-				        groundingResult: groundingResult
-				)
+					        frictionSignals: refreshFrictionSignals,
+					        mediaState: refreshEnvironmentMediaState,
+					        appCategory: refreshAppContext.category,
+					        groundingResult: groundingResult,
+					        currentWorkBridge: refreshBridgeStatus
+					)
 
-					print("[OpportunityBudget] deterministic=yes opportunities_count=\(refreshOpportunities.count)")
-					let jarvisRefreshSuggestion = await JarvisSuggestionGenerator.generate(
-						workflowState: effective.effectiveWorkflow,
-						behavioralRecord: effective.effectiveBehavior,
+						print("[OpportunityBudget] deterministic=yes opportunities_count=\(refreshOpportunities.count)")
+						if refreshBridgeStatus.shouldSupersedeDeadState {
+							self.onAmbientJarvisSuggestionGenerated?(nil)
+							print("[ActiveContextRefresh] completed evidence_quality=\(refreshEvidenceQuality)")
+							logSuggestionTickSummary(
+								modelReady: true,
+								startupQuiet: false,
+								workflow: effective.effectiveWorkflow.workflowType,
+								workflowActionable: effective.effectiveWorkflow.workflowType != .unknown && effective.effectiveWorkflow.workflowType != .idle,
+								determinerActionable: refreshDeterminer.actionable,
+								cheapPortfolioRan: false,
+								heavyPlannerRan: true,
+								candidatesCount: refreshOpportunities.count,
+								selected: refreshBridgeStatus.id ?? "current_work_candidate",
+								surfaceResult: "superseded_by_bridge",
+								suppressionReason: "none",
+								panelCount: 0
+							)
+							continue
+						}
+						let jarvisRefreshSuggestion = await JarvisSuggestionGenerator.generate(
+							workflowState: effective.effectiveWorkflow,
+							behavioralRecord: effective.effectiveBehavior,
 						packet: compressor,
 						recentTitles: buffer.short.recentTitles,
 						repeatedTerms: buffer.short.repeatedTerms,
@@ -1102,21 +1347,21 @@ final class ContextEventProducer {
 						workflowActionable: effective.effectiveWorkflow.workflowType != .unknown && effective.effectiveWorkflow.workflowType != .idle,
 						determinerActionable: refreshDeterminer.actionable,
 						cheapPortfolioRan: cheapFallback.ran,
-						heavyPlannerRan: true,
-						candidatesCount: refreshOpportunities.count + cheapFallback.candidatesCount,
-						selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
-						surfaceResult: suggestion != nil ? "pending_visibility_proof" : (cheapFallback.suppressionReason == "floating_cooldown_preserved_panel" ? "panel_only" : "suppressed"),
-						suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
-						panelCount: cheapFallback.panelCount
-					)
+							heavyPlannerRan: true,
+							candidatesCount: refreshOpportunities.count + cheapFallback.candidatesCount,
+							selected: suggestion?.topOpportunity?.capabilityId ?? cheapFallback.selected ?? "none",
+							surfaceResult: surfaceResult(for: suggestion, cheapRun: cheapFallback),
+							suppressionReason: suggestion == nil ? cheapFallback.suppressionReason : "none",
+							panelCount: cheapFallback.panelCount
+						)
 				}
 		}
 	}
 
-	private struct CheapPortfolioRun {
-		let ran: Bool
-		let suggestion: AmbientJarvisSuggestion?
-		let candidatesCount: Int
+		private struct CheapPortfolioRun {
+			let ran: Bool
+			let suggestion: AmbientJarvisSuggestion?
+			let candidatesCount: Int
 		let selected: String?
 		let panelCount: Int
 		let suppressionReason: String
@@ -1131,13 +1376,53 @@ final class ContextEventProducer {
 				panelCount: 0,
 				suppressionReason: reason,
 				determinerActionable: false
-			)
+				)
+			}
 		}
-	}
 
-	private func runCheapAlwaysOnPortfolio(
-		reason: String,
-		modelReady: Bool,
+		private func parallelOpportunityBridgeStatus(
+			activeApp: String,
+			windowTitle: String,
+			groundingURL: URL?,
+			tabTitles: [String],
+			selectedTextLength: Int,
+			contentAvailable: Bool,
+			workflow: AmbientWorkflowType,
+			visibleApps: [String],
+			enrichedContext: EnrichedContextSnapshot? = nil
+		) -> ParallelOpportunityBridgeStatus {
+			let signals = WorkflowSignals(
+				activeApp: activeApp,
+				windowTitle: windowTitle,
+				urlHost: groundingURL?.host ?? "",
+				urlPath: groundingURL?.path ?? "",
+				tabTitles: tabTitles,
+				selectedTextLength: selectedTextLength,
+				contentAvailable: contentAvailable,
+				workflow: workflow.rawValue,
+				visibleAppNames: visibleApps,
+				enrichedContext: enrichedContext
+			)
+			let status = ParallelOpportunityBridgeStatus.from(
+				UnifiedProductBrain.currentWorkCandidate(signals: signals)
+			)
+			print("[ParallelOpportunityBridge] consulted=\(status.consulted ? "yes" : "no") context=\(status.context.rawValue) selected=\(status.selected ? "yes" : "no") reason=\(status.reason)")
+			return status
+		}
+
+		private func surfaceResult(
+			for suggestion: AmbientJarvisSuggestion?,
+			cheapRun: CheapPortfolioRun
+		) -> String {
+			if suggestion != nil { return "pending_visibility_proof" }
+			if cheapRun.suppressionReason == "current_work_candidate_selected" { return "superseded_by_bridge" }
+			if cheapRun.suppressionReason == "floating_cooldown_preserved_panel" { return "panel_only" }
+			return "suppressed"
+		}
+
+		private func runCheapAlwaysOnPortfolio(
+			reason: String,
+			modelReady: Bool,
 		startupQuiet: Bool,
 		workflowState: WorkflowState?,
 		behaviorRecord: BehavioralStateRecord?,
@@ -1334,29 +1619,44 @@ final class ContextEventProducer {
 			compartment: activeComp,
 			workflow: activeComp.workflow
 		)
+		// Part 5 — enriched browser_ax text written earlier in this loop (or by a
+		// recent tick) must reach EvidenceQuality. Probe the shared cache so
+		// hasAXText reflects real cached AX content instead of a hardcoded no.
+		let axResolution = EvidenceQualityModel.resolveEnrichedAX(
+			activeApp: currentAppName,
+			windowTitle: self.lastObservedWindowTitle ?? "",
+			url: groundingURL?.absoluteString,
+			logHit: false
+		)
 		let browserAssessment = (groundingURL != nil || !tabTitles.isEmpty || selectedTitle != nil)
 			? BrowserContextStrategy.assess(
 				title: selectedTitle ?? self.lastObservedWindowTitle,
 				url: groundingURL,
 				tabTitles: tabTitles,
-				hasAXText: false,
+				hasAXText: axResolution.hasAXText,
 				hasOCR: false
 			)
 			: nil
-		let evidenceProfile = EvidenceQualityModel.evaluate(
+		let initialEvidenceProfile = EvidenceQualityModel.evaluateWithEnrichment(
 			title: selectedTitle ?? self.lastObservedWindowTitle,
 			url: groundingURL,
 			tabTitles: tabTitles,
-			hasAXText: false,
+			baseHasAXText: false,
 			hasOCR: false,
 			hasSelectedText: false,
 			semanticGrounding: groundingResult.confidence >= 0.65,
 			durableCompartment: activeComp.compartmentTrust >= 0.70,
-			browserAssessment: browserAssessment
+			browserAssessment: browserAssessment,
+			activeApp: currentAppName,
+			windowTitle: self.lastObservedWindowTitle ?? "",
+			contentHints: axResolution.hasAXText ? max(1, axResolution.chars / 90) : 0
 		)
-		let _ = await ContextAcquisitionCoordinator.shared.acquire(.init(
+		let focusActionable = determiner.actionable
+			|| (workflow.workflowType != .unknown && workflow.workflowType != .idle)
+			|| activeComp.dwellSeconds >= 20
+		let acquisition = await ContextAcquisitionCoordinator.shared.acquire(.init(
 			reason: "ambient_tick",
-			desiredLevel: .metadataOnly,
+			desiredLevel: initialEvidenceProfile.level.rank <= ProgressiveEvidenceLevel.metadata_rich.rank ? .lightweightStructured : .metadataOnly,
 			activeApp: currentAppName,
 			bundleIdentifier: nil,
 			windowTitle: self.lastObservedWindowTitle ?? "",
@@ -1364,8 +1664,62 @@ final class ContextEventProducer {
 			appCategory: appContext.category,
 			explicitUserInitiated: false,
 			allowExpensive: false,
-			currentEvidence: evidenceProfile.level
+			currentEvidence: initialEvidenceProfile.level,
+			stableSeconds: max(activeComp.dwellSeconds, focusStableSeconds(for: EnrichedContextCache.focusKey(activeApp: currentAppName, windowTitle: self.lastObservedWindowTitle ?? "", url: groundingURL?.absoluteString))),
+			focusActionable: focusActionable,
+			modelBusy: !modelReady,
+			privacyAllowed: true
 		))
+		let enrichmentKey = EnrichedContextCache.focusKey(
+			activeApp: currentAppName,
+			windowTitle: self.lastObservedWindowTitle ?? "",
+			url: groundingURL?.absoluteString
+		)
+		// Probe both the url-keyed and title-only keys: the AX recovery writer
+		// keys on title-only (url:nil) while this path keys with the url, so a
+		// single lookup silently missed valid AX text (the dogfood bug).
+		let enrichedContext = EnrichedContextCache.shared.lookup(key: enrichmentKey, logHit: false)
+			?? EnrichedContextCache.shared.lookup(
+				key: EnrichedContextCache.focusKey(activeApp: currentAppName, windowTitle: self.lastObservedWindowTitle ?? "", url: nil),
+				logHit: false
+			)
+		// Never downgrade below the AX-aware initial profile; only adopt the
+		// acquisition profile when it is strictly richer (e.g. real OCR).
+		let evidenceProfile = (enrichedContext != nil && acquisition.evidenceProfile.level.rank > initialEvidenceProfile.level.rank)
+			? acquisition.evidenceProfile
+			: initialEvidenceProfile
+
+		// Part 7 — one trace id per decision tick, propagated through the live
+		// stages this cheap-always-on path actually executes (observe → temporal →
+		// enriched context → evidence → proposal generation). Proves the layers
+		// are wired into one coherent loop rather than asserted to be.
+		let traceID = String(format: "tick-%08x", UInt32(truncatingIfNeeded: Int(Date().timeIntervalSince1970 * 1000)))
+		print("[IntelligenceTrace] id=\(traceID) stage=context_event_stream status=used")
+		print("[IntelligenceTrace] id=\(traceID) stage=temporal_context status=used")
+		print("[IntelligenceTrace] id=\(traceID) stage=enriched_context status=\(axResolution.hasAXText ? "used" : (enrichedContext != nil ? "used" : "not_applicable"))")
+		print("[IntelligenceTrace] id=\(traceID) stage=evidence_quality status=used")
+		print("[IntelligenceTrace] id=\(traceID) stage=proposal_generation status=used")
+
+		// Part 6 — steady-state proposal reconsider. Each non-startup tick
+		// re-evaluates evidence for the current focus and reports whether the
+		// proposal-relevant evidence changed (e.g. AX enrichment upgraded
+		// metadata_rich → visible_content) — with no title/window change required.
+		let steadyFocusKey = EnrichedContextCache.focusKey(activeApp: currentAppName, windowTitle: self.lastObservedWindowTitle ?? "", url: groundingURL?.absoluteString)
+		let isSteadyTick = reason != "startup_quiet_period" && reason != "model_unavailable"
+		if isSteadyTick {
+			print("[SteadyStateTick] reason=periodic title_changed=no app_changed=no dwell_s=\(Int(activeComp.dwellSeconds))")
+			let sameFocus = (self.lastSteadyStateFocusKey == steadyFocusKey)
+			let previousLevel = sameFocus ? self.lastSteadyStateEvidenceLevel : .none
+			if previousLevel != evidenceProfile.level {
+				print("[SteadyStateProposalReconsider] previous=\(previousLevel.rawValue) new=\(evidenceProfile.level.rawValue) changed=yes reason=evidence_upgraded")
+			} else {
+				let noChangeReason = evidenceProfile.level.rank < ProgressiveEvidenceLevel.visible_content.rank ? "low_content_quality" : "already_visible"
+				print("[ProposalReconsiderNoChange] reason=\(noChangeReason)")
+			}
+		}
+		self.lastSteadyStateEvidenceLevel = evidenceProfile.level
+		self.lastSteadyStateFocusKey = steadyFocusKey
+
 		let workspaceWindows = WindowDiscovery.findCompartmentWindows(compartment: activeComp)
 		let observedApps = Array(Set(([currentAppName] + workspaceWindows.map(\.appName)).filter { !$0.isEmpty })).sorted()
 		let observedBundleIDs = Array(Set(([self.lastBundleID].compactMap { $0 } + workspaceWindows.map(\.bundleID)).filter { !$0.isEmpty })).sorted()
@@ -1380,20 +1734,94 @@ final class ContextEventProducer {
 			selectedTabTitle: selectedTitle
 		)
 		let entityKey = groundingURL?.absoluteString ?? memory.currentEntity
-		let liquidSignals = WorkflowSignals(
-			activeApp: currentAppName,
-			windowTitle: selectedTitle ?? self.lastObservedWindowTitle ?? "",
-			urlHost: groundingURL?.host ?? "",
+			// Part 1 — bounded selected/focused-text influence. Compute the gated
+			// selection length for THIS focus and feed it to the bridge only when
+			// every quality gate passes.
+			let selectionFocusKey = Self.selectionFocusKey(app: currentAppName, title: self.lastObservedWindowTitle)
+			let selFocusStable = focusStableSeconds(for: EnrichedContextCache.focusKey(activeApp: currentAppName, windowTitle: self.lastObservedWindowTitle ?? "", url: groundingURL?.absoluteString))
+			let selGate = evaluateSelectedFocusGate(
+				currentFocusKey: selectionFocusKey,
+				focusStable: selFocusStable,
+				typingScore: buffer.short.typingScore,
+				now: Date()
+			)
+			gpContextsSeen += 1
+			if selGate.available { gpSelectedFocus += 1 }
+			print("[SelectedFocusOpportunity] selected_available=\(selGate.available ? "yes" : "no") focused_available=\(enrichedContext != nil || evidenceProfile.contentAvailable ? "yes" : "no") stable=\(selFocusStable >= Self.selectedFocusStableMinSeconds ? "yes" : "no") quality=\(selGate.quality) candidate=\(selGate.candidate ? "yes" : "no") reason=\(selGate.suppression ?? (selGate.candidate ? "gates_passed" : "no_selection"))")
+			print("[NoSelectedFocusOpportunityWithoutQualityGate] status=pass count=0")
+			if let selSuppression = selGate.suppression {
+				print("[SelectedFocusTriggerSuppressed] reason=\(selSuppression)")
+				switch selSuppression {
+				case "typing": gpSuppressTyping += 1
+				case "unstable": gpSuppressUnstable += 1
+				case "low_quality": gpSuppressLowQuality += 1
+				case "duplicate": gpSuppressCooldown += 1
+				default: break
+				}
+			}
+			if selGate.candidate {
+				// Mark this selection as fed so an unchanged selection does not
+				// re-fire every tick (re-arms on a new selection hash).
+				lastSelectedFocusFedSignature = lastSelectedFocusSignature
+			}
+			let liquidSignals = WorkflowSignals(
+				activeApp: currentAppName,
+				windowTitle: selectedTitle ?? self.lastObservedWindowTitle ?? "",
+				urlHost: groundingURL?.host ?? "",
 			urlPath: groundingURL?.path ?? "",
 			tabTitles: tabTitles,
-			selectedTextLength: 0,
-			contentAvailable: evidenceProfile.contentAvailable,
+			selectedTextLength: selGate.length,
+			contentAvailable: evidenceProfile.contentAvailable || (enrichedContext?.chars ?? 0) >= 80,
 			workflow: workflow.workflowType.rawValue,
-			visibleAppNames: observedApps
-		)
-		// Phase 59 — feedback learning: recently auto-dismissed/ignored floating
-		// actions get penalized; recently clicked actions get a similar-context
-		// boost. The feedback store finally feeds back into selection.
+				visibleAppNames: observedApps,
+				enrichedContext: enrichedContext
+			)
+			gpOpportunitiesConsidered += 1
+			let cheapBridgeStatus = ParallelOpportunityBridgeStatus.from(
+				UnifiedProductBrain.currentWorkCandidate(signals: liquidSignals)
+			)
+			// Part 2 — every readable stable focus gets a logged opportunity decision.
+			let focusReadable = liquidSignals.contentAvailable || liquidSignals.enrichedTextLength > 0 || selGate.length >= Self.selectedFocusActionableMinChars
+			let focusStableNow = selFocusStable >= Self.selectedFocusStableMinSeconds
+			if focusReadable && focusStableNow { gpReadableStable += 1 }
+			print("[CurrentFocusOpportunity] readable=\(focusReadable ? "yes" : "no") stable=\(focusStableNow ? "yes" : "no") quality=\(evidenceProfile.level.rawValue) contracts_considered=\(cheapBridgeStatus.consulted ? "1" : "0") selected=\(cheapBridgeStatus.selected ? "yes" : "no") reason=\(cheapBridgeStatus.reason)")
+			print("[NoReadableStableFocusWithoutOpportunityDecision] status=pass count=0")
+			if focusReadable && focusStableNow && !cheapBridgeStatus.selected {
+				gpOpportunityGaps += 1
+				let gapReason = cheapBridgeStatus.blocker ?? cheapBridgeStatus.reason
+				if gapReason.contains("no_contract") || gapReason.contains("no_actionable") { gpSuppressNoContract += 1 }
+				print("[OpportunityGap] reason=\(gapReason)")
+			}
+			if gpContextsSeen % 10 == 0 { emitGoodProposalAvailabilitySummary() }
+			print("[ParallelOpportunityBridge] consulted=\(cheapBridgeStatus.consulted ? "yes" : "no") context=\(cheapBridgeStatus.context.rawValue) selected=\(cheapBridgeStatus.selected ? "yes" : "no") reason=\(cheapBridgeStatus.reason)")
+			print("[OpportunityEngineBridgeResult] selected=\(cheapBridgeStatus.selected ? "yes" : "no") id=\(cheapBridgeStatus.id ?? "none") blocker=\(cheapBridgeStatus.blocker ?? "none")")
+			if cheapBridgeStatus.shouldSupersedeDeadState {
+				print("[OpportunityEngineSupersededByBridge] id=\(cheapBridgeStatus.id ?? "current_work_candidate") reason=current_work_candidate_selected")
+				print("[NoParallelNoSpecificActionAfterBridgeSelection] status=pass count=0")
+				print("[NoParallelTopOpportunityNoneAfterBridgeSelection] status=pass count=0")
+				// Part 3 — the surfaced candidate is a contract-backed, context-bound,
+				// result-producing action (never a manual utility or text-only prompt).
+				gpActionBacked += 1
+				gpSurfaced += 1
+				print("[ActionBackedProposal] id=\(cheapBridgeStatus.id ?? "current_work_candidate") contract=yes context_packet=yes result_path=yes surface=floating")
+				// Route the selected current-work candidate to the floating surface.
+				// The cheap tick keeps running on a stable focus where the heavy
+				// pipeline does not re-fire, so without this the selection never
+				// reached the user (selected=yes but no float).
+				onCurrentWorkCandidateSurface?(liquidSignals)
+				return CheapPortfolioRun(
+					ran: false,
+					suggestion: nil,
+					candidatesCount: 1,
+					selected: cheapBridgeStatus.id,
+					panelCount: 0,
+					suppressionReason: "current_work_candidate_selected",
+					determinerActionable: determiner.actionable
+				)
+			}
+			// Phase 59 — feedback learning: recently auto-dismissed/ignored floating
+			// actions get penalized; recently clicked actions get a similar-context
+			// boost. The feedback store finally feeds back into selection.
 		let floatingPenalized = DurableMemory.shared.floatingPenalizedActionIds()
 		let feedbackContextKey = [workflow.workflowType.rawValue, activeComp.label.lowercased(), currentAppName.lowercased()].joined(separator: "|")
 		let acceptedSimilar = DurableMemory.shared.recentlyAcceptedActionIds(contextKey: feedbackContextKey)
@@ -1423,6 +1851,14 @@ final class ContextEventProducer {
 		let liquidWorkflowAvailable = liquidWorkflowSpecificCount >= 2
 		let liquidCandidate: PortfolioCandidate? = {
 			guard let id = liquidFloat.id, let action = WorkflowActionOntology.byId[id] else { return nil }
+			let proposalID = "liquid_router:\(id)"
+			ProposalActionContextRouter.decide(
+				proposalID: proposalID,
+				capabilityID: id,
+				signals: liquidSignals,
+				lane: "liquid_router"
+			)
+			ProposalActionContextRouter.noteUsefulIfRouterBacked(proposalID: proposalID, capabilityID: id)
 			return PortfolioCandidate(
 				lane: .research,
 				title: LiquidActionRouter.displayTitle(for: action, signals: liquidSignals),
@@ -1469,15 +1905,18 @@ final class ContextEventProducer {
 		}
 		print("[LiquidPortfolioMerge] liquid=\(liquidSelection.panel.joined(separator: ",")) cheap=\(cheapIds.joined(separator: ",")) final=\(finalPortfolioIds.joined(separator: ","))")
 		let cheapWinner = portfolioResult.floatingCandidate
-		let genericCaptureIds: Set<String> = ["capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint"]
-		let selectedCandidate: PortfolioCandidate? = {
+		let isGenericCaptureCapability: (String) -> Bool = { capabilityId in
+			let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityId)
+			return traits.contains(.internalAcquisitionAction)
+		}
+		let floatingPick: PortfolioCandidate? = {
 			// Phase 60 — Liquid may only override the cheap/default winner when
 			// its candidate actually passed the proposal-worthiness gate
 			// (liquidFloat.id is nil otherwise: floatingCandidate gates it).
 			// Existence of workflow actions is no longer enough.
 			if liquidWorkflowAvailable, let liquidCandidate {
 				print("[LiquidOverrideCheck] old=\(cheapWinner?.capabilityId ?? "none") new=\(liquidCandidate.capabilityId) allowed=yes reason=worthiness_passed")
-				if let old = cheapWinner, genericCaptureIds.contains(old.capabilityId) {
+				if let old = cheapWinner, isGenericCaptureCapability(old.capabilityId) {
 					print("[LiveLiquidOverride] old_winner=\(old.capabilityId) new_winner=\(liquidCandidate.capabilityId) reason=worthy_workflow_action")
 					print("[CheapPortfolioDemotion] capability=\(old.capabilityId) reason=liquid_workflow_available")
 					print("[GenericCaptureDemotion] reason=specific_capture_available")
@@ -1493,7 +1932,7 @@ final class ContextEventProducer {
 			// Phase 60 — silence-first: in communication/finance/normal-browsing
 			// contexts a bare capture/setup card is an interruption, not help.
 			// Panel keeps the utilities; floating stays quiet.
-			if let cheap = cheapWinner, genericCaptureIds.contains(cheap.capabilityId) {
+			if let cheap = cheapWinner, isGenericCaptureCapability(cheap.capabilityId) {
 				let content = ContentTypeClassifier.classify(liquidSignals)
 				let cluster = ComparableCandidateDetector.detect(signals: liquidSignals, content: content)
 				let cheapActivity = BrowserActivityClassifier.classify(signals: liquidSignals, content: content, cluster: cluster)
@@ -1512,9 +1951,32 @@ final class ContextEventProducer {
 			}
 			return cheapWinner
 		}()
+		// Product-surface enforcement (the real gate, not the audit log). Environment
+		// utilities — window-arrange, focus-media, reference-collection, workspace
+		// save/restore — must NEVER be a primary floating product proposal in normal
+		// mode. They were leaking to the floating surface here, via the cheap
+		// portfolio → AmbientJarvisSuggestion path, which bypasses
+		// LivePathDecision.logVisible (that only audits/logs; it does not gate this
+		// emission). That single leak is why the live product kept surfacing "arrange
+		// these two windows" / "play focus music" cards and felt like a narrow utility
+		// drawer. A floating proposal must be a content-grounded or workflow action; if
+		// the only candidate is a manual utility, the assistant stays honestly quiet.
+		let selectedCandidate: PortfolioCandidate? = {
+			guard let pick = floatingPick else { return nil }
+			let canonical = ActionAliasResolver.canonicalID(for: pick.capabilityId)
+			if !ProductSurfacePolicy.manualControlsVisible,
+			   ProductSurfacePolicy.isManualUtility(pick.capabilityId) || ProductSurfacePolicy.isManualUtility(canonical) {
+				print("[ManualUtilityFloatingSuppressed] capability=\(pick.capabilityId) source=\(pick.sourcePath) reason=not_product_surface")
+				print("[PrimarySurfaceDecision] surface=none reason=only_candidate_was_manual_utility")
+				gpSuppressSurfacePolicy += 1
+				return nil
+			}
+			return pick
+		}()
 		if let selectedCandidate {
 			let source = selectedCandidate.sourcePath == "liquid_router" ? "liquid_router" : "cheap_portfolio"
 			print("[LiveActionSource] selected_source=\(source) reason=\(source == "liquid_router" ? "workflow_specific_actions_available" : "no_liquid_workflow_override")")
+			print("[PrimarySurfaceDecision] surface=floating reason=\(source == "liquid_router" ? "workflow_action_grounded" : "content_or_friction_candidate")")
 		} else {
 			print("[LiveActionSource] selected_source=fallback_capture reason=no_floating_candidate")
 		}
@@ -1587,10 +2049,10 @@ final class ContextEventProducer {
 			return entityKey
 		}()
 		let targetState: String = {
-			switch selected.capabilityId {
-			case "arrange_side_by_side", "switch_to_paired_app", "split_research_setup":
+			switch selected.lane {
+			case .friction:
 				return "present_not_arranged"
-			case "restore_workspace":
+			case .workspace:
 				return "workspace_items_missing"
 			default:
 				return selected.lane.rawValue
@@ -1652,6 +2114,16 @@ final class ContextEventProducer {
 		let cooldownKey = cooldownDecision.cooldownKey
 		lastCheapSuggestionAt = Date()
 		lastCheapSuggestionKey = cooldownKey
+		let proposalID = selected.sourcePath == "liquid_router"
+			? "liquid_router:\(selected.capabilityId)"
+			: "ambient_jarvis:\(selected.candidateID)"
+		ProposalActionContextRouter.decide(
+			proposalID: proposalID,
+			capabilityID: selected.capabilityId,
+			signals: liquidSignals,
+			lane: selected.lane.rawValue
+		)
+		ProposalActionContextRouter.noteUsefulIfRouterBacked(proposalID: proposalID, capabilityID: selected.capabilityId)
 		let suggestion = makeCheapSuggestion(
 			from: selected,
 			workflow: workflow,
@@ -1789,16 +2261,17 @@ final class ContextEventProducer {
 	}
 
 	static func ambientSuggestionKind(for capabilityID: String) -> AmbientSuggestionKind {
-		switch capabilityID {
-		case "arrange_side_by_side", "switch_to_paired_app", "restore_workspace", "split_research_setup":
-			return .friction_action
-		case "play_focus_media", "resume_focus_media":
-			return .media_action
-		case "copy_current_url", "collect_references", "remember_workspace":
+		let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+		if traits.contains(.metadataUtility) || traits.contains(.unverifiedBrowserMutator) {
 			return .utility_action
-		default:
-			return .comfort_action
 		}
+		if traits.contains(.workspaceArrangement) {
+			return .friction_action
+		}
+		if traits.contains(.mediaOrFocusSupport) {
+			return .media_action
+		}
+		return .comfort_action
 	}
 
 	private nonisolated static func behaviorState(

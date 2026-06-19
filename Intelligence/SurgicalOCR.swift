@@ -43,11 +43,94 @@ public struct SurgicalOCR: Sendable {
         let rect = derived.rect
         print("[SurgicalOCR] crop_source=\(derived.source)")
         print("[SurgicalOCR] crop_rect=\(Int(rect.origin.x)),\(Int(rect.origin.y)),\(Int(rect.size.width)),\(Int(rect.size.height))")
-        // The actual screen capture + Vision pass is owned by the existing OCR
-        // path; we only expose the rectangle here. Returning an empty regions
-        // array prevents any synthetic terms from leaking into downstream
-        // judgment.
-        print("[SurgicalOCR] regions=0 reason=crop_only_no_capture_in_phase20d_scope")
-        return []
+        guard let screenFrame = ScreenCaptureSource.captureSingleFrame() else {
+            print("[SurgicalOCR] skipped reason=capture_failed")
+            return []
+        }
+        
+        guard let cropped = screenFrame.image.cropping(to: rect) else {
+            print("[SurgicalOCR] skipped reason=crop_failed")
+            return []
+        }
+        
+        let result = await OCRProcessor.shared.recognizeText(from: cropped)
+        if result.text.isEmpty {
+            return []
+        }
+        
+        let qualityResult = ContentQualityModel.evaluate(text: result.text, frame: rect, source: "surgical_ocr_\(derived.source)")
+        print("[TargetedOCRDecision] type=\(qualityResult.type.rawValue) score=\(qualityResult.qualityScore) text_len=\(result.text.count)")
+        
+        if qualityResult.type == .unknown || qualityResult.type == .chrome || qualityResult.type == .ad {
+            print("[SurgicalOCR] rejected reason=junk_content type=\(qualityResult.type.rawValue)")
+            return []
+        }
+        
+        return [OCRRegion(text: result.text, frame: rect, confidence: Double(result.confidenceAverage ?? 0.0))]
+    }
+}
+
+public enum ContentRegionType: String, Sendable, Equatable {
+    case mainContent = "main_content"
+    case chrome = "chrome"
+    case nav = "nav"
+    case ad = "ad"
+    case unknown = "unknown"
+}
+
+public struct ContentRegion: Sendable, Equatable {
+    public let text: String
+    public let frame: CGRect?
+    public let type: ContentRegionType
+    public let qualityScore: Double
+}
+
+public struct ContentQualityResult: Sendable, Equatable {
+    public let regions: [ContentRegion]
+    public let usableChars: Int
+    
+    public var usableText: String {
+        regions.filter { $0.type == .mainContent }.map { $0.text }.joined(separator: "\n")
+    }
+}
+
+public enum ContentQualityModel {
+    public static func evaluate(text: String, frame: CGRect? = nil, source: String) -> ContentRegion {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return ContentRegion(text: text, frame: frame, type: .unknown, qualityScore: 0) }
+        
+        let lower = trimmed.lowercased()
+        
+        // Simple heuristics for junk vs content
+        if trimmed.count < 25 && (source.contains("ocr") || source.contains("ax")) {
+            // Short bursts are often nav or chrome
+            if lower.contains("menu") || lower.contains("home") || lower.contains("search") || lower.contains("login") {
+                return ContentRegion(text: text, frame: frame, type: .nav, qualityScore: 0.1)
+            }
+            return ContentRegion(text: text, frame: frame, type: .chrome, qualityScore: 0.2)
+        }
+        
+        // If it's very repetitive or looks like a list of links
+        let words = trimmed.split(separator: " ")
+        if words.count > 5 && Set(words).count < words.count / 3 {
+            return ContentRegion(text: text, frame: frame, type: .ad, qualityScore: 0.1)
+        }
+        
+        if lower.contains("sponsored") || lower.contains("advertisement") {
+            return ContentRegion(text: text, frame: frame, type: .ad, qualityScore: 0.1)
+        }
+        
+        return ContentRegion(text: text, frame: frame, type: .mainContent, qualityScore: 0.9)
+    }
+    
+    public static func evaluate(texts: [String], source: String) -> ContentQualityResult {
+        let regions = texts.map { evaluate(text: $0, source: source) }
+        let usable = regions.filter { $0.type == .mainContent }.reduce(0) { $0 + $1.text.count }
+        
+        let summaryTypeCounts = regions.reduce(into: [String: Int]()) { $0[$1.type.rawValue, default: 0] += 1 }
+        let summary = summaryTypeCounts.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+        print("[ContentQualitySummary] source=\(source) regions=\(regions.count) usable_chars=\(usable) breakdown: \(summary)")
+        
+        return ContentQualityResult(regions: regions, usableChars: usable)
     }
 }

@@ -241,6 +241,26 @@ public enum WorkingMemoryBuilder {
         print("[WorkingMemory] related_terms=\(relatedTerms.joined(separator: ","))")
         print("[WorkingMemory] background_terms=\(backgroundTerms.joined(separator: ","))")
         
+        var taggedEntities: [ContextSourceTag] = []
+        taggedEntities.append(ContextSourceTag(text: currentEntity, authority: .currentFocus))
+        taggedEntities.append(contentsOf: relatedFocusEntities.map { ContextSourceTag(text: $0, authority: .relatedFocus) })
+        taggedEntities.append(contentsOf: backgroundEntities.map { ContextSourceTag(text: $0, authority: .background) })
+        taggedEntities.append(contentsOf: staleEntities.map { ContextSourceTag(text: $0, authority: .stale) })
+        
+        var taggedTerms: [ContextSourceTag] = []
+        taggedTerms.append(contentsOf: currentFocusTerms.map { ContextSourceTag(text: $0, authority: .currentFocus) })
+        taggedTerms.append(contentsOf: relatedTerms.map { ContextSourceTag(text: $0, authority: .relatedFocus) })
+        taggedTerms.append(contentsOf: backgroundTerms.map { ContextSourceTag(text: $0, authority: .background) })
+        
+        let comparisonContamination = comparisonCandidates.filter { c in
+            !currentEntity.contains(c) && !relatedFocusEntities.contains(c)
+        }
+        let conceptsContamination = repeatedConcepts.filter { c in
+            !currentFocusTerms.contains(c) && !relatedTerms.contains(c)
+        }
+        
+        print("[CurrentFocusContaminationCheck] comparison_contamination_count=\(comparisonContamination.count) concept_contamination_count=\(conceptsContamination.count)")
+        
         let snapshot = WorkingMemorySnapshot(
             currentEntity: currentEntity,
             recentEntities: recentEntities,
@@ -252,7 +272,9 @@ public enum WorkingMemoryBuilder {
             backgroundEntities: backgroundEntities,
             currentFocusTerms: currentFocusTerms,
             relatedTerms: relatedTerms,
-            backgroundTerms: backgroundTerms
+            backgroundTerms: backgroundTerms,
+            taggedEntities: taggedEntities,
+            taggedTerms: taggedTerms
         )
         
         print("[WorkingMemory] recent_entities=[\(recentEntities.joined(separator: ", "))]")

@@ -1,5 +1,17 @@
 import Foundation
 
+public enum ContextAuthority: String, Sendable, Codable, Equatable {
+    case currentFocus = "current_focus"
+    case relatedFocus = "related_focus"
+    case background = "background"
+    case stale = "stale"
+}
+
+public struct ContextSourceTag: Sendable, Codable, Equatable {
+    public let text: String
+    public let authority: ContextAuthority
+}
+
 public struct WorkingMemorySnapshot: Sendable, Codable, Equatable {
     public let currentEntity: String
     public let recentEntities: [String]
@@ -12,6 +24,9 @@ public struct WorkingMemorySnapshot: Sendable, Codable, Equatable {
 	public let currentFocusTerms: [String]
 	public let relatedTerms: [String]
 	public let backgroundTerms: [String]
+	
+	public let taggedEntities: [ContextSourceTag]
+	public let taggedTerms: [ContextSourceTag]
     
     // Phase 20I: Trust Metrics
     public var workingMemoryTrust: Double {
@@ -32,7 +47,9 @@ public struct WorkingMemorySnapshot: Sendable, Codable, Equatable {
 		backgroundEntities: [String] = [],
 		currentFocusTerms: [String] = [],
 		relatedTerms: [String] = [],
-		backgroundTerms: [String] = []
+		backgroundTerms: [String] = [],
+		taggedEntities: [ContextSourceTag] = [],
+		taggedTerms: [ContextSourceTag] = []
     ) {
         self.currentEntity = currentEntity
         self.recentEntities = recentEntities
@@ -45,5 +62,7 @@ public struct WorkingMemorySnapshot: Sendable, Codable, Equatable {
 		self.currentFocusTerms = currentFocusTerms
 		self.relatedTerms = relatedTerms
 		self.backgroundTerms = backgroundTerms
+		self.taggedEntities = taggedEntities
+		self.taggedTerms = taggedTerms
     }
 }

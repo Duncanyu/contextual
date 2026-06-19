@@ -160,15 +160,19 @@ public actor ActiveContextRefresh {
             return Decision(action: .skip, reason: "low_budget")
         }
 
-        // Recent refresh — give it room.
+        // Recent refresh — give the CONTEXT refresh lane its own cooldown. This
+        // is independent of the proposal/suggestion cooldown below.
         if let age = lastRefreshAge, age < refreshCooldownSeconds {
+            print("[ContextRefreshCooldown] type=context active=yes reason=within_refresh_cooldown")
             return Decision(action: .skip, reason: "cooldown")
         }
+        print("[ContextRefreshCooldown] type=context active=no reason=refresh_cooldown_elapsed")
 
-        // Recent suggestion — back off so we don't pile up surfaces.
-        if let age = lastSuggestionAge, age < suggestionCooldownSeconds {
-            return Decision(action: .skip, reason: "recent_suggestion")
-        }
+        // Recent suggestion gates PROPOSAL surfacing, NOT context refresh. We log
+        // the proposal cooldown but keep enriching so evidence can improve between
+        // suggestions (recovery fix: this used to skip context refresh entirely).
+        let proposalCooldownActive = (lastSuggestionAge.map { $0 < suggestionCooldownSeconds }) ?? false
+        print("[ContextRefreshCooldown] type=proposal active=\(proposalCooldownActive ? "yes" : "no") reason=suggestion_cooldown_does_not_block_context")
 
         // The actual refresh signal: weak evidence + stable for ≥ 20s, OR
         // strong evidence + stable for ≥ 45s.
@@ -177,6 +181,15 @@ public actor ActiveContextRefresh {
         }
         if lastMeaningfulEventAge >= strongEvidenceStaleSeconds {
             return Decision(action: .refresh, reason: "long_stable_page", cheapEnvironmentAllowed: true)
+        }
+
+        // Recovery fix: the point of steady state is to DISCOVER meaningful
+        // context, not skip because it isn't present yet. When evidence is still
+        // metadata-only and the context is stable/actionable, schedule a cheap+AX
+        // refresh (bounded by refreshCooldownSeconds; no OCR, no VLM).
+        let metadataThin = ["title_only", "metadata_rich", "metadata_only", "browser_context", "synthetic"].contains(evidenceQuality)
+        if metadataThin && (cheapEnvAllowed || (workflow != .unknown && workflow != .idle)) {
+            return Decision(action: .refresh, reason: "steady_state_metadata_thin", cheapEnvironmentAllowed: true)
         }
 
 		if cheapEnvAllowed {
@@ -237,6 +250,7 @@ public actor ActiveContextRefresh {
             activityState: activityState,
             compartmentDwellSeconds: compartmentDwellSeconds
         )
+        print("[SteadyStateDecision] action=\(d.action.rawValue) reason=\(d.reason) cheap_env_allowed=\(d.cheapEnvironmentAllowed)")
         switch d.action {
         case .suppress: print("[ActiveContextRefresh] suppressed reason=\(d.reason)")
         case .skip:
