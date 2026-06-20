@@ -56,11 +56,24 @@ enum DebugMode {
 
 /// Hard product reset: what the assistant is allowed to put on the normal,
 /// user-facing surface. Manual utilities (capture/refresh/copy-url/collect-refs/
-/// remember-workspace/window-arrange/music) are environment capabilities, not
-/// assistance — they must NOT appear as product actions. They remain available
-/// internally (debug mode, command handlers, diagnostics) but never mask a
-/// missing assistant suggestion.
+/// remember-workspace/internal acquisition) are control-center capabilities, not
+/// proactive assistance. Contextual workspace friction and media/focus actions
+/// are not manual utilities by trait alone; they still have to pass usefulness,
+/// live-path, cooldown, and router gates before they can surface.
 enum ProductSurfacePolicy {
+    struct ManualUtilityDecision {
+        let capabilityID: String
+        let traits: Set<CapabilityPolicyTrait>
+        let manualUtility: Bool
+        let contextualAction: Bool
+        let reason: String
+
+        var traitsLabel: String {
+            let values = traits.map(\.rawValue).sorted()
+            return values.isEmpty ? "none" : values.joined(separator: ",")
+        }
+    }
+
     /// Manual control utilities are visible as product actions only in debug mode.
     /// In the normal/dogfood product surface they are suppressed entirely — the
     /// panel is honestly quiet rather than a toolbox.
@@ -69,16 +82,85 @@ enum ProductSurfacePolicy {
     /// UI-only manual commands that are not registry capabilities.
     private static let manualUtilityCommandIDs: Set<String> = ["refresh_context"]
 
+    static func classify(capabilityID: String) -> ManualUtilityDecision {
+        if manualUtilityCommandIDs.contains(capabilityID) {
+            return ManualUtilityDecision(
+                capabilityID: capabilityID,
+                traits: [],
+                manualUtility: true,
+                contextualAction: false,
+                reason: "manual_command"
+            )
+        }
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        let contextualTraits = traits.contains(.workspaceArrangement)
+            || traits.contains(.mediaOrFocusSupport)
+            || traits.contains(.frictionReduction)
+        let reason: String
+        let manual: Bool
+        if traits.contains(.internalAcquisitionAction) {
+            manual = true
+            reason = "internal_acquisition"
+        } else if traits.contains(.metadataUtility) {
+            manual = true
+            reason = "metadata_utility"
+        } else if traits.contains(.unverifiedBrowserMutator) {
+            manual = true
+            reason = "unverified_browser_mutator"
+        } else if traits.contains(.dangerousOrManualUtility) {
+            manual = true
+            reason = "dangerous_or_manual"
+        } else if contextualTraits {
+            manual = false
+            reason = "contextual_action"
+        } else {
+            manual = false
+            reason = "product_action"
+        }
+        return ManualUtilityDecision(
+            capabilityID: capabilityID,
+            traits: traits,
+            manualUtility: manual,
+            contextualAction: contextualTraits && !manual,
+            reason: reason
+        )
+    }
+
     /// Whether a capability is a manual environment utility that must not surface
     /// as a product action in normal mode.
     static func isManualUtility(_ capabilityID: String) -> Bool {
-        if manualUtilityCommandIDs.contains(capabilityID) { return true }
-        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
-        return traits.contains(.internalAcquisitionAction)
-            || traits.contains(.metadataUtility)
-            || traits.contains(.workspaceArrangement)
-            || traits.contains(.mediaOrFocusSupport)
-            || traits.contains(.unverifiedBrowserMutator)
+        classify(capabilityID: capabilityID).manualUtility
+    }
+
+    @discardableResult
+    static func logClassification(capabilityID: String) -> ManualUtilityDecision {
+        let decision = classify(capabilityID: capabilityID)
+        print("[ContextualActionClassification] capability=\(capabilityID) traits=\(decision.traitsLabel) manual_utility=\(decision.manualUtility ? "yes" : "no") reason=\(decision.reason)")
+        return decision
+    }
+
+    static func logSuppressionAudit(
+        candidate: String,
+        suppressed: Bool,
+        reason: String,
+        classification: ManualUtilityDecision? = nil
+    ) {
+        let decision = classification ?? classify(capabilityID: candidate)
+        print("[ManualUtilitySuppressionAudit] candidate=\(candidate) suppressed=\(suppressed ? "yes" : "no") reason=\(reason) contextual=\(decision.contextualAction ? "yes" : "no")")
+        if suppressed && decision.contextualAction {
+            PassiveDogfoodMonitor.shared.noteContextualActionMisclassifiedManual()
+            print("[NoContextualActionMisclassifiedAsManualUtility] status=fail count=1")
+        } else {
+            print("[NoContextualActionMisclassifiedAsManualUtility] status=pass count=0")
+        }
+    }
+
+    static func logManualUtilityOnlyInvariant(suppressed: Bool, contextualUseful: Bool) {
+        let fail = suppressed && contextualUseful
+        if fail {
+            PassiveDogfoodMonitor.shared.noteManualUtilityOnlySuppression()
+        }
+        print("[NoOnlyCandidateWasManualUtilityWhenContextualActionUseful] status=\(fail ? "fail" : "pass") count=\(fail ? 1 : 0)")
     }
 }
 

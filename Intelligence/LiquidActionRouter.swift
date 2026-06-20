@@ -74,9 +74,9 @@ struct DetectedWorkflow: Sendable {
 enum WorkflowDetectors {
 
     static let formTerms = [
-        "osap", "application", "apply", "eligibility", "financial information",
+        "application", "apply", "eligibility", "financial information",
         "personal info", "current situation", "select your program", "program",
-        "enrolment", "enrollment", "student aid", "form", "questionnaire",
+        "enrolment", "enrollment", "form", "questionnaire",
         "registration", "submit"
     ]
 

@@ -542,6 +542,22 @@ enum ResultInteractionMatrixSelfTest {
         let resumeOK = identityResolves && (resumeStatus == .success || resumeStatus == .partial)
         test("resume_composed_parent", resumeOK, "identity=\(identityResolves) status=\(resumeStatus.rawValue)")
 
+        // Dogfood regression: parent click stores captured text; follow-up must inherit it without override.
+        ComposedActionUIRegistry.resetForTests()
+        let storedPlan = matrixPlan()
+        let storedSignals = WorkflowSignals(activeApp: "Firefox", windowTitle: "Lease.pdf", urlHost: "", urlPath: "/", tabTitles: ["Lease"], selectedTextLength: 0, contentAvailable: false, workflow: "documents", visibleAppNames: ["Firefox"])
+        let storedIdentity = ComposedActionUIRegistry.register(plan: storedPlan, signals: storedSignals, surface: "panel")
+        let storedFollowUps = ComposedActionUIRegistry.registerFollowUps(
+            for: ComposedPlanResult(planID: storedPlan.id, title: storedPlan.userVisibleTitle, status: "success", outputs: [], renderedText: "ok", outputQuality: "good", suggestedNextPlan: nil),
+            parentUIID: storedIdentity.uiID,
+            plan: storedPlan
+        )
+        let storedFollowupID = storedFollowUps.first?.id ?? ""
+        _ = ComposedActionUIRegistry.storeCapturedText(for: storedIdentity.uiID, text: leaseText, sourceLabel: "browser_ax")
+        let inheritedResult = await ComposedActionClickDispatcher.executeFollowUp(id: storedFollowupID, sourceSurface: "followup")
+        let inheritedStatus = inheritedResult.executionStatus ?? .failedSilent
+        test("followup_inherits_stored_parent_context", inheritedStatus == .success || inheritedStatus == .partial, "status=\(inheritedStatus.rawValue) stored=yes override=no")
+
         // 3 & 4) Capture followups through the live capability executor. Capture
         //    success depends on screen-recording permission; the contract is that
         //    it never dead-loops as capture_needed and never logs missing_identity.
@@ -2326,6 +2342,8 @@ enum ProductDogfoodMatrix {
         print("[ProductDogfoodScenario] id=\(id) status=\(passfail(!captureRelabel)) reason=panel=\(selection.panel.joined(separator: ","))")
     }
 
+    /// Stable work context with no prior music history should offer music in the
+    /// panel (first_time_panel_safe), not suppress it entirely.
     static func scenarioStableWorkContextNoMusicPanel(_ ledger: Ledger) {
         let id = "stable_work_context_no_music_panel"
         DurableMemory.shared.setAcceptedMusicPreferenceOverrideForTests(false)
@@ -2358,12 +2376,15 @@ enum ProductDogfoodMatrix {
         )
         DurableMemory.shared.setAcceptedMusicPreferenceOverrideForTests(nil)
         let musicPanel = result.panelCandidates.contains { $0.capabilityId == "play_focus_media" }
-        if musicPanel {
-            ledger.stableWorkContextMusicPanel += 1
-            ledger.alwaysAllowedMusicWithoutEvidence += 1
+        let musicFloating = result.floatingCandidate?.capabilityId == "play_focus_media"
+        if !musicPanel {
             ledger.scenarioFailures.append(id)
         }
-        print("[ProductDogfoodScenario] id=\(id) status=\(passfail(!musicPanel)) reason=panel=\(result.panelCandidates.map(\.capabilityId).joined(separator: ","))")
+        if musicFloating {
+            ledger.alwaysAllowedMusicWithoutEvidence += 1
+            ledger.scenarioFailures.append("\(id)_unexpected_float")
+        }
+        print("[ProductDogfoodScenario] id=\(id) status=\(passfail(musicPanel && !musicFloating)) reason=panel=\(result.panelCandidates.map(\.capabilityId).joined(separator: ",")) floating=\(result.floatingCandidate?.capabilityId ?? "none")")
     }
 
     static func scenarioLeaseTitleOnlyNoExtractObligations(_ ledger: Ledger) {
@@ -2395,6 +2416,8 @@ enum ProductDogfoodMatrix {
         print("[ProductDogfoodScenario] id=\(id) status=\(passfail(hasLeaseAction)) reason=body_chars=\(lease.bodyChars) plans=\(plans.map(\.id).joined(separator: ",")) panel=\(selection.panel.joined(separator: ","))")
     }
 
+    /// Stable work context allows first-time music as a panel candidate; it must
+    /// not float without preference/history when a task action competes.
     static func scenarioStableWorkContextNoMusicWithoutPreference(_ ledger: Ledger) {
         let id = "stable_work_context_no_music_without_preference"
         let previousOverride: Bool? = nil
@@ -2427,13 +2450,14 @@ enum ProductDogfoodMatrix {
             )
         )
         DurableMemory.shared.setAcceptedMusicPreferenceOverrideForTests(previousOverride)
-        let hasMusic = result.allCandidates.contains { $0.capabilityId == "play_focus_media" } || result.floatingCandidate?.capabilityId == "play_focus_media"
-        if hasMusic {
-            ledger.stableWorkContextOnlyMusic += 1
+        let musicPanel = result.panelCandidates.contains { $0.capabilityId == "play_focus_media" }
+        let musicFloating = result.floatingCandidate?.capabilityId == "play_focus_media"
+        let ok = musicPanel && !musicFloating
+        if !ok {
             ledger.scenarioFailures.append(id)
         }
-        print("[NoStableWorkContextOnlyMusic] status=\(passfail(!hasMusic)) count=\(hasMusic ? 1 : 0)")
-        print("[ProductDogfoodScenario] id=\(id) status=\(passfail(!hasMusic)) reason=candidates=\(result.allCandidates.map(\.capabilityId).joined(separator: ",")) floating=\(result.floatingCandidate?.capabilityId ?? "none")")
+        print("[NoStableWorkContextOnlyMusic] status=\(passfail(ok)) count=\(ok ? 0 : 1)")
+        print("[ProductDogfoodScenario] id=\(id) status=\(passfail(ok)) reason=candidates=\(result.allCandidates.map(\.capabilityId).joined(separator: ",")) floating=\(result.floatingCandidate?.capabilityId ?? "none")")
     }
 
     static func scenarioInternalCaptureNeverFloats(_ appState: AppState, _ ledger: Ledger) {
@@ -2484,7 +2508,8 @@ enum ProductDogfoodMatrix {
             )
         )
         DurableMemory.shared.setAcceptedMusicPreferenceOverrideForTests(nil)
-        let contentFallbackIDs: Set<String> = ["code_diagnose_log", "diagnose_latest_error", "summarize_log_failure", "explicit_visible_capture_summary", "extract_action_items", "create_checklist", "play_focus_media"]
+        // Music/pause are local executors — not LLM content fallbacks when model is off.
+        let contentFallbackIDs: Set<String> = ["code_diagnose_log", "diagnose_latest_error", "summarize_log_failure", "explicit_visible_capture_summary", "extract_action_items", "create_checklist"]
         let cheapBad = result.allCandidates.contains { contentFallbackIDs.contains($0.capabilityId) }
         let hardcodedFallback = !plans.isEmpty || decision.surface.floating != nil || cheapBad
         if hardcodedFallback {

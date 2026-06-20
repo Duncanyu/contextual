@@ -404,7 +404,13 @@ enum UnifiedProductBrain {
         }
 
         return plans.map { plan in
-            let identity = ComposedActionUIRegistry.register(plan: plan, signals: signals, capturedText: signals.enrichedContext?.text, surface: "panel")
+            let prefetchText = signals.enrichedContext.flatMap { snapshot -> String? in
+                guard !UniversalContentReader.isContaminatedVisibleText(snapshot.text, source: "visible_ax") else {
+                    return nil
+                }
+                return snapshot.text
+            }
+            let identity = ComposedActionUIRegistry.register(plan: plan, signals: signals, capturedText: prefetchText, surface: "panel")
             ProposalActionContextRouter.decide(
                 proposalID: identity.uiID,
                 capabilityID: plan.id,

@@ -135,6 +135,61 @@ public struct BrowserContextExtractor: Sendable {
         )
     }
 
+    /// Best-effort article/body text from AX static text under the focused web area.
+    /// Beats OCR when the browser exposes readable body copy.
+    public static func visibleBodyText(appName: String, activeAppPID: pid_t?) -> String? {
+        guard browserNames.contains(appName) else { return nil }
+        guard AXIsProcessTrusted() else { return nil }
+        let app = NSWorkspace.shared.runningApplications.first { $0.localizedName == appName }
+        guard let pid = activeAppPID ?? app?.processIdentifier else { return nil }
+
+        let axApp = AXUIElementCreateApplication(pid)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused) == .success,
+              focused != nil else { return nil }
+        let win = focused as! AXUIElement
+        let walk = walkDescendants(of: win, depthLimit: 10, maxNodes: 1200)
+        guard let webArea = walk.first(where: { $0.role == "AXWebArea" })?.element else { return nil }
+
+        var fragments: [String] = []
+        collectStaticText(from: webArea, depth: 0, depthLimit: 14, out: &fragments, maxFragments: 400)
+        let joined = fragments
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count >= 8 }
+            .joined(separator: "\n")
+        let chars = joined.count
+        guard chars >= 120 else {
+            print("[BrowserVisibleBodyText] app=\(appName) chars=\(chars) status=insufficient")
+            return nil
+        }
+        let quality = ContentQualityModel.evaluate(text: joined, source: "browser_ax_body")
+        guard quality.type == .mainContent else {
+            print("[BrowserVisibleBodyText] app=\(appName) chars=\(chars) status=rejected reason=\(quality.type.rawValue)")
+            return nil
+        }
+        print("[BrowserVisibleBodyText] app=\(appName) chars=\(chars) status=accepted")
+        return joined
+    }
+
+    private static func collectStaticText(from element: AXUIElement, depth: Int, depthLimit: Int, out: inout [String], maxFragments: Int) {
+        if out.count >= maxFragments || depth >= depthLimit { return }
+        let role = BrowserAXProbe.stringAttr(element, kAXRoleAttribute as CFString) ?? ""
+        if role == "AXStaticText" || role == "AXHeading" || role == "AXTextArea" {
+            if let value = BrowserAXProbe.stringAttr(element, kAXValueAttribute as CFString), value.count >= 8 {
+                out.append(value)
+            } else if let title = BrowserAXProbe.stringAttr(element, kAXTitleAttribute as CFString), title.count >= 8 {
+                out.append(title)
+            }
+        }
+        var childrenRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+              let children = childrenRef as? [AXUIElement] else { return }
+        for child in children {
+            collectStaticText(from: child, depth: depth + 1, depthLimit: depthLimit, out: &out, maxFragments: maxFragments)
+            if out.count >= maxFragments { return }
+        }
+    }
+
     private static func walkDescendants(of element: AXUIElement, depthLimit: Int, depth: Int = 0, maxNodes: Int = 600) -> [BrowserAXProbe.AXNode] {
         if depth >= depthLimit { return [] }
         var out: [BrowserAXProbe.AXNode] = []

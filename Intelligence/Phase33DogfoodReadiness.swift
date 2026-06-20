@@ -636,46 +636,42 @@ enum SuggestionSurfacePolicy: Sendable {
                 print("[MusicSuggestion] suppressed reason=already_playing")
                 return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "already_playing", expectedFriction: .low)
             }
-            let hasMusicEvidence = ProposalEvidenceContracts.logMusicEvidence(
+            if recentFeedback == "accepted" {
+                print("[MusicSuggestion] suppressed reason=recently_accepted")
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "recently_accepted", expectedFriction: .low)
+            }
+            // Context-incompatibility (competitive gaming, video/calls, or any
+            // audio-sensitive activity) is the real reason to stay silent about music
+            // — check it first so an incompatible context is never offered music.
+            if isMusicSuppressed {
+                print("[MusicSuggestion] suppressed reason=context_mismatch")
+                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "context_mismatch", expectedFriction: .low)
+            }
+            // Focus-music revision — nothing is playing and the context is
+            // music-compatible, so music is a real suggestion the user should SEE.
+            // A first-time user with no prior acceptance/history is no longer
+            // suppressed: the old guard silently hid music on every fresh setup,
+            // directly contradicting the design note that lack of history keeps it
+            // panel_only, never hidden. Prior preference now only affects the panel
+            // reason label; the portfolio / LivePath gate decides whether it floats
+            // in stable focus work.
+            _ = ProposalEvidenceContracts.logMusicEvidence(
                 stableWorkContext: true,
                 userPreference: userAcceptedMusicBefore,
                 history: recentFeedback == "accepted",
                 recentSuccess: MusicActionFeedback.shared.recentSuccess()
             )
-            guard hasMusicEvidence else {
-                print("[MusicSuggestion] suppressed reason=no_music_preference_or_history")
-                print("[NoStableWorkContextOnlyMusic] status=pass count=0")
-                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "no_music_preference_or_history", expectedFriction: .low)
-            }
-            if recentFeedback == "accepted" {
-                print("[MusicSuggestion] suppressed reason=recently_accepted")
-                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "recently_accepted", expectedFriction: .low)
-            }
-            // Phase 40 — Music should remain visible in the panel even when task/layout actions
-            // are present. Suppressing it completely here caused music to vanish in nearly
-            // every real working context (browser + doc open = "not layout_already_good").
-            if isUserActivelySwitching || !isLayoutAlreadyGood || hasDurablePattern {
+            print("[NoStableWorkContextOnlyMusic] status=pass count=0")
+            // A window/task action competes for the single floating slot; keep music
+            // in the panel when the user is actively switching windows or a durable
+            // layout pattern is active, rather than fighting it for the float surface.
+            if isUserActivelySwitching || hasDurablePattern {
                 print("[MusicSuggestion] surface=panel reason=secondary_to_active_task")
                 return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "secondary_to_active_task", expectedFriction: .low)
             }
-            if isMusicSuppressed {
-                print("[MusicSuggestion] suppressed reason=context_mismatch")
-                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "context_mismatch", expectedFriction: .low)
-            }
-            
-            // Music can float only when:
-            // - music is not already playing
-            // - user has accepted music in similar context before
-            // - no recent dismiss/ignore for music
-            // - user is idle or transitioning (not typing check passed above)
-            // - current task context is compatible (not suppressed check passed above)
-            // Phase 40 — first-time users still need to see music as a usable panel action.
-            // `no_prior_music_acceptance` keeps it surfaced as panel_only, never suppressed.
-            if userAcceptedMusicBefore {
-                return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "music_preference_panel_only", expectedFriction: .medium)
-            } else {
-                return logAndReturn(capabilityId: capabilityId, surface: .suppressed, reason: "no_music_preference_or_history", expectedFriction: .low)
-            }
+            let musicReason = userAcceptedMusicBefore ? "music_preference_panel_only" : "first_time_panel_safe"
+            print("[MusicSuggestion] surface=panel reason=\(musicReason)")
+            return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: musicReason, expectedFriction: .medium)
             
         case "restore_workspace", "restore_research_tabs":
             // Restore can float only when an item is truly missing and executable.
@@ -726,14 +722,15 @@ enum SuggestionSurfacePolicy: Sendable {
                 return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "low_value_metadata", expectedFriction: .low)
             }
 
-        case "capture_visible_page", "capture_full_document", "explicit_visible_capture_summary", "enable_browser_bridge", "select_text_hint":
+        case "capture_visible_page", "capture_full_document", "enable_browser_bridge", "select_text_hint":
             print("[InternalAcquisitionAction] id=\(capabilityId) user_visible=followup_or_panel_only reason=surface_policy_panel_only")
             if capabilityId == "capture_visible_page" {
                 print("[NoFloatingCaptureVisiblePage] status=pass count=0")
             }
             return logAndReturn(capabilityId: capabilityId, surface: .panelOnly, reason: "internal_acquisition_panel_only", expectedFriction: .low)
             
-        case "extract_action_items", "create_checklist",
+        case "explicit_visible_capture_summary",
+             "extract_action_items", "create_checklist",
              "summarize_visible_content", "rewrite_text", "improve_text", "draft_reply", "explain_context":
             // Phase 43 — Cognitive preparation actions are the primary product value.
             // They should proactively float (not be buried in the panel) when safe conditions are met.

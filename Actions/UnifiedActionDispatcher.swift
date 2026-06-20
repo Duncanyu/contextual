@@ -367,16 +367,30 @@ enum UnifiedActionDispatcher {
             }
         case "followup_executor" where ComposedActionUIRegistry.isComposedFollowUpID(actionID):
             Task { @MainActor in
+                let parentUIID = ComposedActionUIRegistry.resolveFollowUp(actionID)?.parent.identity.uiID
                 let result = await ComposedActionClickDispatcher.executeFollowUp(id: actionID, sourceSurface: sourceSurface.rawValue)
+                // Composed follow-ups present the full card (with follow-up buttons)
+                // inside executeFollowUp via presentCognitiveResultSurface(parentUIID).
+                // A second presentActionCompletionSurface with the follow-up id would
+                // replace that card with a dismiss-only stub.
+                if let parentUIID,
+                   appState.activeFloatingResultSurface?.capabilityID == parentUIID
+                    || appState.activePanelResultSurface?.capabilityID == parentUIID {
+                    appState.logUnifiedActionResult(actionID: suggestion.id, status: result.executionStatus, cardShown: true, reason: nil)
+                    print("[FollowupActionResult] id=\(suggestion.id) parent=\(parentUIID) status=\(followupStatusName(result.executionStatus)) card=shown reason=already_presented_by_executor")
+                    return
+                }
+                let pending = parentUIID.flatMap { CapabilityExecutor.shared.takePendingResultCard(for: $0) }
+                    ?? CapabilityExecutor.shared.takePendingResultCard(for: actionID)
                 let shown = appState.presentActionCompletionSurface(
                     actionID: actionID,
-                    capabilityID: actionID,
+                    capabilityID: parentUIID ?? actionID,
                     title: suggestion.title,
                     status: result.executionStatus,
                     reason: nil,
                     outputText: result.outputText,
                     sourceSurface: sourceSurface,
-                    pendingPayload: CapabilityExecutor.shared.takePendingResultCard(for: actionID)
+                    pendingPayload: pending
                 )
                 appState.logUnifiedActionResult(actionID: suggestion.id, status: result.executionStatus, cardShown: shown, reason: nil)
                 print("[FollowupActionResult] id=\(suggestion.id) status=\(followupStatusName(result.executionStatus)) card=\(shown ? "shown" : "hidden")")
@@ -444,6 +458,9 @@ enum UnifiedActionDispatcher {
                 "followup_id": suggestion.id,
                 "source_action_id": sourceActionID as Any
             ]
+            if let scope = suggestion.debugMetadata?["context_scope"], !scope.isEmpty {
+                context["context_scope"] = scope
+            }
             if captureApproval {
                 context["allow_clipboard_capture"] = true
             }
@@ -465,6 +482,13 @@ enum UnifiedActionDispatcher {
                 print("[ResultOwnership] capture=\(capabilityID) parent=\(sourceActionID) owner=parent reason=capture_then_resume")
                 if pending != nil {
                     print("[ParentActionResultSurface] parent=\(sourceActionID) status=\(followupStatusName(status)) output_chars=\(pending?.outputChars ?? 0)")
+                } else if ComposedActionUIRegistry.resolve(sourceActionID) != nil {
+                    // Parent owns the card — resume already ran inside executeCapture.
+                    // If nothing pending, still log; composed executor presents on parent id.
+                    print("[CaptureWrapperResultSuppressed] capture=\(capabilityID) parent=\(sourceActionID) reason=parent_action_owns_result composed=yes")
+                    appState.logUnifiedActionResult(actionID: suggestion.id, status: status, cardShown: false, reason: "parent_action_owns_result")
+                    print("[FollowupActionResult] id=\(suggestion.id) status=\(followupStatusName(status)) card=parent_owned")
+                    return
                 } else {
                     print("[CaptureWrapperResultSuppressed] capture=\(capabilityID) parent=\(sourceActionID) reason=parent_action_owns_result")
                     print("[NoTinyCaptureWrapperResults] status=pass count=0")

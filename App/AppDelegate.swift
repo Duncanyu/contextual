@@ -5,11 +5,10 @@ extension Notification.Name {
 	static let contextualOpenTaskPanel = Notification.Name("com.contextual.openTaskPanel")
 }
 
-/// Part 1 — a granted-app launched via LaunchServices (`open ...app`) has no
-/// terminal, so its `print` output goes nowhere. This redirects stdout+stderr to
-/// a stable on-disk dogfood log so the REAL app process (with its real TCC
-/// permissions) can be monitored — instead of the misleading terminal-binary run.
-/// Self-test runs (CONTEXTUAL_RUN_*) keep their piped stdout so the harness reads it.
+/// Part 1 — product runs (Xcode Run, `open ...app`, etc.) mirror `print` output to
+/// `~/Library/Logs/Contextual/dogfood-live.log` while keeping the Xcode console
+/// stream when launched under the debugger. Self-test runs (CONTEXTUAL_RUN_*)
+/// keep piped stdout so the harness reads it.
 enum DogfoodLogSink {
 	struct ActiveLogStatus {
 		let path: String
@@ -20,6 +19,8 @@ enum DogfoodLogSink {
 	}
 
 	private(set) static var activePath: String?
+	private static var teeLogHandles: [UnsafeMutablePointer<FILE>] = []
+	private static let teeLock = NSLock()
 
 	static func installIfProductLaunch() {
 		let env = ProcessInfo.processInfo.environment
@@ -37,22 +38,99 @@ enum DogfoodLogSink {
 		} else {
 			path = "/tmp/contextual-granted-app-live.log"
 		}
-		// Every product log goes through print → stdout; mirror stderr too.
-		freopen(path, "a", stdout)
-		freopen(path, "a", stderr)
-		setvbuf(stdout, nil, _IOLBF, 0)
-		setvbuf(stderr, nil, _IOLBF, 0)
+		installStreamTee(for: STDOUT_FILENO, path: path, label: "stdout")
+		installStreamTee(for: STDERR_FILENO, path: path, label: "stderr")
 		activePath = path
-		// LaunchServices sets __CFBundleIdentifier; a bare terminal exec does not.
-		let launchedViaLS = env["__CFBundleIdentifier"] != nil
+		let launchChannel: String = {
+			if env["__XCODE_BUILT_PRODUCTS_DIR"] != nil { return "Xcode" }
+			if env["__CFBundleIdentifier"] != nil { return "LaunchServices" }
+			return "terminal"
+		}()
 		let bundleID = Bundle.main.bundleIdentifier ?? env["__CFBundleIdentifier"] ?? "unknown"
 		let pid = ProcessInfo.processInfo.processIdentifier
-		print("[DogfoodLogSink] path=\(path) active=yes")
-		print("[GrantedAppLaunchProof] launched_via=\(launchedViaLS ? "LaunchServices" : "terminal") bundle_id=\(bundleID) pid=\(pid)")
-		print("[NoTerminalOnlyLiveProof] status=\(launchedViaLS ? "pass" : "fail") count=\(launchedViaLS ? 0 : 1)")
+		print("[DogfoodLogSink] path=\(path) active=yes mirror=xcode_console")
+		print("")
+		print("======== Contextual diagnostics log ========")
+		print(path)
+		print("Also: ~/Desktop/Contextual-log-path.txt")
+		print("Menu bar icon → right-click → Reveal Diagnostics Log")
+		print("============================================")
+		print("")
+		writeLogPointerFile(path: path)
+		copyActiveLogPath(surface: "startup_auto")
+		// Repeat path on stderr so it survives even if stdout is not watched.
+		fputs("\n[Contextual] Diagnostics log: \(path)\n", stderr)
+		print("[GrantedAppLaunchProof] launched_via=\(launchChannel) bundle_id=\(bundleID) pid=\(pid)")
+		print("[NoTerminalOnlyLiveProof] status=\(launchChannel == "terminal" ? "fail" : "pass") count=\(launchChannel == "terminal" ? 1 : 0)")
 		PassiveDogfoodMonitor.shared.setActiveLogPath(path)
 		publishActiveLog(surface: "startup")
 		print("[DogfoodLogRevealAvailable] status=pass")
+		print("[LatestResultSnapshotPath] path=\(dir?.appendingPathComponent("latest-result.txt").path ?? "none")")
+		scheduleLogHeartbeat()
+	}
+
+	private static func scheduleLogHeartbeat() {
+		DispatchQueue.global(qos: .utility).async {
+			while true {
+				Thread.sleep(forTimeInterval: 60)
+				DispatchQueue.main.async {
+					logPathHeartbeat()
+				}
+			}
+		}
+	}
+
+	/// Duplicate a std stream to the on-disk log while preserving the original
+	/// fd so Xcode's debug console still receives output.
+	private static func installStreamTee(for fd: Int32, path: String, label: String) {
+		fflush(fd == STDOUT_FILENO ? stdout : stderr)
+		guard let logFile = fopen(path, "a") else {
+			print("[DogfoodLogSink] tee=\(label) status=failed reason=fopen")
+			return
+		}
+		setvbuf(logFile, nil, _IOLBF, 0)
+		teeLock.lock()
+		teeLogHandles.append(logFile)
+		teeLock.unlock()
+
+		var pipeFds: [Int32] = [0, 0]
+		guard pipe(&pipeFds) == 0 else {
+			print("[DogfoodLogSink] tee=\(label) status=failed reason=pipe")
+			return
+		}
+		let readFd = pipeFds[0]
+		let writeFd = pipeFds[1]
+		let originalFd = dup(fd)
+		guard originalFd >= 0 else {
+			close(readFd)
+			close(writeFd)
+			print("[DogfoodLogSink] tee=\(label) status=failed reason=dup")
+			return
+		}
+		guard dup2(writeFd, fd) >= 0 else {
+			close(originalFd)
+			close(readFd)
+			close(writeFd)
+			print("[DogfoodLogSink] tee=\(label) status=failed reason=dup2")
+			return
+		}
+		close(writeFd)
+
+		DispatchQueue.global(qos: .utility).async {
+			var buffer = [UInt8](repeating: 0, count: 4096)
+			while true {
+				let count = read(readFd, &buffer, buffer.count)
+				if count <= 0 { break }
+				_ = write(originalFd, buffer, count)
+				teeLock.lock()
+				_ = fwrite(buffer, 1, count, logFile)
+				fflush(logFile)
+				teeLock.unlock()
+			}
+			close(readFd)
+			close(originalFd)
+		}
+		print("[DogfoodLogSink] tee=\(label) status=pass path=\(path)")
 	}
 
 	static func activeStatus() -> ActiveLogStatus {
@@ -91,6 +169,60 @@ enum DogfoodLogSink {
 		guard status.path != "stdout" else { return }
 		NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: status.path)])
 		print("[DogfoodLogRevealAvailable] status=pass")
+	}
+
+	private static func writeLogPointerFile(path: String) {
+		let home = FileManager.default.homeDirectoryForCurrentUser
+		let pointers = [
+			home.appendingPathComponent("Desktop/Contextual-log-path.txt"),
+			home.appendingPathComponent("Contextual-log-path.txt")
+		]
+		let body = """
+		Contextual diagnostics log
+		\(path)
+
+		Xcode console also mirrors this file when running from Xcode.
+		Menu bar icon → right-click → Reveal Diagnostics Log
+		"""
+		for url in pointers {
+			try? body.write(to: url, atomically: true, encoding: .utf8)
+			print("[DogfoodLogPointerWritten] path=\(url.path)")
+		}
+	}
+
+	static func menuBarLogHint() -> String {
+		if let path = activePath {
+			return "Diagnostics log (right-click to reveal):\n\(path)"
+		}
+		return "Log: Xcode console (self-test mode)"
+	}
+
+	static func logPathHeartbeat() {
+		guard let path = activePath else { return }
+		let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+		let bytes = (attrs?[.size] as? NSNumber)?.uint64Value ?? 0
+		print("[DogfoodLogHeartbeat] path=\(path) bytes=\(bytes)")
+	}
+
+	/// Human-readable snapshot of the most recent result for quick inspection.
+	static func noteLatestResult(proposalID: String, source: String, chars: Int, blocked: Bool, preview: String) {
+		let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
+			.appendingPathComponent("Logs/Contextual", isDirectory: true)
+		guard let dir else { return }
+		try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+		let path = dir.appendingPathComponent("latest-result.txt").path
+		let stamp = ISO8601DateFormatter().string(from: Date())
+		let body = """
+		updated: \(stamp)
+		proposal: \(proposalID)
+		source: \(source)
+		chars: \(chars)
+		blocked: \(blocked ? "yes" : "no")
+		preview: \(String(preview.prefix(400)))
+		log: \(activePath ?? "stdout")
+		"""
+		try? body.write(toFile: path, atomically: true, encoding: .utf8)
+		print("[LatestResultSnapshot] path=\(path) proposal=\(proposalID) blocked=\(blocked ? "yes" : "no")")
 	}
 }
 

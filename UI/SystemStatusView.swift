@@ -7,6 +7,7 @@ struct SystemStatusView: View {
 
 	/// Bumps when the app becomes active so permission checks re-evaluate after returning from Settings.
 	@State private var activationEpoch: Int = 0
+	@State private var logStatus: DogfoodLogSink.ActiveLogStatus = DogfoodLogSink.activeStatus()
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 10) {
@@ -17,12 +18,18 @@ struct SystemStatusView: View {
 				screenRecordingSection
 				Divider().opacity(0.35)
 				localAISection
+				Divider().opacity(0.35)
+				diagnosticsLogSection
 			}
 			.contextualPanelCard()
 		}
 		.id(activationEpoch)
 		.onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
 			activationEpoch += 1
+			refreshLogStatus(surface: "system_status_activation")
+		}
+		.onAppear {
+			refreshLogStatus(surface: "system_status_visible")
 		}
 	}
 
@@ -213,6 +220,59 @@ struct SystemStatusView: View {
 			.font(.caption)
 			.buttonStyle(.borderless)
 		}
+	}
+
+	// MARK: - Diagnostics Log
+
+	private var diagnosticsLogSection: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			statusTitleRow(
+				icon: "doc.text.magnifyingglass",
+				title: "Diagnostics Log",
+				isGood: logStatus.active,
+				statusText: logStatus.active ? "Active" : "Unavailable"
+			)
+
+			Text(logStatus.path)
+				.font(.caption2.monospaced())
+				.foregroundStyle(.secondary)
+				.lineLimit(3)
+				.textSelection(.enabled)
+				.fixedSize(horizontal: false, vertical: true)
+
+			Text("PID \(logStatus.pid) · \(byteCountString(logStatus.bytes)) · mtime \(logStatus.mtime)")
+				.font(.caption2)
+				.foregroundStyle(.tertiary)
+				.lineLimit(2)
+				.fixedSize(horizontal: false, vertical: true)
+
+			HStack(spacing: 8) {
+				Button("Copy Log Path") {
+					DogfoodLogSink.copyActiveLogPath(surface: "system_status_copy")
+					refreshLogStatus(surface: "system_status_copy_after")
+				}
+				.buttonStyle(.bordered)
+				.controlSize(.small)
+				.disabled(!logStatus.active)
+
+				Button("Reveal Log") {
+					DogfoodLogSink.revealActiveLog(surface: "system_status_reveal")
+					refreshLogStatus(surface: "system_status_reveal_after")
+				}
+				.buttonStyle(.bordered)
+				.controlSize(.small)
+				.disabled(!logStatus.active)
+			}
+		}
+	}
+
+	private func refreshLogStatus(surface: String) {
+		logStatus = DogfoodLogSink.publishActiveLog(surface: surface)
+		print("[DogfoodLogFindabilityUI] normal_mode_visible=yes copy_available=\(logStatus.active ? "yes" : "no") reveal_available=\(logStatus.active ? "yes" : "no") path=\(logStatus.path) pid=\(logStatus.pid)")
+	}
+
+	private func byteCountString(_ bytes: UInt64) -> String {
+		ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
 	}
 
 	// MARK: - Shared row chrome

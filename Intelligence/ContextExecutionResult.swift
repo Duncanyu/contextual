@@ -817,18 +817,25 @@ public final class CapabilityExecutor {
         var nextStepText: String? = nil
         var missingContext: MissingContextCardModel? = nil
         let liquidAction = WorkflowActionOntology.byId[capability]
-        let composedAction = ComposedActionUIRegistry.resolve(capability)
+        let composedAction: RegisteredComposedAction? = {
+            if let direct = ComposedActionUIRegistry.resolve(capability) { return direct }
+            if ComposedActionUIRegistry.isComposedFollowUpID(capability),
+               let followUp = ComposedActionUIRegistry.resolveFollowUp(capability) {
+                return followUp.parent
+            }
+            return nil
+        }()
         var sourceLabel = SourceScopePresenter.display(scope: scope, capability: capability, rawSource: source)
 
         if let composed = composedAction {
             displayTitle = composed.identity.title
             sourceLabel = composed.identity.sourceScope == "capture_pending" ? "current page content" : "visible content"
             if status == "needs_capture" {
-                displayTitle = "Capture needed: \(composed.identity.title)"
-                displayOutput = "This action needs page content before it can finish. Capture the visible page or document to continue."
-                floatingText = displayOutput
-                nextStepText = "Capture content to run the composed action."
-                print("[ComposedMissingContextCard] id=\(capability) missing=\(composed.plan.missingInputs.joined(separator: ",")) next=capture_visible_page")
+                // Never prompt the user to manually capture — autonomous acquire
+                // already ran (or failed) before this presenter was called.
+                print("[NoCapturePromptShown] id=\(capability) reason=composed_needs_capture_suppressed")
+                print("[ComposedMissingContextCard] id=\(capability) missing=\(composed.plan.missingInputs.joined(separator: ",")) next=none card=suppressed")
+                return false
             } else {
                 displayOutput = outputText
             }
@@ -1047,29 +1054,21 @@ public final class CapabilityExecutor {
             print("[ContextExecutionResult] followups=\(dynamicActions.count) source_action=\(capability)")
         }
         if let composed = composedAction {
-            if status != "success" {
-                let captureAction = ResultCardAction(
-                    id: "capture_full_document",
-                    title: "Capture full document",
-                    kind: .system,
-                    sourceActionID: capability,
-                    requiredScope: "full_document",
-                    risk: "read_only",
-                    enabled: true
-                )
-                card.actions.append(captureAction)
+            if status == "success" || status == "partial" || status == "failed" {
+                let composedActions = ComposedActionUIRegistry.registerFollowUps(for: ComposedPlanResult(
+                    planID: composed.plan.id,
+                    title: composed.plan.userVisibleTitle,
+                    status: status,
+                    outputs: [],
+                    renderedText: displayOutput,
+                    outputQuality: quality,
+                    suggestedNextPlan: composed.plan.followups.first
+                ), parentUIID: capability, plan: composed.plan)
+                card.actions.append(contentsOf: composedActions)
+                print("[ContextExecutionResult] composed_followups=\(composedActions.count) source_action=\(capability) status=\(status)")
+            } else {
+                print("[NoCapturePromptShown] id=\(capability) reason=skip_followups status=\(status)")
             }
-            let composedActions = ComposedActionUIRegistry.registerFollowUps(for: ComposedPlanResult(
-                planID: composed.plan.id,
-                title: composed.plan.userVisibleTitle,
-                status: status == "success" ? "success" : status,
-                outputs: [],
-                renderedText: displayOutput,
-                outputQuality: quality,
-                suggestedNextPlan: composed.plan.followups.first
-            ), parentUIID: capability, plan: composed.plan)
-            card.actions.append(contentsOf: composedActions)
-            print("[ContextExecutionResult] composed_followups=\(composedActions.count) source_action=\(capability)")
         }
 
         // Phase 58.6 — final UI copy gate, per surface. A card that fails the
@@ -1263,6 +1262,11 @@ public final class CapabilityExecutor {
 
     func takePendingResultCard(for capabilityID: String) -> PendingResultCardPayload? {
         pendingResultCards.removeValue(forKey: capabilityID)
+    }
+
+    func noteContextSourceForResult(resultID: String, sourceLabel: String, chars: Int) {
+        guard let appState else { return }
+        appState.updateContextChipSource(resultID: resultID, sourceLabel: sourceLabel, chars: chars)
     }
 
     func peekPendingResultCard(for capabilityID: String) -> PendingResultCardPayload? {
@@ -2562,17 +2566,46 @@ public final class CapabilityExecutor {
         // The old gate (`ucr.quality >= .axVisibleText`) rejected OCR-quality text
         // (`.visibleOCR` is lower), so the capture button always "failed" even when
         // OCR returned text — that was the dead loop.
-        let acquire = await UniversalContentReader.readOrAcquire(
-            ContentReadRequest(
+        let scopeHint = context["context_scope"] as? String ?? ""
+        let forceOCR = scopeHint == ContextScopeOption.ocrScreenshot.rawValue
+        let forceFullDocument = scopeHint == ContextScopeOption.fullDocument.rawValue
+            || scopeHint == ContextScopeOption.captureFullDocument.rawValue
+        let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        let acquire: ContentReadResult
+        if forceFullDocument {
+            acquire = await UniversalContentReader.acquireForContextScope(
+                scopeRaw: scopeHint,
                 capabilityID: capabilityId,
-                neededKind: isFullDocument ? .fullDocument : .visiblePageText,
                 trigger: sourceSurface == "followup" ? .followupClick : .userClick,
-                allowedCost: isFullDocument ? .expensiveExplicit : .medium,
-                allowOCR: true,
-                parentActionID: context["source_action_id"] as? String,
-                sourceLabel: "live_click"
+                sourceLabel: "context_chip_full_document",
+                appName: appName,
+                windowTitle: ""
             )
-        )
+            print("[ContextScopeFullDocumentForced] id=\(capabilityId) chars=\(acquire.chars) source=\(acquire.source)")
+        } else if forceOCR {
+            let ocrRoute = UniversalContentReader.isBrowserAppName(appName) ? "surgical_ocr" : "full_frame_ocr"
+            acquire = await UniversalContentReader.acquirePlannedRouteForClick(
+                planned: ocrRoute,
+                capabilityID: capabilityId,
+                trigger: sourceSurface == "followup" ? .followupClick : .userClick,
+                sourceLabel: "context_chip_ocr",
+                appName: appName,
+                windowTitle: ""
+            )
+            print("[ContextScopeOCRForced] id=\(capabilityId) route=\(ocrRoute) chars=\(acquire.chars) source=\(acquire.source)")
+        } else {
+            acquire = await UniversalContentReader.readOrAcquire(
+                ContentReadRequest(
+                    capabilityID: capabilityId,
+                    neededKind: isFullDocument ? .fullDocument : .visiblePageText,
+                    trigger: sourceSurface == "followup" ? .followupClick : .userClick,
+                    allowedCost: isFullDocument ? .expensiveExplicit : .medium,
+                    allowOCR: true,
+                    parentActionID: context["source_action_id"] as? String,
+                    sourceLabel: "live_click"
+                )
+            )
+        }
         print("[CapabilityExecutionInput] id=\(capabilityId) content_source=\(acquire.source) chars=\(acquire.chars)")
         print("[CaptureActionResult] id=\(capabilityId) status=\(acquire.canContinue ? "success" : "failed") quality=\(acquire.quality.rawValue) chars=\(acquire.chars)")
 
@@ -4556,7 +4589,7 @@ public enum ContextScopeCatalog {
         if s.contains("select") { return .selectedText }
         if s.contains("full") || s.contains("document") || s.contains("agreement") { return .fullDocument }
         if s.contains("clipboard") { return .clipboard }
-        if s.contains("ocr") || s.contains("screenshot") || s.contains("screen") { return .ocrScreenshot }
+        if s.contains("surgical") || s.contains("full_frame") || s.contains("ocr") || s.contains("screenshot") || s.contains("screen") { return .ocrScreenshot }
         if s.contains("page") { return .visiblePage }
         return .visibleText
     }

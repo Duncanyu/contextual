@@ -202,9 +202,9 @@ struct ResultSurfaceCardContent: View {
 				}
 			}
 
-			cardButtons(actions, capabilityID: capabilityID, copyText: nil)
+			contextScopeChip
 
-			sourceFooter
+			cardButtons(actions, capabilityID: capabilityID, copyText: nil)
 		}
 		.padding(14)
 		.frame(width: isFloating ? 300 : nil)
@@ -222,8 +222,9 @@ struct ResultSurfaceCardContent: View {
 
 	@ViewBuilder
 	private func resultCard(_ card: ResearchResultCardState) -> some View {
+		let expanded = isFloating && appState.isFloatingResultExpanded(for: card.capabilityID)
+		let compactBody = (card.floatingText ?? "").isEmpty ? card.text : (card.floatingText ?? "")
 		VStack(alignment: .leading, spacing: 10) {
-			// Header row: icon + title + dismiss
 			HStack(spacing: 8) {
 				Image(systemName: cardIcon(card.cardType))
 					.foregroundStyle(cardAccentColor(card.cardType))
@@ -243,9 +244,19 @@ struct ResultSurfaceCardContent: View {
 				.buttonStyle(.plain)
 			}
 
-			// Body — floating shows the compact summary; the panel shows detail.
-			if isFloating {
-				Text((card.floatingText ?? "").isEmpty ? card.text : (card.floatingText ?? ""))
+			contextScopeChip
+
+			if isFloating && expanded {
+				ScrollView {
+					Text(card.text)
+						.font(.callout)
+						.foregroundStyle(.secondary)
+						.frame(maxWidth: .infinity, alignment: .leading)
+						.textSelection(.enabled)
+				}
+				.frame(maxHeight: 360)
+			} else if isFloating {
+				Text(compactBody)
 					.font(.callout)
 					.foregroundStyle(.secondary)
 					.frame(maxWidth: .infinity, alignment: .leading)
@@ -262,7 +273,10 @@ struct ResultSurfaceCardContent: View {
 				.frame(maxHeight: 280)
 			}
 
-			// What to do next — one sentence, not a pile.
+			if isFloating {
+				floatingExpandControl(for: card.capabilityID)
+			}
+
 			if let next = card.nextStepText, !next.isEmpty {
 				VStack(alignment: .leading, spacing: 2) {
 					Text("Next")
@@ -276,12 +290,10 @@ struct ResultSurfaceCardContent: View {
 			}
 
 			cardButtons(card.actions, capabilityID: card.capabilityID, copyText: card.text)
-
-			sourceFooter
 		}
 		.padding(14)
-		.frame(width: isFloating ? 300 : nil)
-		.frame(maxWidth: isFloating ? 300 : .infinity, alignment: .leading)
+		.frame(width: isFloating ? (expanded ? 420 : 300) : nil)
+		.frame(maxWidth: isFloating ? (expanded ? 420 : 300) : .infinity, alignment: .leading)
 		.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 		.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 		.overlay(
@@ -289,6 +301,38 @@ struct ResultSurfaceCardContent: View {
 				.stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
 		)
 		.shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+	}
+
+	@ViewBuilder
+	private var contextScopeChip: some View {
+		let chip = appState.contextChipDisplay(for: surface)
+		Menu {
+			ForEach(appState.contextScopeOptions(for: surface), id: \.rawValue) { option in
+				Button {
+					appState.selectContextScope(option, for: surface)
+				} label: {
+					Label(option.menuLabel, systemImage: option.systemImage)
+				}
+			}
+		} label: {
+			HStack(spacing: 5) {
+				if chip.isPending {
+					ProgressView().controlSize(.mini)
+				} else {
+					Image(systemName: chip.systemImage)
+						.font(.caption2)
+				}
+				Text(chip.label)
+					.font(.caption2.weight(.medium))
+				Image(systemName: "chevron.down")
+					.font(.system(size: 8, weight: .semibold))
+			}
+			.padding(.horizontal, 8)
+			.padding(.vertical, 4)
+			.background(Color(nsColor: .controlBackgroundColor).opacity(0.9), in: Capsule())
+		}
+		.menuStyle(.borderlessButton)
+		.fixedSize()
 	}
 
 	// MARK: - Shared sections (Phase 58.6)
@@ -314,29 +358,34 @@ struct ResultSurfaceCardContent: View {
 					.controlSize(.small)
 				}
 			}
-			if copyText != nil || isFloating {
-				HStack(spacing: 10) {
-					if let copyText {
-						Button("Copy summary") {
-							NSPasteboard.general.clearContents()
-							NSPasteboard.general.setString(copyText, forType: .string)
-							print("[ClipboardWrite] capability=\(capabilityID) reason=user_clicked_copy")
-						}
-						.buttonStyle(.bordered)
-						.controlSize(.small)
-					}
-					if isFloating {
-						Button("Details") {
-							appState.dismissResultSurface(reason: "user")
-							NotificationCenter.default.post(name: NSNotification.Name("contextualOpenTaskPanel"), object: nil)
-						}
-						.buttonStyle(.bordered)
-						.controlSize(.small)
-						.help("Open the panel for the full result")
-					}
+			if copyText != nil {
+				Button("Copy summary") {
+					NSPasteboard.general.clearContents()
+					NSPasteboard.general.setString(copyText ?? "", forType: .string)
+					print("[ClipboardWrite] capability=\(capabilityID) reason=user_clicked_copy")
 				}
+				.buttonStyle(.bordered)
+				.controlSize(.small)
 			}
 		}
+	}
+
+	@ViewBuilder
+	private func floatingExpandControl(for capabilityID: String) -> some View {
+		let expanded = appState.isFloatingResultExpanded(for: capabilityID)
+		HStack {
+			Spacer()
+			Button {
+				appState.toggleFloatingResultExpanded(for: capabilityID)
+			} label: {
+				Image(systemName: expanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+					.font(.body.weight(.medium))
+					.foregroundStyle(.secondary)
+			}
+			.buttonStyle(.plain)
+			.help(expanded ? "Collapse result" : "Expand full result")
+		}
+		.padding(.top, 2)
 	}
 
 	/// One human source line — what the assistant actually read.

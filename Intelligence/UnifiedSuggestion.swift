@@ -129,6 +129,11 @@ struct UnifiedSuggestion: Identifiable, Equatable {
         
         let valid = validate()
         print("[UnifiedSuggestionCreated] id=\(id) kind=\(kind.rawValue) source=\(source.rawValue) title=\"\(title)\" target=\(target.rawValue) surface=eligible_for_floating:\(surfacePolicy.eligibleForFloating)")
+        PassiveDogfoodMonitor.shared.noteProposalCandidateGenerated(
+            proposalID: originalActionId ?? id,
+            capabilityID: originalActionId ?? id,
+            source: source.rawValue
+        )
         if !valid {
             print("[UnifiedSuggestionValidation] id=\(id) valid=no reason=invalid_surface_policy")
         }

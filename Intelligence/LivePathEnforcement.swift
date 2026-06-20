@@ -264,8 +264,16 @@ enum LivePathEnforcer {
                 print("[ActionUsefulness] capability=\(capabilityID) eligible=yes surface=panel_only reason=secondary_to_active_task")
                 return (decision, nil)
             }
-            if evaluationContext.contextStability != "stable" || confidence < 0.55 {
-                // Weak/transient context — keep music in panel so it isn't dropped entirely.
+            // A formed focus context (stability "stable" OR "weak" — just not a
+            // flickering "transient" one) with reasonable confidence is enough for
+            // music to float. The old "must be perfectly stable" bar buried music in
+            // the panel during exactly the sustained focus work where it is wanted
+            // (145 panel demotions in one dogfood session). Only truly transient or
+            // low-confidence context now keeps it panel-only. Context-compatibility
+            // (no competitive gaming / audio-sensitive activity) is already enforced
+            // upstream via the music-suppression gate before evaluate() is reached.
+            if evaluationContext.contextStability == "transient" || confidence < 0.40 {
+                // Transient/low-confidence context — keep music in panel so it isn't dropped entirely.
                 let decision = LivePathDecision(
                     capabilityID: capabilityID,
                     sourcePath: evaluationContext.sourcePath,
@@ -623,7 +631,10 @@ enum LivePathEnforcementSelfTest {
         check("d_arrange_contract_synthesized", contractOk != nil)
         check("d_arrange_can_float", arrangeOk.eligibleForFloating)
 
-        // Test E: play_focus_media in weak context → panelOnly weak_or_transient_context (Phase 40: not suppressed)
+        // Test E: play_focus_media in a FORMED (weak-but-not-transient) focus context
+        // now floats — sustained focus work is exactly when the music suggestion is
+        // wanted, instead of being buried in the panel. (Truly transient/low-confidence
+        // context still stays panel-only; see the transient case in Phase361.)
         let weakCtx = LivePathEvaluationContext(
             sourcePath: "cheap_portfolio",
             contextStability: "weak",
@@ -643,9 +654,8 @@ enum LivePathEnforcementSelfTest {
             confidence: 0.9,
             evaluationContext: weakCtx
         )
-        // Phase 40: weak context keeps music in panel (not suppressed) so it remains accessible.
-        check("e_music_weak_suppressed", musicWeak.surface == .panelOnly)
-        check("e_music_weak_reason", musicWeak.reason == "weak_or_transient_context")
+        check("e_music_weak_floats_in_focus_context", musicWeak.surface == .floating)
+        check("e_music_weak_reason", musicWeak.reason == "stable_work_context_no_higher_priority")
 
         // Test F: play_focus_media in stable context with higher-priority task → suppressed task_action_preferred
         let taskCtx = LivePathEvaluationContext(

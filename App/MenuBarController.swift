@@ -33,6 +33,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
 	private let statusItem: NSStatusItem
 	private let popover: NSPopover
 	private let appState: AppState
+	private var diagnosticsMenu: NSMenu?
 	private var cancellables = Set<AnyCancellable>()
 
 	var isPopoverShown: Bool { popover.isShown }
@@ -52,8 +53,17 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         super.init()
         popover.delegate = self
 
-		statusItem.button?.action = #selector(togglePopover(_:))
+		statusItem.button?.action = #selector(handleStatusItemClick(_:))
 		statusItem.button?.target = self
+		statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+		statusItem.button?.toolTip = DogfoodLogSink.menuBarLogHint()
+
+		let menu = NSMenu()
+		menu.addItem(withTitle: "Open Assistant", action: #selector(togglePopover(_:)), keyEquivalent: "")
+		menu.addItem(.separator())
+		menu.addItem(withTitle: "Reveal Diagnostics Log", action: #selector(revealDiagnosticsLog(_:)), keyEquivalent: "")
+		menu.addItem(withTitle: "Copy Log Path", action: #selector(copyDiagnosticsLogPath(_:)), keyEquivalent: "")
+		diagnosticsMenu = menu
 
 		// Phase 69 (Issue 2): the panel is a fixed control center anchored to the
 		// menu bar — moving/detaching was unreliable, so it is disabled. Large,
@@ -128,6 +138,15 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
 		return false
 	}
 
+	@objc private func handleStatusItemClick(_ sender: AnyObject?) {
+		if let event = NSApp.currentEvent, event.type == .rightMouseUp,
+		   let button = statusItem.button, let menu = diagnosticsMenu {
+			menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+			return
+		}
+		togglePopover(sender)
+	}
+
 	@objc private func togglePopover(_ sender: AnyObject?) {
 		if popover.isShown {
 			popover.performClose(sender)
@@ -138,6 +157,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
 		guard let button = statusItem.button else { return }
 		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 		onPopoverDidShow?()
+	}
+
+	@objc private func revealDiagnosticsLog(_ sender: AnyObject?) {
+		DogfoodLogSink.revealActiveLog(surface: "menu_bar")
+	}
+
+	@objc private func copyDiagnosticsLogPath(_ sender: AnyObject?) {
+		DogfoodLogSink.copyActiveLogPath(surface: "menu_bar")
 	}
 
     public func popoverDidClose(_ notification: Notification) {

@@ -87,6 +87,25 @@ enum FrictionOpportunityReasoner {
                 if tabsOpen {
                     print("[ProposalFunnelAudit] not_generated capability=restore_research_tabs reason=tabs_already_open")
                     print("[WorkspaceRestoreGate] can_restore=no reason=tabs_present")
+
+                    let inventory = WorkspaceRuntimeInventoryProvider.snapshot()
+                    let visibleApps = Array(Set(
+                        inventory.visibleWindows.map(\.appName).filter { !$0.isEmpty }
+                    ))
+                    if visibleApps.count >= 2 {
+                        let pair = Array(visibleApps.prefix(2))
+                        let arrangeOpp = FrictionOpportunity(
+                            capabilityId: "arrange_side_by_side",
+                            title: "Arrange \(pair[0]) and \(pair[1]) side by side?",
+                            frictionType: .repeated_tab_switching,
+                            frictionRemoved: "Reduces switching between open windows while you hop tabs",
+                            confidence: min(0.82, signal.confidence + 0.05),
+                            requiresConfirmation: true,
+                            involvedApps: pair
+                        )
+                        opportunities.append(arrangeOpp)
+                        generatedCandidate = arrangeOpp.capabilityId
+                    }
                     
                     let pinOpp = FrictionOpportunity(
                         capabilityId: "pin_reference_tabs",

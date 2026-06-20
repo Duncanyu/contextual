@@ -34,6 +34,9 @@ struct AssistantPanelView: View {
 				PanelHeaderBar()
 					.environmentObject(appState)
 
+				SystemStatusView()
+					.environmentObject(appState)
+
 				ContextAwarenessView(summary: appState.contextAwarenessSummary)
 
 				WorkflowContinuityDisplayView(summary: appState.workflowContinuitySummary)
@@ -44,9 +47,6 @@ struct AssistantPanelView: View {
 					.environmentObject(appState)
 
 				resultSection
-
-				SystemStatusView()
-					.environmentObject(appState)
 
 				assistantControlsSection
 

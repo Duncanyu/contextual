@@ -59,7 +59,8 @@ enum ContentTypeClassifier {
         let path = s.urlPath.lowercased()
         let app = s.activeApp.lowercased()
         let enrichedPreview = s.enrichedContext?.text.lowercased() ?? ""
-        let focus = [title, host, path, String(enrichedPreview.prefix(1_000))].joined(separator: " ")
+        let currentFocus = [title, host, path].joined(separator: " ")
+        let focus = currentFocus + " " + String(enrichedPreview.prefix(400))
         let isBrowser = browserApps.contains { app.contains($0) }
 
         func result(_ type: FocusedContentType, _ confidence: Double, _ signals: [String]) -> ClassifiedContent {
@@ -92,26 +93,30 @@ enum ContentTypeClassifier {
         }
 
         // ── Contract documents (any host that renders documents) ───────────
-        let nounHits = contractNouns.filter { focus.contains($0) }
+        // Current focus (title/host/path) owns the classification. Enriched body
+        // from a background tab must not promote lease/listing over the frontmost tab.
+        let titleNounHits = contractNouns.filter { currentFocus.contains($0) }
         let documentSurface = path.contains("/document") || path.contains("/edit")
             || path.contains(".pdf") || path.contains(".doc")
             || title.contains("google docs") || title.contains(" - word")
         // A group/feed/search URL is never a document, whatever the title says.
         let feedShapedURL = ["/groups/", "/group/", "/r/", "/community", "/forum", "/thread", "/marketplace", "/search"].contains { path.contains($0) }
-        if !nounHits.isEmpty && !feedShapedURL && (documentSurface || !isBrowser || nounHits.count >= 2) {
-            return result(.leaseOrContractDocument, 0.65 + Double(nounHits.count) * 0.12 + (documentSurface ? 0.1 : 0), nounHits.map { "doc_noun:\($0)" })
-        }
 
-        // ── Browser page kinds ──────────────────────────────────────────────
+        // ── Browser page kinds (current focus first) ────────────────────────
         if title.contains("inbox") || title.contains("mail") || host.hasPrefix("mail.")
             || title.contains("messages") || path.contains("/messages") || title.contains("chat") {
             return result(.messageThreadOrInbox, 0.75, ["message_terms"])
         }
-        let formPath = path.contains("/apply") || path.contains("/application") || path.contains("/form")
-        let formTermHits = ["application", "apply", "eligibility", "registration", "questionnaire", "enrolment", "enrollment"].filter { focus.contains($0) }
+        let formPath = path.contains("/apply") || path.contains("/application") || path.contains("/form") || path.contains("/enrol")
+        let formTermHits = ["application", "apply", "eligibility", "registration", "questionnaire", "enrolment", "enrollment"].filter { currentFocus.contains($0) }
         if formPath || formTermHits.count >= 2 {
             return result(.formOrApplication, 0.6 + Double(formTermHits.count) * 0.1, formTermHits + (formPath ? ["form_path"] : []))
         }
+        if !titleNounHits.isEmpty && !feedShapedURL && (documentSurface || !isBrowser || titleNounHits.count >= 2) {
+            return result(.leaseOrContractDocument, 0.65 + Double(titleNounHits.count) * 0.12 + (documentSurface ? 0.1 : 0), titleNounHits.map { "doc_noun:\($0)" })
+        }
+
+        // ── Remaining browser page kinds ────────────────────────────────────
         let groupPath = ["/groups/", "/group/", "/r/", "/community", "/forum", "/thread", "/t/"].filter { path.contains($0) }
         let groupTerms = ["group", "forum", "community", "subreddit", "thread"].filter { focus.contains($0) }
         let marketplaceSignals = (["/marketplace", "/classifieds"].filter { path.contains($0) })
@@ -473,6 +478,10 @@ enum ProposalEvidenceContracts {
     /// True when AX/OCR/enriched/selection provides enough readable body text.
     static func hasActualBodyEvidence(_ s: WorkflowSignals, minChars: Int = 80) -> Bool {
         if let enriched = s.enrichedContext, enriched.chars >= minChars {
+            if enriched.contaminationWarning != nil { return false }
+            if UniversalContentReader.isContaminatedVisibleText(enriched.text, source: "visible_ax") {
+                return false
+            }
             return true
         }
         if s.selectedTextLength >= minChars {
@@ -550,7 +559,13 @@ enum ProposalEvidenceContracts {
     }
 
     static func logMusicEvidence(stableWorkContext: Bool, userPreference: Bool, history: Bool, recentSuccess: Bool) -> Bool {
-        let allowed = userPreference || history || recentSuccess
+        // A stable work context is itself sufficient evidence to OFFER music. The
+        // old rule (preference OR history OR recentSuccess) was a chicken-and-egg:
+        // music never showed until it had been accepted, but it could not be
+        // accepted until it was shown — so a fresh setup never saw music at all.
+        // Context-compatibility (watching/gaming/audio-sensitive) is filtered by
+        // separate gates before this point; the user can still accept or dismiss.
+        let allowed = stableWorkContext || userPreference || history || recentSuccess
         print("[MusicEvidenceContract] stable_work_context=\(stableWorkContext ? "yes" : "no") user_preference=\(userPreference ? "yes" : "no") history=\(history ? "yes" : "no") recent_success=\(recentSuccess ? "yes" : "no") allowed=\(allowed ? "yes" : "no")")
         return allowed
     }

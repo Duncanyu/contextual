@@ -20,6 +20,8 @@ struct UniversalContentRequest: Sendable {
     let allowUserApprovedClipboardCapture: Bool
     let allowOCR: Bool
     let allowVision: Bool
+    /// When true (browser body reads), try OCR before browser AX tab chrome.
+    var preferOCROverBrowserAX: Bool = false
 
     static func forGoal(_ goal: ContentGoal, scope: ContentScope = .visibleContent) -> UniversalContentRequest {
         UniversalContentRequest(
@@ -233,16 +235,31 @@ enum UniversalContentReader {
             return finalizeResult(r, goal: request.goal, attempts: attempts)
         }
 
-        // 2. Try AXWebArea first (generic web content)
-        let webAreaResult = routeWebArea(app: app, request: request, attempts: &attempts)
-        if let r = webAreaResult, r.quality >= request.minimumQuality {
-            return finalizeResult(r, goal: request.goal, attempts: attempts)
+        // Browser body reads: OCR before AX chrome when the caller requests it.
+        if request.preferOCROverBrowserAX, request.allowOCR, request.privacyMode != .strict {
+            let earlyOCR = routeOCR(request: request, attempts: &attempts)
+            if let r = earlyOCR, r.quality >= request.minimumQuality {
+                print("[CaptureRouteOrder] browser_body ocr_before_ax=yes selected=ocr")
+                return finalizeResult(r, goal: request.goal, attempts: attempts)
+            }
         }
 
-        // 3. Generic app AX
-        let axResult = routeAppAX(request: request, attempts: &attempts)
-        if let r = axResult, r.quality >= request.minimumQuality {
-            return finalizeResult(r, goal: request.goal, attempts: attempts)
+        // Browser body reads skip AX tab chrome — OCR/clipboard routes only.
+        if !request.preferOCROverBrowserAX {
+            // 2. Try AXWebArea first (generic web content)
+            let webAreaResult = routeWebArea(app: app, request: request, attempts: &attempts)
+            if let r = webAreaResult, r.quality >= request.minimumQuality {
+                return finalizeResult(r, goal: request.goal, attempts: attempts)
+            }
+
+            // 3. Generic app AX
+            let axResult = routeAppAX(request: request, attempts: &attempts)
+            if let r = axResult, r.quality >= request.minimumQuality {
+                return finalizeResult(r, goal: request.goal, attempts: attempts)
+            }
+        } else {
+            attempts.append(attempt("browser_ax", available: false, status: "skipped", reason: "browser_body_prefers_ocr", chars: 0, quality: .none, coverage: .unknown))
+            print("[CaptureRouteAttempt] route=browser_ax available=no status=skipped reason=browser_body_prefers_ocr")
         }
 
         // 4. User-approved clipboard capture
@@ -786,8 +803,8 @@ enum UniversalContentReader {
             print("[CaptureRouteAttempt] route=clipboard_capture_user_approved available=yes status=failed reason=\(reason) chars=0 quality=none coverage=unknown")
             return nil
         }
-        let capped = String(text.prefix(60000))
-        let quality: ContentQuality = text.count <= 60000 ? .fullDocumentText : .partialDocumentText
+        let capped = capCapturedContextText(text)
+        let quality: ContentQuality = text.count <= maxActionContextChars ? .fullDocumentText : .partialDocumentText
         let coverage: ContentCoverage = quality == .fullDocumentText ? .full : .partial
         attempts.append(attempt("clipboard_capture_user_approved", available: true, status: "success", reason: "select_all_copy_succeeded", chars: capped.count, quality: quality, coverage: coverage))
         print("[CaptureRouteAttempt] route=clipboard_capture_user_approved available=yes status=success reason=select_all_copy_succeeded chars=\(capped.count) quality=\(quality.label) coverage=\(coverage.rawValue)")
@@ -795,15 +812,14 @@ enum UniversalContentReader {
     }
 
     /// Perform Select All + Copy, read clipboard, restore original. Returns captured text or nil.
+    /// Safe to call off the main thread — used for full-document capture on large pages.
     static func performClipboardCapture(app: NSRunningApplication, pid: pid_t) -> String? {
         let appName = app.localizedName ?? "app"
-        // Save original clipboard
         let savedText = NSPasteboard.general.string(forType: .string)
         let savedChangeCount = NSPasteboard.general.changeCount
         print("[ClipboardCapture] saved_original=yes app=\(appName)")
         NSPasteboard.general.clearContents()
 
-        // Cmd+A (select all), Cmd+C (copy)
         let src = CGEventSource(stateID: .combinedSessionState)
         func post(keyCode: CGKeyCode) {
             let dn = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true)
@@ -812,19 +828,26 @@ enum UniversalContentReader {
             up?.flags = .maskCommand
             dn?.postToPid(pid); up?.postToPid(pid)
         }
-        post(keyCode: 0x00)  // 'a' → Select All
-        Thread.sleep(forTimeInterval: 0.15)
+        post(keyCode: 0x00)  // Select All
+        Thread.sleep(forTimeInterval: 0.2)
         print("[ClipboardCapture] performed_select_all=yes")
-        post(keyCode: 0x08)  // 'c' → Copy
-        Thread.sleep(forTimeInterval: 0.28)
-        print("[ClipboardCapture] performed_copy=yes")
+        post(keyCode: 0x08)  // Copy
 
-        let captured = NSPasteboard.general.string(forType: .string) ?? ""
-        let newCount = NSPasteboard.general.changeCount
-        let changed = newCount != savedChangeCount
-        print("[ClipboardCapture] captured_chars=\(captured.count) validation=\(captured.count >= 10 && changed ? "pass" : "fail")")
+        // Poll for clipboard — large documents need longer than a fixed short wait.
+        var captured = ""
+        var changed = false
+        for attempt in 0..<25 {
+            Thread.sleep(forTimeInterval: attempt < 3 ? 0.12 : 0.18)
+            let raw = NSPasteboard.general.string(forType: .string) ?? ""
+            let newCount = NSPasteboard.general.changeCount
+            changed = newCount != savedChangeCount
+            if raw.count >= 40, changed {
+                captured = capCapturedContextText(raw)
+                print("[ClipboardCapture] poll=\(attempt) captured_chars=\(captured.count) raw=\(raw.count)")
+                break
+            }
+        }
 
-        // Restore original clipboard
         NSPasteboard.general.clearContents()
         if let saved = savedText { NSPasteboard.general.setString(saved, forType: .string) }
         print("[ClipboardWrite] capability=clipboard_capture_user_approved reason=temporary_capture_restore")
@@ -832,6 +855,22 @@ enum UniversalContentReader {
         let success = captured.count >= 10 && changed
         print("[ClipboardCapture] completed status=\(success ? "success" : "failed") reason=\(success ? "captured_and_restored" : "insufficient_content")")
         return success ? captured : nil
+    }
+
+    /// Hard cap for text fed into composed actions — prevents UI stalls on huge pages.
+    static let maxActionContextChars = 50_000
+
+    static func capCapturedContextText(_ text: String) -> String {
+        guard text.count > maxActionContextChars else { return text }
+        print("[ContextTextTruncated] original=\(text.count) capped=\(maxActionContextChars)")
+        return String(text.prefix(maxActionContextChars))
+    }
+
+    /// Full-document capture off the main thread.
+    static func performClipboardCaptureAsync(app: NSRunningApplication, pid: pid_t) async -> String? {
+        await Task.detached(priority: .userInitiated) {
+            performClipboardCapture(app: app, pid: pid)
+        }.value
     }
 
     // MARK: - Route 6: OCR (Part B)
@@ -1558,15 +1597,422 @@ extension UniversalContentReader {
         }
     }
 
-    private static func resultContextNoiseScore(text: String, source: String) -> Double {
+    static func resultContextNoiseScore(text: String, source: String) -> Double {
         let lower = text.lowercased()
-        let chromeTerms = ["toolbar", "tab", "button", "menu", "address", "search", "share", "reload", "sidebar", "navigation"]
+        let chromeTerms = [
+            "toolbar", "tab", "button", "menu", "address", "search", "share", "reload",
+            "sidebar", "navigation", "close tab", "open a new tab", "new tab", "bookmark",
+            "sign in", "sign out", "back", "forward", "refresh"
+        ]
         let hits = chromeTerms.filter { lower.contains($0) }.count
         let lines = text.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let shortLines = lines.filter { $0.trimmingCharacters(in: .whitespaces).count <= 18 }.count
         let shortRatio = lines.isEmpty ? 0.0 : Double(shortLines) / Double(lines.count)
+        // Browser tab-bar dumps repeat "Close tab" / window-title fragments on one line.
+        let tabBarRepeats = lower.components(separatedBy: "close tab").count - 1
+        let tabBarPenalty = tabBarRepeats >= 2 ? min(0.45, Double(tabBarRepeats) * 0.12) : 0.0
         let sourcePenalty = source == "metadata" ? 0.35 : 0.0
-        return max(0.0, min(1.0, (Double(hits) * 0.10) + (shortRatio * 0.40) + sourcePenalty))
+        return max(0.0, min(1.0, (Double(hits) * 0.10) + (shortRatio * 0.40) + tabBarPenalty + sourcePenalty))
+    }
+
+    /// True when enriched/AX text looks like browser chrome rather than document body.
+    static func isContaminatedVisibleText(_ text: String, source: String = "visible_ax") -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 30 else { return true }
+        return resultContextNoiseScore(text: trimmed, source: source) >= 0.72
+    }
+
+    /// Browser shells where AX body text is usually tab chrome, not document content.
+    static func isBrowserAppName(_ appName: String) -> Bool {
+        let lower = appName.lowercased()
+        let tokens = ["safari", "chrome", "firefox", "arc", "brave", "edge", "opera", "vivaldi", "chromium"]
+        return tokens.contains(where: { lower.contains($0) })
+    }
+
+    /// Native apps where AX is a reasonable first body source (loose gate, not required).
+    static func prefersNativeAXForBody(appName: String) -> Bool {
+        if isBrowserAppName(appName) { return false }
+        let lower = appName.lowercased()
+        let nativeTokens = [
+            "xcode", "notes", "pages", "numbers", "keynote", "mail", "messages",
+            "preview", "textedit", "bear", "obsidian", "notion", "slack", "discord",
+            "terminal", "iterm", "code", "cursor", "finder"
+        ]
+        return nativeTokens.contains(where: { lower.contains($0) })
+    }
+
+    /// Sources that carry real document/viewport body text (not tab chrome).
+    static func isHighQualityBodySource(_ source: String) -> Bool {
+        let lower = source.lowercased()
+        return ["surgical_ocr", "full_frame_ocr", "ocr", "clipboard", "whole_document",
+                "full_document", "local_visible", "file_backed", "pdf", "selected"]
+            .contains(where: { lower.contains($0) })
+    }
+
+    /// Build a read result from already-bound text (registry prefetch / parent carry).
+    static func syntheticReadResult(text: String, source: String) -> ContentReadResult {
+        let chars = meaningfulCharacterCount(text)
+        let quality: ContentReadQuality = chars >= 200 ? .usable : (chars >= 40 ? .low : .failed)
+        let ucrSource: ContentSource = {
+            let lower = source.lowercased()
+            if lower.contains("clipboard") || lower.contains("document") { return .clipboardCapture }
+            if lower.contains("ocr") { return .ocrCapture }
+            return .browserAX
+        }()
+        let ucr = UniversalContentResult(
+            text: text,
+            quality: quality == .usable ? .partialDocumentText : .visibleOCR,
+            coverage: .visible,
+            source: ucrSource,
+            confidence: 0.55,
+            attemptedRoutes: [],
+            missingReason: nil,
+            nextStep: nil
+        )
+        return ContentReadResult(
+            text: text,
+            chars: chars,
+            source: source,
+            quality: quality,
+            confidence: 0.55,
+            warnings: [],
+            canContinue: true,
+            blockedReason: nil,
+            raw: ucr
+        )
+    }
+
+    /// Whether acquired text is concrete enough to run a composed/cognitive action.
+    /// Aligns click-time acceptance with the result usefulness gate and goal thresholds.
+    static func isActionableAcquireResult(_ result: ContentReadResult, capabilityID: String, appName: String? = nil) -> Bool {
+        let chars = meaningfulCharacterCount(result.text)
+        guard ComposedResultUsefulnessGate.isConcreteSourceLabel(result.source),
+              chars >= 40,
+              !isContaminatedVisibleText(result.text, source: result.source) else {
+            return false
+        }
+        let app = appName ?? NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        let family = ResultIntentClassifier.classify(capabilityID: capabilityID).family
+        let src = result.source.lowercased()
+        // Browser AX is fine for titles/activity; not for body-grounded cognitive work.
+        if family.isBodyGrounded && family != .currentActivity {
+            if isBrowserAppName(app) && (src.contains("browser_ax") || src == "ax") {
+                print("[BrowserAXRejectedForBodyTask] action=\(capabilityID) source=\(result.source) chars=\(chars) reason=browser_needs_ocr_or_document")
+                return false
+            }
+            if src.contains("metadata") || src.contains("browser_metadata") {
+                print("[MetadataRejectedForBodyTask] action=\(capabilityID) source=\(result.source) reason=metadata_not_body")
+                return false
+            }
+        }
+        switch family {
+        case .riskObligation:
+            let fullDocQuality = result.raw.quality >= .partialDocumentText
+            let fullDocSource = ["clipboard", "file_backed", "pdf", "full_frame_ocr", "full_document", "surgical_ocr"]
+                .contains(where: { result.source.lowercased().contains($0) })
+            return fullDocQuality || fullDocSource || chars >= 120
+        case .comparison:
+            return chars >= 80
+        case .currentActivity:
+            return chars >= 30
+        default:
+            break
+        }
+        let goal = contentGoalPublic(for: capabilityID)
+        if goal == .summarize {
+            let gate = summarizePageGate(result: result.raw)
+            return gate.allowedAsPage || gate.allowedAsVisibleSnippet
+        }
+        return result.raw.isEnough(for: goal) || chars >= 80
+    }
+
+    /// Intent-first route ladder: the task family decides which sources to try and in
+    /// what order — selection, whole document, surgical OCR, full OCR, AX, metadata.
+    static func buildIntentAcquireRoutes(execPlan: ResultExecutionPlan, selectionLength: Int, activeApp: String = "") -> [String] {
+        let family = execPlan.intent.family
+        let source = execPlan.source
+        let browser = isBrowserAppName(activeApp)
+        let nativeAX = prefersNativeAXForBody(appName: activeApp)
+        var routes: [String] = []
+        func appendUnique(_ route: String) {
+            guard route != "none", !routes.contains(route) else { return }
+            routes.append(route)
+        }
+
+        if source.useSelectedFocus && selectionLength >= 40 {
+            appendUnique("selected_focus")
+        }
+
+        switch family {
+        case .riskObligation:
+            appendUnique("whole_document")
+        case .comparison:
+            appendUnique("whole_document")
+            if source.externalNeeded { appendUnique("public_lookup") }
+        case .researchLookup:
+            if source.externalNeeded { appendUnique("public_lookup") }
+        case .currentActivity, .taskContinuation:
+            appendUnique("browser_metadata")
+            if browser {
+                appendUnique("surgical_ocr")
+                appendUnique("ocr")
+            }
+        case .workspaceFriction, .ambientMedia:
+            return []
+        default:
+            break
+        }
+
+        // Body-grounded browser work: OCR and document routes before AX chrome.
+        if family.isBodyGrounded && browser {
+            appendUnique("surgical_ocr")
+            if source.useOCR { appendUnique("ocr") }
+            if family == .riskObligation || family == .comparison {
+                appendUnique("whole_document")
+            }
+            if source.externalNeeded && !routes.contains("public_lookup") {
+                appendUnique("public_lookup")
+            }
+        } else if nativeAX && family.isBodyGrounded {
+            appendUnique(source.primary == "browser_ax" ? "ax" : source.primary)
+            if source.fallback != source.primary { appendUnique(source.fallback) }
+            appendUnique("surgical_ocr")
+            if source.useOCR { appendUnique("ocr") }
+        } else {
+            appendUnique(source.primary)
+            if source.fallback != source.primary { appendUnique(source.fallback) }
+            if family.isBodyGrounded {
+                appendUnique("surgical_ocr")
+                if source.useOCR { appendUnique("ocr") }
+            }
+        }
+
+        if family == .currentActivity || family == .taskContinuation {
+            appendUnique("browser_ax")
+        } else if !browser && family.isBodyGrounded {
+            appendUnique("ax")
+        } else if browser && !family.isBodyGrounded {
+            appendUnique("browser_ax")
+        }
+
+        if family == .riskObligation || family == .comparison {
+            appendUnique("whole_document")
+        }
+
+        print("[IntentAcquireRoutePlan] family=\(family.rawValue) browser=\(browser ? "yes" : "no") routes=\(routes.joined(separator: ",")) reason=intent_driven_surgical_ladder")
+        return routes
+    }
+
+    @MainActor
+    private static func acquireSurgicalRoute(
+        capabilityID: String,
+        trigger: AcquisitionTrigger,
+        sourceLabel: String,
+        appName: String,
+        windowTitle: String
+    ) async -> ContentReadResult {
+        print("[SurgicalContextAcquire] action=\(capabilityID) reason=intent_driven_visible_region")
+        let regions = await SurgicalOCR.extract(appName: appName, windowTitle: windowTitle)
+        guard let best = regions.max(by: { $0.text.count < $1.text.count }),
+              best.text.count >= 40 else {
+            return ContentReadResult(
+                text: "", chars: 0, source: "none", quality: .failed, confidence: 0,
+                warnings: ["surgical_ocr_empty"],
+                canContinue: false, blockedReason: "surgical_ocr_empty",
+                raw: .empty
+            )
+        }
+        let ucr = UniversalContentResult(
+            text: best.text,
+            quality: .visibleOCR,
+            coverage: .visible,
+            source: .ocrCapture,
+            confidence: best.confidence,
+            attemptedRoutes: [],
+            missingReason: nil,
+            nextStep: nil
+        )
+        let chars = meaningfulCharacterCount(best.text)
+        print("[SurgicalContextAcquired] action=\(capabilityID) chars=\(chars) quality=visible_ocr")
+        return ContentReadResult(
+            text: best.text,
+            chars: chars,
+            source: "surgical_ocr",
+            quality: chars >= 200 ? .usable : .low,
+            confidence: best.confidence,
+            warnings: [],
+            canContinue: true,
+            blockedReason: nil,
+            raw: ucr
+        )
+    }
+
+    /// Public wrapper for click-time whole-document / route-specific acquisition.
+    @MainActor
+    static func acquirePlannedRouteForClick(
+        planned: String,
+        capabilityID: String,
+        trigger: AcquisitionTrigger,
+        sourceLabel: String,
+        appName: String,
+        windowTitle: String
+    ) async -> ContentReadResult {
+        await acquirePlannedRoute(
+            planned: planned,
+            capabilityID: capabilityID,
+            trigger: trigger,
+            sourceLabel: sourceLabel,
+            appName: appName,
+            windowTitle: windowTitle
+        )
+    }
+
+    /// Context-chip driven acquisition — each scope maps to a concrete local route.
+    @MainActor
+    static func acquireForContextScope(
+        scopeRaw: String,
+        capabilityID: String,
+        trigger: AcquisitionTrigger,
+        sourceLabel: String,
+        appName: String,
+        windowTitle: String,
+        requestedURL: String = "",
+        selectedTextLength: Int? = nil
+    ) async -> ContentReadResult {
+        print("[ContextScopeForcedAcquire] scope=\(scopeRaw) action=\(capabilityID) app=\(appName)")
+        switch scopeRaw {
+        case ContextScopeOption.fullDocument.rawValue, ContextScopeOption.captureFullDocument.rawValue:
+            if let app = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == appName }),
+               let captured = await performClipboardCaptureAsync(app: app, pid: app.processIdentifier),
+               captured.count >= 40 {
+                return syntheticReadResult(text: captured, source: "whole_document")
+            }
+            return await acquirePlannedRouteForClick(
+                planned: "whole_document",
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                appName: appName,
+                windowTitle: windowTitle
+            )
+        case ContextScopeOption.ocrScreenshot.rawValue, ContextScopeOption.visiblePage.rawValue:
+            var result = await acquirePlannedRouteForClick(
+                planned: "surgical_ocr",
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                appName: appName,
+                windowTitle: windowTitle
+            )
+            if result.chars < 120 || !result.canContinue {
+                result = await acquirePlannedRouteForClick(
+                    planned: "full_frame_ocr",
+                    capabilityID: capabilityID,
+                    trigger: trigger,
+                    sourceLabel: "\(sourceLabel)_fallback",
+                    appName: appName,
+                    windowTitle: windowTitle
+                )
+            }
+            return result
+        case ContextScopeOption.visibleText.rawValue:
+            if let body = BrowserContextExtractor.visibleBodyText(appName: appName, activeAppPID: nil), body.count >= 120 {
+                return syntheticReadResult(text: body, source: "browser_ax_body")
+            }
+            return await autonomousAcquire(
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                windowTitle: windowTitle,
+                requestedURL: requestedURL,
+                activeApp: appName,
+                selectedTextLength: selectedTextLength
+            )
+        case ContextScopeOption.selectedText.rawValue:
+            return await acquirePlannedRouteForClick(
+                planned: "selected_text",
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                appName: appName,
+                windowTitle: windowTitle
+            )
+        case ContextScopeOption.clipboard.rawValue:
+            return await acquirePlannedRouteForClick(
+                planned: "clipboard",
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                appName: appName,
+                windowTitle: windowTitle
+            )
+        case ContextScopeOption.refresh.rawValue:
+            if let body = BrowserContextExtractor.visibleBodyText(appName: appName, activeAppPID: nil), body.count >= 120 {
+                return syntheticReadResult(text: capCapturedContextText(body), source: "browser_ax_body")
+            }
+            var ocr = await acquirePlannedRouteForClick(
+                planned: "surgical_ocr",
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                appName: appName,
+                windowTitle: windowTitle
+            )
+            if ocr.chars < 120 || !ocr.canContinue {
+                ocr = await acquirePlannedRouteForClick(
+                    planned: "full_frame_ocr",
+                    capabilityID: capabilityID,
+                    trigger: trigger,
+                    sourceLabel: "\(sourceLabel)_refresh_fallback",
+                    appName: appName,
+                    windowTitle: windowTitle
+                )
+            }
+            return ocr
+        default:
+            return await autonomousAcquire(
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                windowTitle: windowTitle,
+                requestedURL: requestedURL,
+                activeApp: appName,
+                selectedTextLength: selectedTextLength
+            )
+        }
+    }
+
+    @MainActor
+    private static func acquirePlannedRoute(
+        planned: String,
+        capabilityID: String,
+        trigger: AcquisitionTrigger,
+        sourceLabel: String,
+        appName: String,
+        windowTitle: String
+    ) async -> ContentReadResult {
+        if planned == "surgical_ocr" {
+            return await acquireSurgicalRoute(
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: "\(sourceLabel)_surgical",
+                appName: appName,
+                windowTitle: windowTitle
+            )
+        }
+        let (neededKind, allowOCR) = readParams(forPlannedSource: planned)
+        let isUserAction = trigger == .userClick || trigger == .followupClick
+        let cost: ContentReadCost = (planned == "whole_document" && isUserAction) ? .expensiveExplicit : .medium
+        let request = ContentReadRequest(
+            capabilityID: capabilityID,
+            neededKind: neededKind,
+            trigger: trigger,
+            allowedCost: cost,
+            allowOCR: allowOCR || isUserAction,
+            parentActionID: nil,
+            sourceLabel: "\(sourceLabel)_\(planned)"
+        )
+        return await readOrAcquire(request)
     }
 
     /// Single entry point for "give me usable text for this action by the
@@ -1580,8 +2026,10 @@ extension UniversalContentReader {
         emitContextStrategy(strategy, request: request)
 
         // Clicking a user-visible action is sufficient consent for cheap+medium
-        // local capture for that action.
-        let ocrAllowed = request.allowOCR
+        // local capture for that action. User clicks always permit OCR escalation
+        // when AX/metadata is thin or contaminated.
+        let isUserAction = request.trigger == .userClick || request.trigger == .followupClick
+        let ocrAllowed = (request.allowOCR || isUserAction)
             && strategy.need != .selected
             && strategy.need != .browserMetadata
             && strategy.need != .none
@@ -1599,6 +2047,7 @@ extension UniversalContentReader {
         let goal = contentGoalPublic(for: request.capabilityID)
         let scope = contentScopePublic(for: request.capabilityID)
         let allowClipboard = request.allowedCost == .expensiveExplicit
+            || (isUserAction && request.neededKind == .fullDocument)
         // CRITICAL: `goal.minimumRequired` is `.axVisibleText` for most cognitive
         // goals, which is *higher* than `.visibleOCR` — so `read()` would discard
         // OCR text and fall through to metadata. readOrAcquire deliberately floors
@@ -1606,6 +2055,8 @@ extension UniversalContentReader {
         // honest scope/usefulness gates downstream still decide what an action may
         // claim; this only governs which route `read()` returns.
         let minimumQuality: ContentQuality = ocrAllowed ? .visibleOCR : goal.minimumRequired
+        let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        let preferOCR = ocrAllowed && isUserAction && isBrowserAppName(frontApp)
         let req = UniversalContentRequest(
             goal: goal,
             scope: scope,
@@ -1613,10 +2064,11 @@ extension UniversalContentReader {
             privacyMode: .standard,
             allowUserApprovedClipboardCapture: allowClipboard,
             allowOCR: ocrAllowed,
-            allowVision: false
+            allowVision: false,
+            preferOCROverBrowserAX: preferOCR
         )
         let acquisitionStartedAt = Date()
-        let ucr = await Task.detached(priority: .utility) {
+        var ucr = await Task.detached(priority: .utility) {
             UniversalContentReader.read(request: req)
         }.value
         let acquisitionMs = Int(Date().timeIntervalSince(acquisitionStartedAt) * 1000)
@@ -1626,9 +2078,52 @@ extension UniversalContentReader {
         emitAcquireAttempts(from: ucr, ocrAllowed: ocrAllowed)
         emitContextSourceOutcome(ucr, action: request.capabilityID, plan: strategy)
 
-        let chars = meaningfulCharacterCount(ucr.text)
-        let mappedSource = stageSourceLabel(for: ucr.source)
-        let contextQuality = evaluateResultContextQuality(capabilityID: request.capabilityID, result: ucr)
+        var chars = meaningfulCharacterCount(ucr.text)
+        var mappedSource = stageSourceLabel(for: ucr.source)
+        var contextQuality = evaluateResultContextQuality(capabilityID: request.capabilityID, result: ucr)
+
+        // Autonomous escalation: when AX/browser text is chrome-heavy, below goal
+        // threshold, or otherwise not actionable, retry OCR without asking the user.
+        let provisional = ContentReadResult(
+            text: ucr.text, chars: chars, source: mappedSource,
+            quality: .low, confidence: ucr.confidence, warnings: [],
+            canContinue: contextQuality.allowed, blockedReason: contextQuality.reason,
+            raw: ucr
+        )
+        let needsOCREscalation = isUserAction
+            && ScreenCaptureSource.isScreenRecordingAuthorized()
+            && (ucr.source == .browserAX || ucr.source == .axTree || ucr.source == .ocrCapture)
+            && (
+                !contextQuality.allowed
+                || isContaminatedVisibleText(ucr.text, source: mappedSource)
+                || !isActionableAcquireResult(provisional, capabilityID: request.capabilityID)
+            )
+        if needsOCREscalation, ocrAllowed {
+            let escalateReason = !contextQuality.allowed
+                ? contextQuality.reason
+                : (isContaminatedVisibleText(ucr.text, source: mappedSource) ? "visible_ax_contaminated" : "insufficient_for_goal")
+            print("[ContextAcquisitionEscalation] from=\(mappedSource) to=full_frame_ocr reason=\(escalateReason)")
+            let ocrReq = UniversalContentRequest(
+                goal: goal,
+                scope: scope,
+                minimumQuality: .visibleOCR,
+                privacyMode: .standard,
+                allowUserApprovedClipboardCapture: allowClipboard,
+                allowOCR: true,
+                allowVision: false
+            )
+            let ocrResult = await Task.detached(priority: .utility) {
+                UniversalContentReader.read(request: ocrReq)
+            }.value
+            let ocrQuality = evaluateResultContextQuality(capabilityID: request.capabilityID, result: ocrResult)
+            if ocrQuality.allowed || meaningfulCharacterCount(ocrResult.text) > chars {
+                ucr = ocrResult
+                chars = meaningfulCharacterCount(ucr.text)
+                mappedSource = stageSourceLabel(for: ucr.source)
+                contextQuality = ocrQuality
+                print("[ContextAcquisitionEscalated] source=\(mappedSource) chars=\(chars) quality=\(ocrQuality.qualityLabel)")
+            }
+        }
 
         var warnings: [String] = []
         if ucr.source == .ocrCapture {
@@ -1637,8 +2132,8 @@ extension UniversalContentReader {
         }
 
         let ocrUnauthorized = ocrAllowed && !ScreenCaptureSource.isScreenRecordingAuthorized()
-        let quality: ContentReadQuality
-        let canContinue: Bool
+        var quality: ContentReadQuality
+        var canContinue: Bool
         var blockedReason: String? = nil
         if chars >= 30 && ucr.quality.rawValue >= ContentQuality.visibleOCR.rawValue && contextQuality.allowed {
             quality = chars >= 200 ? .usable : .low
@@ -1694,6 +2189,28 @@ extension UniversalContentReader {
             print("[ContentAcquireFailed] route=\(ocrAllowed ? "full_frame_ocr" : "metadata") reason=\(blockedReason)")
         }
 
+        // User clicks already consented — if family thresholds pass, proceed even
+        // when conservative quality scoring marked the context as low_density.
+        if isUserAction, !canContinue, chars >= 40 {
+            let actionableProbe = ContentReadResult(
+                text: ucr.text,
+                chars: chars,
+                source: mappedSource,
+                quality: quality,
+                confidence: ucr.confidence,
+                warnings: warnings,
+                canContinue: true,
+                blockedReason: nil,
+                raw: ucr
+            )
+            if isActionableAcquireResult(actionableProbe, capabilityID: request.capabilityID) {
+                canContinue = true
+                blockedReason = nil
+                quality = chars >= 200 ? .usable : .low
+                print("[ContextAcquireUserClickAccepted] action=\(request.capabilityID) source=\(mappedSource) chars=\(chars) reason=family_threshold_met")
+            }
+        }
+
         return ContentReadResult(
             text: ucr.text,
             chars: chars,
@@ -1705,6 +2222,157 @@ extension UniversalContentReader {
             blockedReason: blockedReason,
             raw: ucr
         )
+    }
+
+    /// Intent-first autonomous acquisition for user-visible actions. Runs the
+    /// ResultIntentPipeline, tries the planned primary source, then the planned
+    /// fallback (typically OCR), without prompting the user to "gather" anything.
+    @MainActor
+    static func autonomousAcquire(
+        capabilityID: String,
+        trigger: AcquisitionTrigger,
+        sourceLabel: String,
+        windowTitle: String? = nil,
+        requestedURL: String? = nil,
+        activeApp: String? = nil,
+        selectedTextLength: Int? = nil
+    ) async -> ContentReadResult {
+        let app = activeApp ?? NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        if isBrowserAppName(app),
+           let body = BrowserContextExtractor.visibleBodyText(appName: app, activeAppPID: nil),
+           body.count >= 200 {
+            let candidate = syntheticReadResult(text: body, source: "browser_ax_body")
+            if isActionableAcquireResult(candidate, capabilityID: capabilityID, appName: app) {
+                print("[AutonomousContextBodyText] action=\(capabilityID) chars=\(body.count) source=browser_ax_body")
+                return candidate
+            }
+        }
+        let title = windowTitle ?? ""
+        let url = requestedURL ?? ""
+        let selection = selectedTextLength ?? 0
+        let execPlan = ResultIntentPipeline.plan(
+            capabilityID: capabilityID,
+            requestedTitle: title,
+            requestedURL: url,
+            activeApp: app,
+            selectedTextLength: selection,
+            hasLocalBody: false,
+            sourceSurface: sourceLabel
+        )
+        let routes = buildIntentAcquireRoutes(execPlan: execPlan, selectionLength: selection, activeApp: app)
+        guard !routes.isEmpty else {
+            print("[AutonomousContextFailed] action=\(capabilityID) reason=no_content_routes_for_family")
+            return ContentReadResult(
+                text: "", chars: 0, source: "none", quality: .failed, confidence: 0,
+                warnings: [], canContinue: false, blockedReason: "no_content_routes",
+                raw: .empty
+            )
+        }
+
+        var last: ContentReadResult?
+        var primaryFailure = "not_attempted"
+        for (index, planned) in routes.enumerated() {
+            if index > 0 {
+                print("[AutonomousContextFallback] action=\(capabilityID) from=\(routes[index - 1]) to=\(planned) reason=\(primaryFailure)")
+            }
+            let acquired = await acquirePlannedRoute(
+                planned: planned,
+                capabilityID: capabilityID,
+                trigger: trigger,
+                sourceLabel: sourceLabel,
+                appName: app,
+                windowTitle: title
+            )
+            last = acquired
+            if isActionableAcquireResult(acquired, capabilityID: capabilityID) {
+                print("[AutonomousContextAcquired] action=\(capabilityID) source=\(acquired.source) chars=\(acquired.chars) role=\(index == 0 ? "primary" : "fallback") route=\(planned)")
+                return acquired
+            }
+            primaryFailure = acquired.blockedReason
+                ?? (isContaminatedVisibleText(acquired.text, source: acquired.source) ? "contaminated_visible" : "insufficient_for_goal")
+            print("[AutonomousContextAttemptFailed] action=\(capabilityID) source=\(planned) reason=\(primaryFailure) chars=\(acquired.chars)")
+        }
+        print("[AutonomousContextFailed] action=\(capabilityID) reason=\(primaryFailure)")
+        if let last,
+           last.chars >= 40,
+           ComposedResultUsefulnessGate.isConcreteSourceLabel(last.source),
+           !isContaminatedVisibleText(last.text, source: last.source) {
+            print("[AutonomousContextBestEffort] action=\(capabilityID) source=\(last.source) chars=\(last.chars) reason=last_route_usable")
+            return ContentReadResult(
+                text: last.text,
+                chars: last.chars,
+                source: last.source,
+                quality: last.chars >= 200 ? .usable : .low,
+                confidence: last.confidence,
+                warnings: last.warnings,
+                canContinue: true,
+                blockedReason: nil,
+                raw: last.raw
+            )
+        }
+        return last ?? ContentReadResult(
+            text: "",
+            chars: 0,
+            source: "none",
+            quality: .failed,
+            confidence: 0,
+            warnings: [],
+            canContinue: false,
+            blockedReason: primaryFailure,
+            raw: UniversalContentResult(
+                text: "",
+                quality: ContentQuality.none,
+                coverage: ContentCoverage.unknown,
+                source: ContentSource.none,
+                confidence: 0,
+                attemptedRoutes: [],
+                missingReason: "autonomous_acquire_failed",
+                nextStep: ContentNextStep.none
+            )
+        )
+    }
+
+    /// Escalates through every local acquisition route without user prompts.
+    /// Used when intent-planned acquisition fails or returns tab-bar chrome.
+    @MainActor
+    static func aggressiveAutonomousAcquire(
+        capabilityID: String,
+        trigger: AcquisitionTrigger,
+        sourceLabel: String,
+        windowTitle: String? = nil,
+        requestedURL: String? = nil,
+        activeApp: String? = nil,
+        selectedTextLength: Int? = nil
+    ) async -> ContentReadResult {
+        print("[AggressiveAutonomousAcquire] action=\(capabilityID) reason=exhaust_intent_route_ladder")
+        return await autonomousAcquire(
+            capabilityID: capabilityID,
+            trigger: trigger,
+            sourceLabel: sourceLabel,
+            windowTitle: windowTitle,
+            requestedURL: requestedURL,
+            activeApp: activeApp,
+            selectedTextLength: selectedTextLength
+        )
+    }
+
+    private static func readParams(forPlannedSource planned: String) -> (NeededContextKind, Bool) {
+        switch planned {
+        case "selected_focus", "selected_or_visible":
+            return (.selectedText, false)
+        case "whole_document", "local_visible":
+            return (.fullDocument, true)
+        case "ocr", "surgical_ocr":
+            return (.visiblePageText, true)
+        case "public_lookup":
+            return (.visiblePageText, false)
+        case "browser_metadata":
+            return (.metadataOnly, false)
+        case "browser_ax", "visible_body", "ax":
+            return (.visiblePageText, false)
+        default:
+            return (.visiblePageText, false)
+        }
     }
 
     /// Collapse the existing `read()` route matrix into the three Stage-2 routes
@@ -1741,54 +2409,15 @@ extension UniversalContentReader {
     private static func contextAcquisitionPlan(
         for request: ContentReadRequest
     ) -> ActionContextAcquisitionPlan {
-        let scope = contentScopePublic(for: request.capabilityID)
-        if request.neededKind == .selectedText || scope == .selectedText {
-            return ActionContextAcquisitionPlan(
-                action: request.capabilityID,
-                need: .selected,
-                primary: "selected_focus",
-                fallback: "local_visible",
-                confidence: 0.90,
-                reason: "selection_transform_requires_selected_text"
-            )
-        }
-        if request.neededKind == .metadataOnly {
-            return ActionContextAcquisitionPlan(
-                action: request.capabilityID,
-                need: .browserMetadata,
-                primary: "browser_metadata",
-                fallback: "memory_support",
-                confidence: 0.72,
-                reason: "metadata_action"
-            )
-        }
-        if request.neededKind == .fullDocument {
-            return ActionContextAcquisitionPlan(
-                action: request.capabilityID,
-                need: .localVisible,
-                primary: "file_or_selected_focus",
-                fallback: "ocr",
-                confidence: 0.82,
-                reason: "full_document_action_needs_document_text"
-            )
-        }
-        if let ontology = WorkflowActionOntology.byId[request.capabilityID], ontology.category == .browserResearch {
-            return ActionContextAcquisitionPlan(
-                action: request.capabilityID,
-                need: .localVisible,
-                primary: "public_lookup",
-                fallback: "browser_ax",
-                confidence: 0.85,
-                reason: "research_action_prefers_public_lookup"
-            )
-        }
-        return ActionContextAcquisitionPlan(
-            action: request.capabilityID,
-            need: .localVisible,
-            primary: "browser_ax",
-            fallback: "ocr",
-            confidence: 0.78,
-            reason: "action_needs_visible_page_text"
+        let browser = AppContextAnalyzer.analyze(
+            appName: NSWorkspace.shared.frontmostApplication?.localizedName ?? "",
+            bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+            windowTitle: nil
+        ).isBrowser
+        return ActionContextAcquisitionPlanBuilder.plan(
+            capabilityID: request.capabilityID,
+            neededKind: request.neededKind,
+            browser: browser
         )
     }
 
@@ -1897,6 +2526,103 @@ extension UniversalContentReader {
         default:
             return "low_quality"
         }
+    }
+}
+
+// MARK: - Intent-aware context acquisition planning
+
+enum ActionContextAcquisitionPlanBuilder {
+    static func plan(
+        capabilityID: String,
+        neededKind: NeededContextKind,
+        browser: Bool,
+        composedPlan: ComposedActionPlan? = nil
+    ) -> ActionContextAcquisitionPlan {
+        if composedPlan?.executionMode == .captureFirst {
+            return ActionContextAcquisitionPlan(
+                action: capabilityID,
+                need: .localVisible,
+                primary: browser ? "surgical_ocr" : "ax",
+                fallback: "ocr",
+                confidence: 0.80,
+                reason: "capture_first_needs_visible_body_at_accept"
+            )
+        }
+        if neededKind == .metadataOnly {
+            return ActionContextAcquisitionPlan(
+                action: capabilityID,
+                need: browser ? .browserMetadata : .none,
+                primary: browser ? "browser_metadata" : "none",
+                fallback: "memory_support",
+                confidence: browser ? 0.72 : 0.35,
+                reason: browser ? "metadata_action_on_browser" : "metadata_action_without_browser"
+            )
+        }
+
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
+        let scope = UniversalContentReader.contentScopePublic(for: capabilityID)
+
+        if traits.contains(.requiresExternalContext)
+            || WorkflowActionOntology.byId[capabilityID]?.category == .browserResearch {
+            return ActionContextAcquisitionPlan(
+                action: capabilityID,
+                need: .publicLookup,
+                primary: "public_lookup",
+                fallback: browser ? "browser_ax" : "ocr",
+                confidence: 0.85,
+                reason: "external_or_comparison_context_needs_lookup"
+            )
+        }
+        if traits.contains(.requiresSelectedOrFocusedContext)
+            || neededKind == .selectedText
+            || scope == .selectedText {
+            return ActionContextAcquisitionPlan(
+                action: capabilityID,
+                need: .selected,
+                primary: "selected_focus",
+                fallback: traits.contains(.requiresCurrentVisualContext) ? "ocr" : "local_visible",
+                confidence: 0.90,
+                reason: "selection_or_focus_required_for_action"
+            )
+        }
+        if neededKind == .fullDocument || scope == .currentDocument {
+            return ActionContextAcquisitionPlan(
+                action: capabilityID,
+                need: .localVisible,
+                primary: "file_or_selected_focus",
+                fallback: "ocr",
+                confidence: 0.82,
+                reason: "full_document_needs_body_text"
+            )
+        }
+        if traits.contains(.requiresCurrentVisualContext) && !browser {
+            return ActionContextAcquisitionPlan(
+                action: capabilityID,
+                need: .ocr,
+                primary: "ocr",
+                fallback: "ax",
+                confidence: 0.76,
+                reason: "visual_context_prefers_passive_ocr"
+            )
+        }
+        if browser {
+            return ActionContextAcquisitionPlan(
+                action: capabilityID,
+                need: .localVisible,
+                primary: "surgical_ocr",
+                fallback: "ocr",
+                confidence: 0.78,
+                reason: "browser_body_prefers_ocr_over_ax_chrome"
+            )
+        }
+        return ActionContextAcquisitionPlan(
+            action: capabilityID,
+            need: .localVisible,
+            primary: "ax",
+            fallback: "ocr",
+            confidence: 0.72,
+            reason: "local_window_needs_visible_text"
+        )
     }
 }
 
@@ -2053,7 +2779,17 @@ enum ProposalActionContextRouter {
 
     static func noteProductVisible(proposalID: String, capabilityID: String, signals: WorkflowSignals? = nil) -> Bool {
         let ok = verifyRouterBacked(proposalID: proposalID, capabilityID: capabilityID, signals: signals)
-        PassiveDogfoodMonitor.shared.noteProductVisibleProposal(routerBacked: ok)
+        let canonical = ActionAliasResolver.canonicalID(for: capabilityID)
+        let existing = record(for: proposalID) ?? record(forCapability: canonical)
+        let source = existing?.sourceIndependent == true
+            ? "source_independent"
+            : (existing?.acquisitionPlan?.primary ?? "content")
+        PassiveDogfoodMonitor.shared.noteProductVisibleProposal(
+            proposalID: proposalID,
+            capabilityID: capabilityID,
+            source: source,
+            routerBacked: ok
+        )
         return ok
     }
 
@@ -2067,6 +2803,44 @@ enum ProposalActionContextRouter {
             print("[NoResultWithoutSourceTrace] status=fail count=1")
             print("[NoResultWithoutProposalSourcePlan] status=fail count=1")
         }
+    }
+
+    static func contentReadRequest(
+        proposalID: String,
+        plan: ComposedActionPlan,
+        trigger: AcquisitionTrigger,
+        sourceSurface: String
+    ) -> ContentReadRequest {
+        let record = record(for: proposalID) ?? record(forCapability: plan.id)
+        let neededKind: NeededContextKind = {
+            if let need = record?.acquisitionPlan?.need {
+                switch need {
+                case .selected: return .selectedText
+                case .publicLookup: return .visiblePageText
+                case .ocr: return .visiblePageText
+                case .browserMetadata: return .metadataOnly
+                default: break
+                }
+            }
+            if plan.missingInputs.contains("content_text") || plan.sourceScope == "capture_pending" {
+                return .visiblePageText
+            }
+            return neededKindForProposal(capabilityID: plan.id, composedPlan: plan)
+        }()
+        let attempted = [record?.acquisitionPlan?.primary, record?.acquisitionPlan?.fallback]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty && $0 != "none" }
+            .joined(separator: ",")
+        print("[CapturePendingResolutionAttempt] proposal_id=\(proposalID) planned_source=\(plan.sourceScope) attempted_sources=\(attempted.isEmpty ? "router_default" : attempted)")
+        return ContentReadRequest(
+            capabilityID: plan.id,
+            neededKind: neededKind,
+            trigger: sourceSurface == "followup" ? .followupClick : .userClick,
+            allowedCost: .medium,
+            allowOCR: true,
+            parentActionID: nil,
+            sourceLabel: "live_click"
+        )
     }
 
     private static func isContentDependent(capabilityID: String, composedPlan: ComposedActionPlan?) -> Bool {
@@ -2126,64 +2900,11 @@ enum ProposalActionContextRouter {
         browser: Bool,
         composedPlan: ComposedActionPlan?
     ) -> ActionContextAcquisitionPlan {
-        let scope = UniversalContentReader.contentScopePublic(for: capabilityID)
-        if neededKind == .selectedText || scope == .selectedText {
-            return ActionContextAcquisitionPlan(
-                action: capabilityID,
-                need: .selected,
-                primary: "selected_focus",
-                fallback: "local_visible",
-                confidence: 0.90,
-                reason: "selection_transform_requires_selected_text"
-            )
-        }
-        if neededKind == .metadataOnly {
-            return ActionContextAcquisitionPlan(
-                action: capabilityID,
-                need: browser ? .browserMetadata : .none,
-                primary: browser ? "browser_metadata" : "none",
-                fallback: "memory_support",
-                confidence: browser ? 0.72 : 0.35,
-                reason: browser ? "metadata_action_on_browser" : "metadata_action_without_browser"
-            )
-        }
-        if neededKind == .fullDocument {
-            return ActionContextAcquisitionPlan(
-                action: capabilityID,
-                need: .localVisible,
-                primary: "file_or_selected_focus",
-                fallback: "ocr",
-                confidence: 0.82,
-                reason: "full_document_action_needs_document_text"
-            )
-        }
-        if composedPlan?.executionMode == .captureFirst {
-            return ActionContextAcquisitionPlan(
-                action: capabilityID,
-                need: .localVisible,
-                primary: browser ? "browser_ax" : "ax",
-                fallback: "ocr",
-                confidence: 0.80,
-                reason: "capture_first_needs_visible_body_at_accept"
-            )
-        }
-        if browser {
-            return ActionContextAcquisitionPlan(
-                action: capabilityID,
-                need: .localVisible,
-                primary: "browser_ax",
-                fallback: "ocr",
-                confidence: 0.78,
-                reason: "browser_content_action_needs_visible_page_text"
-            )
-        }
-        return ActionContextAcquisitionPlan(
-            action: capabilityID,
-            need: .localVisible,
-            primary: "ax",
-            fallback: "ocr",
-            confidence: 0.72,
-            reason: "local_action_needs_visible_window_text"
+        ActionContextAcquisitionPlanBuilder.plan(
+            capabilityID: capabilityID,
+            neededKind: neededKind,
+            browser: browser,
+            composedPlan: composedPlan
         )
     }
 
@@ -2195,9 +2916,17 @@ enum ProposalActionContextRouter {
     ) -> ProposalActionContextRecord {
         let reason: String
         let useful: Bool
+        let traits = CapabilityPolicyResolver.resolve(capabilityID: capabilityID)
         if ProductSurfacePolicy.isManualUtility(capabilityID) {
             reason = "manual_utility_not_product_surface"
             useful = false
+        } else         if traits.contains(.mediaOrFocusSupport) {
+            reason = "music_environment_no_content_need"
+            useful = true
+        } else if traits.contains(.frictionReduction) || traits.contains(.workspaceArrangement) {
+            let multiWindow = (signals?.visibleAppNames.count ?? 0) >= 2
+            useful = multiWindow || !(signals?.windowTitle.isEmpty ?? true) || lane == "friction" || lane == "workspace"
+            reason = useful ? "friction_environment_grounded" : "insufficient_friction_grounding"
         } else if lane == "workspace", signals?.workflow == "workspace_restore" {
             reason = "workspace_pattern_grounded"
             useful = true
@@ -2699,7 +3428,7 @@ enum ResultIntentPipeline {
         if policy.selectionSufficient && selectionPresent {
             print("[AXRejectedForBetterSource] better_source=selected_focus reason=user_selection_implies_intent_bind_to_selection")
             return SourceSelectionPlan(action: action, primary: "selected_focus",
-                                       fallback: isBrowserContext ? "browser_ax" : "ax",
+                                       fallback: isBrowserContext ? "surgical_ocr" : "ax",
                                        externalNeeded: lookup.needed,
                                        reason: "user_selection_implies_intent_bind_to_selection",
                                        useAX: true, useOCR: false, useBrowserMetadata: false, useSelectedFocus: true, publicLookup: lookup)
@@ -2708,15 +3437,47 @@ enum ResultIntentPipeline {
         if family == .researchLookup && lookup.needed {
             print("[AXRejectedForBetterSource] better_source=public_lookup reason=lookup_task_with_public_query_source")
             return SourceSelectionPlan(action: action, primary: "public_lookup",
-                                       fallback: isBrowserContext ? "browser_ax" : "ax",
+                                       fallback: isBrowserContext ? "surgical_ocr" : "ax",
                                        externalNeeded: true,
                                        reason: "lookup_task_with_public_query_source",
-                                       useAX: true, useOCR: false, useBrowserMetadata: true, useSelectedFocus: false, publicLookup: lookup)
+                                       useAX: true, useOCR: true, useBrowserMetadata: true, useSelectedFocus: false, publicLookup: lookup)
         }
-        // Comparison/verification with an external reference available add lookup
-        // as the fallback but read local candidates as the body.
+        // Obligation/risk detection needs the full document, not tab chrome.
+        if family == .riskObligation {
+            return SourceSelectionPlan(action: action, primary: "whole_document", fallback: "ocr",
+                                       externalNeeded: false,
+                                       reason: "obligation_detection_needs_full_document",
+                                       useAX: true, useOCR: true, useBrowserMetadata: false,
+                                       useSelectedFocus: selectionPresent, publicLookup: lookup)
+        }
+        // Activity understanding: title/metadata first, then OCR — not browser AX body.
+        if family == .currentActivity {
+            return SourceSelectionPlan(action: action,
+                                       primary: isBrowserContext ? "browser_metadata" : "ax",
+                                       fallback: isBrowserContext ? "surgical_ocr" : "ocr",
+                                       externalNeeded: false,
+                                       reason: "activity_understanding_uses_title_then_visible",
+                                       useAX: !isBrowserContext, useOCR: true, useBrowserMetadata: isBrowserContext,
+                                       useSelectedFocus: false, publicLookup: lookup)
+        }
+        // Search-result prioritization: visible results via OCR, not tab chrome AX.
+        if family == .prioritization {
+            return SourceSelectionPlan(action: action,
+                                       primary: isBrowserContext ? "surgical_ocr" : "ax",
+                                       fallback: "ocr",
+                                       externalNeeded: false,
+                                       reason: "prioritization_needs_visible_result_set",
+                                       useAX: !isBrowserContext, useOCR: true, useBrowserMetadata: false,
+                                       useSelectedFocus: selectionPresent, publicLookup: lookup)
+        }
+        // Browser body tasks: OCR/surgical first; native apps may use AX.
         let externalFallback = (family == .comparison || family == .verification) && lookup.needed
-        let primaryBody = isBrowserContext ? "browser_ax" : (policy.wholeSurface ? "local_visible" : "ax")
+        let primaryBody: String = {
+            if isBrowserContext {
+                return "surgical_ocr"
+            }
+            return policy.wholeSurface ? "local_visible" : "ax"
+        }()
         let fallbackBody = externalFallback ? "public_lookup" : "ocr"
         if externalFallback {
             print("[AXRejectedForBetterSource] better_source=public_lookup reason=external_fallback_needed")
@@ -2724,7 +3485,7 @@ enum ResultIntentPipeline {
         return SourceSelectionPlan(action: action, primary: primaryBody, fallback: fallbackBody,
                                    externalNeeded: lookup.needed,
                                    reason: externalFallback ? "read_local_candidates_then_external_reference" : "body_grounded_result_needs_visible_text",
-                                   useAX: true, useOCR: !externalFallback, useBrowserMetadata: false,
+                                   useAX: !isBrowserContext, useOCR: true, useBrowserMetadata: false,
                                    useSelectedFocus: false, publicLookup: lookup)
     }
 
@@ -2843,9 +3604,13 @@ enum AmbientActionGate {
     /// context (preference-matched, non-conflicting, not already satisfied).
     static func opportunity(
         capability: String, useful: Bool, reason: String,
-        preferenceMatch: Bool, conflict: Bool, currentState: String
+        preferenceMatch: Bool,
+        conflict: Bool,
+        currentState: String,
+        alreadySatisfied: Bool = false,
+        cooldown: Bool = false
     ) {
-        print("[AmbientActionOpportunity] capability=\(capability) useful=\(useful ? "yes" : "no") reason=\(reason) preference_match=\(preferenceMatch ? "yes" : "no") conflict=\(conflict ? "yes" : "no") current_state=\(currentState)")
+        print("[AmbientActionOpportunity] capability=\(capability) useful=\(useful ? "yes" : "no") conflict=\(conflict ? "yes" : "no") already_satisfied=\(alreadySatisfied ? "yes" : "no") cooldown=\(cooldown ? "yes" : "no") reason=\(reason)")
         // "Random" = surfaced with no preference match AND no current justification.
         let random = useful && !preferenceMatch && reason == "state_inactive"
         PassiveDogfoodMonitor.shared.noteAmbientCapabilityOpportunity(useful: useful, random: random)
@@ -2859,6 +3624,9 @@ enum AmbientActionGate {
     static func suppressed(capability: String, reason: Suppression) {
         print("[AmbientActionSuppressed] capability=\(capability) reason=\(reason.rawValue)")
         PassiveDogfoodMonitor.shared.noteAmbientCapabilitySuppressed()
+        let alreadySatisfied = reason == .alreadySatisfied
+        let cooldown = reason == .cooldown
+        print("[AmbientActionOpportunity] capability=\(capability) useful=no conflict=\(reason == .conflict || reason == .currentActivityConflict ? "yes" : "no") already_satisfied=\(alreadySatisfied ? "yes" : "no") cooldown=\(cooldown ? "yes" : "no") reason=\(reason.rawValue)")
         print("[AmbientActionSurfaceDecision] capability=\(capability) useful=no surfaced=no reason=\(reason.rawValue)")
         print("[NoUsefulAmbientActionSuppressedWithoutReason] status=pass count=0")
         emitGates(random: false)
@@ -2870,7 +3638,9 @@ enum AmbientActionGate {
         PassiveDogfoodMonitor.shared.noteFrictionOpportunity()
         if useful { PassiveDogfoodMonitor.shared.noteFrictionActionShown() }
         print("[FrictionActionSurfaceDecision] capability=\(capability) useful=\(useful ? "yes" : "no") surfaced=\(useful && !highConfidenceMissed ? "yes" : "no") reason=\(highConfidenceMissed ? "high_confidence_missed" : reason)")
+        print("[WorkspaceActionSurfaceDecision] capability=\(capability) useful=\(useful ? "yes" : "no") surfaced=\(useful && !highConfidenceMissed ? "yes" : "no") reason=\(highConfidenceMissed ? "high_confidence_missed" : reason)")
         print("[NoFrictionActionMissingWhenHighConfidence] status=\(highConfidenceMissed ? "fail" : "pass") count=\(highConfidenceMissed ? 1 : 0)")
+        print("[NoPanelOnlyFrictionActionWhenHighConfidence] status=\(highConfidenceMissed ? "fail" : "pass") count=\(highConfidenceMissed ? 1 : 0)")
         print("[NoUsefulFrictionActionSuppressedWithoutReason] status=pass count=0")
     }
 

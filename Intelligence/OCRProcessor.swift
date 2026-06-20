@@ -117,6 +117,14 @@ final class OCRProcessor: @unchecked Sendable {
 			// Tab close markers, browser chrome or suffix tabs
 			let containsTabChrome = lower.contains("new tab") || lower.contains("close tab") || lower.contains("✕") || (line.hasSuffix(" x") || line.hasSuffix(" X")) || lower.contains(" - google chrome") || lower.contains(" - firefox") || lower.contains(" - safari")
 			
+			// Bookmark / favicon rows
+			let bookmarkish = lower.contains("bookmark") || lower.contains("favorites") || lower.contains("reading list")
+			let mostlySymbols = line.filter { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }.count > line.count / 4
+			if bookmarkish || mostlySymbols {
+				removed.append(line)
+				continue
+			}
+
 			if containsMultipleTabs || containsTabChrome {
 				removed.append(line)
 			} else {

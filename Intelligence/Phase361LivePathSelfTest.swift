@@ -182,10 +182,13 @@ public enum Phase361LivePathSelfTest {
             confidence: 0.9,
             evaluationContext: weakCtx
         )
-        // Phase 40 — weak/transient context now demotes music to panel_only, not suppressed.
-        check("e_music_weak_surface_panel_only", musicWeak.surface == .panelOnly)
-        check("e_music_weak_not_floating", !musicWeak.eligibleForFloating)
-        check("e_music_weak_reason", musicWeak.reason == "weak_or_transient_context")
+        // Focus-music revision — a FORMED focus context (stability "weak", not the
+        // flickering "transient") now floats music instead of burying it in the
+        // panel during sustained focus work. Only truly transient/low-confidence
+        // context stays panel-only (asserted by the transient case below).
+        check("e_music_weak_surface_floating", musicWeak.surface == .floating)
+        check("e_music_weak_floating_eligible", musicWeak.eligibleForFloating)
+        check("e_music_weak_reason", musicWeak.reason == "stable_work_context_no_higher_priority")
 
         let transientCtx = LivePathEvaluationContext(
             sourcePath: "regression_test",

@@ -442,6 +442,11 @@ final class AppState: ObservableObject {
 				self?.surfaceCurrentWorkCandidate(signals: signals)
 			}
 		}
+		producer.onPortfolioPanelCandidatesGenerated = { [weak self] candidates in
+			Task { @MainActor in
+				self?.publishPortfolioPanelCandidates(candidates, reason: "cheap_portfolio_panel_only")
+			}
+		}
 		return producer
 	}()
 
@@ -711,21 +716,35 @@ final class AppState: ObservableObject {
 		return nil
 	}
 
-	func publishAmbientJarvisSuggestion(_ suggestion: AmbientJarvisSuggestion?) {
-		var suggestion = suggestion
-		if let candidate = suggestion {
-			let cap = ambientFloatingCapabilityID(candidate) ?? candidate.intent.replacingOccurrences(of: "environment:", with: "")
-			let surfaceSignals = WorkflowSignals(
-				activeApp: debugContext.activeAppName ?? "",
+		func publishAmbientJarvisSuggestion(_ suggestion: AmbientJarvisSuggestion?) {
+			var suggestion = suggestion
+			if let candidate = suggestion {
+				let cap = ambientFloatingCapabilityID(candidate) ?? candidate.intent.replacingOccurrences(of: "environment:", with: "")
+				let proposalID = "ambient_jarvis:\(candidate.id)"
+				passiveDogfoodMonitor.noteProposalCandidateGenerated(
+					proposalID: proposalID,
+					capabilityID: cap,
+					source: "ambient_publish:\(candidate.workflow)"
+				)
+				passiveDogfoodMonitor.noteProposalSurfaceRequested(
+					proposalID: proposalID,
+					capabilityID: cap,
+					source: "ambient_publish:\(candidate.workflow)"
+				)
+				print("[ProposalSurfaceTrace] candidate=\(cap) requested=yes presented=no reason=ambient_publish_preflight")
+				let surfaceSignals = WorkflowSignals(
+					activeApp: debugContext.activeAppName ?? "",
 				windowTitle: debugContext.activeWindowTitle ?? "",
 				selectedTextLength: debugContext.selectedTextLength,
 				contentAvailable: debugContext.screenOCRAvailable || debugContext.selectedTextLength > 0
 			)
-			if !ProposalActionContextRouter.verifyRouterBacked(proposalID: "ambient_jarvis:\(candidate.id)", capabilityID: cap, signals: surfaceSignals) {
-				print("[PrimarySurfaceDecision] surface=none reason=action_context_router_blocked")
-				suggestion = nil
+				if !ProposalActionContextRouter.verifyRouterBacked(proposalID: "ambient_jarvis:\(candidate.id)", capabilityID: cap, signals: surfaceSignals) {
+					print("[PrimarySurfaceDecision] surface=none reason=action_context_router_blocked")
+					print("[ProposalSurfaceTrace] candidate=\(cap) requested=yes presented=no reason=action_context_router_blocked")
+					passiveDogfoodMonitor.noteProposalSurfaceFailure(reason: "action_context_router_blocked", proposalID: proposalID)
+					suggestion = nil
+				}
 			}
-		}
 		// Product-surface enforcement AT THE SURFACE. Window-arrange, focus-media,
 		// reference-collection and other environment utilities must never become the
 		// visible floating proposal in normal mode. The upstream audit log
@@ -738,16 +757,23 @@ final class AppState: ObservableObject {
 		   let cap = ambientFloatingCapabilityID(candidate),
 		   ProductSurfacePolicy.isManualUtility(cap)
 		     || ProductSurfacePolicy.isManualUtility(ActionAliasResolver.canonicalID(for: cap)) {
-			print("[ManualUtilityFloatingSuppressed] capability=\(cap) source=ambient_publish reason=not_product_surface")
-			print("[PrimarySurfaceDecision] surface=none reason=manual_utility_blocked_at_surface")
-			suggestion = nil
-		}
+			let classification = ProductSurfacePolicy.logClassification(capabilityID: cap)
+			ProductSurfacePolicy.logSuppressionAudit(candidate: cap, suppressed: true, reason: "not_product_surface", classification: classification)
+			ProductSurfacePolicy.logManualUtilityOnlyInvariant(suppressed: true, contextualUseful: classification.contextualAction)
+				print("[ManualUtilityFloatingSuppressed] capability=\(cap) source=ambient_publish reason=not_product_surface")
+				print("[PrimarySurfaceDecision] surface=none reason=manual_utility_blocked_at_surface")
+				print("[ProposalSurfaceTrace] candidate=\(cap) requested=yes presented=no reason=manual_utility_blocked_at_surface")
+				passiveDogfoodMonitor.noteProposalSurfaceFailure(reason: "manual_utility_blocked_at_surface", proposalID: "ambient_jarvis:\(candidate.id)")
+				suggestion = nil
+			}
 		if let previous = activeAmbientJarvisSuggestion,
 		   previous.id != suggestion?.id {
 			finalizePriorAmbientSuggestionIfNeeded(previous, replacement: suggestion)
 		}
 		self.activeAmbientJarvisSuggestion = suggestion
 		if let suggestion = suggestion {
+			let cap = ambientFloatingCapabilityID(suggestion) ?? suggestion.intent.replacingOccurrences(of: "environment:", with: "")
+			print("[ProposalSurfaceTrace] candidate=\(cap) requested=yes presented=yes reason=ambient_publish_visible")
 			if LogControl.shared.shouldLog(category: .selection_reasoning, level: .dogfood) {
 				print("[AmbientSuggestionSurface] visible=yes kind=\(suggestion.kind.rawValue)")
 				print("[JarvisRouting] route=ambient_context_only")
@@ -2036,8 +2062,10 @@ final class AppState: ObservableObject {
 			if hiddenByPanel { return "hidden_behind_panel" }
 			return "dwell_threshold_not_met"
 		}()
-			print("[FloatingVisibilityProof] failed id=\(state.proposalID) reason=\(reason)")
-			floatingVisibilityState = state
+				print("[FloatingVisibilityProof] failed id=\(state.proposalID) reason=\(reason)")
+				print("[ProposalSurfaceTrace] candidate=\(state.capabilityID) requested=yes presented=no reason=visibility_failed_\(reason)")
+				passiveDogfoodMonitor.noteProposalSurfaceFailure(reason: "visibility_failed_\(reason)", proposalID: state.proposalID)
+				floatingVisibilityState = state
 			recordNotVisibleFeedbackIfNeeded(for: state.proposalID, capabilityID: state.capabilityID, ambientSuggestion: activeAmbientJarvisSuggestion)
 			retirePopupIdentity(id: state.proposalID, reason: "visibility_failed_\(reason)")
 			floatingAutoDismissWorkItem?.cancel()
@@ -2228,7 +2256,7 @@ final class AppState: ObservableObject {
 			let id = proposal.primaryActionId
 			let capId = floatingCapabilityID(for: proposal)
 			print("[ActionClickReceived] surface=popup id=\(id)")
-			passiveDogfoodMonitor.noteNaturalSuggestionClicked()
+			passiveDogfoodMonitor.noteNaturalSuggestionClicked(proposalID: id)
 			scheduleClickedPopupResultVisibilityCheck(id: id)
 			lastResultActionClickAt = Date()
 			print("[UILatency] stage=click_to_pending ms=0")
@@ -2724,8 +2752,8 @@ final class AppState: ObservableObject {
     // path dead: cards were never set, render proof always failed, and every
     // cognitive action reported failed_silent).
     @MainActor
-    func requestResultSurface(_ card: ResearchResultCardState, sourceSurface: ActionSourceSurface) -> Bool {
-        let trimmed = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
+	    func requestResultSurface(_ card: ResearchResultCardState, sourceSurface: ActionSourceSurface) -> Bool {
+	        let trimmed = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             print("[ResultSurfaceValidation] type=invalid output_chars=0 valid=no reason=empty_text")
             return false
@@ -2738,7 +2766,21 @@ final class AppState: ObservableObject {
 	        default: state = .result(card)
 	        }
 	        print("[ResultSurfaceRequested] capability=\(card.capabilityID) type=\(normalizedResultSurfaceType(for: card.cardType)) card_type=\(card.cardType.rawValue) output_chars=\(card.outputChars)")
-	        passiveDogfoodMonitor.noteNaturalResultShown()
+	        let clickedProposalID = sourceSurface == .floating ? pendingPopupResultChecks.keys.first : nil
+	        let plannedSource = card.contentSource ?? card.sourceLabel ?? sourceSurface.rawValue
+	        let actualSource = card.contentSource ?? card.sourceLabel ?? plannedSource
+	        let resultBlocked = card.cardType == .captureNeeded || card.cardType == .blockedAction || card.cardType == .error
+	        passiveDogfoodMonitor.noteNaturalResultShown(
+	            proposalID: clickedProposalID,
+	            capabilityID: card.capabilityID,
+	            intent: card.cardType.rawValue,
+	            plannedSource: plannedSource,
+	            actualSource: actualSource,
+	            sourceQuality: card.contentQuality.rawValue,
+	            chars: card.outputChars,
+	            blocked: resultBlocked,
+	            blockReason: card.failureReason
+	        )
         let executableActions = card.actions.filter { action in
             guard action.enabled else { return false }
             if ResultCardCommand.from(id: action.ontologyActionID ?? action.id) != nil {
@@ -2817,6 +2859,7 @@ final class AppState: ObservableObject {
                 surface: "panel"
             )
 	        }
+	        seedContextChip(for: card)
 	        if sourceSurface == .floating {
 	            markClickedPopupResultVisible(id: pendingPopupResultChecks.keys.first)
 	        }
@@ -3227,8 +3270,14 @@ final class AppState: ObservableObject {
             suppressUnifiedSuggestionBeforeSurface(suggestion, identity: identity, stage: stage)
             return false
         }
-        let proposalID = suggestion.originalActionId ?? suggestion.id
-        let capabilityID = identity.canonicalID
+	        let proposalID = suggestion.originalActionId ?? suggestion.id
+	        let capabilityID = identity.canonicalID
+	        passiveDogfoodMonitor.noteProposalSurfaceRequested(
+	            proposalID: proposalID,
+	            capabilityID: capabilityID,
+	            source: suggestion.source.rawValue
+	        )
+	        print("[ProposalSurfaceTrace] candidate=\(capabilityID) requested=yes presented=no reason=unified_\(stage)_preflight")
         let surfaceSignals = WorkflowSignals(
             activeApp: debugContext.activeAppName ?? "",
             windowTitle: debugContext.activeWindowTitle ?? "",
@@ -3236,10 +3285,12 @@ final class AppState: ObservableObject {
             contentAvailable: debugContext.screenOCRAvailable || debugContext.selectedTextLength > 0
         )
         if !ProposalActionContextRouter.verifyRouterBacked(proposalID: proposalID, capabilityID: capabilityID, signals: surfaceSignals) {
-            suppressUnifiedSuggestionBeforeSurface(suggestion, identity: identity, stage: stage)
-            print("[PrimarySurfaceDecision] surface=none reason=action_context_router_blocked stage=\(stage)")
-            return false
-        }
+	            suppressUnifiedSuggestionBeforeSurface(suggestion, identity: identity, stage: stage)
+	            print("[PrimarySurfaceDecision] surface=none reason=action_context_router_blocked stage=\(stage)")
+	            print("[ProposalSurfaceTrace] candidate=\(capabilityID) requested=yes presented=no reason=action_context_router_blocked")
+	            passiveDogfoodMonitor.noteProposalSurfaceFailure(reason: "action_context_router_blocked", proposalID: proposalID)
+	            return false
+	        }
         // Product-surface enforcement at the unified floating chokepoint — the last
         // gate before the window is presented. An executable capability can still be
         // an environment utility (window-arrange, focus-media, reference-collection,
@@ -3251,18 +3302,106 @@ final class AppState: ObservableObject {
             let canonical = identity.canonicalID
             if ProductSurfacePolicy.isManualUtility(canonical)
                 || ProductSurfacePolicy.isManualUtility(ActionAliasResolver.canonicalID(for: canonical)) {
-                print("[ManualUtilityFloatingSuppressed] capability=\(canonical) source=unified_surface stage=\(stage) reason=not_product_surface")
-                print("[PrimarySurfaceDecision] surface=none reason=manual_utility_blocked_at_unified_surface")
-                suppressUnifiedSuggestionBeforeSurface(suggestion, identity: identity, stage: stage)
+                let classification = ProductSurfacePolicy.logClassification(capabilityID: canonical)
+                ProductSurfacePolicy.logSuppressionAudit(candidate: canonical, suppressed: true, reason: "not_product_surface", classification: classification)
+                ProductSurfacePolicy.logManualUtilityOnlyInvariant(suppressed: true, contextualUseful: classification.contextualAction)
+	                print("[ManualUtilityFloatingSuppressed] capability=\(canonical) source=unified_surface stage=\(stage) reason=not_product_surface")
+	                print("[PrimarySurfaceDecision] surface=none reason=manual_utility_blocked_at_unified_surface")
+	                print("[ProposalSurfaceTrace] candidate=\(canonical) requested=yes presented=no reason=manual_utility_blocked_at_unified_surface")
+	                passiveDogfoodMonitor.noteProposalSurfaceFailure(reason: "manual_utility_blocked_at_unified_surface", proposalID: proposalID)
+	                suppressUnifiedSuggestionBeforeSurface(suggestion, identity: identity, stage: stage)
                 return false
             }
         }
+        print("[ProposalSurfaceTrace] candidate=\(capabilityID) requested=yes presented=yes reason=unified_\(stage)_allowed")
         return true
     }
 
     /// Phase 64 — merge semantics: a single floating candidate may not erase
     /// the panel. Panel sections come from UnifiedProductBrain; this only
     /// updates the floating slot.
+    @MainActor
+    func publishPortfolioPanelCandidates(_ candidates: [PortfolioCandidate], reason: String) {
+        guard !candidates.isEmpty else { return }
+        let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        let windowTitle = debugContext.activeWindowTitle ?? ""
+        let visibleApps = NSWorkspace.shared.runningApplications
+            .compactMap { $0.localizedName }
+            .filter { !$0.isEmpty }
+        let signals = WorkflowSignals(
+            activeApp: frontApp.isEmpty ? (debugContext.activeAppName ?? "") : frontApp,
+            windowTitle: windowTitle,
+            selectedTextLength: debugContext.selectedTextLength,
+            contentAvailable: debugContext.screenOCRAvailable || debugContext.selectedTextLength > 0 || !windowTitle.isEmpty,
+            workflow: "ambient",
+            visibleAppNames: visibleApps
+        )
+        var suggestions: [UnifiedSuggestion] = []
+        for candidate in candidates {
+            if ProductSurfacePolicy.isManualUtility(candidate.capabilityId) { continue }
+            let proposalID = "portfolio_panel:\(candidate.candidateID)"
+            _ = ProposalActionContextRouter.decide(
+                proposalID: proposalID,
+                capabilityID: candidate.capabilityId,
+                signals: signals,
+                lane: candidate.lane.rawValue
+            )
+            guard ProposalActionContextRouter.verifyRouterBacked(
+                proposalID: proposalID,
+                capabilityID: candidate.capabilityId,
+                signals: signals
+            ) else { continue }
+            ProposalActionContextRouter.noteUsefulIfRouterBacked(proposalID: proposalID, capabilityID: candidate.capabilityId)
+            suggestions.append(UnifiedSuggestionAdapters.from(portfolioCandidate: candidate, floatingEligible: false))
+        }
+        guard !suggestions.isEmpty else {
+            print("[PortfolioPanelPublished] count=0 reason=router_or_policy_blocked")
+            return
+        }
+        let focus = CurrentFocusSummary(
+            activeApp: debugContext.activeAppName,
+            activeWindowTitle: debugContext.activeWindowTitle,
+            selectedBrowserTabTitle: nil,
+            selectedBrowserTabURL: nil,
+            browserTabListSummary: [],
+            currentContentType: "ambient",
+            semanticDomain: "workspace",
+            activity: nil,
+            evidenceLevel: signals.contentAvailable ? "visible_content" : "metadata",
+            availableContentSources: ContentSourceAvailability(
+                metadata: !(debugContext.activeWindowTitle ?? "").isEmpty,
+                url: false,
+                axText: false,
+                ocr: debugContext.screenOCRAvailable,
+                selectedText: debugContext.selectedTextLength > 0,
+                clipboard: false,
+                browserBridge: false
+            ),
+            missingContentSources: signals.contentAvailable ? [] : ["visible_text"],
+            debugSourceTrace: ["portfolio_panel_publish"]
+        )
+        let decision = UnifiedProductBrain.decide(
+            focus: focus,
+            panelBridgeSuggestions: suggestions,
+            composedPlanSuggestions: [],
+            floatingCandidates: unifiedSurfaceDecision?.floating.map { [$0] } ?? []
+        )
+        let merged = UnifiedSurfaceDecision(
+            floating: unifiedSurfaceDecision?.floating ?? decision.surface.floating,
+            panelSections: decision.surface.panelSections
+        )
+        applyUnifiedDecision(merged, reason: reason)
+        for suggestion in suggestions {
+            _ = ProposalActionContextRouter.noteProductVisible(
+                proposalID: "portfolio_panel:\(suggestion.id)",
+                capabilityID: suggestion.originalActionId ?? suggestion.id,
+                signals: signals
+            )
+        }
+        print("[PortfolioPanelPublished] count=\(suggestions.count) ids=\(suggestions.map(\.id).joined(separator: ",")) reason=\(reason)")
+        print("[PanelVisibilityGate] panel_count=\(merged.panelSections.values.map(\.count).reduce(0, +)) visible=yes reason=portfolio_panel_candidates")
+    }
+
     @MainActor
     func applyUnifiedDecision(_ decision: UnifiedSurfaceDecision, reason: String) {
         unifiedSurfaceDecision = decision
@@ -3557,6 +3696,9 @@ final class AppState: ObservableObject {
         }
         self.activePanelResultSurface = nil
         self.activeResearchResultCard = nil
+        isResultDetailExpanded = false
+        activeResultDetailTargetID = nil
+        resultPopupExpanded = false
     }
 
     @MainActor
@@ -3642,11 +3784,69 @@ final class AppState: ObservableObject {
             ],
             originalActionId: action.kind == .composed ? action.id : canonicalID
         )
+        let isComposedFollowUp = action.kind == .composed || ComposedActionUIRegistry.isComposedFollowUpID(canonicalID)
+        let isParentRerunCapture = action.contextRole == .primaryCapture
+            || (!canonicalID.isEmpty
+                && ["capture_visible_page", "capture_full_document"].contains(canonicalID)
+                && !(action.sourceActionID ?? "").isEmpty)
+        let dispatchSurface: ActionSourceSurface
+        if isComposedFollowUp || isParentRerunCapture {
+            // Follow-ups and capture→resume must use the followup surface so
+            // executors re-acquire context and resume the parent action.
+            dispatchSurface = .followup
+        } else if activeFloatingResultSurface != nil {
+            dispatchSurface = .floating
+        } else if activePanelResultSurface != nil {
+            dispatchSurface = .panel
+        } else {
+            dispatchSurface = .followup
+        }
         return UnifiedActionDispatcher.dispatch(
             suggestion: suggestion,
-            sourceSurface: .followup,
+            sourceSurface: dispatchSurface,
             appState: self
         )
+    }
+
+    /// Seed the reactive context chip when a result surface is shown.
+    @MainActor
+    func seedContextChip(for card: ResearchResultCardState) {
+        let source = card.contentSource ?? card.sourceLabel ?? "visible_text"
+        let option = ContextScopeCatalog.activeScope(forSource: source, scope: card.contentScope)
+        contextChipStateByResultID[card.capabilityID] = StoredContextChipState(
+            option: option,
+            phase: .active,
+            message: nil
+        )
+        print("[ContextChipSeeded] result_id=\(card.capabilityID) scope=\(option.rawValue) source=\(source)")
+    }
+
+    @MainActor
+    func updateContextChipSource(resultID: String, sourceLabel: String, chars: Int) {
+        let option = ContextScopeCatalog.activeScope(forSource: sourceLabel, scope: nil)
+        contextChipStateByResultID[resultID] = StoredContextChipState(
+            option: option,
+            phase: .active,
+            message: nil
+        )
+        print("[ContextChipUpdated] result_id=\(resultID) scope=\(option.rawValue) source=\(sourceLabel) chars=\(chars)")
+    }
+
+    @MainActor
+    func toggleFloatingResultExpanded(for capabilityID: String) {
+        let expanding = !(isResultDetailExpanded && activeResultDetailTargetID == capabilityID)
+        isResultDetailExpanded = expanding
+        activeResultDetailTargetID = expanding ? capabilityID : nil
+        resultPopupExpanded = expanding
+        if expanding {
+            resultCardLifecycle.noteInteraction(host: .floating)
+        }
+        print("[FloatingResultExpand] capability=\(capabilityID) expanded=\(expanding ? "yes" : "no")")
+    }
+
+    @MainActor
+    func isFloatingResultExpanded(for capabilityID: String) -> Bool {
+        isResultDetailExpanded && activeResultDetailTargetID == capabilityID
     }
 
     // MARK: - Context chip (Phase 69 — Issue 1)
@@ -3846,6 +4046,42 @@ final class AppState: ObservableObject {
         }
 
         setContextChipState(.pending, option: option, for: surface, message: "selection_started")
+
+        // Composed results: rerun the parent plan directly with the chosen scope.
+        // Avoids the capture-wrapper path that often suppresses UI updates.
+        if ComposedActionUIRegistry.resolve(parent) != nil {
+            ComposedActionUIRegistry.clearCapturedText(for: parent)
+            let scopeRaw = option.rawValue
+            Task { @MainActor in
+                defer {
+                    if contextChipStateByResultID[parent]?.phase == .pending {
+                        completeContextScopeSelection(
+                            resultID: parent,
+                            scopeRaw: scopeRaw,
+                            status: .failedVisible,
+                            chars: 0,
+                            reason: "scope_rerun_timeout_or_interrupted"
+                        )
+                    }
+                }
+                let result = await ComposedActionClickDispatcher.execute(
+                    uiID: parent,
+                    sourceSurface: "followup",
+                    contextScopeOverride: scopeRaw
+                )
+                completeContextScopeSelection(
+                    resultID: parent,
+                    scopeRaw: scopeRaw,
+                    status: result.executionStatus,
+                    chars: result.outputText.count,
+                    reason: result.executionStatus == .success ? nil : "scope_rerun_finished"
+                )
+            }
+            print("[ContextScopeRerun] parent_action=\(parent) scope=\(option.rawValue) status=dispatched composed=yes")
+            print("[NoContextChipSelectionNoOp] status=pass count=0")
+            return
+        }
+
         showResultCardUserFeedback(command: .showDetails, message: "Gathering \(option.chipLabel.lowercased())...")
 
         // Acquisition: route the capture capability through the proven
@@ -3893,8 +4129,38 @@ final class AppState: ObservableObject {
 
     @MainActor
     private func rerunParentAction(capabilityID: String, scope: ContextScopeOption, title: String) -> UnifiedActionDispatchOutcome {
-        let canonical = ActionAliasResolver.canonicalID(for: capabilityID)
         print("[ContextScopeParentRerunStarted] result_id=\(capabilityID) parent_action=\(capabilityID) scope=\(scope.rawValue)")
+
+        if ComposedActionUIRegistry.resolve(capabilityID) != nil {
+            ComposedActionUIRegistry.clearCapturedText(for: capabilityID)
+            Task { @MainActor in
+                let result = await ComposedActionClickDispatcher.execute(
+                    uiID: capabilityID,
+                    sourceSurface: "followup",
+                    contextScopeOverride: scope.rawValue
+                )
+                completeContextScopeSelection(
+                    resultID: capabilityID,
+                    scopeRaw: scope.rawValue,
+                    status: result.executionStatus,
+                    chars: result.outputText.count,
+                    reason: nil
+                )
+                print("[ContextScopeRerun] parent_action=\(capabilityID) scope=\(scope.rawValue) status=executed composed=yes")
+            }
+            return UnifiedActionDispatchOutcome(
+                suggestionID: capabilityID,
+                actionID: capabilityID,
+                capabilityID: capabilityID,
+                route: "composed_executor",
+                allowed: true,
+                reason: "context_scope_rerun",
+                payloadValid: true,
+                entryPoint: "ContextScopeChip"
+            )
+        }
+
+        let canonical = ActionAliasResolver.canonicalID(for: capabilityID)
         let suggestion = UnifiedSuggestion(
             id: capabilityID,
             kind: .followupAction,

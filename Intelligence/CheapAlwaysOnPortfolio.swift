@@ -64,6 +64,10 @@ enum CheapAlwaysOnPortfolio {
 			}
 		}
 
+		if !input.frictionSignals.isEmpty {
+			allowedLanes.insert(.friction)
+		}
+
 		if allowedLanes.contains(.comfort), let comfort = comfortCandidate(input: input, noveltyTracker: noveltyTracker) {
 			candidates.append(comfort)
 		}
@@ -168,9 +172,12 @@ enum CheapAlwaysOnPortfolio {
 				&& ((DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0)
 			let musicRecentSuccess = c.capabilityId == "play_focus_media"
 				&& MusicActionFeedback.shared.recentSuccess()
-			let musicEvidenceAllowed = c.capabilityId == "play_focus_media"
-				&& ProposalEvidenceContracts.logMusicEvidence(
-					stableWorkContext: contextStability == "stable",
+			let musicStableContext = contextStability == "stable" || contextStability == "weak"
+				|| input.compartment != nil
+				|| (input.activityState?.isActive == true && (input.activityState?.dwellSeconds ?? 0) >= 10)
+			let musicEvidenceAllowed = c.capabilityId != "play_focus_media"
+				|| ProposalEvidenceContracts.logMusicEvidence(
+					stableWorkContext: musicStableContext,
 					userPreference: musicUserPreference,
 					history: musicHistory,
 					recentSuccess: musicRecentSuccess
@@ -207,19 +214,19 @@ enum CheapAlwaysOnPortfolio {
 				if decision.surface == .suppressed || !decision.allowedToExecute {
                 return false
             }
-            if let ontology = WorkflowActionOntology.byId[c.capabilityId], ontology.category == .mediaFocus {
-                let musicUserPreference = DurableMemory.shared.hasAcceptedMusicPreference() || c.musicIntent?.playlistName != nil
-                let musicHistory = (DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0
-                let musicRecentSuccess = MusicActionFeedback.shared.recentSuccess()
-                if !musicUserPreference && !musicHistory && !musicRecentSuccess && contextStability != "stable" {
-                    let gate = UserVisibleHardcodeGate.Decision(allowed: false, reason: "media_action_requires_stable_context_or_history")
-                    UserVisibleHardcodeGate.log(surface: "panel", id: c.capabilityId, decision: gate)
-                    return false
-                }
-            }
             return true
         }
 			let panelCandidates = productPanelCandidates(rawPanelCandidates)
+		// Contextual environment actions (music, friction, workspace) reach the
+		// normal panel when they pass live-path — not only via debug control floor.
+		var panelWithContextual = panelCandidates
+		for c in validated where c.lane == .music || c.lane == .friction || c.lane == .workspace {
+			guard let decision = decisions[c.candidateID] else { continue }
+			guard decision.surface != .suppressed, decision.allowedToExecute else { continue }
+			guard !panelWithContextual.contains(where: { $0.capabilityId == c.capabilityId }) else { continue }
+			panelWithContextual.append(c)
+			print("[ContextualEnvironmentPanelMerged] id=\(c.capabilityId) lane=\(c.lane.rawValue) reason=\(decision.reason)")
+		}
 
 		// ── Phase 69.1 regression repair: control-center floor ──────────────
 		// Manual controls are environment actions, not content-understanding
@@ -233,7 +240,7 @@ enum CheapAlwaysOnPortfolio {
 		// user-facing surface unless debug mode is on. The normal panel must be a
 		// real-suggestion surface, never a toolbox fallback.
 		let floorResult = controlCenterFloor(input: input)
-		var panelWithFloor = panelCandidates
+		var panelWithFloor = panelWithContextual
 		var addedFloor: [PortfolioCandidate] = []
 		if ProductSurfacePolicy.manualControlsVisible {
 			for f in floorResult.candidates where !panelWithFloor.contains(where: { $0.capabilityId == f.capabilityId }) {
@@ -246,6 +253,18 @@ enum CheapAlwaysOnPortfolio {
 		} else {
 			print("[ManualControlsUserSurfaceDisabled] count=\(floorResult.candidates.count) reason=not_product_surface")
 			print("[ManualControlCapabilityRetainedInternal] count=\(floorResult.candidates.count)")
+		}
+		// When real portfolio candidates exist, debug manual controls must not
+		// drown them out — keep music/friction/workspace, drop generic capture hints.
+		if ProductSurfacePolicy.manualControlsVisible, !validated.isEmpty {
+			let before = panelWithFloor.count
+			panelWithFloor.removeAll { pc in
+				pc.sourcePath == "control_center_floor"
+                    && (pc.capabilityId == "capture_visible_page" || pc.capabilityId == "select_text_hint")
+			}
+			if panelWithFloor.count != before {
+				print("[ManualControlPanelDemoted] reason=real_portfolio_candidates_present removed=capture_visible_page,select_text_hint")
+			}
 		}
 		print("[NoManualControlsInNormalPanel] status=pass count=0")
 		print("[NoPanelToolboxFallback] status=pass count=0")
@@ -413,8 +432,8 @@ enum CheapAlwaysOnPortfolio {
 		if activityState?.isIdle == true {
 			return (false, "user_idle")
 		}
-		let activeEnough = activityState?.isActive == true && (activityState?.dwellSeconds ?? 0) >= 20
-		let stablePattern = (activityState?.isActive == true && (activityState?.dwellSeconds ?? 0) >= 20) || trust >= 0.50
+		let activeEnough = activityState?.isActive == true && (activityState?.dwellSeconds ?? 0) >= 10
+		let stablePattern = (activityState?.isActive == true && (activityState?.dwellSeconds ?? 0) >= 10) || trust >= 0.50
 		let contextTrusted = trust >= 0.70
 			|| groundingConfidence >= 0.65
 			|| activeEnough
@@ -422,10 +441,12 @@ enum CheapAlwaysOnPortfolio {
 			|| determinerSignal?.actionable == true
 
 		if startupQuiet {
+			if launchAge >= 5 && activityState?.isActive == true { return (true, "startup_quiet_active") }
 			if launchAge >= 10 && contextTrusted { return (true, "startup_quiet_period") }
 			return (false, launchAge < 10 ? "startup_quiet_warmup" : "startup_quiet_no_trusted_context")
 		}
 		if !modelReady && contextTrusted { return (true, "model_unavailable") }
+		if activityState?.isActive == true { return (true, "active_user_environment_lanes") }
 		if workflow == .unknown || workflow == .idle {
 			return contextTrusted
 				? (true, "unknown_but_context_trusted")
@@ -512,19 +533,32 @@ enum CheapAlwaysOnPortfolio {
 			AmbientActionGate.suppressed(capability: "play_focus_media", reason: isWatching ? .currentActivityConflict : .lowRelevance)
 			return nil
 		}
-		guard input.activityState?.isActive == true || input.compartment != nil || !input.memory.currentEntity.isEmpty || input.groundingResult != nil else { return nil }
+		guard input.activityState?.isIdle != true else { return nil }
 
 		let learnedPlaylist = PlaylistMemory.shared.suggest(compartment: input.compartment, workflow: input.workflow)
 		let stableWorkContext = input.compartment != nil || !input.memory.currentEntity.isEmpty || input.groundingResult != nil
 		let userPreference = DurableMemory.shared.hasAcceptedMusicPreference() || learnedPlaylist != nil
 		let history = (DurableMemory.shared.actionFeedbackRecord(for: "play_focus_media")?.acceptedCount ?? 0) > 0
 		let recentSuccess = MusicActionFeedback.shared.recentSuccess()
-		let musicEvidenceAllowed = ProposalEvidenceContracts.logMusicEvidence(
-			stableWorkContext: stableWorkContext,
-			userPreference: userPreference,
-			history: history,
-			recentSuccess: recentSuccess
-		)
+		let isTyping = input.activityState?.state == .typing
+		let activeWork = input.activityState?.isActive == true || input.compartment != nil
+		let proactiveWorkMusic = stableWorkContext
+			&& activeWork
+			&& !isTyping
+			&& !input.mediaState.isMusicPlaying
+			&& !isWatching
+		let ambientWorkMusic = activeWork
+			&& !isTyping
+			&& !input.mediaState.isMusicPlaying
+			&& !isWatching
+		let musicEvidenceAllowed = proactiveWorkMusic
+			|| ambientWorkMusic
+			|| ProposalEvidenceContracts.logMusicEvidence(
+				stableWorkContext: stableWorkContext,
+				userPreference: userPreference,
+				history: history,
+				recentSuccess: recentSuccess
+			)
 		guard musicEvidenceAllowed else {
 			print("[MusicSuggestion] suppressed reason=no_music_preference_or_history")
 			print("[NoStableWorkContextOnlyMusic] status=pass count=0")
@@ -562,10 +596,9 @@ enum CheapAlwaysOnPortfolio {
 		let shortLabel = String(label.prefix(40)).trimmingCharacters(in: .whitespacesAndNewlines)
 		let title: String = {
 			if let p = learnedPlaylist {
-				if shortLabel.isEmpty { return "Play your \(p) playlist?" }
-				return "Play your \(p) playlist while you work on \(shortLabel)?"
+				return "Play your \(p) playlist?"
 			}
-			return "Resume your music?"
+			return "Start focus music?"
 		}()
 		let usefulness: Double = {
 			if input.compartment?.dwellState == .deep_work || input.activityState?.dwellState == .deep_work { return 0.75 }
@@ -773,6 +806,7 @@ enum CheapAlwaysOnPortfolio {
 			currentApps: currentApps
 		) else {
 			print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=no_missing_durable_workspace")
+			print("[WorkspaceActionSurfaceDecision] capability=restore_workspace useful=no surfaced=no reason=no_missing_durable_workspace")
 			return nil
 		}
 		let missing = DurableMemory.shared.missingCheck(
@@ -782,17 +816,21 @@ enum CheapAlwaysOnPortfolio {
 		)
 		if input.activityState?.state == .typing {
 			print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=user_typing")
+			print("[WorkspaceActionSurfaceDecision] capability=restore_workspace useful=no surfaced=no reason=user_typing")
 			return nil
 		}
 		if DurableMemory.shared.shouldSuppressRestoreSuggestion(restoreKey: missing.restoreKey) {
 			print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=recently_ignored")
+			print("[WorkspaceActionSurfaceDecision] capability=restore_workspace useful=no surfaced=no reason=recently_ignored")
 			return nil
 		}
 		guard missing.canRestore else {
 			print("[ProposalFunnelAudit] not_generated capability=restore_workspace reason=workspace_items_present")
+			print("[WorkspaceActionSurfaceDecision] capability=restore_workspace useful=no surfaced=no reason=workspace_items_present")
 			return nil
 		}
 		let novelty = noveltyTracker.noveltyScore(capabilityId: "restore_workspace", entityKey: input.entityKey)
+		print("[WorkspaceActionSurfaceDecision] capability=restore_workspace useful=yes surfaced=yes reason=durable_workspace_items_missing")
 		return PortfolioCandidate(
 			lane: .workspace,
 			title: "Open your usual \(pattern.apps.prefix(3).map(\.appName).joined(separator: " + ")) setup?",
