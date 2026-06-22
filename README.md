@@ -2,8 +2,6 @@
 
 **macOS-native, privacy-first, context-aware action layer** — observes permitted local signals, decides when to surface help, and executes useful actions without prompt-first chat.
 
-![Pipeline overview](docs/assets/contextual-pipeline-hero.png)
-
 | | |
 |---|---|
 | **Platform** | macOS 13+ · Swift 5 · SwiftUI / AppKit |
@@ -21,8 +19,6 @@ Contextual is **not** a chatbot shell. It is a background **workflow interpreter
 2. **Stays silent** when confidence is low (cooldowns, grounding, usefulness gates).
 3. Surfaces **one actionable suggestion** or a **result card** with follow-ups.
 4. Acquires content **by intent** (visible text → OCR → full document), not blind AX defaults.
-
-![UI surfaces](docs/assets/contextual-ui-surfaces.png)
 
 ---
 
